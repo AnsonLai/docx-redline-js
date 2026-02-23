@@ -1,4 +1,4 @@
-# @gsd/docx-reconciliation
+# @ansonlai/docx-redline-js
 
 Host-independent OOXML reconciliation engine for `.docx` manipulation with track changes (redlines).
 
@@ -21,14 +21,14 @@ Converts AI-generated or programmatic text/markdown edits into valid Office Open
 ### npm / Node.js
 
 ```bash
-npm install @gsd/docx-reconciliation
+npm install @ansonlai/docx-redline-js
 ```
 
 ### CDN (browser `<script type="module">`)
 
 ```html
 <script type="module">
-  import { applyRedlineToOxml } from 'https://esm.sh/@gsd/docx-reconciliation';
+  import { applyRedlineToOxml } from 'https://esm.sh/@ansonlai/docx-redline-js';
 </script>
 ```
 
@@ -36,18 +36,18 @@ Or use the pre-bundled file (no import map needed, `diff-match-patch` is inlined
 
 ```html
 <script type="module">
-  import { applyRedlineToOxml } from 'https://cdn.jsdelivr.net/npm/@gsd/docx-reconciliation/dist/docx-reconciliation.esm.min.js';
+  import { applyRedlineToOxml } from 'https://cdn.jsdelivr.net/npm/@ansonlai/docx-redline-js/dist/docx-redline-js.esm.min.js';
 </script>
 ```
 
 ### Local git clone
 
 ```bash
-git clone https://github.com/YOUR_ORG/docx-reconciliation.git
+git clone https://github.com/YOUR_ORG/docx-redline-js.git
 ```
 
 ```js
-import { applyRedlineToOxml } from './docx-reconciliation/index.js';
+import { applyRedlineToOxml } from './docx-redline-js/index.js';
 ```
 
 ## Quick Start
@@ -60,7 +60,7 @@ import {
   configureXmlProvider,
   setDefaultAuthor,
   applyRedlineToOxml
-} from '@gsd/docx-reconciliation';
+} from '@ansonlai/docx-redline-js';
 
 configureXmlProvider({ DOMParser, XMLSerializer });
 setDefaultAuthor('My App');
@@ -82,7 +82,7 @@ console.log(result.oxml);
 import {
   setDefaultAuthor,
   applyRedlineToOxml
-} from '@gsd/docx-reconciliation';
+} from '@ansonlai/docx-redline-js';
 
 setDefaultAuthor('Browser Editor');
 
@@ -136,8 +136,8 @@ const result = await applyRedlineToOxml(oxml, original, modified, {
 For advanced usage, import specific submodules:
 
 ```js
-import { applyOperationToDocumentXml } from '@gsd/docx-reconciliation/services/standalone-operation-runner.js';
-import { getParagraphText } from '@gsd/docx-reconciliation/core/paragraph-targeting.js';
+import { applyOperationToDocumentXml } from '@ansonlai/docx-redline-js/services/standalone-operation-runner.js';
+import { getParagraphText } from '@ansonlai/docx-redline-js/core/paragraph-targeting.js';
 ```
 
 ## Working With `.docx` Files
@@ -159,7 +159,7 @@ import {
   applyRedlineToOxml,
   ensureNumberingArtifactsInZip,
   validateDocxPackage
-} from '@gsd/docx-reconciliation';
+} from '@ansonlai/docx-redline-js';
 
 const zip = await JSZip.loadAsync(docxBuffer);
 const documentXml = await zip.file('word/document.xml').async('string');

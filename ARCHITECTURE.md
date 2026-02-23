@@ -94,10 +94,10 @@ Keep exports centralized through `index.js`; maintain `standalone.js` only for b
 
 `npm run build` generates CDN-ready ESM bundles under `dist/`:
 
-- `dist/docx-reconciliation.esm.js`
-- `dist/docx-reconciliation.esm.js.map`
-- `dist/docx-reconciliation.esm.min.js`
-- `dist/docx-reconciliation.esm.min.js.map`
+- `dist/docx-redline-js.esm.js`
+- `dist/docx-redline-js.esm.js.map`
+- `dist/docx-redline-js.esm.min.js`
+- `dist/docx-redline-js.esm.min.js.map`
 
 The bundle inlines `diff-match-patch` and keeps `@xmldom/xmldom` external.
 

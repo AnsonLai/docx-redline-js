@@ -1,6 +1,6 @@
 # AGENTS.md - AI Agent Quick Reference
 
-> This file helps AI coding agents understand @gsd/docx-reconciliation quickly.
+> This file helps AI coding agents understand @ansonlai/docx-redline-js quickly.
 > Read this instead of exploring the full source tree.
 
 ## What This Package Does
@@ -24,7 +24,7 @@ The engine works at paragraph scope. For full-document operations, callers itera
 ## Entry Point
 
 ```js
-import { applyRedlineToOxml, configureXmlProvider } from '@gsd/docx-reconciliation';
+import { applyRedlineToOxml, configureXmlProvider } from '@ansonlai/docx-redline-js';
 ```
 
 `index.js` is the single package entry point.
@@ -60,7 +60,7 @@ const result = await applyRedlineToOxml(oxml, originalText, modifiedText, {
 ### Convert OOXML to readable text or markdown
 
 ```js
-import { ingestWordOoxmlToPlainText, ingestWordOoxmlToMarkdown } from '@gsd/docx-reconciliation';
+import { ingestWordOoxmlToPlainText, ingestWordOoxmlToMarkdown } from '@ansonlai/docx-redline-js';
 const plainText = ingestWordOoxmlToPlainText(documentXml);
 const markdown = ingestWordOoxmlToMarkdown(documentXml);
 ```
@@ -68,7 +68,7 @@ const markdown = ingestWordOoxmlToMarkdown(documentXml);
 ### Add a comment to OOXML
 
 ```js
-import { injectCommentsIntoOoxml } from '@gsd/docx-reconciliation';
+import { injectCommentsIntoOoxml } from '@ansonlai/docx-redline-js';
 const result = injectCommentsIntoOoxml(paragraphOoxml, [
   { text: 'Review this clause', targetText: 'force majeure', author: 'Agent' }
 ]);
@@ -77,7 +77,7 @@ const result = injectCommentsIntoOoxml(paragraphOoxml, [
 ### Apply multiple operations to full document XML
 
 ```js
-import { applyOperationToDocumentXml } from '@gsd/docx-reconciliation/services/standalone-operation-runner.js';
+import { applyOperationToDocumentXml } from '@ansonlai/docx-redline-js/services/standalone-operation-runner.js';
 const result = await applyOperationToDocumentXml(documentXml, operation, options);
 ```
 
@@ -92,7 +92,7 @@ const result = await applyRedlineToOxml(oxml, 'Item text', '1. Item text', {
 ### Reconcile a table
 
 ```js
-import { reconcileMarkdownTableOoxml } from '@gsd/docx-reconciliation';
+import { reconcileMarkdownTableOoxml } from '@ansonlai/docx-redline-js';
 const result = await reconcileMarkdownTableOoxml(tableOoxml, originalText, markdownTable);
 ```
 
@@ -163,7 +163,7 @@ orchestration/
 ### OOXML wrapping for Word insertOoxml scenarios
 
 ```js
-import { wrapInDocumentFragment } from '@gsd/docx-reconciliation';
+import { wrapInDocumentFragment } from '@ansonlai/docx-redline-js';
 const wrapped = wrapInDocumentFragment(rawOoxml, { includeNumbering: true, numberingXml });
 ```
 

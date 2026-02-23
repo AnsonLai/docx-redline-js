@@ -8,13 +8,13 @@ await build({
   entryPoints: ['./index.js'],
   bundle: true,
   format: 'esm',
-  outfile: 'dist/docx-reconciliation.esm.js',
+  outfile: 'dist/docx-redline-js.esm.js',
   platform: 'neutral',         // no Node builtins assumed
   target: 'es2020',
   minify: false,                // keep readable for debugging
   sourcemap: true,
   banner: {
-    js: `// @gsd/docx-reconciliation v${pkg.version} — https://github.com/YOUR_ORG/docx-reconciliation`
+    js: `// @ansonlai/docx-redline-js v${pkg.version} — https://github.com/YOUR_ORG/docx-redline-js`
   },
   external: ['@xmldom/xmldom']  // never bundle the Node-only XML parser
 });
@@ -24,7 +24,7 @@ await build({
   entryPoints: ['./index.js'],
   bundle: true,
   format: 'esm',
-  outfile: 'dist/docx-reconciliation.esm.min.js',
+  outfile: 'dist/docx-redline-js.esm.min.js',
   platform: 'neutral',
   target: 'es2020',
   minify: true,
@@ -32,4 +32,4 @@ await build({
   external: ['@xmldom/xmldom']
 });
 
-console.log('Build complete: dist/docx-reconciliation.esm.js, dist/docx-reconciliation.esm.min.js');
+console.log('Build complete: dist/docx-redline-js.esm.js, dist/docx-redline-js.esm.min.js');
