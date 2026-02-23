@@ -43,7 +43,7 @@ Or use the pre-bundled file (no import map needed, `diff-match-patch` is inlined
 ### Local git clone
 
 ```bash
-git clone https://github.com/YOUR_ORG/docx-redline-js.git
+git clone https://github.com/AnsonLai/docx-redline-js.git
 ```
 
 ```js

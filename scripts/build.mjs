@@ -14,7 +14,7 @@ await build({
   minify: false,                // keep readable for debugging
   sourcemap: true,
   banner: {
-    js: `// @ansonlai/docx-redline-js v${pkg.version} — https://github.com/YOUR_ORG/docx-redline-js`
+    js: `// @ansonlai/docx-redline-js v${pkg.version} — https://github.com/AnsonLai/docx-redline-js`
   },
   external: ['@xmldom/xmldom']  // never bundle the Node-only XML parser
 });
