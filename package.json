@@ -11,7 +11,8 @@
       "import": "./index.js",
       "default": "./index.js"
     },
-    "./standalone": "./standalone.js",
+    "./standalone-runner": "./services/standalone-operation-runner.js",
+    "./redline-operation-converter": "./orchestration/redline-operation-converter.js",
     "./adapters/*": "./adapters/*",
     "./core/*": "./core/*",
     "./engine/*": "./engine/*",
@@ -27,7 +28,6 @@
     "services/",
     "orchestration/",
     "index.js",
-    "standalone.js",
     "dist/",
     "ARCHITECTURE.md",
     "AGENTS.md",

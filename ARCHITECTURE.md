@@ -40,14 +40,12 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 │   ├── numbering-helpers.js
 │   ├── standalone-docx-plumbing.js
 │   └── standalone-operation-runner.js
-├── index.js
-└── standalone.js
+└── index.js
 ```
 
 ## Entry Points
 
-- `index.js`: primary package entrypoint.
-- `standalone.js`: compatibility alias that re-exports from `index.js` (deprecated for new imports).
+- `index.js` (Root exports containing the reconciliation logic)
 
 ## Module Responsibilities
 
@@ -76,7 +74,7 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 
 ## End-to-End Flow
 
-1. Caller imports from `index.js` (or legacy `standalone.js` alias).
+1. Caller imports from `index.js`.
 2. Caller configures XML provider/logger/defaults when needed via `adapters/*`.
 3. Caller invokes reconciliation APIs (`applyRedlineToOxml`, operation runner, ingestion/export helpers).
 4. `engine/oxml-engine.js` routes to format, table, list, surgical, or reconstruction flows.
@@ -86,9 +84,8 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 ## Public Surfaces
 
 - Primary: `index.js`
-- Compatibility alias: `standalone.js` (deprecated)
+Keep exports centralized through `index.js`.
 
-Keep exports centralized through `index.js`; maintain `standalone.js` only for backward compatibility.
 
 ## Build Output
 

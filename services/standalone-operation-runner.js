@@ -37,7 +37,7 @@ import {
     resolveParagraphRangeByRefs,
     extractReplacementNodesFromOoxml,
     normalizeBodySectionOrderStandalone
-} from '../standalone.js';
+} from '../index.js';
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
@@ -46,8 +46,8 @@ function getParagraphText(paragraph) {
 }
 
 function resolveTargetParagraph(xmlDoc, targetText, targetRef, opType, runtimeContext = null, options = {}) {
-    const onInfo = typeof options?.onInfo === 'function' ? options.onInfo : () => {};
-    const onWarn = typeof options?.onWarn === 'function' ? options.onWarn : () => {};
+    const onInfo = typeof options?.onInfo === 'function' ? options.onInfo : () => { };
+    const onWarn = typeof options?.onWarn === 'function' ? options.onWarn : () => { };
     return resolveTargetParagraphWithSnapshotShared(xmlDoc, {
         targetText,
         targetRef,
@@ -536,7 +536,7 @@ async function tryExplicitDecimalHeaderListConversion({
     author,
     runtimeContext,
     generateRedlines = true,
-    onInfo = () => {}
+    onInfo = () => { }
 }) {
     if (!targetParagraph) return null;
     const scopedParagraphOxml = serializer.serializeToString(targetParagraph);
@@ -644,7 +644,7 @@ async function trySingleParagraphListStructuralFallback({
     author,
     runtimeContext,
     generateRedlines = true,
-    onInfo = () => {}
+    onInfo = () => { }
 }) {
     if (!targetParagraph) return null;
 
@@ -767,8 +767,8 @@ async function trySingleParagraphListStructuralFallback({
 
 async function applyToParagraphByExactText(documentXml, targetText, modifiedText, author, targetRef = null, targetEndRef = null, runtimeContext = null, options = {}) {
     const generateRedlines = options.generateRedlines !== false;
-    const onInfo = typeof options?.onInfo === 'function' ? options.onInfo : () => {};
-    const onWarn = typeof options?.onWarn === 'function' ? options.onWarn : () => {};
+    const onInfo = typeof options?.onInfo === 'function' ? options.onInfo : () => { };
+    const onWarn = typeof options?.onWarn === 'function' ? options.onWarn : () => { };
     const parser = createParser();
     const serializer = createSerializer();
     const xmlDoc = parser.parseFromString(documentXml, 'application/xml');
@@ -1079,8 +1079,8 @@ async function applyToParagraphByExactText(documentXml, targetText, modifiedText
 
 async function applyHighlightToParagraphByExactText(documentXml, targetText, textToHighlight, color, author, targetRef = null, runtimeContext = null, options = {}) {
     const generateRedlines = options.generateRedlines !== false;
-    const onInfo = typeof options?.onInfo === 'function' ? options.onInfo : () => {};
-    const onWarn = typeof options?.onWarn === 'function' ? options.onWarn : () => {};
+    const onInfo = typeof options?.onInfo === 'function' ? options.onInfo : () => { };
+    const onWarn = typeof options?.onWarn === 'function' ? options.onWarn : () => { };
     const parser = createParser();
     const serializer = createSerializer();
     const xmlDoc = parser.parseFromString(documentXml, 'application/xml');
@@ -1098,8 +1098,8 @@ async function applyHighlightToParagraphByExactText(documentXml, targetText, tex
 }
 
 async function applyCommentToParagraphByExactText(documentXml, targetText, textToComment, commentContent, author, targetRef = null, runtimeContext = null, options = {}) {
-    const onInfo = typeof options?.onInfo === 'function' ? options.onInfo : () => {};
-    const onWarn = typeof options?.onWarn === 'function' ? options.onWarn : () => {};
+    const onInfo = typeof options?.onInfo === 'function' ? options.onInfo : () => { };
+    const onWarn = typeof options?.onWarn === 'function' ? options.onWarn : () => { };
     const parser = createParser();
     const serializer = createSerializer();
     const xmlDoc = parser.parseFromString(documentXml, 'application/xml');

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const reconciliationDir = path.join(__dirname, '..');
 const integrationDir = path.join(reconciliationDir, 'integration');
-const standalonePath = path.join(reconciliationDir, 'standalone.js');
+const standalonePath = path.join(reconciliationDir, 'index.js');
 const indexPath = path.join(reconciliationDir, 'index.js');
 const wordAddinEntryPath = path.join(reconciliationDir, 'word-addin-entry.js');
 const allowedExternalImports = new Set(['diff-match-patch']);
@@ -91,7 +91,7 @@ async function run() {
     for (const specifier of standaloneImports) {
         const resolved = resolveImportPath(standalonePath, specifier);
         if (resolved && isPathWithin(integrationDir, resolved)) {
-            throw new Error(`standalone.js must not import from integration/: ${specifier}`);
+            throw new Error(`index.js must not import from integration/: ${specifier}`);
         }
     }
 
