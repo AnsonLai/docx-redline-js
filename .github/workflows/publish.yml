@@ -3,6 +3,9 @@ name: Publish
 on:
   release:
     types: [published]
+  push:
+    tags:
+      - "v*"
 
 permissions:
   contents: read
@@ -10,14 +13,18 @@ permissions:
 
 jobs:
   publish:
-    if: github.event.release.prerelease == false
+    if: |
+      (github.event_name == 'release' && github.event.release.prerelease == false) ||
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref_name }}
 
     steps:
-      - name: Checkout release tag
+      - name: Checkout release/tag ref
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -26,25 +33,38 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci
-
       - name: Validate release tag matches package version
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           node -e "const fs=require('fs');const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));const expected='v'+pkg.version;if(process.env.RELEASE_TAG!==expected){console.error('Tag/version mismatch: '+process.env.RELEASE_TAG+' != '+expected);process.exit(1);}"
 
+      - name: Check if version already exists on npm
+        id: npm_version
+        run: |
+          PKG_NAME="$(node -p "require('./package.json').name")"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          if npm view "${PKG_NAME}@${PKG_VERSION}" version >/dev/null 2>&1; then
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
+            echo "Detected ${PKG_NAME}@${PKG_VERSION} on npm. Skipping publish."
+          else
+            echo "already_published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install dependencies
+        if: steps.npm_version.outputs.already_published == 'false'
+        run: npm ci
+
       - name: Isolation checks
+        if: steps.npm_version.outputs.already_published == 'false'
         run: npm run test:isolation
 
       - name: Test suite
+        if: steps.npm_version.outputs.already_published == 'false'
         run: npm test
 
       - name: Build bundle
+        if: steps.npm_version.outputs.already_published == 'false'
         run: npm run build
 
       - name: Publish to npm
+        if: steps.npm_version.outputs.already_published == 'false'
         run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

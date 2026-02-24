@@ -1,6 +1,6 @@
 {
   "name": "@ansonlai/docx-redline-js",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Host-independent OOXML reconciliation engine for .docx manipulation with track changes",
   "license": "MIT",
   "type": "module",
@@ -52,7 +52,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "node scripts/run-tests.mjs",
-    "test:isolation": "node tests/no_word_api_standalone_check.mjs && node tests/core_dependency_graph_check.mjs",
+    "test:isolation": "node tests/no_word_api_index_check.mjs && node tests/core_dependency_graph_check.mjs",
     "prepublishOnly": "npm run test:isolation && npm run build"
   },
   "keywords": [
