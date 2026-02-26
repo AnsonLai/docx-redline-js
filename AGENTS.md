@@ -167,6 +167,16 @@ import { wrapInDocumentFragment } from '@ansonlai/docx-redline-js';
 const wrapped = wrapInDocumentFragment(rawOoxml, { includeNumbering: true, numberingXml });
 ```
 
+### Output shape guardrail (important for full-document packaging)
+
+When using full-document workflows, do not assume the returned payload can always be
+written directly to `word/document.xml`.
+
+- Some operation paths can return package payload (`<pkg:package ...>`).
+- Use `extractReplacementNodesFromOoxml(payload)` to normalize and detect source type.
+- Treat `sourceType === 'package'` as package-level output; do not write it into
+  `word/document.xml` as-is.
+
 ## Gotchas
 
 1. Call `configureXmlProvider` first in Node.js.
@@ -174,3 +184,4 @@ const wrapped = wrapInDocumentFragment(rawOoxml, { includeNumbering: true, numbe
 3. Paragraph APIs expect paragraph-level OOXML, not full `word/document.xml` in all cases.
 4. List operations may return `numberingXml` that must be merged into package parts.
 5. `useNativeApi: true` means standalone mode cannot fully handle that operation path.
+6. If output begins with `<pkg:package`, it is package-level OOXML, not a direct replacement for `word/document.xml`.
