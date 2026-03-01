@@ -38,6 +38,7 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 ├── pipeline/
 ├── services/
 │   ├── numbering-helpers.js
+│   ├── revision-comment-management.js
 │   ├── standalone-docx-plumbing.js
 │   └── standalone-operation-runner.js
 └── index.js
@@ -67,6 +68,8 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
   - Dynamic numbering ID allocation, numbering payload remapping, and schema-order-safe numbering merges.
 - `services/standalone-docx-plumbing.js`
   - Package-level extraction/wiring/validation for `word/document.xml`, `word/numbering.xml`, and `word/comments.xml`.
+- `services/revision-comment-management.js`
+  - OOXML transforms for accepting/rejecting tracked changes by author/all-authors and deleting comments by author/all-authors.
 - `services/standalone-operation-runner.js`
   - Host-agnostic operation bridge for `redline`, `highlight`, and `comment` workflows.
 - `orchestration/*`
@@ -79,7 +82,8 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 3. Caller invokes reconciliation APIs (`applyRedlineToOxml`, operation runner, ingestion/export helpers).
 4. `engine/oxml-engine.js` routes to format, table, list, surgical, or reconstruction flows.
 5. Pipeline/services return OOXML and optional package artifacts (`numberingXml`, comments payloads).
-6. Caller writes resulting XML back to package/document boundaries.
+6. Optional revision/comment management transforms can accept/reject revisions or delete comments by author.
+7. Caller writes resulting XML back to package/document boundaries.
 
 ## Public Surfaces
 
@@ -115,4 +119,5 @@ Use this sequence to understand or modify behavior without reading everything:
 2. Follow exports into `engine/oxml-engine.js` or relevant `services/*` module.
 3. For targeting bugs, inspect `core/paragraph-targeting.js`, `core/list-targeting.js`, and `core/table-targeting.js`.
 4. For package wiring issues, inspect `services/standalone-docx-plumbing.js`.
-5. For numbering/list issues, inspect `services/numbering-helpers.js` and orchestration list-fallback modules.
+5. For revision/comment cleanup behavior, inspect `services/revision-comment-management.js`.
+6. For numbering/list issues, inspect `services/numbering-helpers.js` and orchestration list-fallback modules.

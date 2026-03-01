@@ -11,6 +11,8 @@ Converts AI-generated or programmatic text/markdown edits into valid Office Open
 - Lists: generate and edit real Word lists (`w:numPr`) from markdown
 - Tables: virtual-grid diffing for cell-level edits with merge safety
 - Comments: inject OOXML comments anchored to text ranges
+- Revision management: accept/reject tracked changes by author or for all authors
+- Comment management: delete comments by author or for all authors
 - Highlights: apply highlight colors to runs
 - Markdown and OOXML conversion in both directions
 - Package plumbing helpers for numbering.xml, comments.xml, content types, and relationships
@@ -125,6 +127,9 @@ const result = await applyRedlineToOxml(oxml, original, modified, {
 | Function | Purpose |
 |----------|---------|
 | `injectCommentsIntoOoxml(oxml, comments, options)` | Add comments anchored to text ranges. |
+| `acceptTrackedChangesInOoxml(oxml, { author?, allAuthors? })` | Accept `w:ins` / `w:del` / `*PrChange` revisions for one author or all authors. |
+| `rejectTrackedChangesInOoxml(oxml, { author?, allAuthors? })` | Reject `w:ins` / `w:del` / `*PrChange` revisions for one author or all authors. |
+| `deleteCommentsByAuthorInOoxml(oxml, { author?, allAuthors? })` | Delete comments and matching anchors/references for one author or all authors. |
 | `generateTableOoxml(headers, rows, options)` | Generate a `w:tbl` from tabular data. |
 | `createDynamicNumberingIdState(numberingXml)` | Allocate numbering IDs without collisions. |
 | `ensureNumberingArtifactsInZip(zip, numberingXml)` | Merge numbering artifacts into a `.docx` package. |

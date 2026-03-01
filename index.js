@@ -240,6 +240,11 @@ export {
     buildCommentElement,
     buildCommentsPartXml
 } from './services/comment-engine.js';
+export {
+    acceptTrackedChangesInOoxml,
+    rejectTrackedChangesInOoxml,
+    deleteCommentsByAuthorInOoxml
+} from './services/revision-comment-management.js';
 
 // Formatting removal utilities
 export {

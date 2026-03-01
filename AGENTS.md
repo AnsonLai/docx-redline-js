@@ -74,6 +74,30 @@ const result = injectCommentsIntoOoxml(paragraphOoxml, [
 ]);
 ```
 
+### Accept tracked changes from one user (or all users)
+
+```js
+import { acceptTrackedChangesInOoxml } from '@ansonlai/docx-redline-js';
+const acceptedMine = acceptTrackedChangesInOoxml(documentXml, { author: 'Agent' });
+const acceptedAll = acceptTrackedChangesInOoxml(documentXml, { allAuthors: true });
+```
+
+### Reject tracked changes from one user (or all users)
+
+```js
+import { rejectTrackedChangesInOoxml } from '@ansonlai/docx-redline-js';
+const rejectedMine = rejectTrackedChangesInOoxml(documentXml, { author: 'Agent' });
+const rejectedAll = rejectTrackedChangesInOoxml(documentXml, { allAuthors: true });
+```
+
+### Delete comments from one user (or all users)
+
+```js
+import { deleteCommentsByAuthorInOoxml } from '@ansonlai/docx-redline-js';
+const removedMine = deleteCommentsByAuthorInOoxml(packageOrDocumentOoxml, { author: 'Agent' });
+const removedAll = deleteCommentsByAuthorInOoxml(packageOrDocumentOoxml, { allAuthors: true });
+```
+
 ### Apply multiple operations to full document XML
 
 ```js
@@ -129,6 +153,7 @@ services/
   standalone-docx-plumbing.js
   numbering-helpers.js
   comment-engine.js
+  revision-comment-management.js
   table-reconciliation.js
   package-builder.js
 orchestration/
@@ -174,3 +199,4 @@ const wrapped = wrapInDocumentFragment(rawOoxml, { includeNumbering: true, numbe
 3. Paragraph APIs expect paragraph-level OOXML, not full `word/document.xml` in all cases.
 4. List operations may return `numberingXml` that must be merged into package parts.
 5. `useNativeApi: true` means standalone mode cannot fully handle that operation path.
+6. `deleteCommentsByAuthorInOoxml` removes matching `comments.xml` entries and linked comment anchors/references in the document.
