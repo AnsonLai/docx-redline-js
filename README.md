@@ -145,6 +145,26 @@ import { applyOperationToDocumentXml } from '@ansonlai/docx-redline-js/services/
 import { getParagraphText } from '@ansonlai/docx-redline-js/core/paragraph-targeting.js';
 ```
 
+### Output Shape Matrix
+
+Different APIs return different OOXML shapes. Use this as a packaging safety check.
+
+| API | Typical input scope | Output field | Possible root/output shape | Safe to write directly into `word/document.xml` |
+|-----|----------------------|--------------|----------------------------|--------------------------------------------------|
+| `applyRedlineToOxml(...)` | Paragraph, range, or table-scope OOXML | `result.oxml` | Fragment, `<w:document>`, or package payload (`<pkg:package>`) | No. Inspect first. |
+| `applyRedlineToOxmlWithListFallback(...)` | Paragraph or range-scope OOXML | `result.oxml` | Fragment, `<w:document>`, or package payload (`<pkg:package>`) | No. Inspect first. |
+| `reconcileMarkdownTableOoxml(...)` | Table or paragraph-scope OOXML | `result.oxml` | Same shapes as `applyRedlineToOxml(...)` for the supplied scope | No. Inspect first. |
+| `applyOperationToDocumentXml(...)` | Full `word/document.xml` string | `result.documentXml` | `<w:document>` | Yes. This is the document-safe helper. |
+| `extractReplacementNodesFromOoxml(...)` | Any OOXML payload | `{ replacementNodes, numberingXml, sourceType }` | Normalized to `fragment`, `document`, or `package` | Yes. Use this when consuming `result.oxml`. |
+
+### Do / Don't for Packaging
+
+- Do use `applyOperationToDocumentXml(...).documentXml` when your intent is to replace `word/document.xml`.
+- Do use `extractReplacementNodesFromOoxml(...)` when you are consuming `result.oxml` from paragraph/range/table APIs.
+- Do merge numbering/comments artifacts with `ensureNumberingArtifactsInZip(...)` and `ensureCommentsArtifactsInZip(...)` when those parts are present.
+- Don't write payloads that start with `<pkg:package` directly into `word/document.xml`.
+- Don't assume every `result.oxml` payload is a raw paragraph fragment.
+
 ## Working With `.docx` Files
 
 This package operates on OOXML strings (XML parts inside `.docx` zip archives), not raw `.docx` binaries.
@@ -160,18 +180,40 @@ Typical flow:
 ```js
 import JSZip from 'jszip';
 import {
-  configureXmlProvider,
   applyRedlineToOxml,
+  extractReplacementNodesFromOoxml,
   ensureNumberingArtifactsInZip,
   validateDocxPackage
 } from '@ansonlai/docx-redline-js';
+import { applyOperationToDocumentXml } from '@ansonlai/docx-redline-js/services/standalone-operation-runner.js';
 
 const zip = await JSZip.loadAsync(docxBuffer);
 const documentXml = await zip.file('word/document.xml').async('string');
 
-// Apply edits with applyRedlineToOxml(...)
-// Merge artifacts with ensureNumberingArtifactsInZip(...) as needed
+const opResult = await applyOperationToDocumentXml(
+  documentXml,
+  { type: 'redline', target: 'old text', modified: 'new text' },
+  'Editor'
+);
 
+// applyOperationToDocumentXml(...) returns a full w:document payload.
+zip.file('word/document.xml', opResult.documentXml);
+
+const fragmentResult = await applyRedlineToOxml(
+  paragraphOoxml,
+  'Item text',
+  '1. Item text',
+  { generateRedlines: true, author: 'Editor' }
+);
+const normalized = extractReplacementNodesFromOoxml(fragmentResult.oxml);
+
+// If sourceType === 'package', merge extracted content/artifacts instead of
+// writing the raw pkg:package payload into word/document.xml.
+if (normalized.numberingXml) {
+  await ensureNumberingArtifactsInZip(zip, normalized.numberingXml);
+}
+
+await validateDocxPackage(zip);
 const output = await zip.generateAsync({ type: 'nodebuffer' });
 ```
 

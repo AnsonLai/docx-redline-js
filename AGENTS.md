@@ -192,6 +192,16 @@ import { wrapInDocumentFragment } from '@ansonlai/docx-redline-js';
 const wrapped = wrapInDocumentFragment(rawOoxml, { includeNumbering: true, numberingXml });
 ```
 
+### Output shape guardrail (important for packaging)
+
+When consuming `result.oxml`, do not assume the payload is always safe to write
+directly into `word/document.xml`.
+
+- Paragraph/range/table APIs can return a fragment, `<w:document>`, or package payload (`<pkg:package>`).
+- `applyOperationToDocumentXml(...).documentXml` is the document-safe path when you need a full `word/document.xml` replacement.
+- Use `extractReplacementNodesFromOoxml(payload)` to normalize unknown payloads.
+- If `sourceType === 'package'` or the payload starts with `<pkg:package`, do not write it into `word/document.xml` as-is.
+
 ## Gotchas
 
 1. Call `configureXmlProvider` first in Node.js.
@@ -200,3 +210,4 @@ const wrapped = wrapInDocumentFragment(rawOoxml, { includeNumbering: true, numbe
 4. List operations may return `numberingXml` that must be merged into package parts.
 5. `useNativeApi: true` means standalone mode cannot fully handle that operation path.
 6. `deleteCommentsByAuthorInOoxml` removes matching `comments.xml` entries and linked comment anchors/references in the document.
+7. If output begins with `<pkg:package`, treat it as package-level OOXML and normalize it before writing anything back to `word/document.xml`.
