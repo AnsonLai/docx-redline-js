@@ -13,7 +13,8 @@ This repository contains only the publishable package surface:
 - `services/`
 - `orchestration/`
 - `index.js`
-- `standalone.js`
+- `index.d.ts`
+- `dist/`
 
 No Word add-in entrypoints or host-specific integration layers are part of this package.
 
@@ -22,6 +23,8 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 - Preserve Word-compatible redlines by editing OOXML directly.
 - Keep core logic host-independent (no Office.js globals, no Word API calls).
 - Reuse the same engine in browser, Node.js, and other JavaScript runtimes.
+- Keep generated OOXML schema-safe through shared Word element creation and
+  centralized revision metadata helpers.
 
 ## Folder Layout
 
@@ -32,16 +35,23 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 │   ├── logger.js
 │   └── xml-adapter.js
 ├── core/
+│   └── word-xml.js
 ├── engine/
+│   ├── oxml-engine.js
+│   ├── surgical-mode.js
+│   ├── reconstruction-mode.js
+│   ├── run-builders.js
 │   └── formatting-removal.js
 ├── orchestration/
 ├── pipeline/
 ├── services/
+│   ├── comment-engine.js
 │   ├── numbering-helpers.js
 │   ├── revision-comment-management.js
 │   ├── standalone-docx-plumbing.js
 │   └── standalone-operation-runner.js
-└── index.js
+├── index.js
+└── index.d.ts
 ```
 
 ## Entry Points
@@ -58,20 +68,30 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
   - Runtime logger injection and shared logging methods.
 - `core/*`
   - Shared types, OOXML identity helpers, target resolution, list/table targeting heuristics, and XML query helpers.
+- `core/word-xml.js`
+  - Namespace-safe Word element creation, tracked-change detection, and OOXML payload source-shape helpers.
+- `core/types.js`
+  - Shared model enums/types plus revision metadata generation and document-aware revision ID seeding.
 - `engine/oxml-engine.js`
-  - Main reconciliation router and mode selection.
+  - Main reconciliation router, mode selection, existing-revision policy gate, and status/error result handling.
+- `engine/run-builders.js`
+  - Shared builders for insertion/deletion wrappers, paragraph-mark revisions, visible run content, and run-property changes.
+- `engine/surgical-*.js`
+  - Surgical run splitting, diff application, and span helpers for localized edits that preserve surrounding markup.
 - `engine/formatting-removal.js`
   - Shared formatting removal and highlight helpers.
 - `pipeline/*`
-  - Ingestion, markdown preprocessing, diffing, patching, and serialization stages.
+  - Ingestion, markdown preprocessing, diffing, patching, and serialization stages. Ingestion treats deleted and moved-from content as non-visible text and inserted/moved-to content as visible text.
+- `services/comment-engine.js`
+  - Comment creation and package-level comment XML handling.
 - `services/numbering-helpers.js`
   - Dynamic numbering ID allocation, numbering payload remapping, and schema-order-safe numbering merges.
 - `services/standalone-docx-plumbing.js`
   - Package-level extraction/wiring/validation for `word/document.xml`, `word/numbering.xml`, and `word/comments.xml`.
 - `services/revision-comment-management.js`
-  - OOXML transforms for accepting/rejecting tracked changes by author/all-authors and deleting comments by author/all-authors.
+  - OOXML transforms for accepting/rejecting insertion, deletion, move, paragraph-mark, and property-change revisions by author/all-authors, plus deleting comments by author/all-authors.
 - `services/standalone-operation-runner.js`
-  - Host-agnostic operation bridge for `redline`, `highlight`, and `comment` workflows.
+  - Host-agnostic operation bridge for full-document `redline`, `highlight`, and `comment` workflows.
 - `orchestration/*`
   - Route planning and list fallback orchestration utilities.
 
@@ -81,14 +101,33 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 2. Caller configures XML provider/logger/defaults when needed via `adapters/*`.
 3. Caller invokes reconciliation APIs (`applyRedlineToOxml`, operation runner, ingestion/export helpers).
 4. `engine/oxml-engine.js` routes to format, table, list, surgical, or reconstruction flows.
-5. Pipeline/services return OOXML and optional package artifacts (`numberingXml`, comments payloads).
-6. Optional revision/comment management transforms can accept/reject revisions or delete comments by author.
+5. Pipeline/services return OOXML, optional package artifacts (`numberingXml`, comments payloads), and non-breaking `status`/`error` fields where applicable.
+6. Optional revision/comment management transforms can accept/reject revisions, including move revisions, or delete comments by author.
 7. Caller writes resulting XML back to package/document boundaries.
 
 ## Public Surfaces
 
 - Primary: `index.js`
-Keep exports centralized through `index.js`.
+- Types: `index.d.ts`
+
+Keep public exports centralized through `index.js`; deep imports are supported by
+the package `exports` map for advanced consumers, but new public APIs should
+still be re-exported from `index.js`.
+
+## Reliability Guardrails
+
+- Create Word namespace elements with `createWordElement(xmlDoc, 'w:...')`.
+  Avoid direct `document.createElement('w:*')` or `createElementNS(NS_W, 'w:*')`
+  outside `core/word-xml.js`.
+- Generate tracked-change metadata through `createRevisionMetadata(author)` so
+  `w:id`, `w:author`, and `w:date` stay consistent and document-unique.
+- Seed revision IDs from parsed input with `seedRevisionIdsFromDocument(xmlDoc)`
+  before emitting new tracked changes.
+- Use `containsTrackedChanges(xmlDoc)` before redlining existing revisions unless
+  the caller explicitly chooses the `existingRevisions: 'accept-all-first'` policy.
+- Do not write unknown `result.oxml` payloads directly into `word/document.xml`;
+  normalize with `extractReplacementNodesFromOoxml(...)` or use
+  `applyOperationToDocumentXml(...).documentXml` for full-document replacement.
 
 
 ## Build Output
@@ -108,6 +147,12 @@ The bundle inlines `diff-match-patch` and keeps `@xmldom/xmldom` external.
   - Runs the package test runner (`scripts/run-tests.mjs`) against all `tests/*.mjs` except setup helpers.
 - `npm run test:isolation`
   - Runs boundary checks for Word API markers and dependency-graph isolation.
+- `npm run check:types`
+  - Smoke-checks `index.d.ts`.
+- `node scripts/export-validation-fixtures.mjs`
+  - Writes release-time validation fixtures to `tmp/validation-docx/`.
+- `npm run smoke:word -- path/to/file.docx`
+  - Optional Windows/Word COM smoke test for a completed `.docx`.
 
 Use these checks before publishing or tagging.
 
@@ -121,3 +166,6 @@ Use this sequence to understand or modify behavior without reading everything:
 4. For package wiring issues, inspect `services/standalone-docx-plumbing.js`.
 5. For revision/comment cleanup behavior, inspect `services/revision-comment-management.js`.
 6. For numbering/list issues, inspect `services/numbering-helpers.js` and orchestration list-fallback modules.
+7. For reliability regressions, start with `tests/roundtrip_invariant_tests.mjs`,
+   `tests/engine_reliability_tests.mjs`, `tests/paragraph_mark_revision_tests.mjs`,
+   `tests/move_revision_tests.mjs`, and `tests/hardening_status_tests.mjs`.

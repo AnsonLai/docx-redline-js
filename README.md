@@ -11,10 +11,11 @@ Converts AI-generated or programmatic text/markdown edits into valid Office Open
 - Lists: generate and edit real Word lists (`w:numPr`) from markdown
 - Tables: virtual-grid diffing for cell-level edits with merge safety
 - Comments: inject OOXML comments anchored to text ranges
-- Revision management: accept/reject tracked changes by author or for all authors
+- Revision management: detect existing revisions, consume move revisions, and accept/reject tracked changes by author or for all authors
 - Comment management: delete comments by author or for all authors
 - Highlights: apply highlight colors to runs
 - Markdown and OOXML conversion in both directions
+- Status/error result fields for parse, targeting, and existing-revision failures
 - Package plumbing helpers for numbering.xml, comments.xml, content types, and relationships
 - Zero host dependencies: works in Node.js, browsers, Deno, and similar JS runtimes with DOM parsing support
 - TypeScript declarations included via `index.d.ts`
@@ -137,6 +138,7 @@ Common result fields:
 | `ingestWordOoxmlToMarkdown(oxml)` | Convert OOXML to markdown. |
 | `ingestOoxml(oxml)` | Flatten OOXML into an internal run model with offsets. |
 | `preprocessMarkdown(text)` | Normalize markdown and extract format hints. |
+| `containsTrackedChanges(xmlDoc)` | Detect `w:ins`, `w:del`, move revisions, property changes, and paragraph-mark revision markup in a parsed OOXML document/fragment. |
 
 ### Services
 

@@ -16,10 +16,12 @@ Input: (paragraph OOXML, original text, modified text, options)
 Engine routes to: format-only | surgical | reconstruction | list | table mode
   |
   v
-Output: { oxml: string, hasChanges: boolean, warnings?: string[] }
+Output: { oxml: string, hasChanges: boolean, status?: string, error?: object, warnings?: string[] }
 ```
 
-The engine works at paragraph scope. For full-document operations, callers iterate paragraph targets or use the standalone operation runner.
+The engine usually works at paragraph/range/table scope. For full-document
+operations, use the standalone operation runner so the result is safe to write
+back to `word/document.xml`.
 
 ## Entry Point
 
@@ -45,9 +47,14 @@ Browsers have native DOM APIs, so no provider injection is typically needed.
 ```js
 const result = await applyRedlineToOxml(oxml, originalText, modifiedText, {
   generateRedlines: true,
-  author: 'Agent Name'
+  author: 'Agent Name',
+  existingRevisions: 'reject-input'
 });
 ```
+
+`existingRevisions` defaults to `'reject-input'`. Use `'accept-all-first'` only
+when the caller intentionally wants to accept prior tracked changes before
+applying a new edit.
 
 ### Apply a text edit without tracked changes
 
@@ -90,6 +97,9 @@ const rejectedMine = rejectTrackedChangesInOoxml(documentXml, { author: 'Agent' 
 const rejectedAll = rejectTrackedChangesInOoxml(documentXml, { allAuthors: true });
 ```
 
+Move revisions are consumed too: accept removes `w:moveFrom` and unwraps
+`w:moveTo`; reject unwraps `w:moveFrom` and removes `w:moveTo`.
+
 ### Delete comments from one user (or all users)
 
 ```js
@@ -103,6 +113,15 @@ const removedAll = deleteCommentsByAuthorInOoxml(packageOrDocumentOoxml, { allAu
 ```js
 import { applyOperationToDocumentXml } from '@ansonlai/docx-redline-js/services/standalone-operation-runner.js';
 const result = await applyOperationToDocumentXml(documentXml, operation, options);
+```
+
+Use `result.documentXml` from this API when replacing full `word/document.xml`.
+
+### Detect existing tracked changes
+
+```js
+import { containsTrackedChanges } from '@ansonlai/docx-redline-js';
+const hasTrackedChanges = containsTrackedChanges(xmlDoc);
 ```
 
 ### Convert paragraph text into a Word list
@@ -130,15 +149,21 @@ adapters/
   logger.js
 core/
   types.js
+  word-xml.js
   paragraph-targeting.js
   list-targeting.js
   table-targeting.js
 engine/
   oxml-engine.js
   surgical-mode.js
+  surgical-run-splitting.js
+  surgical-diff-application.js
+  surgical-spans.js
   reconstruction-mode.js
+  reconstruction-writer.js
   format-application.js
   formatting-removal.js
+  run-builders.js
   table-mode.js
 pipeline/
   pipeline.js
@@ -169,7 +194,8 @@ orchestration/
 ```js
 {
   generateRedlines: true,
-  author: 'Name'
+  author: 'Name',
+  existingRevisions: 'reject-input'
 }
 ```
 
@@ -179,11 +205,16 @@ orchestration/
 {
   oxml: string,
   hasChanges: boolean,
+  status?: 'ok' | 'no-op' | 'error',
+  error?: { code: string, message: string },
   warnings?: string[],
   numberingXml?: string,
   useNativeApi?: boolean
 }
 ```
+
+Known error codes include `PARSE_ERROR`, `TARGET_NOT_FOUND`, and
+`EXISTING_REVISIONS`.
 
 ### OOXML wrapping for Word insertOoxml scenarios
 
@@ -211,3 +242,21 @@ directly into `word/document.xml`.
 5. `useNativeApi: true` means standalone mode cannot fully handle that operation path.
 6. `deleteCommentsByAuthorInOoxml` removes matching `comments.xml` entries and linked comment anchors/references in the document.
 7. If output begins with `<pkg:package`, treat it as package-level OOXML and normalize it before writing anything back to `word/document.xml`.
+8. Existing revisions are rejected by default; pass `existingRevisions: 'accept-all-first'` only when that is desired.
+9. Hyperlinks, bookmarks, comment markers, tabs/breaks, and footnote/endnote references are structural OOXML and should survive adjacent redline edits.
+10. Internally, create Word elements through `createWordElement` and tracked-change metadata through `createRevisionMetadata`.
+
+## Validation Commands
+
+```bash
+npm test
+npm run test:isolation
+npm run check:types
+node scripts/export-validation-fixtures.mjs
+```
+
+Optional Windows/Word smoke test for a completed `.docx`:
+
+```bash
+npm run smoke:word -- path/to/file.docx
+```
