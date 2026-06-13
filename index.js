@@ -25,6 +25,8 @@ import {
     enforceListBindingOnParagraphNodes,
     stripSingleLineListMarkerPrefix
 } from './orchestration/list-structural-fallback.js';
+import { withOoxmlSourceType } from './core/word-xml.js';
+export { containsTrackedChanges } from './core/word-xml.js';
 
 /**
  * Standalone-safe redline wrapper.
@@ -37,7 +39,7 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
     const result = await applyRedlineToOxmlEngine(oxml, originalText, modifiedText, options);
     if (result?.useNativeApi && typeof result?.oxml !== 'string') {
         const existingWarnings = Array.isArray(result?.warnings) ? result.warnings : [];
-        return {
+        return withOoxmlSourceType({
             ...result,
             oxml,
             hasChanges: false,
@@ -45,7 +47,7 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
                 ...existingWarnings,
                 'Standalone mode cannot execute native Word API fallback for this operation.'
             ]
-        };
+        });
     }
     return result;
 }
@@ -137,14 +139,14 @@ export async function applyRedlineToOxmlWithListFallback(oxml, originalText, mod
                 numberingXml: fallbackResult.numberingXml
             });
             const fallbackWarnings = Array.isArray(fallbackResult?.warnings) ? fallbackResult.warnings : [];
-            return {
+            return withOoxmlSourceType({
                 oxml: wrappedOxml,
                 hasChanges: true,
                 warnings: fallbackWarnings,
                 listStructuralFallbackApplied: true,
                 listStructuralFallbackKey: fallbackResult.listStructuralFallbackKey || null,
                 listStructuralFallbackNumberingXml: fallbackResult.numberingXml || null
-            };
+            });
         }
         preflightFallbackWarnings = Array.isArray(fallbackResult?.warnings) ? fallbackResult.warnings : [];
     }
@@ -202,7 +204,7 @@ export async function applyRedlineToOxmlWithListFallback(oxml, originalText, mod
     const existingWarnings = Array.isArray(baseResult?.warnings) ? baseResult.warnings : [];
     const fallbackWarnings = Array.isArray(fallbackResult?.warnings) ? fallbackResult.warnings : [];
 
-    return {
+    return withOoxmlSourceType({
         ...baseResult,
         oxml: wrappedOxml,
         hasChanges: true,
@@ -210,7 +212,7 @@ export async function applyRedlineToOxmlWithListFallback(oxml, originalText, mod
         listStructuralFallbackApplied: true,
         listStructuralFallbackKey: fallbackResult.listStructuralFallbackKey || null,
         listStructuralFallbackNumberingXml: fallbackResult.numberingXml || null
-    };
+    });
 }
 
 export { sanitizeAiResponse, parseOoxml, serializeOoxml };

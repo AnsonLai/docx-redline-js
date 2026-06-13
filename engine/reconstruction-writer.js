@@ -5,8 +5,14 @@
  */
 
 import { getApplicableFormatHints } from '../pipeline/markdown-processor.js';
-import { createTrackChange, createFormattedRuns } from './run-builders.js';
+import {
+    createTrackChange,
+    createFormattedRuns,
+    markParagraphMarkDeleted,
+    markParagraphMarkInserted
+} from './run-builders.js';
 import { getFirstElementByTag } from '../core/xml-query.js';
+import { createWordElement } from '../core/word-xml.js';
 
 /**
  * Applies diffs to reconstruction context and writes updated XML.
@@ -35,7 +41,7 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
     } = context;
 
     const createNewParagraph = (pPr) => {
-        const newParagraph = xmlDoc.createElement('w:p');
+        const newParagraph = createWordElement(xmlDoc, 'w:p');
         if (pPr) newParagraph.appendChild(pPr.cloneNode(true));
         return newParagraph;
     };
@@ -49,6 +55,7 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
 
     let currentOriginalIndex = 0;
     let currentInsertOffset = 0;
+    const emittedCommentMarkers = new WeakSet();
 
     for (const [op, text] of diffs) {
         if (op === 0 || op === -1) {
@@ -61,7 +68,7 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
                 const chunkLength = getPropertySpanLength(chunkStart, text.length - offset);
                 const chunk = text.substring(offset, offset + chunkLength);
 
-                appendTextToCurrent(
+                const appendResult = appendTextToCurrent(
                     xmlDoc,
                     chunk,
                     type,
@@ -78,8 +85,10 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
                     author,
                     formatHints,
                     currentInsertOffset,
-                    generateRedlines
+                    generateRedlines,
+                    emittedCommentMarkers
                 );
+                currentParagraph = appendResult.currentParagraph;
 
                 if (op === 0) {
                     currentInsertOffset += chunkLength;
@@ -96,7 +105,7 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
                 ? getRunProperties(currentOriginalIndex - 1)
                 : getRunProperties(currentOriginalIndex);
 
-            appendTextToCurrent(
+            const appendResult = appendTextToCurrent(
                 xmlDoc,
                 text,
                 'insert',
@@ -113,8 +122,10 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
                 author,
                 formatHints,
                 currentInsertOffset,
-                generateRedlines
+                generateRedlines,
+                emittedCommentMarkers
             );
+            currentParagraph = appendResult.currentParagraph;
             currentInsertOffset += text.length;
         }
     }
@@ -163,7 +174,8 @@ function appendTextToCurrent(
     author,
     formatHints = [],
     insertOffset = 0,
-    generateRedlines = true
+    generateRedlines = true,
+    emittedCommentMarkers = new WeakSet()
 ) {
     let localBaseIndex = baseIndex;
     let localInsertOffset = insertOffset;
@@ -173,11 +185,12 @@ function appendTextToCurrent(
 
     parts.forEach(part => {
         const sentinelsAtOffset = sentinelMapByStart.get(localBaseIndex) || [];
-        const commentMarkers = sentinelsAtOffset.filter(sentinel => sentinel.isCommentMarker);
+        const commentMarkers = sentinelsAtOffset.filter(sentinel => sentinel.isCommentMarker && !emittedCommentMarkers.has(sentinel.node));
 
         commentMarkers.forEach(marker => {
+            emittedCommentMarkers.add(marker.node);
             if (marker.node.nodeName === 'w:commentReference') {
-                const run = xmlDoc.createElement('w:r');
+                const run = createWordElement(xmlDoc, 'w:r');
                 run.appendChild(marker.node.cloneNode(true));
                 localParagraph.appendChild(run);
             } else {
@@ -186,14 +199,18 @@ function appendTextToCurrent(
         });
 
         if (part === '\n') {
-            if (type !== 'delete') {
-                const info = getParagraphInfo(localBaseIndex);
-                const nextParagraph = createNewParagraph(info.pPr);
-                const fragment = containerFragments.get(info.container);
-                if (fragment) {
-                    fragment.appendChild(nextParagraph);
-                    localParagraph = nextParagraph;
-                }
+            const info = getParagraphInfo(localBaseIndex + 1);
+            const nextParagraph = createNewParagraph(info.pPr);
+            if (generateRedlines && type === 'insert') {
+                markParagraphMarkInserted(xmlDoc, nextParagraph, author);
+            } else if (generateRedlines && type === 'delete') {
+                markParagraphMarkDeleted(xmlDoc, nextParagraph, author);
+            }
+
+            const fragment = containerFragments.get(info.container);
+            if (fragment) {
+                fragment.appendChild(nextParagraph);
+                localParagraph = nextParagraph;
             }
             localBaseIndex++;
             if (type !== 'delete') localInsertOffset++;
@@ -223,7 +240,7 @@ function appendTextToCurrent(
                 const refNode = referenceMap.get(part);
                 if (refNode) {
                     const clone = refNode.cloneNode(true);
-                    const run = xmlDoc.createElement('w:r');
+                    const run = createWordElement(xmlDoc, 'w:r');
                     if (rPr) run.appendChild(rPr.cloneNode(true));
                     run.appendChild(clone);
                     localParagraph.appendChild(run);
@@ -244,9 +261,9 @@ function appendTextToCurrent(
         }
 
         if (type === 'delete') {
-            const run = xmlDoc.createElement('w:r');
+            const run = createWordElement(xmlDoc, 'w:r');
             if (rPr) run.appendChild(rPr.cloneNode(true));
-            const delText = xmlDoc.createElement('w:delText');
+            const delText = createWordElement(xmlDoc, 'w:delText');
             delText.setAttribute('xml:space', 'preserve');
             delText.textContent = part;
             run.appendChild(delText);
@@ -273,4 +290,6 @@ function appendTextToCurrent(
         }
         localBaseIndex += part.length;
     });
+
+    return { currentParagraph: localParagraph };
 }

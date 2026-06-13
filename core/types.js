@@ -125,6 +125,7 @@ export const NumberSuffix = Object.freeze({
  * @property {string} ooxml - The reconciled OOXML output
  * @property {boolean} isValid - Whether validation passed
  * @property {string[]} warnings - Any warnings during processing
+ * @property {'package'|'document'|'fragment'} [sourceType] - Shape of the OOXML payload when known
  */
 
 /**
@@ -193,6 +194,32 @@ export function createRevisionMetadata(author) {
         author: resolvedAuthor,
         date: getRevisionTimestamp()
     };
+}
+
+/**
+ * Seeds the revision ID counter above any existing Word revision/comment id values.
+ *
+ * @param {Document|Element} xmlDoc - Parsed OOXML document or element
+ * @returns {number} Next revision id after seeding
+ */
+export function seedRevisionIdsFromDocument(xmlDoc) {
+    let maxFound = -1;
+    const elements = Array.from(xmlDoc?.getElementsByTagName?.('*') || []);
+
+    for (const element of elements) {
+        for (const attr of Array.from(element.attributes || [])) {
+            if ((attr.localName || '').toLowerCase() !== 'id') continue;
+            const parsed = Number.parseInt(attr.value, 10);
+            if (Number.isFinite(parsed)) {
+                maxFound = Math.max(maxFound, parsed);
+            }
+        }
+    }
+
+    if (maxFound >= revisionIdCounter) {
+        revisionIdCounter = maxFound + 1;
+    }
+    return revisionIdCounter;
 }
 
 /**

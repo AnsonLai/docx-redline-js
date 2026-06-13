@@ -12,17 +12,24 @@ const testFiles = readdirSync(testDir)
 let passed = 0;
 let failed = 0;
 const failures = [];
+const failOutputPattern = /(?:❌\s*(?:FAIL|FAILED|FAILURE|TEST FAILED)|\bTEST FAILED\b)/i;
 
 for (const file of testFiles) {
   const filePath = join(testDir, file);
   process.stdout.write(`  ${file} ... `);
   try {
-    execSync(`node "${filePath}"`, { stdio: 'pipe', timeout: 30000 });
+    const output = execSync(`node "${filePath}"`, { stdio: 'pipe', timeout: 30000 });
+    const outputText = output.toString();
+    if (failOutputPattern.test(outputText)) {
+      throw new Error(`Test printed a failure marker while exiting successfully:\n${outputText}`);
+    }
     console.log('PASS');
     passed++;
   } catch (err) {
     console.log('FAIL');
-    failures.push({ file, stderr: err.stderr?.toString() || err.message });
+    const stdout = err.stdout?.toString() || '';
+    const stderr = err.stderr?.toString() || '';
+    failures.push({ file, stderr: [stdout, stderr, err.message].filter(Boolean).join('\n') });
     failed++;
   }
 }

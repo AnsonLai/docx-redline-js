@@ -2,12 +2,13 @@
  * Table-specific reconciliation and transformation flows.
  */
 
-import { NS_W, getNextRevisionId, getRevisionTimestamp } from '../core/types.js';
+import { NS_W, createRevisionMetadata } from '../core/types.js';
 import {
-    getElementsByTag,
     getElementsByTagNS,
+    getElementsByTagNSOrTag,
     getFirstElementByTag,
     getFirstElementByTagNS,
+    getFirstElementByTagNSOrTag,
     getXmlParseError
 } from '../core/xml-query.js';
 import { createParser } from '../adapters/xml-adapter.js';
@@ -15,9 +16,11 @@ import { log, error } from '../adapters/logger.js';
 import { diffTablesWithVirtualGrid, serializeVirtualGridToOoxml, generateTableOoxml } from '../services/table-reconciliation.js';
 import { parseTable } from '../pipeline/pipeline.js';
 import { ingestTableToVirtualGrid } from '../pipeline/ingestion.js';
+import { createWordElement, withOoxmlSourceType } from '../core/word-xml.js';
+import { markParagraphMarkDeleted } from './run-builders.js';
 
 function noChanges(serializer, xmlDoc) {
-    return { oxml: serializer.serializeToString(xmlDoc), hasChanges: false };
+    return withOoxmlSourceType({ oxml: serializer.serializeToString(xmlDoc), hasChanges: false });
 }
 
 /**
@@ -32,7 +35,7 @@ function noChanges(serializer, xmlDoc) {
  * @returns {{ oxml: string, hasChanges: boolean }}
  */
 export function applyTableReconciliation(xmlDoc, modifiedText, serializer, parser, author, generateRedlines = true) {
-    const tableNodes = getElementsByTag(xmlDoc, 'w:tbl');
+    const tableNodes = getElementsByTagNSOrTag(xmlDoc, NS_W, 'tbl');
     const newTableData = parseTable(modifiedText);
     const hasNewContent = newTableData.rows.length > 0 || newTableData.headers.length > 0;
 
@@ -60,7 +63,7 @@ export function applyTableReconciliation(xmlDoc, modifiedText, serializer, parse
         return noChanges(serializer, xmlDoc);
     }
 
-    const newTableNode = getFirstElementByTag(reconciledDoc, 'w:tbl');
+    const newTableNode = getFirstElementByTagNSOrTag(reconciledDoc, NS_W, 'tbl');
     if (!newTableNode) {
         error('[OxmlEngine] No table found in reconciled OOXML');
         return noChanges(serializer, xmlDoc);
@@ -69,7 +72,7 @@ export function applyTableReconciliation(xmlDoc, modifiedText, serializer, parse
     const importedTable = xmlDoc.importNode(newTableNode, true);
     targetTable.parentNode.replaceChild(importedTable, targetTable);
 
-    return { oxml: serializer.serializeToString(xmlDoc), hasChanges: true };
+    return withOoxmlSourceType({ oxml: serializer.serializeToString(xmlDoc), hasChanges: true });
 }
 
 /**
@@ -136,24 +139,25 @@ export function applyTextToTableTransformation(xmlDoc, modifiedText, serializer,
     const importedTable = workingDoc.importNode(newTableElement, true);
 
     if (generateRedlines) {
-        const date = getRevisionTimestamp();
         paragraphs.forEach(p => {
+            markParagraphMarkDeleted(workingDoc, p, author);
             const runs = getElementsByTagNS(p, NS_W, 'r');
             runs.forEach(run => {
                 const textNodes = getElementsByTagNS(run, NS_W, 't');
                 textNodes.forEach(t => {
                     const text = t.textContent || '';
                     if (text.trim()) {
-                        const delText = workingDoc.createElementNS(NS_W, 'w:delText');
+                        const delText = createWordElement(workingDoc, 'w:delText');
                         delText.textContent = text;
                         t.parentNode.replaceChild(delText, t);
                     }
                 });
 
-                const del = workingDoc.createElementNS(NS_W, 'w:del');
-                del.setAttribute('w:id', String(getNextRevisionId()));
-                del.setAttribute('w:author', author);
-                del.setAttribute('w:date', date);
+                const del = createWordElement(workingDoc, 'w:del');
+                const metadata = createRevisionMetadata(author);
+                del.setAttribute('w:id', String(metadata.id));
+                del.setAttribute('w:author', metadata.author);
+                del.setAttribute('w:date', metadata.date);
                 run.parentNode.insertBefore(del, run);
                 del.appendChild(run);
             });
@@ -168,5 +172,5 @@ export function applyTextToTableTransformation(xmlDoc, modifiedText, serializer,
     }
 
     log('[OxmlEngine] Text-to-table transformation complete');
-    return { oxml: serializer.serializeToString(workingDoc), hasChanges: true };
+    return withOoxmlSourceType({ oxml: serializer.serializeToString(workingDoc), hasChanges: true });
 }

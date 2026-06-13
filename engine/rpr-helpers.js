@@ -5,6 +5,8 @@
  * schema-order insertion, format extraction, and format add/remove transforms.
  */
 
+import { createWordElement } from '../core/word-xml.js';
+
 /**
  * Canonical OOXML run-property schema ordering.
  * Shared by all rPr synchronizers.
@@ -83,30 +85,30 @@ function _applyOverrides(xmlDoc, rPr, formatFlags, mode) {
     }
 
     if (applyBold) {
-        const b = xmlDoc.createElement('w:b');
+        const b = createWordElement(xmlDoc, 'w:b');
         b.setAttribute('w:val', mode === 'add' ? '1' : '0');
         insertRPrChildInOrder(rPr, b);
 
-        const bCs = xmlDoc.createElement('w:bCs');
+        const bCs = createWordElement(xmlDoc, 'w:bCs');
         bCs.setAttribute('w:val', mode === 'add' ? '1' : '0');
         insertRPrChildInOrder(rPr, bCs);
     }
     if (applyItalic) {
-        const i = xmlDoc.createElement('w:i');
+        const i = createWordElement(xmlDoc, 'w:i');
         i.setAttribute('w:val', mode === 'add' ? '1' : '0');
         insertRPrChildInOrder(rPr, i);
 
-        const iCs = xmlDoc.createElement('w:iCs');
+        const iCs = createWordElement(xmlDoc, 'w:iCs');
         iCs.setAttribute('w:val', mode === 'add' ? '1' : '0');
         insertRPrChildInOrder(rPr, iCs);
     }
     if (applyUnderline) {
-        const u = xmlDoc.createElement('w:u');
+        const u = createWordElement(xmlDoc, 'w:u');
         u.setAttribute('w:val', mode === 'add' ? 'single' : 'none');
         insertRPrChildInOrder(rPr, u);
     }
     if (applyStrike) {
-        const strike = xmlDoc.createElement('w:strike');
+        const strike = createWordElement(xmlDoc, 'w:strike');
         strike.setAttribute('w:val', mode === 'add' ? '1' : '0');
         insertRPrChildInOrder(rPr, strike);
     }
@@ -123,7 +125,7 @@ function _applyOverrides(xmlDoc, rPr, formatFlags, mode) {
  */
 export function buildOverrideRPrXml(xmlDoc, originalRun, formatToRemove, serializer) {
     const baseRPr = originalRun.getElementsByTagName('w:rPr')[0] || null;
-    const rPr = baseRPr ? baseRPr.cloneNode(true) : xmlDoc.createElement('w:rPr');
+    const rPr = baseRPr ? baseRPr.cloneNode(true) : createWordElement(xmlDoc, 'w:rPr');
     _applyOverrides(xmlDoc, rPr, formatToRemove, 'remove');
 
     let rPrXml = serializer.serializeToString(rPr);

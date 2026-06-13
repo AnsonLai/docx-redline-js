@@ -6,6 +6,8 @@
  */
 
 import { createParser, createSerializer } from '../adapters/xml-adapter.js';
+import { createRevisionMetadata, seedRevisionIdsFromDocument } from '../core/types.js';
+import { createWordElement } from '../core/word-xml.js';
 import {
     applyRedlineToOxml,
     reconcileMarkdownTableOoxml,
@@ -66,6 +68,70 @@ function normalizeBodySectionOrder(xmlDoc) {
     normalizeBodySectionOrderStandalone(xmlDoc);
 }
 
+function directFieldCharType(node) {
+    if (!node || node.nodeType !== 1 || node.namespaceURI !== NS_W || node.localName !== 'r') return '';
+    const fldChar = Array.from(node.childNodes || []).find(
+        child => child && child.nodeType === 1 && child.namespaceURI === NS_W && child.localName === 'fldChar'
+    ) || null;
+    return fldChar?.getAttribute('w:fldCharType') || fldChar?.getAttribute('fldCharType') || '';
+}
+
+function hasInstrText(node) {
+    if (!node || node.nodeType !== 1) return false;
+    return Array.from(node.childNodes || []).some(
+        child => child && child.nodeType === 1 && child.namespaceURI === NS_W && child.localName === 'instrText'
+    );
+}
+
+function removeProofErrNodes(paragraph) {
+    for (const node of Array.from(paragraph?.getElementsByTagNameNS?.(NS_W, 'proofErr') || [])) {
+        node.parentNode?.removeChild(node);
+    }
+}
+
+function unlinkFieldsInParagraph(paragraph) {
+    const children = Array.from(paragraph?.childNodes || []);
+    let inField = false;
+    let seenSeparate = false;
+
+    for (const child of children) {
+        if (child.nodeType !== 1) continue;
+
+        const fieldType = directFieldCharType(child);
+        if (fieldType === 'begin') {
+            inField = true;
+            seenSeparate = false;
+            child.parentNode?.removeChild(child);
+            continue;
+        }
+
+        if (!inField) continue;
+
+        if (fieldType === 'separate') {
+            seenSeparate = true;
+            child.parentNode?.removeChild(child);
+            continue;
+        }
+
+        if (fieldType === 'end') {
+            inField = false;
+            seenSeparate = false;
+            child.parentNode?.removeChild(child);
+            continue;
+        }
+
+        if (!seenSeparate || hasInstrText(child)) {
+            child.parentNode?.removeChild(child);
+        }
+    }
+}
+
+function preprocessRedlineTargetParagraph(targetParagraph) {
+    if (!targetParagraph) return;
+    removeProofErrNodes(targetParagraph);
+    unlinkFieldsInParagraph(targetParagraph);
+}
+
 function getDirectWordChild(element, localName) {
     if (!element) return null;
     return Array.from(element.childNodes || []).find(
@@ -97,51 +163,37 @@ function computeTableStructuralDedupeKey(xmlDoc, containingTable, modifiedText) 
     return `table:${tableIndex}|payload:${normalizedPayload}`;
 }
 
-function getNextTrackedChangeId(xmlDoc) {
-    let maxId = 999;
-    const revisionNodes = [
-        ...Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'ins')),
-        ...Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'del'))
-    ];
-    for (const node of revisionNodes) {
-        const raw = node.getAttribute('w:id') || node.getAttribute('id') || '';
-        const parsed = Number.parseInt(raw, 10);
-        if (Number.isFinite(parsed)) maxId = Math.max(maxId, parsed);
-    }
-    return maxId + 1;
-}
-
 function ensureListProperties(xmlDoc, paragraph, ilvl, numId) {
     let pPr = getDirectWordChild(paragraph, 'pPr');
     if (!pPr) {
-        pPr = xmlDoc.createElementNS(NS_W, 'w:pPr');
+        pPr = createWordElement(xmlDoc, 'w:pPr');
         paragraph.insertBefore(pPr, paragraph.firstChild);
     }
 
     let numPr = getDirectWordChild(pPr, 'numPr');
     if (!numPr) {
-        numPr = xmlDoc.createElementNS(NS_W, 'w:numPr');
+        numPr = createWordElement(xmlDoc, 'w:numPr');
         pPr.appendChild(numPr);
     }
 
     let ilvlEl = getDirectWordChild(numPr, 'ilvl');
     if (!ilvlEl) {
-        ilvlEl = xmlDoc.createElementNS(NS_W, 'w:ilvl');
+        ilvlEl = createWordElement(xmlDoc, 'w:ilvl');
         numPr.appendChild(ilvlEl);
     }
     ilvlEl.setAttribute('w:val', String(Math.max(0, Number.parseInt(ilvl, 10) || 0)));
 
     let numIdEl = getDirectWordChild(numPr, 'numId');
     if (!numIdEl) {
-        numIdEl = xmlDoc.createElementNS(NS_W, 'w:numId');
+        numIdEl = createWordElement(xmlDoc, 'w:numId');
         numPr.appendChild(numIdEl);
     }
     numIdEl.setAttribute('w:val', String(numId));
 }
 
-function buildInsertedListParagraph(xmlDoc, anchorParagraph, entry, revisionId, author, dateIso, options = {}) {
+function buildInsertedListParagraph(xmlDoc, anchorParagraph, entry, revisionMetadata, author, options = {}) {
     const generateRedlines = options.generateRedlines !== false;
-    const paragraph = xmlDoc.createElementNS(NS_W, 'w:p');
+    const paragraph = createWordElement(xmlDoc, 'w:p');
 
     const anchorPPr = getDirectWordChild(anchorParagraph, 'pPr');
     if (anchorPPr) {
@@ -149,23 +201,24 @@ function buildInsertedListParagraph(xmlDoc, anchorParagraph, entry, revisionId, 
     }
     ensureListProperties(xmlDoc, paragraph, entry.ilvl, entry.numId);
 
-    const run = xmlDoc.createElementNS(NS_W, 'w:r');
+    const run = createWordElement(xmlDoc, 'w:r');
     const anchorFirstRun = Array.from(anchorParagraph.getElementsByTagNameNS(NS_W, 'r'))[0] || null;
     const anchorRunPr = anchorFirstRun ? getDirectWordChild(anchorFirstRun, 'rPr') : null;
     if (anchorRunPr) {
         run.appendChild(anchorRunPr.cloneNode(true));
     }
 
-    const textNode = xmlDoc.createElementNS(NS_W, 'w:t');
+    const textNode = createWordElement(xmlDoc, 'w:t');
     const safeText = String(entry.text || '').trim();
     if (/^\s|\s$/.test(safeText)) textNode.setAttribute('xml:space', 'preserve');
     textNode.textContent = safeText;
     run.appendChild(textNode);
     if (generateRedlines) {
-        const ins = xmlDoc.createElementNS(NS_W, 'w:ins');
-        ins.setAttribute('w:id', String(revisionId));
-        ins.setAttribute('w:author', author || 'Browser Demo AI');
-        ins.setAttribute('w:date', dateIso);
+        const metadata = revisionMetadata || createRevisionMetadata(author);
+        const ins = createWordElement(xmlDoc, 'w:ins');
+        ins.setAttribute('w:id', String(metadata.id));
+        ins.setAttribute('w:author', metadata.author);
+        ins.setAttribute('w:date', metadata.date);
         ins.appendChild(run);
         paragraph.appendChild(ins);
     } else {
@@ -287,9 +340,6 @@ function applyExplicitRangeListInsertions({
     if (!parent || explicitRangeParagraphs.some(paragraph => paragraph.parentNode !== parent)) return false;
 
     const tailInsertionPoint = explicitRangeParagraphs[explicitRangeParagraphs.length - 1].nextSibling;
-    const dateIso = generateRedlines ? new Date().toISOString() : null;
-    let revisionId = generateRedlines ? getNextTrackedChangeId(xmlDoc) : null;
-
     for (const entry of insertionEntries) {
         const referenceParagraph = entry.insertBeforeOriginalIndex != null
             ? explicitRangeParagraphs[entry.insertBeforeOriginalIndex]
@@ -305,12 +355,10 @@ function applyExplicitRangeListInsertions({
                 numId: entry.numId,
                 text: entry.text
             },
-            revisionId,
+            generateRedlines ? createRevisionMetadata(author) : null,
             author,
-            dateIso,
             { generateRedlines }
         );
-        if (generateRedlines) revisionId += 1;
 
         if (entry.insertBeforeOriginalIndex != null) {
             parent.insertBefore(listParagraph, referenceParagraph);
@@ -426,21 +474,22 @@ function deriveSingleParagraphPlainAdjacencyInsertion(currentParagraphText, modi
     return null;
 }
 
-function buildFallbackInsertedPlainParagraph(xmlDoc, text, revisionId, author, dateIso, options = {}) {
+function buildFallbackInsertedPlainParagraph(xmlDoc, text, revisionMetadata, author, options = {}) {
     const generateRedlines = options.generateRedlines !== false;
-    const paragraph = xmlDoc.createElementNS(NS_W, 'w:p');
-    const run = xmlDoc.createElementNS(NS_W, 'w:r');
-    const textNode = xmlDoc.createElementNS(NS_W, 'w:t');
+    const paragraph = createWordElement(xmlDoc, 'w:p');
+    const run = createWordElement(xmlDoc, 'w:r');
+    const textNode = createWordElement(xmlDoc, 'w:t');
     const safeText = String(text || '');
     if (/^\s|\s$/.test(safeText)) textNode.setAttribute('xml:space', 'preserve');
     textNode.textContent = safeText;
     run.appendChild(textNode);
 
     if (generateRedlines) {
-        const ins = xmlDoc.createElementNS(NS_W, 'w:ins');
-        ins.setAttribute('w:id', String(revisionId));
-        ins.setAttribute('w:author', author || 'Browser Demo AI');
-        ins.setAttribute('w:date', dateIso);
+        const metadata = revisionMetadata || createRevisionMetadata(author);
+        const ins = createWordElement(xmlDoc, 'w:ins');
+        ins.setAttribute('w:id', String(metadata.id));
+        ins.setAttribute('w:author', metadata.author);
+        ins.setAttribute('w:date', metadata.date);
         ins.appendChild(run);
         paragraph.appendChild(ins);
     } else {
@@ -451,31 +500,32 @@ function buildFallbackInsertedPlainParagraph(xmlDoc, text, revisionId, author, d
 }
 
 function buildEmptyParagraphTemplateFromAnchor(xmlDoc, anchorParagraph) {
-    const paragraph = xmlDoc.createElementNS(NS_W, 'w:p');
+    const paragraph = createWordElement(xmlDoc, 'w:p');
     const anchorPPr = getDirectWordChild(anchorParagraph, 'pPr');
     if (anchorPPr) paragraph.appendChild(anchorPPr.cloneNode(true));
 
-    const run = xmlDoc.createElementNS(NS_W, 'w:r');
+    const run = createWordElement(xmlDoc, 'w:r');
     const anchorFirstRun = Array.from(anchorParagraph.getElementsByTagNameNS(NS_W, 'r'))[0] || null;
     const anchorRunPr = anchorFirstRun ? getDirectWordChild(anchorFirstRun, 'rPr') : null;
     if (anchorRunPr) run.appendChild(anchorRunPr.cloneNode(true));
 
-    const textNode = xmlDoc.createElementNS(NS_W, 'w:t');
+    const textNode = createWordElement(xmlDoc, 'w:t');
     textNode.textContent = '';
     run.appendChild(textNode);
     paragraph.appendChild(run);
     return paragraph;
 }
 
-function wrapParagraphContentInInsertion(xmlDoc, paragraph, revisionId, author, dateIso) {
-    const wrappedParagraph = xmlDoc.createElementNS(NS_W, 'w:p');
+function wrapParagraphContentInInsertion(xmlDoc, paragraph, revisionMetadata, author) {
+    const wrappedParagraph = createWordElement(xmlDoc, 'w:p');
     const pPr = getDirectWordChild(paragraph, 'pPr');
     if (pPr) wrappedParagraph.appendChild(pPr.cloneNode(true));
 
-    const ins = xmlDoc.createElementNS(NS_W, 'w:ins');
-    ins.setAttribute('w:id', String(revisionId));
-    ins.setAttribute('w:author', author || 'Browser Demo AI');
-    ins.setAttribute('w:date', dateIso);
+    const ins = createWordElement(xmlDoc, 'w:ins');
+    const metadata = revisionMetadata || createRevisionMetadata(author);
+    ins.setAttribute('w:id', String(metadata.id));
+    ins.setAttribute('w:author', metadata.author);
+    ins.setAttribute('w:date', metadata.date);
 
     for (const child of Array.from(paragraph.childNodes || [])) {
         if (child?.nodeType === 1 && child.namespaceURI === NS_W && child.localName === 'pPr') continue;
@@ -486,7 +536,7 @@ function wrapParagraphContentInInsertion(xmlDoc, paragraph, revisionId, author, 
     return wrappedParagraph;
 }
 
-async function buildInsertedPlainParagraph(xmlDoc, anchorParagraph, text, revisionId, author, dateIso, options = {}) {
+async function buildInsertedPlainParagraph(xmlDoc, anchorParagraph, text, revisionMetadata, author, options = {}) {
     const generateRedlines = options.generateRedlines !== false;
     const serializer = createSerializer();
     const templateParagraph = buildEmptyParagraphTemplateFromAnchor(xmlDoc, anchorParagraph);
@@ -513,9 +563,8 @@ async function buildInsertedPlainParagraph(xmlDoc, anchorParagraph, text, revisi
         return buildFallbackInsertedPlainParagraph(
             xmlDoc,
             text,
-            revisionId,
+            revisionMetadata,
             author,
-            dateIso,
             { generateRedlines }
         );
     }
@@ -524,7 +573,7 @@ async function buildInsertedPlainParagraph(xmlDoc, anchorParagraph, text, revisi
         return sourceParagraph;
     }
 
-    return wrapParagraphContentInInsertion(xmlDoc, sourceParagraph, revisionId, author, dateIso);
+    return wrapParagraphContentInInsertion(xmlDoc, sourceParagraph, revisionMetadata, author);
 }
 
 async function tryExplicitDecimalHeaderListConversion({
@@ -772,8 +821,10 @@ async function applyToParagraphByExactText(documentXml, targetText, modifiedText
     const parser = createParser();
     const serializer = createSerializer();
     const xmlDoc = parser.parseFromString(documentXml, 'application/xml');
+    seedRevisionIdsFromDocument(xmlDoc);
     const resolved = resolveTargetParagraph(xmlDoc, targetText, targetRef, 'redline', runtimeContext, { onInfo, onWarn });
     const targetParagraph = resolved.paragraph;
+    preprocessRedlineTargetParagraph(targetParagraph);
     const currentParagraphText = getParagraphText(targetParagraph).trim();
     const containingTable = findContainingWordElement(targetParagraph, 'tbl');
     const rawTableStructuralCandidate = !!containingTable
@@ -868,8 +919,6 @@ async function applyToParagraphByExactText(documentXml, targetText, modifiedText
         const parent = targetParagraph.parentNode;
         if (!parent) throw new Error('Target paragraph has no parent for adjacency list insertion');
 
-        const dateIso = generateRedlines ? new Date().toISOString() : null;
-        const revisionId = generateRedlines ? getNextTrackedChangeId(xmlDoc) : null;
         const listParagraph = buildInsertedListParagraph(
             xmlDoc,
             targetParagraph,
@@ -879,9 +928,8 @@ async function applyToParagraphByExactText(documentXml, targetText, modifiedText
                 markerType: 'numbered',
                 text: adjacencyInsertionCandidate.text
             },
-            revisionId,
+            generateRedlines ? createRevisionMetadata(author) : null,
             author,
-            dateIso,
             { generateRedlines }
         );
 
@@ -904,8 +952,6 @@ async function applyToParagraphByExactText(documentXml, targetText, modifiedText
         const parent = targetParagraph.parentNode;
         if (!parent) throw new Error('Target paragraph has no parent for plain adjacency insertion');
 
-        const dateIso = generateRedlines ? new Date().toISOString() : null;
-        let revisionId = generateRedlines ? getNextTrackedChangeId(xmlDoc) : null;
         const insertionPoint = plainAdjacencyInsertionCandidate.position === 'before'
             ? targetParagraph
             : targetParagraph.nextSibling;
@@ -915,13 +961,11 @@ async function applyToParagraphByExactText(documentXml, targetText, modifiedText
                 xmlDoc,
                 targetParagraph,
                 paragraphText,
-                revisionId,
+                generateRedlines ? createRevisionMetadata(author) : null,
                 author,
-                dateIso,
                 { generateRedlines }
             );
             parent.insertBefore(xmlDoc.importNode(plainParagraph, true), insertionPoint);
-            if (generateRedlines) revisionId += 1;
         }
 
         normalizeBodySectionOrder(xmlDoc);
@@ -943,19 +987,15 @@ async function applyToParagraphByExactText(documentXml, targetText, modifiedText
         const parent = targetParagraph.parentNode;
         if (!parent) throw new Error('Target paragraph has no parent for list insertion');
         const insertionPoint = targetParagraph.nextSibling;
-        const dateIso = generateRedlines ? new Date().toISOString() : null;
-        let revisionId = generateRedlines ? getNextTrackedChangeId(xmlDoc) : null;
         for (const entry of insertionOnlyPlan.entries) {
             const listParagraph = buildInsertedListParagraph(
                 xmlDoc,
                 targetParagraph,
                 { ...entry, numId: insertionOnlyPlan.numId },
-                revisionId,
+                generateRedlines ? createRevisionMetadata(author) : null,
                 author,
-                dateIso,
                 { generateRedlines }
             );
-            if (generateRedlines) revisionId += 1;
             parent.insertBefore(listParagraph, insertionPoint);
         }
         normalizeBodySectionOrder(xmlDoc);
@@ -1029,14 +1069,24 @@ async function applyToParagraphByExactText(documentXml, targetText, modifiedText
         ? await reconcileMarkdownTableOoxml(scopedXml, originalTextForApply, effectiveModifiedText, {
             author,
             generateRedlines,
+            existingRevisions: options.existingRevisions,
             _isolatedTableCell: useTableScope
         })
         : await applyRedlineToOxml(scopedXml, originalTextForApply, effectiveModifiedText, {
             author,
             generateRedlines,
+            existingRevisions: options.existingRevisions,
             _isolatedTableCell: useTableScope
         });
-    if (!result?.hasChanges) return { documentXml, hasChanges: false, numberingXml: null };
+    if (!result?.hasChanges) {
+        return {
+            documentXml,
+            hasChanges: false,
+            numberingXml: null,
+            status: result?.status || 'no-op',
+            error: result?.error
+        };
+    }
     if (result.useNativeApi && !result.oxml) {
         const warning = 'Format-only fallback requires native Word API; browser demo skipped this operation.';
         onWarn(`[WARN] ${warning}`);
@@ -1074,7 +1124,7 @@ async function applyToParagraphByExactText(documentXml, targetText, modifiedText
     if (rawTableStructuralDedupeKey && tableStructuralDedupes && (useTableScope || containingTable)) {
         tableStructuralDedupes.add(rawTableStructuralDedupeKey);
     }
-    return { documentXml: serializer.serializeToString(xmlDoc), hasChanges: true, numberingXml };
+    return { documentXml: serializer.serializeToString(xmlDoc), hasChanges: true, numberingXml, status: 'ok' };
 }
 
 async function applyHighlightToParagraphByExactText(documentXml, targetText, textToHighlight, color, author, targetRef = null, runtimeContext = null, options = {}) {

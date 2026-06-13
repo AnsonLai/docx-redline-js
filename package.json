@@ -6,8 +6,10 @@
   "type": "module",
   "main": "./index.js",
   "module": "./index.js",
+  "types": "./index.d.ts",
   "exports": {
     ".": {
+      "types": "./index.d.ts",
       "import": "./index.js",
       "default": "./index.js"
     },
@@ -28,6 +30,7 @@
     "services/",
     "orchestration/",
     "index.js",
+    "index.d.ts",
     "dist/",
     "ARCHITECTURE.md",
     "AGENTS.md",
@@ -51,6 +54,8 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
+    "check:types": "node scripts/check-types.mjs",
+    "smoke:word": "powershell -File scripts/word-com-smoke.ps1",
     "test": "node scripts/run-tests.mjs",
     "test:isolation": "node tests/no_word_api_index_check.mjs && node tests/core_dependency_graph_check.mjs",
     "prepublishOnly": "npm run test:isolation && npm run build"

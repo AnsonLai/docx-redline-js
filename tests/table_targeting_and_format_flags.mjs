@@ -3,6 +3,7 @@ import './setup-xml-provider.mjs';
 import { createParser } from '../adapters/xml-adapter.js';
 import { detectTableCellContext } from '../engine/table-cell-context.js';
 import { extractFormatFromRPr } from '../engine/rpr-helpers.js';
+import { ingestTableToVirtualGrid } from '../pipeline/ingestion.js';
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const NS_W14 = 'http://schemas.microsoft.com/office/word/2010/wordml';
@@ -53,8 +54,32 @@ function testFormatExtractionRespectsExplicitOffValues() {
     assert.strictEqual(format.hasFormatting, false);
 }
 
+function testDefaultNamespaceTableIngestionInfersGridColumns() {
+    const xml = `
+<tbl xmlns="${NS_W}">
+  <tr>
+    <tc><p><r><t>Name</t></r></p></tc>
+    <tc><p><r><t>Role</t></r></p></tc>
+  </tr>
+  <tr>
+    <tc><p><r><t>Ada</t></r></p></tc>
+    <tc><p><r><t>Reviewer</t></r></p></tc>
+  </tr>
+</tbl>`.trim();
+
+    const parser = createParser();
+    const doc = parser.parseFromString(xml, 'text/xml');
+    const grid = ingestTableToVirtualGrid(doc.documentElement);
+
+    assert.strictEqual(grid.rowCount, 2);
+    assert.strictEqual(grid.colCount, 2);
+    assert.strictEqual(grid.grid[1][0].getText(), 'Ada');
+    assert.strictEqual(grid.grid[1][1].getText(), 'Reviewer');
+}
+
 testTableDuplicateTextTargetsByParaId();
 testFormatExtractionRespectsExplicitOffValues();
-console.log('PASS: table targeting + format off-value handling');
+testDefaultNamespaceTableIngestionInfersGridColumns();
+console.log('table_targeting_and_format_flags.mjs ... PASS');
 
 

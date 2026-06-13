@@ -7,6 +7,7 @@
 
 import { mergeFormats } from '../pipeline/markdown-processor.js';
 import { injectFormattingToRPr, createTextRun } from './run-builders.js';
+import { createWordElement } from '../core/word-xml.js';
 
 /**
  * Splits spans at all supplied absolute boundaries.
@@ -167,7 +168,7 @@ function addFormattingToRun(xmlDoc, run, format, author, generateRedlines) {
     const baseRPr = rPr ? rPr.cloneNode(true) : null;
 
     if (!rPr) {
-        rPr = xmlDoc.createElement('w:rPr');
+        rPr = createWordElement(xmlDoc, 'w:rPr');
         run.insertBefore(rPr, run.firstChild);
     }
 

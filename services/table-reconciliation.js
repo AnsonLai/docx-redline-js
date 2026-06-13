@@ -7,7 +7,7 @@
 import { computeWordLevelDiffOps } from '../pipeline/diff-engine.js';
 import { splitRunsAtDiffBoundaries, applyPatches } from '../pipeline/patching.js';
 import { serializeToOoxml } from '../pipeline/serialization.js';
-import { NS_W, getNextRevisionId, getRevisionTimestamp, createRevisionMetadata, escapeXml, RunKind } from '../core/types.js';
+import { NS_W, createRevisionMetadata, escapeXml, RunKind } from '../core/types.js';
 import { preprocessMarkdown } from '../pipeline/markdown-processor.js';
 
 /**
@@ -20,8 +20,7 @@ import { preprocessMarkdown } from '../pipeline/markdown-processor.js';
  */
 export function generateTableOoxml(tableData, options = {}) {
     const { generateRedlines = false, author = 'AI' } = options;
-    const date = getRevisionTimestamp();
-    const revId = generateRedlines ? getNextRevisionId() : null;
+    const tableInsertMeta = generateRedlines ? createRevisionMetadata(author) : null;
 
     // Determine number of columns
     const numCols = tableData.headers?.length || (tableData.rows?.[0]?.length || 1);
@@ -86,8 +85,8 @@ export function generateTableOoxml(tableData, options = {}) {
     let tableXml = `<w:tbl>${tblPr}${tblGrid}${rowsXml}</w:tbl>`;
 
     // Wrap entire table in w:ins if generating redlines
-    if (generateRedlines && revId) {
-        tableXml = `<w:ins w:id="${revId}" w:author="${escapeXml(author)}" w:date="${date}">${tableXml}</w:ins>`;
+    if (tableInsertMeta) {
+        tableXml = `<w:ins w:id="${tableInsertMeta.id}" w:author="${escapeXml(tableInsertMeta.author)}" w:date="${tableInsertMeta.date}">${tableXml}</w:ins>`;
     }
 
     return tableXml;

@@ -225,6 +225,29 @@ function getNodeHandlers(runModel) {
         return { offset, text: '' };
     });
 
+    handlers.set('moveFrom', (child, offset) => {
+        const deletionEntry = processDeletion(child, offset);
+        if (deletionEntry) {
+            runModel.push(deletionEntry);
+        }
+        return { offset, text: '' };
+    });
+
+    handlers.set('moveTo', (child, offset) => processNodeRecursive(child, offset, runModel));
+
+    for (const markerName of ['moveFromRangeStart', 'moveFromRangeEnd', 'moveToRangeStart', 'moveToRangeEnd']) {
+        handlers.set(markerName, (child, offset) => {
+            runModel.push({
+                kind: RunKind.BOOKMARK,
+                nodeXml: serializeXml(child),
+                startOffset: offset,
+                endOffset: offset,
+                text: ''
+            });
+            return { offset, text: '' };
+        });
+    }
+
     handlers.set('bookmarkStart', (child, offset) => {
         runModel.push({
             kind: RunKind.BOOKMARK,
@@ -323,6 +346,8 @@ function processRun(runElement, startOffset) {
 function processDeletion(delElement, offset) {
     const author = delElement.getAttribute('w:author') || '';
 
+    // Deleted text is retained as a zero-width deletion model entry for revision-aware callers.
+    // It is intentionally not added to acceptedText by the w:del handler above.
     let text = '';
     const delTexts = getElementsByTagNS(delElement, NS_W, 'delText');
     for (const delText of delTexts) {

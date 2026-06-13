@@ -4,6 +4,7 @@
 
 import { NS_W } from '../core/types.js';
 import { createParser, createSerializer } from '../adapters/xml-adapter.js';
+import { createWordElement } from '../core/word-xml.js';
 import { getXmlParseError } from '../core/xml-query.js';
 
 function getAttributeByLocalName(node, localName) {
@@ -97,6 +98,41 @@ function isTableRowRevisionMarker(node) {
     return isWordElement(parent, 'trPr') && isWordElement(parent?.parentNode, 'tr');
 }
 
+function isParagraphMarkRevisionMarker(node) {
+    const rPr = node?.parentNode;
+    const pPr = rPr?.parentNode;
+    const paragraph = pPr?.parentNode;
+    return isWordElement(rPr, 'rPr') && isWordElement(pPr, 'pPr') && isWordElement(paragraph, 'p');
+}
+
+function getContainingParagraphMarkRevision(node) {
+    return isParagraphMarkRevisionMarker(node) ? node.parentNode.parentNode.parentNode : null;
+}
+
+function getNextWordParagraph(paragraph) {
+    let cursor = paragraph?.nextSibling || null;
+    while (cursor) {
+        if (isWordElement(cursor, 'p')) return cursor;
+        cursor = cursor.nextSibling;
+    }
+    return null;
+}
+
+function mergeParagraphIntoNextAndRemove(paragraph) {
+    if (!paragraph?.parentNode) return false;
+    const nextParagraph = getNextWordParagraph(paragraph);
+    if (!nextParagraph) {
+        return removeNode(paragraph);
+    }
+
+    const childrenToMove = Array.from(paragraph.childNodes || []).filter(child => !isWordElement(child, 'pPr'));
+    const insertionPoint = nextParagraph.firstChild || null;
+    for (const child of childrenToMove) {
+        nextParagraph.insertBefore(child, insertionPoint);
+    }
+    return removeNode(paragraph);
+}
+
 /**
  * Accepts tracked changes (`w:ins`, `w:del`, and *PrChange tags) for one author
  * or all authors in the provided OOXML payload.
@@ -122,6 +158,10 @@ export function acceptTrackedChangesInOoxml(oxml, options = {}) {
 
     for (const insNode of getWordElementsByLocalName(xmlDoc, 'ins')) {
         if (!insNode.parentNode || !authorMatchesNode(insNode, filter)) continue;
+        if (isParagraphMarkRevisionMarker(insNode)) {
+            if (removeNode(insNode)) acceptedCount += 1;
+            continue;
+        }
         if (isTableRowRevisionMarker(insNode)) {
             if (removeNode(insNode)) acceptedCount += 1;
             continue;
@@ -131,6 +171,11 @@ export function acceptTrackedChangesInOoxml(oxml, options = {}) {
 
     for (const delNode of getWordElementsByLocalName(xmlDoc, 'del')) {
         if (!delNode.parentNode || !authorMatchesNode(delNode, filter)) continue;
+        const paragraphMark = getContainingParagraphMarkRevision(delNode);
+        if (paragraphMark) {
+            if (mergeParagraphIntoNextAndRemove(paragraphMark)) acceptedCount += 1;
+            continue;
+        }
         if (isTableRowRevisionMarker(delNode)) {
             const rowNode = delNode.parentNode?.parentNode;
             if (removeNode(rowNode)) acceptedCount += 1;
@@ -138,6 +183,18 @@ export function acceptTrackedChangesInOoxml(oxml, options = {}) {
         }
         if (removeNode(delNode)) acceptedCount += 1;
     }
+
+    for (const moveFromNode of getWordElementsByLocalName(xmlDoc, 'moveFrom')) {
+        if (!moveFromNode.parentNode || !authorMatchesNode(moveFromNode, filter)) continue;
+        if (removeNode(moveFromNode)) acceptedCount += 1;
+    }
+
+    for (const moveToNode of getWordElementsByLocalName(xmlDoc, 'moveTo')) {
+        if (!moveToNode.parentNode || !authorMatchesNode(moveToNode, filter)) continue;
+        if (unwrapNode(moveToNode)) acceptedCount += 1;
+    }
+
+    acceptedCount += removeMoveRangeMarkers(xmlDoc, filter);
 
     const changeTags = ['rPrChange', 'pPrChange', 'tblPrChange', 'trPrChange', 'tcPrChange'];
     for (const localName of changeTags) {
@@ -157,7 +214,7 @@ export function acceptTrackedChangesInOoxml(oxml, options = {}) {
 
 function convertDeletionTextNodes(xmlDoc, delNode) {
     for (const delTextNode of Array.from(delNode.getElementsByTagNameNS(NS_W, 'delText'))) {
-        const normalText = xmlDoc.createElementNS(NS_W, 'w:t');
+        const normalText = createWordElement(xmlDoc, 'w:t');
         const spaceValue = delTextNode.getAttribute('xml:space');
         if (spaceValue) {
             normalText.setAttribute('xml:space', spaceValue);
@@ -212,6 +269,41 @@ function xmlDocImportNode(xmlDoc, node) {
     return node.cloneNode(true);
 }
 
+function collectMoveRangeStartIds(xmlDoc, localName, filter) {
+    const ids = new Set();
+    for (const node of getWordElementsByLocalName(xmlDoc, localName)) {
+        if (!authorMatchesNode(node, filter)) continue;
+        const id = getAttributeByLocalName(node, 'id');
+        if (id) ids.add(id);
+    }
+    return ids;
+}
+
+function removeMoveRangeMarkers(xmlDoc, filter) {
+    let removed = 0;
+    const moveFromIds = collectMoveRangeStartIds(xmlDoc, 'moveFromRangeStart', filter);
+    const moveToIds = collectMoveRangeStartIds(xmlDoc, 'moveToRangeStart', filter);
+    const markerSpecs = [
+        ['moveFromRangeStart', moveFromIds, true],
+        ['moveFromRangeEnd', moveFromIds, false],
+        ['moveToRangeStart', moveToIds, true],
+        ['moveToRangeEnd', moveToIds, false]
+    ];
+
+    for (const [localName, ids, isStart] of markerSpecs) {
+        for (const node of getWordElementsByLocalName(xmlDoc, localName)) {
+            if (!node.parentNode) continue;
+            const id = getAttributeByLocalName(node, 'id');
+            if (!id) continue;
+            if (filter.allAuthors || ids.has(id) || (isStart && authorMatchesNode(node, filter))) {
+                if (removeNode(node)) removed += 1;
+            }
+        }
+    }
+
+    return removed;
+}
+
 /**
  * Rejects tracked changes (`w:ins`, `w:del`, and *PrChange tags) for one author
  * or all authors in the provided OOXML payload.
@@ -237,6 +329,11 @@ export function rejectTrackedChangesInOoxml(oxml, options = {}) {
 
     for (const insNode of getWordElementsByLocalName(xmlDoc, 'ins')) {
         if (!insNode.parentNode || !authorMatchesNode(insNode, filter)) continue;
+        const paragraphMark = getContainingParagraphMarkRevision(insNode);
+        if (paragraphMark) {
+            if (mergeParagraphIntoNextAndRemove(paragraphMark)) rejectedCount += 1;
+            continue;
+        }
         if (isTableRowRevisionMarker(insNode)) {
             const rowNode = insNode.parentNode?.parentNode;
             if (removeNode(rowNode)) rejectedCount += 1;
@@ -247,6 +344,10 @@ export function rejectTrackedChangesInOoxml(oxml, options = {}) {
 
     for (const delNode of getWordElementsByLocalName(xmlDoc, 'del')) {
         if (!delNode.parentNode || !authorMatchesNode(delNode, filter)) continue;
+        if (isParagraphMarkRevisionMarker(delNode)) {
+            if (removeNode(delNode)) rejectedCount += 1;
+            continue;
+        }
         if (isTableRowRevisionMarker(delNode)) {
             if (removeNode(delNode)) rejectedCount += 1;
             continue;
@@ -254,6 +355,19 @@ export function rejectTrackedChangesInOoxml(oxml, options = {}) {
         convertDeletionTextNodes(xmlDoc, delNode);
         if (unwrapNode(delNode)) rejectedCount += 1;
     }
+
+    for (const moveFromNode of getWordElementsByLocalName(xmlDoc, 'moveFrom')) {
+        if (!moveFromNode.parentNode || !authorMatchesNode(moveFromNode, filter)) continue;
+        convertDeletionTextNodes(xmlDoc, moveFromNode);
+        if (unwrapNode(moveFromNode)) rejectedCount += 1;
+    }
+
+    for (const moveToNode of getWordElementsByLocalName(xmlDoc, 'moveTo')) {
+        if (!moveToNode.parentNode || !authorMatchesNode(moveToNode, filter)) continue;
+        if (removeNode(moveToNode)) rejectedCount += 1;
+    }
+
+    rejectedCount += removeMoveRangeMarkers(xmlDoc, filter);
 
     const changeTags = ['rPrChange', 'pPrChange', 'tblPrChange', 'trPrChange', 'tcPrChange'];
     for (const localName of changeTags) {

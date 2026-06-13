@@ -112,6 +112,7 @@ function collectParagraphSegments(paragraph) {
     const runs = Array.from(paragraph?.getElementsByTagNameNS?.(NS_W, 'r') || []);
     for (const run of runs) {
         if (hasWordAncestorWithin(run, 'del', paragraph)) continue;
+        if (hasWordAncestorWithin(run, 'moveFrom', paragraph)) continue;
         const text = readRunText(run);
         if (!text) continue;
         segments.push({

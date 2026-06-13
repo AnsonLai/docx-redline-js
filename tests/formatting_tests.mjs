@@ -1,19 +1,16 @@
 import './setup-xml-provider.mjs';
 
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import assert from 'assert/strict';
 import { applyRedlineToOxml } from '../engine/oxml-engine.js';
 import { wordsToChars, charsToWords } from '../pipeline/diff-engine.js';
 import { preprocessMarkdown } from '../pipeline/markdown-processor.js';
 import { diff_match_patch } from 'diff-match-patch';
+import {
+    assertRunFormat,
+    assertRunFormatDisabled
+} from './helpers/ooxml-assertions.mjs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// --- Test 1: Repro Formatting (from repro_format.mjs) ---
 async function testReproFormatting() {
-    console.log('\n=== Test: Repro Formatting Issues ===');
-
     const initialXmlPartial = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <pkg:package xmlns:pkg="http://schemas.microsoft.com/office/2006/xmlPackage">
       <pkg:part pkg:name="/word/document.xml" pkg:contentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml">
@@ -22,9 +19,7 @@ async function testReproFormatting() {
             <w:body>
               <w:p>
                 <w:r>
-                  <w:rPr>
-                     <w:rStyle w:val="Normal"/>
-                  </w:rPr>
+                  <w:rPr><w:rStyle w:val="Normal"/></w:rPr>
                   <w:t>Hello World</w:t>
                 </w:r>
               </w:p>
@@ -33,6 +28,11 @@ async function testReproFormatting() {
         </pkg:xmlData>
       </pkg:part>
     </pkg:package>`;
+
+    const partial = await applyRedlineToOxml(initialXmlPartial, 'Hello World', 'Hello **World**');
+    assert.equal(partial.hasChanges, true);
+    assertRunFormat(partial.oxml, 'World', { bold: true });
+    assertRunFormat(partial.oxml, 'Hello ', { bold: false });
 
     const initialXmlOff = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <pkg:package xmlns:pkg="http://schemas.microsoft.com/office/2006/xmlPackage">
@@ -42,9 +42,7 @@ async function testReproFormatting() {
             <w:body>
               <w:p>
                 <w:r>
-                  <w:rPr>
-                     <w:b w:val="0"/>
-                  </w:rPr>
+                  <w:rPr><w:b w:val="0"/></w:rPr>
                   <w:t>Hello World</w:t>
                 </w:r>
               </w:p>
@@ -54,43 +52,12 @@ async function testReproFormatting() {
       </pkg:part>
     </pkg:package>`;
 
-    console.log("--- Sub-test: Partial Formatting (Split + Order) ---");
-    const partialText = "Hello **World**";
-    try {
-        const res = await applyRedlineToOxml(initialXmlPartial, "Hello World", partialText);
-
-        if (!res.oxml.includes('<w:b/>') && !res.oxml.includes('<w:b>')) {
-            console.log("❌ FAIL: Bold tag missing in partial update");
-        } else {
-            console.log("✅ PASS: Bold tag present.");
-        }
-    } catch (e) {
-        console.error("Test Error:", e);
-    }
-
-    console.log("--- Sub-test: Overriding 'Off' Property ---");
-    const boldText = "**Hello World**";
-    try {
-        const res = await applyRedlineToOxml(initialXmlOff, "Hello World", boldText);
-        const matches = [...res.oxml.matchAll(/<w:b(?: [^>]*)?\/>/g)];
-        const tags = matches.map(m => m[0]);
-        const hasEnable = tags.some(t => !t.includes('w:val="0"') && !t.includes('w:val="false"'));
-
-        if (hasEnable) {
-            console.log("✅ PASS: Bold tag added/updated despite existing disable tag.");
-        } else {
-            console.log("❌ FAIL: Only found existing disable-bold tag.");
-        }
-    } catch (e) {
-        console.error("Test Error:", e);
-    }
+    const bold = await applyRedlineToOxml(initialXmlOff, 'Hello World', '**Hello World**');
+    assert.equal(bold.hasChanges, true);
+    assertRunFormat(bold.oxml, 'Hello World', { bold: true });
 }
 
-// --- Test 2: Formatting Subtraction (from test_subtraction.mjs) ---
 async function testFormattingSubtraction() {
-    console.log('\n=== Test: Formatting Subtraction ===');
-
-    console.log("--- Sub-test: Unbolding ---");
     const originalOxml = `
         <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
             <w:r>
@@ -99,21 +66,14 @@ async function testFormattingSubtraction() {
             </w:r>
         </w:p>
     `;
-    const originalText = "Bold Text";
-    const modifiedText = "Bold Text"; // Removed markdown markers -> should unbold
-
-    const result = await applyRedlineToOxml(originalOxml, originalText, modifiedText, {
+    const result = await applyRedlineToOxml(originalOxml, 'Bold Text', 'Bold Text', {
         author: 'Tester',
         generateRedlines: true
     });
 
-    if (result.oxml.includes('w:b w:val="0"') || result.oxml.includes('w:b val="0"')) {
-        console.log("✅ PASS: Found explicit unbold (val=0)");
-    } else {
-        console.log("❌ FAIL: Explicit unbold not found");
-    }
+    assert.equal(result.hasChanges, true);
+    assertRunFormatDisabled(result.oxml, 'Bold Text', ['b']);
 
-    console.log("--- Sub-test: Partial Subtraction (B+I -> I) ---");
     const originalOxml2 = `
         <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
             <w:r>
@@ -122,84 +82,43 @@ async function testFormattingSubtraction() {
             </w:r>
         </w:p>
     `;
-    const originalText2 = "Bold Italic";
-    const modifiedText2 = "*Bold Italic*"; // Italic only -> should unbold
-
-    const result2 = await applyRedlineToOxml(originalOxml2, originalText2, modifiedText2, {
+    const result2 = await applyRedlineToOxml(originalOxml2, 'Bold Italic', '*Bold Italic*', {
         author: 'Tester',
         generateRedlines: true
     });
 
-    if (result2.oxml.includes('w:b w:val="0"') && result2.oxml.includes('w:i') && !result2.oxml.includes('w:i w:val="0"')) {
-        console.log("✅ PASS: Bold turned off, Italic kept on");
-    } else {
-        console.log("❌ FAIL: Incorrect partial subtraction");
-    }
+    assert.equal(result2.hasChanges, true);
+    assertRunFormat(result2.oxml, 'Bold Italic', { italic: true });
+    assertRunFormatDisabled(result2.oxml, 'Bold Italic', ['b']);
 }
 
-// --- Test 3: Markdown Processor (from test_processor.mjs) ---
 function testMarkdownProcessor() {
-    console.log('\n=== Test: Markdown Processor ===');
+    const strike = preprocessMarkdown('~~NON-DISCLOSURE AGREEMENT~~');
+    assert.equal(strike.cleanText, 'NON-DISCLOSURE AGREEMENT');
+    assert.equal(strike.formatHints.length, 1);
+    assert.equal(strike.formatHints[0].format.strikethrough, true);
 
-    const testCase1 = "~~NON-DISCLOSURE AGREEMENT~~";
-    const res1 = preprocessMarkdown(testCase1);
-    if (res1.cleanText === "NON-DISCLOSURE AGREEMENT") {
-        console.log("✅ PASS: Strikethrough cleaned");
-    } else {
-        console.log("❌ FAIL: Strikethrough NOT cleaned");
-    }
-
-    const testCase4 = "++*NON-DISCLOSURE AGREEMENT*++";
-    const res4 = preprocessMarkdown(testCase4);
-    if (res4.cleanText === "NON-DISCLOSURE AGREEMENT" && res4.formatHints.length === 2) {
-        console.log("✅ PASS: Nested formatting cleaned and hints captured");
-    } else {
-        console.log("❌ FAIL: Nested formatting issue persists");
-    }
+    const nested = preprocessMarkdown('++*NON-DISCLOSURE AGREEMENT*++');
+    assert.equal(nested.cleanText, 'NON-DISCLOSURE AGREEMENT');
+    assert.equal(nested.formatHints.length, 2);
+    assert(nested.formatHints.some(hint => hint.format.underline));
+    assert(nested.formatHints.some(hint => hint.format.italic));
 }
 
-// --- Test 4: Diff Engine Granularity (from repro_diff.mjs) ---
 function testDiffGranularity() {
-    console.log('\n=== Test: Diff Granularity ===');
-    const text1 = "British Columbia";
-    const text2 = "the State of California";
-
     const dmp = new diff_match_patch();
-
-    console.log('--- Word Level Tokenization Check ---');
-    const { chars1, chars2, wordArray } = wordsToChars(text1, text2);
+    const { chars1, chars2, wordArray } = wordsToChars('British Columbia', 'the State of California');
     const charDiffs = dmp.diff_main(chars1, chars2);
     dmp.diff_cleanupSemantic(charDiffs);
     const wordDiffs = charsToWords(charDiffs, wordArray);
 
-    // We expect word level diffs, so "British" "Columbia" vs "the" "State" "of" "California"
-    // Instead of char diffs like B-r-i-t...
-
-    // Just checking it runs and returns array is a good start, but let's check length
-    if (Array.isArray(wordDiffs) && wordDiffs.length > 0) {
-        console.log('✅ PASS: Diff engine returned results.');
-    } else {
-        console.log('❌ FAIL: Diff engine returned empty or invalid.');
-    }
+    assert(Array.isArray(wordDiffs));
+    assert(wordDiffs.length > 0);
+    assert(wordDiffs.some(([op, text]) => op === -1 && text.includes('British')));
+    assert(wordDiffs.some(([op, text]) => op === 1 && text.includes('California')));
 }
 
-// --- Main Runner ---
-(async () => {
-    console.log('STARTING FORMATTING TESTS...');
-
-    await testReproFormatting();
-    await testFormattingSubtraction();
-    testMarkdownProcessor();
-    testDiffGranularity();
-    await testMiddleFormat();
-
-    console.log('\nALL FORMATTING TESTS COMPLETE.');
-})();
-
-// --- Test 5: Middle Paragraph Formatting (from repro_middle_format.mjs) ---
 async function testMiddleFormat() {
-    console.log('\n=== Test: Middle Paragraph Formatting ===');
-
     const originalOxml = `
         <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
             <w:r>
@@ -207,23 +126,23 @@ async function testMiddleFormat() {
             </w:r>
         </w:p>
     `;
-    const originalText = "The quick brown fox jumps.";
-    const modifiedText = "The **quick** *brown* fox jumps.";
 
-    const result = await applyRedlineToOxml(originalOxml, originalText, modifiedText, {
-        author: 'Tester',
-        generateRedlines: true
-    });
+    const result = await applyRedlineToOxml(
+        originalOxml,
+        'The quick brown fox jumps.',
+        'The **quick** *brown* fox jumps.',
+        { author: 'Tester', generateRedlines: true }
+    );
 
-    const hasBold = result.oxml.includes('<w:b/>') || (result.oxml.includes('<w:b ') && !result.oxml.includes('w:val="0"'));
-    const hasItalic = result.oxml.includes('<w:i/>') || (result.oxml.includes('<w:i ') && !result.oxml.includes('w:val="0"'));
-
-    if (hasBold && hasItalic) {
-        console.log("✅ PASS: Both bold and italic applied.");
-    } else {
-        console.log("❌ FAIL: Formatting missing. Bold:", hasBold, "Italic:", hasItalic);
-    }
+    assert.equal(result.hasChanges, true);
+    assertRunFormat(result.oxml, 'quick', { bold: true, italic: false });
+    assertRunFormat(result.oxml, 'brown', { bold: false, italic: true });
 }
 
+await testReproFormatting();
+await testFormattingSubtraction();
+testMarkdownProcessor();
+testDiffGranularity();
+await testMiddleFormat();
 
-
+console.log('formatting_tests.mjs ... PASS');

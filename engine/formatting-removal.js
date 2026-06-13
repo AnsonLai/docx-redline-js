@@ -7,6 +7,8 @@
 
 import { parseOoxml, serializeOoxml } from './oxml-engine.js';
 import { getDefaultAuthor } from '../adapters/config.js';
+import { createRevisionMetadata } from '../core/types.js';
+import { createWordElement } from '../core/word-xml.js';
 
 /**
  * Removes specific formatting properties from a run properties (w:rPr) element.
@@ -154,7 +156,7 @@ export function injectHighlightIntoRPr(doc, rPr, color = 'yellow', options = {})
     let rPrElement = rPr;
     if (!rPrElement) {
         // Create new rPr element
-        rPrElement = doc.createElementNS(NS_W, 'w:rPr');
+        rPrElement = createWordElement(doc, 'w:rPr');
     } else {
         rPrElement = rPr.cloneNode(true);
     }
@@ -163,7 +165,7 @@ export function injectHighlightIntoRPr(doc, rPr, color = 'yellow', options = {})
     // Clone the *original* rPr children before we touch them
     let previousRPrState = null;
     if (generateRedlines) {
-        previousRPrState = doc.createElementNS(NS_W, 'w:rPr');
+        previousRPrState = createWordElement(doc, 'w:rPr');
         Array.from(rPrElement.childNodes).forEach(child => {
             // Don't include existing rPrChange in the "previous" state wrapper usually, 
             // but for simplicity we clone children. Word generally handles nested track changes poorly,
@@ -180,18 +182,19 @@ export function injectHighlightIntoRPr(doc, rPr, color = 'yellow', options = {})
     Array.from(existingHighlight).forEach(el => el.remove());
 
     // Create and add new highlight element
-    const highlightEl = doc.createElementNS(NS_W, 'w:highlight');
+    const highlightEl = createWordElement(doc, 'w:highlight');
     highlightEl.setAttributeNS(NS_W, 'w:val', ooxmlColor);
     rPrElement.appendChild(highlightEl);
 
     // --- WRAP IN REDLINES IF ENABLED ---
     if (generateRedlines && previousRPrState) {
-        const rPrChange = doc.createElementNS(NS_W, 'w:rPrChange');
+        const rPrChange = createWordElement(doc, 'w:rPrChange');
 
         // Attributes
-        rPrChange.setAttributeNS(NS_W, 'w:id', Math.floor(Math.random() * 9999999).toString());
-        rPrChange.setAttributeNS(NS_W, 'w:author', author);
-        rPrChange.setAttributeNS(NS_W, 'w:date', new Date().toISOString());
+        const metadata = createRevisionMetadata(author);
+        rPrChange.setAttribute('w:id', String(metadata.id));
+        rPrChange.setAttribute('w:author', metadata.author);
+        rPrChange.setAttribute('w:date', metadata.date);
 
         // Format: <w:rPrChange ...> <w:rPr>...previous...</w:rPr> </w:rPrChange>
         rPrChange.appendChild(previousRPrState);
@@ -272,7 +275,7 @@ export function applyHighlightToOoxml(ooxmlString, targetText, color = 'yellow',
             const tNodes = prefixRun.getElementsByTagNameNS(NS_W, 't');
             // Simply remove all t nodes and add one with new text to avoid complexity of multiple t nodes
             Array.from(tNodes).forEach(t => t.remove());
-            const newT = doc.createElementNS(NS_W, 'w:t');
+            const newT = createWordElement(doc, 'w:t');
             // Preserve xml:space="preserve" if it existed, or just add it usually
             newT.setAttribute('xml:space', 'preserve');
             newT.textContent = prefixText;
@@ -286,7 +289,7 @@ export function applyHighlightToOoxml(ooxmlString, targetText, color = 'yellow',
             // Update text content
             const tNodes = matchRun.getElementsByTagNameNS(NS_W, 't');
             Array.from(tNodes).forEach(t => t.remove());
-            const newT = doc.createElementNS(NS_W, 'w:t');
+            const newT = createWordElement(doc, 'w:t');
             newT.setAttribute('xml:space', 'preserve');
             newT.textContent = matchText;
             matchRun.appendChild(newT);
@@ -310,7 +313,7 @@ export function applyHighlightToOoxml(ooxmlString, targetText, color = 'yellow',
             // Update text content
             const tNodes = suffixRun.getElementsByTagNameNS(NS_W, 't');
             Array.from(tNodes).forEach(t => t.remove());
-            const newT = doc.createElementNS(NS_W, 'w:t');
+            const newT = createWordElement(doc, 'w:t');
             newT.setAttribute('xml:space', 'preserve');
             newT.textContent = suffixText;
             suffixRun.appendChild(newT);

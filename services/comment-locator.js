@@ -3,6 +3,7 @@
  */
 
 import { NS_W } from '../core/types.js';
+import { createWordElement } from '../core/word-xml.js';
 import { getElementsByTag, getFirstElementByTag } from '../core/xml-query.js';
 
 /**
@@ -68,12 +69,12 @@ export function findTextInParagraphIndex(paragraphIndex, searchText) {
 }
 
 function cloneRunWithText(xmlDoc, rPr, newText) {
-    const newRun = xmlDoc.createElementNS(NS_W, 'w:r');
+    const newRun = createWordElement(xmlDoc, 'w:r');
     if (rPr) {
         newRun.appendChild(rPr.cloneNode(true));
     }
 
-    const newTextNode = xmlDoc.createElementNS(NS_W, 'w:t');
+    const newTextNode = createWordElement(xmlDoc, 'w:t');
     newTextNode.setAttribute('xml:space', 'preserve');
     newTextNode.textContent = newText;
     newRun.appendChild(newTextNode);
@@ -97,14 +98,14 @@ export function injectMarkersIntoParagraph(xmlDoc, paragraph, textToFind, commen
         return false;
     }
 
-    const startMarker = xmlDoc.createElementNS(NS_W, 'w:commentRangeStart');
+    const startMarker = createWordElement(xmlDoc, 'w:commentRangeStart');
     startMarker.setAttribute('w:id', String(commentId));
 
-    const endMarker = xmlDoc.createElementNS(NS_W, 'w:commentRangeEnd');
+    const endMarker = createWordElement(xmlDoc, 'w:commentRangeEnd');
     endMarker.setAttribute('w:id', String(commentId));
 
-    const referenceRun = xmlDoc.createElementNS(NS_W, 'w:r');
-    const reference = xmlDoc.createElementNS(NS_W, 'w:commentReference');
+    const referenceRun = createWordElement(xmlDoc, 'w:r');
+    const reference = createWordElement(xmlDoc, 'w:commentReference');
     reference.setAttribute('w:id', String(commentId));
     referenceRun.appendChild(reference);
 

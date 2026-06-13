@@ -17,6 +17,7 @@ Converts AI-generated or programmatic text/markdown edits into valid Office Open
 - Markdown and OOXML conversion in both directions
 - Package plumbing helpers for numbering.xml, comments.xml, content types, and relationships
 - Zero host dependencies: works in Node.js, browsers, Deno, and similar JS runtimes with DOM parsing support
+- TypeScript declarations included via `index.d.ts`
 
 ## Install
 
@@ -112,6 +113,21 @@ const result = await applyRedlineToOxml(oxml, original, modified, {
 | `applyRedlineToOxmlWithListFallback(oxml, original, modified, options)` | Core engine with automatic single-line list structural fallback. |
 | `reconcileMarkdownTableOoxml(oxml, original, markdownTable, options)` | Table-specific reconciliation helper. |
 
+Common `applyRedlineToOxml` options:
+
+| Option | Purpose |
+|--------|---------|
+| `generateRedlines` | When `true`, emit Word-native tracked changes; when `false`, apply clean text changes. |
+| `author` | Track-change author used for generated revisions. |
+| `existingRevisions` | Policy for source OOXML that already contains tracked changes: `'reject-input'` (default) returns `status: 'error'` with code `EXISTING_REVISIONS`; `'accept-all-first'` accepts existing revisions before applying the new edit. |
+
+Common result fields:
+
+| Field | Purpose |
+|-------|---------|
+| `status` | Optional non-breaking status: `'ok'`, `'no-op'`, or `'error'`. |
+| `error` | Present when `status === 'error'`; includes a stable `code` such as `PARSE_ERROR`, `TARGET_NOT_FOUND`, or `EXISTING_REVISIONS`. |
+
 ### Pipeline (lower-level access)
 
 | Function | Purpose |
@@ -127,8 +143,8 @@ const result = await applyRedlineToOxml(oxml, original, modified, {
 | Function | Purpose |
 |----------|---------|
 | `injectCommentsIntoOoxml(oxml, comments, options)` | Add comments anchored to text ranges. |
-| `acceptTrackedChangesInOoxml(oxml, { author?, allAuthors? })` | Accept `w:ins` / `w:del` / `*PrChange` revisions for one author or all authors. |
-| `rejectTrackedChangesInOoxml(oxml, { author?, allAuthors? })` | Reject `w:ins` / `w:del` / `*PrChange` revisions for one author or all authors. |
+| `acceptTrackedChangesInOoxml(oxml, { author?, allAuthors? })` | Accept `w:ins` / `w:del` / `w:moveFrom` / `w:moveTo` / `*PrChange` revisions for one author or all authors. |
+| `rejectTrackedChangesInOoxml(oxml, { author?, allAuthors? })` | Reject `w:ins` / `w:del` / `w:moveFrom` / `w:moveTo` / `*PrChange` revisions for one author or all authors. |
 | `deleteCommentsByAuthorInOoxml(oxml, { author?, allAuthors? })` | Delete comments and matching anchors/references for one author or all authors. |
 | `generateTableOoxml(headers, rows, options)` | Generate a `w:tbl` from tabular data. |
 | `createDynamicNumberingIdState(numberingXml)` | Allocate numbering IDs without collisions. |
@@ -160,6 +176,8 @@ Different APIs return different OOXML shapes. Use this as a packaging safety che
 ### Do / Don't for Packaging
 
 - Do use `applyOperationToDocumentXml(...).documentXml` when your intent is to replace `word/document.xml`.
+- Redline application now strips non-visible field scaffolding (`w:fldChar`, `w:instrText`) and proofing markers (`w:proofErr`) from the matched target paragraph before diffing, while preserving the visible field result text. This avoids a class of Word-open failures caused by tracked changes spanning hidden field instruction runs.
+- Hyperlinks, bookmarks, comment range markers, tabs/breaks, and footnote/endnote references are treated as structural OOXML that should survive adjacent redline edits instead of being orphaned or wrapped in deletions.
 - Do use `extractReplacementNodesFromOoxml(...)` when you are consuming `result.oxml` from paragraph/range/table APIs.
 - Do merge numbering/comments artifacts with `ensureNumberingArtifactsInZip(...)` and `ensureCommentsArtifactsInZip(...)` when those parts are present.
 - Don't write payloads that start with `<pkg:package` directly into `word/document.xml`.
@@ -217,8 +235,32 @@ await validateDocxPackage(zip);
 const output = await zip.generateAsync({ type: 'nodebuffer' });
 ```
 
+## Validating Output
+
+Run the automated package checks:
+
+```bash
+npm test
+npm run test:isolation
+npm run check:types
+```
+
+For release-time fixture export:
+
+```bash
+node scripts/export-validation-fixtures.mjs
+```
+
+On Windows with desktop Word installed, you can smoke-test a completed `.docx`:
+
+```bash
+npm run smoke:word -- path/to/file.docx
+```
+
 ## Architecture
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for module layout, data flow, and contributor guidance.
 
 See [AGENTS.md](./AGENTS.md) for a concise reference for AI coding agents.
+
+See [docs/VALIDATION.md](./docs/VALIDATION.md) for release-time validation steps.

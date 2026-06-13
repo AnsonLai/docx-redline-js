@@ -6,8 +6,9 @@
  */
 
 import { RPR_SCHEMA_ORDER } from './rpr-helpers.js';
-import { createRevisionMetadata, getRevisionTimestamp } from '../core/types.js';
+import { createRevisionMetadata } from '../core/types.js';
 import { getFirstElementByTag } from '../core/xml-query.js';
+import { createWordElement } from '../core/word-xml.js';
 
 /**
  * Creates an insertion/deletion wrapper.
@@ -19,7 +20,7 @@ import { getFirstElementByTag } from '../core/xml-query.js';
  * @returns {Element}
  */
 export function createTrackChange(xmlDoc, type, run, author) {
-    const wrapper = xmlDoc.createElement(type === 'ins' ? 'w:ins' : 'w:del');
+    const wrapper = createWordElement(xmlDoc, type === 'ins' ? 'w:ins' : 'w:del');
     const metadata = createRevisionMetadata(author);
     wrapper.setAttribute('w:id', String(metadata.id));
     wrapper.setAttribute('w:author', metadata.author);
@@ -28,6 +29,77 @@ export function createTrackChange(xmlDoc, type, run, author) {
         wrapper.appendChild(run);
     }
     return wrapper;
+}
+
+function getDirectWordChild(node, localName) {
+    return Array.from(node?.childNodes || []).find(child => child.nodeType === 1
+        && (child.localName === localName || child.nodeName === `w:${localName}`)) || null;
+}
+
+function ensureParagraphProperties(xmlDoc, paragraph) {
+    let pPr = getDirectWordChild(paragraph, 'pPr');
+    if (!pPr) {
+        pPr = createWordElement(xmlDoc, 'w:pPr');
+        paragraph.insertBefore(pPr, paragraph.firstChild || null);
+    } else if (paragraph.firstChild !== pPr) {
+        paragraph.insertBefore(pPr, paragraph.firstChild || null);
+    }
+    return pPr;
+}
+
+function ensureParagraphMarkRunProperties(xmlDoc, pPr) {
+    let rPr = getDirectWordChild(pPr, 'rPr');
+    if (!rPr) {
+        rPr = createWordElement(xmlDoc, 'w:rPr');
+        pPr.appendChild(rPr);
+    } else if (pPr.lastChild !== rPr) {
+        pPr.appendChild(rPr);
+    }
+    return rPr;
+}
+
+function markParagraphMark(xmlDoc, paragraph, author, type) {
+    const pPr = ensureParagraphProperties(xmlDoc, paragraph);
+    const rPr = ensureParagraphMarkRunProperties(xmlDoc, pPr);
+
+    for (const child of Array.from(rPr.childNodes || [])) {
+        if (child.nodeType !== 1) continue;
+        if (child.localName === 'ins' || child.localName === 'del' || child.nodeName === 'w:ins' || child.nodeName === 'w:del') {
+            rPr.removeChild(child);
+        }
+    }
+
+    const marker = createWordElement(xmlDoc, type === 'ins' ? 'w:ins' : 'w:del');
+    const metadata = createRevisionMetadata(author);
+    marker.setAttribute('w:id', String(metadata.id));
+    marker.setAttribute('w:author', metadata.author);
+    marker.setAttribute('w:date', metadata.date);
+    rPr.appendChild(marker);
+    return marker;
+}
+
+/**
+ * Marks a paragraph mark as inserted.
+ *
+ * @param {Document} xmlDoc - XML document
+ * @param {Element} paragraph - Paragraph to mark
+ * @param {string} author - Change author
+ * @returns {Element}
+ */
+export function markParagraphMarkInserted(xmlDoc, paragraph, author) {
+    return markParagraphMark(xmlDoc, paragraph, author, 'ins');
+}
+
+/**
+ * Marks a paragraph mark as deleted.
+ *
+ * @param {Document} xmlDoc - XML document
+ * @param {Element} paragraph - Paragraph to mark
+ * @param {string} author - Change author
+ * @returns {Element}
+ */
+export function markParagraphMarkDeleted(xmlDoc, paragraph, author) {
+    return markParagraphMark(xmlDoc, paragraph, author, 'del');
 }
 
 /**
@@ -40,10 +112,15 @@ export function createTrackChange(xmlDoc, type, run, author) {
  * @returns {Element}
  */
 export function createTextRun(xmlDoc, text, rPr, isDelete) {
-    const run = xmlDoc.createElement('w:r');
+    const run = createWordElement(xmlDoc, 'w:r');
     if (rPr) run.appendChild(rPr.cloneNode(true));
 
-    const textEl = xmlDoc.createElement(isDelete ? 'w:delText' : 'w:t');
+    if (!isDelete) {
+        appendVisibleTextPieces(xmlDoc, run, text);
+        return run;
+    }
+
+    const textEl = createWordElement(xmlDoc, isDelete ? 'w:delText' : 'w:t');
     textEl.setAttribute('xml:space', 'preserve');
     textEl.textContent = text;
     run.appendChild(textEl);
@@ -112,15 +189,48 @@ export function createFormattedRuns(xmlDoc, text, baseRPr, formatHints, baseOffs
  * @returns {Element}
  */
 export function createTextRunWithRPrElement(xmlDoc, text, rPrElement, isDelete) {
-    const run = xmlDoc.createElement('w:r');
+    const run = createWordElement(xmlDoc, 'w:r');
     if (rPrElement) run.appendChild(rPrElement);
 
-    const textEl = xmlDoc.createElement(isDelete ? 'w:delText' : 'w:t');
+    if (!isDelete) {
+        appendVisibleTextPieces(xmlDoc, run, text);
+        return run;
+    }
+
+    const textEl = createWordElement(xmlDoc, isDelete ? 'w:delText' : 'w:t');
     textEl.setAttribute('xml:space', 'preserve');
     textEl.textContent = text;
     run.appendChild(textEl);
 
     return run;
+}
+
+function appendVisibleTextPieces(xmlDoc, run, text) {
+    const source = String(text || '');
+    const parts = source.split(/(\t|\n|\u2011)/);
+
+    for (const part of parts) {
+        if (!part) continue;
+        if (part === '\t') {
+            run.appendChild(createWordElement(xmlDoc, 'w:tab'));
+            continue;
+        }
+        if (part === '\n') {
+            run.appendChild(createWordElement(xmlDoc, 'w:br'));
+            continue;
+        }
+        if (part === '\u2011') {
+            run.appendChild(createWordElement(xmlDoc, 'w:noBreakHyphen'));
+            continue;
+        }
+
+        const textEl = createWordElement(xmlDoc, 'w:t');
+        if (/^\s|\s$/.test(part)) {
+            textEl.setAttribute('xml:space', 'preserve');
+        }
+        textEl.textContent = part;
+        run.appendChild(textEl);
+    }
 }
 
 /**
@@ -134,7 +244,7 @@ export function createTextRunWithRPrElement(xmlDoc, text, rPrElement, isDelete) 
  * @returns {Element}
  */
 export function injectFormattingToRPr(xmlDoc, baseRPr, format, author, generateRedlines) {
-    const rPr = xmlDoc.createElement('w:rPr');
+    const rPr = createWordElement(xmlDoc, 'w:rPr');
 
     if (baseRPr) {
         Array.from(baseRPr.childNodes).forEach(child => {
@@ -151,7 +261,7 @@ export function injectFormattingToRPr(xmlDoc, baseRPr, format, author, generateR
     }
 
     const syncElement = (tagName, isOn, valOn = null, valOff = '0') => {
-        const el = xmlDoc.createElement(tagName);
+        const el = createWordElement(xmlDoc, tagName);
         if (isOn) {
             if (valOn) el.setAttribute('w:val', valOn);
         } else if (valOff) {
@@ -196,12 +306,13 @@ export function injectFormattingToRPr(xmlDoc, baseRPr, format, author, generateR
  * @returns {Element}
  */
 export function snapshotAndAttachRPrChange(xmlDoc, rPr, author, dateStr, sourceNode) {
-    const rPrChange = xmlDoc.createElement('w:rPrChange');
-    rPrChange.setAttribute('w:id', String(createRevisionMetadata(author).id));
-    rPrChange.setAttribute('w:author', author);
-    rPrChange.setAttribute('w:date', dateStr);
+    const rPrChange = createWordElement(xmlDoc, 'w:rPrChange');
+    const metadata = createRevisionMetadata(author);
+    rPrChange.setAttribute('w:id', String(metadata.id));
+    rPrChange.setAttribute('w:author', metadata.author);
+    rPrChange.setAttribute('w:date', dateStr || metadata.date);
 
-    const previousRPr = xmlDoc.createElement('w:rPr');
+    const previousRPr = createWordElement(xmlDoc, 'w:rPr');
     const source = sourceNode || rPr;
 
     Array.from(source.childNodes).forEach(child => {
@@ -231,5 +342,5 @@ export function snapshotAndAttachRPrChange(xmlDoc, rPr, author, dateStr, sourceN
  * @returns {void}
  */
 function createRPrChange(xmlDoc, rPr, author, previousRPrArg) {
-    snapshotAndAttachRPrChange(xmlDoc, rPr, author, getRevisionTimestamp(), previousRPrArg || rPr);
+    snapshotAndAttachRPrChange(xmlDoc, rPr, author, null, previousRPrArg || rPr);
 }

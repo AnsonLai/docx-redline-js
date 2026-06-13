@@ -5,6 +5,7 @@
 import { computeWordDiffs } from '../pipeline/diff-engine.js';
 import { buildReconstructionMapping } from './reconstruction-mapper.js';
 import { applyReconstructionDiffs } from './reconstruction-writer.js';
+import { withOoxmlSourceType } from '../core/word-xml.js';
 
 /**
  * Applies reconstruction mode reconciliation.
@@ -21,12 +22,12 @@ import { applyReconstructionDiffs } from './reconstruction-writer.js';
 export function applyReconstructionMode(xmlDoc, originalText, modifiedText, serializer, author, formatHints, generateRedlines = true) {
     const mapping = buildReconstructionMapping(xmlDoc, modifiedText);
     if (mapping.paragraphs.length === 0) {
-        return { oxml: serializer.serializeToString(xmlDoc), hasChanges: false };
+        return withOoxmlSourceType({ oxml: serializer.serializeToString(xmlDoc), hasChanges: false });
     }
 
     const diffs = computeWordDiffs(mapping.originalFullText, mapping.processedModifiedText);
 
-    return applyReconstructionDiffs(
+    return withOoxmlSourceType(applyReconstructionDiffs(
         xmlDoc,
         diffs,
         mapping,
@@ -34,5 +35,5 @@ export function applyReconstructionMode(xmlDoc, originalText, modifiedText, seri
         author,
         formatHints,
         generateRedlines
-    );
+    ));
 }

@@ -368,14 +368,15 @@ async function testFormatOnlyRedlineWithTrackedWrapperStillApplies() {
         'StandaloneRunnerTest',
         null,
         {
-            generateRedlines: true
+            generateRedlines: true,
+            existingRevisions: 'accept-all-first'
         }
     );
 
     assert.strictEqual(
         result.hasChanges,
         true,
-        'format-only redline should still apply when paragraph contains tracked-change wrappers'
+        'format-only redline should apply when existing tracked-change wrappers are normalized first'
     );
     assert.ok(
         result.documentXml.includes('<w:u'),
@@ -492,14 +493,15 @@ async function testFormatOnlyRedlineWithAllTextInsideInsertionWrapper() {
         'StandaloneRunnerTest',
         null,
         {
-            generateRedlines: true
+            generateRedlines: true,
+            existingRevisions: 'accept-all-first'
         }
     );
 
     assert.strictEqual(
         result.hasChanges,
         true,
-        'format-only redline should apply when all text is nested inside insertion wrapper'
+        'format-only redline should apply when all text is nested inside insertion wrapper and existing revisions are normalized first'
     );
     const resultDoc = parseXmlStrict(result.documentXml, 'format-only insertion wrapper output');
     assert.ok(
@@ -591,6 +593,52 @@ async function testFormatOnlyRedlineFallsBackToOoxmlWhenNoSpansAreExtractable() 
     );
 }
 
+async function testRedlinePreprocessesFieldInstructionsAndProofingMarkers() {
+    const inputXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}">
+  <w:body>
+    <w:p>
+      <w:r><w:t>The Supplier must notify the Client where it restricts </w:t></w:r>
+      <w:r><w:fldChar w:fldCharType="begin"/></w:r>
+      <w:r><w:instrText xml:space="preserve"> REF _Ref12345 \\w \\h </w:instrText></w:r>
+      <w:r><w:fldChar w:fldCharType="separate"/></w:r>
+      <w:r><w:t>10.6</w:t></w:r>
+      <w:r><w:fldChar w:fldCharType="end"/></w:r>
+      <w:proofErr w:type="spellStart"/>
+      <w:r><w:t>.</w:t></w:r>
+      <w:proofErr w:type="spellEnd"/>
+    </w:p>
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+
+    const result = await applyOperationToDocumentXml(
+        inputXml,
+        {
+            type: 'redline',
+            targetRef: 'P1',
+            target: 'The Supplier must notify the Client where it restricts 10.6.',
+            modified: 'The Supplier must, where legally permitted and reasonably practicable, notify the Client where it restricts 10.6.'
+        },
+        'StandaloneRunnerTest',
+        null,
+        {
+            generateRedlines: true
+        }
+    );
+
+    assert.strictEqual(result.hasChanges, true, 'field/proofing redline should report changes');
+    assert.ok(!result.documentXml.includes('instrText'), 'field instruction text should be stripped before redlining');
+    assert.ok(!result.documentXml.includes('fldChar'), 'field character scaffolding should be stripped before redlining');
+    assert.ok(!result.documentXml.includes('proofErr'), 'proofing markers should be stripped before redlining');
+
+    const resultDoc = parseXmlStrict(result.documentXml, 'field/proofing redline output');
+    const paragraphs = Array.from(resultDoc.getElementsByTagNameNS(NS_W, 'p'));
+    const outputText = paragraphs.map(paragraph => getParagraphText(paragraph)).join('\n');
+    assert.ok(outputText.includes('10.6'), 'visible field result text should remain in the paragraph');
+    assert.ok(resultDoc.getElementsByTagNameNS(NS_W, 'ins').length > 0 || resultDoc.getElementsByTagNameNS(NS_W, 'del').length > 0, 'redline should still emit revision markup');
+}
+
 async function testDuplicateTableStructuralOpsAreDedupedPerTurn() {
     const inputXml = buildTwoColumnTitleTableDocumentXml();
     const snapshotDoc = parseXmlStrict(inputXml, 'table dedupe snapshot');
@@ -657,6 +705,7 @@ async function run() {
     await testFormatOnlyRedlineWithAllTextInsideInsertionWrapper();
     await testFormatOnlyRedlineRematchesWhenRefParagraphDrifts();
     await testFormatOnlyRedlineFallsBackToOoxmlWhenNoSpansAreExtractable();
+    await testRedlinePreprocessesFieldInstructionsAndProofingMarkers();
     await testDuplicateTableStructuralOpsAreDedupedPerTurn();
     console.log('PASS: standalone operation runner tests');
 }

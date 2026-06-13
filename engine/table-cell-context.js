@@ -8,7 +8,9 @@
 import { getDocumentParagraphs } from './format-extraction.js';
 import { log } from '../adapters/logger.js';
 import { buildParagraphOnlyPackage } from '../services/package-builder.js';
-import { getElementsByTag } from '../core/xml-query.js';
+import { getElementsByTagNSOrTag } from '../core/xml-query.js';
+import { NS_W } from '../core/types.js';
+import { isWordElement } from '../core/word-xml.js';
 
 const W14_NS = 'http://schemas.microsoft.com/office/word/2010/wordml';
 
@@ -30,7 +32,7 @@ const W14_NS = 'http://schemas.microsoft.com/office/word/2010/wordml';
  */
 export function detectTableCellContext(xmlDoc, originalText, options = {}) {
     const { targetParagraphId = null } = options;
-    const tables = getElementsByTag(xmlDoc, 'w:tbl');
+    const tables = getElementsByTagNSOrTag(xmlDoc, NS_W, 'tbl');
     if (tables.length === 0) {
         return { hasTableWrapper: false, isTableCellParagraph: false, paragraphs: [], paragraph: null, tableElement: null };
     }
@@ -39,7 +41,7 @@ export function detectTableCellContext(xmlDoc, originalText, options = {}) {
     const paragraphsInCells = allParagraphs.filter(p => {
         let parent = p.parentNode;
         while (parent) {
-            if (parent.nodeName === 'w:tc') return true;
+            if (isWordElement(parent, 'tc')) return true;
             parent = parent.parentNode;
         }
         return false;
@@ -68,7 +70,7 @@ export function detectTableCellContext(xmlDoc, originalText, options = {}) {
         const normalizedTarget = originalText.trim();
         if (!targetParagraph) {
             for (const p of paragraphsInCells) {
-                const textNodes = getElementsByTag(p, 'w:t');
+                const textNodes = getElementsByTagNSOrTag(p, NS_W, 't');
                 let paragraphText = '';
                 for (const t of textNodes) {
                     paragraphText += t.textContent || '';

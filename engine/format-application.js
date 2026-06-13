@@ -11,10 +11,10 @@ import { snapshotAndAttachRPrChange, injectFormattingToRPr } from './run-builder
 import { getDocumentParagraphs, buildTextSpansFromParagraphs } from './format-extraction.js';
 import { buildParagraphInfos, findTargetParagraphInfo } from './format-paragraph-targeting.js';
 import { splitSpansAtBoundaries, applyFormatHintsToSpansRobust } from './format-span-application.js';
-import { getRevisionTimestamp } from '../core/types.js';
 import { warn, log } from '../adapters/logger.js';
 import { getFirstElementByTag } from '../core/xml-query.js';
 import { getDefaultAuthor } from '../adapters/config.js';
+import { createWordElement } from '../core/word-xml.js';
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
@@ -64,7 +64,6 @@ export function applyFormatRemovalAsSurgicalReplacement(xmlDoc, textSpans, exist
     void textSpans;
     let hasAnyChanges = false;
     const processedRuns = new Set();
-    const dateStr = getRevisionTimestamp();
 
     log(`[OxmlEngine] Surgical format removal: ${existingFormatHints.length} hints to process (using w:rPrChange)`);
 
@@ -78,12 +77,12 @@ export function applyFormatRemovalAsSurgicalReplacement(xmlDoc, textSpans, exist
 
         let rPr = getFirstElementByTag(run, 'w:rPr');
         if (!rPr) {
-            rPr = xmlDoc.createElement('w:rPr');
+            rPr = createWordElement(xmlDoc, 'w:rPr');
             run.insertBefore(rPr, run.firstChild);
         }
 
         if (generateRedlines) {
-            snapshotAndAttachRPrChange(xmlDoc, rPr, author || getDefaultAuthor(), dateStr);
+            snapshotAndAttachRPrChange(xmlDoc, rPr, author || getDefaultAuthor());
         }
 
         applyFormatOverridesToRPr(xmlDoc, rPr, hint.format);

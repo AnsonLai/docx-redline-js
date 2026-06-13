@@ -114,6 +114,7 @@ export function buildReconstructionMapping(xmlDoc, modifiedText) {
         const escapedToken = tokenString.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
         processedModifiedText = processedModifiedText.replace(new RegExp(escapedToken, 'g'), char);
     });
+    processedModifiedText = preserveReferencePlaceholders(originalFullText, processedModifiedText, referenceMap);
 
     const containerFragments = new Map();
     uniqueContainers.forEach(container => {
@@ -169,6 +170,32 @@ export function buildReconstructionMapping(xmlDoc, modifiedText) {
         getPropertySpanLength,
         isParagraphStart: index => paragraphStarts.has(index)
     };
+}
+
+function preserveReferencePlaceholders(originalFullText, modifiedText, referenceMap) {
+    let result = modifiedText;
+
+    for (const referenceChar of referenceMap.keys()) {
+        if (result.includes(referenceChar)) continue;
+
+        const originalIndex = originalFullText.indexOf(referenceChar);
+        if (originalIndex < 0) continue;
+
+        const prefix = originalFullText.slice(0, originalIndex);
+        const suffix = originalFullText.slice(originalIndex + referenceChar.length);
+
+        if (prefix && result.startsWith(prefix)) {
+            result = `${result.slice(0, prefix.length)}${referenceChar}${result.slice(prefix.length)}`;
+            continue;
+        }
+
+        if (suffix && result.endsWith(suffix)) {
+            const insertAt = result.length - suffix.length;
+            result = `${result.slice(0, insertAt)}${referenceChar}${result.slice(insertAt)}`;
+        }
+    }
+
+    return result;
 }
 
 function processChildNode(child, originalFullText, propertyMap, sentinelMap, referenceMap, tokenToCharMap, nextCharCode) {

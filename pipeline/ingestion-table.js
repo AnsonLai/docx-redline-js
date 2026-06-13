@@ -23,10 +23,13 @@ import { ingestParagraphElement } from './ingestion-paragraph.js';
 export function ingestTableToVirtualGrid(tableNode) {
     const tblGrid = getFirstElementByTagNS(tableNode, NS_W, 'tblGrid');
     const gridCols = tblGrid ? getElementsByTagNS(tblGrid, NS_W, 'gridCol') : [];
-    const colCount = gridCols.length;
-
-    const trElements = getElementsByTagNS(tableNode, NS_W, 'tr');
+    const trElements = getElementsByTagNSOrTag(tableNode, NS_W, 'tr');
     const rowCount = trElements.length;
+    const inferredColCount = trElements.reduce((max, tr) => {
+        const tcElements = getElementsByTagNSOrTag(tr, NS_W, 'tc');
+        return Math.max(max, tcElements.length);
+    }, 0);
+    const colCount = gridCols.length || inferredColCount;
 
     const grid = Array.from({ length: rowCount }, () =>
         Array.from({ length: colCount }, () => null)
@@ -36,7 +39,7 @@ export function ingestTableToVirtualGrid(tableNode) {
 
     for (let rowIdx = 0; rowIdx < trElements.length; rowIdx++) {
         const tr = trElements[rowIdx];
-        const tcElements = getElementsByTagNS(tr, NS_W, 'tc');
+        const tcElements = getElementsByTagNSOrTag(tr, NS_W, 'tc');
         let gridCol = 0;
 
         for (let tcIdx = 0; tcIdx < tcElements.length; tcIdx++) {
