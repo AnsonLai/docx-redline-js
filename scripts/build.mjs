@@ -1,14 +1,19 @@
 import { build } from 'esbuild';
 import { readFileSync } from 'fs';
+import { dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
 
-const pkg = JSON.parse(readFileSync('./package.json', 'utf8'));
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const entryPoint = resolve(repoRoot, 'index.js');
+const distDir = resolve(repoRoot, 'dist');
+const pkg = JSON.parse(readFileSync(resolve(repoRoot, 'package.json'), 'utf8'));
 
 // ESM bundle with diff-match-patch inlined (for CDN/browser <script type="module">)
 await build({
-  entryPoints: ['./index.js'],
+  entryPoints: [entryPoint],
   bundle: true,
   format: 'esm',
-  outfile: 'dist/docx-redline-js.esm.js',
+  outfile: resolve(distDir, 'docx-redline-js.esm.js'),
   platform: 'neutral',         // no Node builtins assumed
   target: 'es2020',
   minify: false,                // keep readable for debugging
@@ -21,10 +26,10 @@ await build({
 
 // Minified version for production CDN use
 await build({
-  entryPoints: ['./index.js'],
+  entryPoints: [entryPoint],
   bundle: true,
   format: 'esm',
-  outfile: 'dist/docx-redline-js.esm.min.js',
+  outfile: resolve(distDir, 'docx-redline-js.esm.min.js'),
   platform: 'neutral',
   target: 'es2020',
   minify: true,
