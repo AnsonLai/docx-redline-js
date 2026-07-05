@@ -5,7 +5,8 @@ import {
     applyRedlineToOxml,
     ingestWordOoxmlToPlainText,
     preprocessMarkdown,
-    rejectTrackedChangesInOoxml
+    rejectTrackedChangesInOoxml,
+    validateRedlineOoxml
 } from '../../index.js';
 import {
     assertDelUsesDelText,
@@ -26,6 +27,14 @@ export function assertRoundTripStructure(xml) {
     assertRevisionMetadata(xml);
     assertUniqueRevisionIds(xml);
     assertSpacePreserved(xml);
+
+    const validation = validateRedlineOoxml(xml);
+    const errors = validation.issues.filter(issue => issue.severity === 'error');
+    assert.equal(
+        errors.length,
+        0,
+        `validateRedlineOoxml reported errors: ${errors.map(issue => `${issue.code}: ${issue.message}`).join('; ')}`
+    );
 }
 
 /**

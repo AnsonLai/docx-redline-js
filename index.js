@@ -27,6 +27,7 @@ import {
 } from './orchestration/list-structural-fallback.js';
 import { withOoxmlSourceType } from './core/word-xml.js';
 export { containsTrackedChanges } from './core/word-xml.js';
+export { validateRedlineOoxml } from './core/redline-validation.js';
 
 /**
  * Standalone-safe redline wrapper.

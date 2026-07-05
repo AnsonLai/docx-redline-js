@@ -1,0 +1,103 @@
+name: Validation
+
+# Independent-oracle validation: checks generated redline OOXML against
+# consumers and schemas this library does not control. Nightly + manual
+# because these jobs download schemas / install LibreOffice.
+
+on:
+  schedule:
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  xsd-schema:
+    name: ECMA-376 XSD validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install xmllint
+        run: sudo apt-get update && sudo apt-get install -y libxml2-utils
+
+      - name: Cache ECMA-376 schemas
+        uses: actions/cache@v4
+        with:
+          path: .cache/ooxml-schemas
+          key: ecma-376-4-5th-edition-transitional-xsd-v1
+
+      - name: Export validation fixtures
+        run: node scripts/export-validation-fixtures.mjs
+
+      - name: Validate fixtures against transitional wml.xsd
+        run: bash scripts/validate-fixtures-xsd.sh
+
+  libreoffice:
+    name: LibreOffice consumer check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install LibreOffice
+        run: sudo apt-get update && sudo apt-get install -y libreoffice-writer
+
+      - name: Export validation fixtures
+        run: node scripts/export-validation-fixtures.mjs
+
+      - name: Convert fixtures with LibreOffice
+        run: |
+          cd tmp/validation-docx
+          soffice --headless --convert-to pdf --outdir converted *.docx
+          for f in *.docx; do
+            pdf="converted/${f%.docx}.pdf"
+            if [ ! -s "$pdf" ]; then
+              echo "FAIL: LibreOffice did not produce $pdf"
+              exit 1
+            fi
+            echo "PASS: $f converted"
+          done
+
+  fuzz-extended:
+    name: Extended fuzz sweep (fresh seed)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run 20000 fuzz round-trip cases with date-derived seed
+        run: |
+          export FUZZ_SEED=$(date +%Y%m%d)
+          export FUZZ_ITERATIONS=20000
+          echo "Fuzzing with FUZZ_SEED=$FUZZ_SEED"
+          node tests/roundtrip_fuzz_tests.mjs

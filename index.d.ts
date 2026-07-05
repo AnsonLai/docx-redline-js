@@ -126,6 +126,30 @@ export function rejectTrackedChangesInOoxml(oxml: string, options?: RevisionFilt
 export function deleteCommentsByAuthorInOoxml(oxml: string, options?: RevisionFilterOptions): DeleteCommentsResult;
 export function containsTrackedChanges(xmlDoc: Document | Element): boolean;
 
+export type RedlineValidationSeverity = 'error' | 'warning';
+
+export interface RedlineValidationIssue {
+  code:
+    | 'PARSE_ERROR'
+    | 'NESTED_REVISION'
+    | 'DEL_CONTAINS_T'
+    | 'MISSING_REVISION_METADATA'
+    | 'DUPLICATE_REVISION_ID'
+    | 'MISSING_SPACE_PRESERVE'
+    | 'EMPTY_TEXT_ELEMENT'
+    | 'EMPTY_REVISION_WRAPPER'
+    | string;
+  severity: RedlineValidationSeverity;
+  message: string;
+}
+
+export interface RedlineValidationResult {
+  valid: boolean;
+  issues: RedlineValidationIssue[];
+}
+
+export function validateRedlineOoxml(oxml: string): RedlineValidationResult;
+
 export function applyHighlightToOoxml(oxml: string, targetText: string, color: string, options?: Record<string, unknown>): string;
 export function generateTableOoxml(headersOrData: unknown, rowsOrOptions?: unknown, options?: Record<string, unknown>): string;
 export function extractReplacementNodesFromOoxml(oxml: string): unknown;

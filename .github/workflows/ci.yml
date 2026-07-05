@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [18, 20]
+        node-version: [20, 22, 24]
 
     steps:
       - name: Checkout
@@ -32,12 +32,18 @@ jobs:
       - name: Isolation checks
         run: npm run test:isolation
 
+      - name: Type declaration smoke check
+        run: npm run check:types
+
       - name: Test suite
         run: npm test
+
+      - name: Export validation fixtures
+        run: node scripts/export-validation-fixtures.mjs
 
       - name: Build bundle
         run: npm run build
 
-      - name: Pack dry-run (Node 20 only)
-        if: matrix.node-version == 20
+      - name: Pack dry-run (Node 22 only)
+        if: matrix.node-version == 22
         run: npm pack --dry-run

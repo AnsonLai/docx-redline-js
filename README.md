@@ -139,6 +139,7 @@ Common result fields:
 | `ingestOoxml(oxml)` | Flatten OOXML into an internal run model with offsets. |
 | `preprocessMarkdown(text)` | Normalize markdown and extract format hints. |
 | `containsTrackedChanges(xmlDoc)` | Detect `w:ins`, `w:del`, move revisions, property changes, and paragraph-mark revision markup in a parsed OOXML document/fragment. |
+| `validateRedlineOoxml(oxml)` | Validate generated redline OOXML against the package's structural invariants (no nested revisions, `w:delText` inside `w:del`, complete metadata, unique revision ids, preserved boundary whitespace). Returns `{ valid, issues }`; run it before writing output into a package. |
 
 ### Services
 
@@ -258,6 +259,20 @@ On Windows with desktop Word installed, you can smoke-test a completed `.docx`:
 ```bash
 npm run smoke:word -- path/to/file.docx
 ```
+
+To validate against Word as an independent oracle (Word itself accepts and
+rejects the generated revisions and the resulting text is compared to the
+expected outcomes):
+
+```bash
+node scripts/export-validation-fixtures.mjs
+npm run smoke:word:diff
+```
+
+A nightly GitHub Actions workflow additionally validates generated fixtures
+against the ECMA-376 transitional schemas (`xmllint`), opens them with
+LibreOffice, and runs an extended fuzz sweep of the accept/reject round-trip
+invariant with a fresh seed. See [docs/VALIDATION.md](./docs/VALIDATION.md).
 
 ## Architecture
 

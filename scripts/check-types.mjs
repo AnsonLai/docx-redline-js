@@ -8,7 +8,8 @@ const requiredSnippets = [
   'export function applyRedlineToOxml',
   'export function acceptTrackedChangesInOoxml',
   'export function rejectTrackedChangesInOoxml',
-  'export function deleteCommentsByAuthorInOoxml'
+  'export function deleteCommentsByAuthorInOoxml',
+  'export function validateRedlineOoxml'
 ];
 
 for (const snippet of requiredSnippets) {

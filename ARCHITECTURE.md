@@ -72,6 +72,8 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
   - Namespace-safe Word element creation, tracked-change detection, and OOXML payload source-shape helpers.
 - `core/types.js`
   - Shared model enums/types plus revision metadata generation and document-aware revision ID seeding.
+- `core/redline-validation.js`
+  - Runtime structural validation (`validateRedlineOoxml`) mirroring the test-suite invariants: no nested revisions, `w:delText` inside `w:del`, complete revision metadata, unique revision ids, preserved boundary whitespace.
 - `engine/oxml-engine.js`
   - Main reconciliation router, mode selection, existing-revision policy gate, and status/error result handling.
 - `engine/run-builders.js`
@@ -128,6 +130,8 @@ still be re-exported from `index.js`.
 - Do not write unknown `result.oxml` payloads directly into `word/document.xml`;
   normalize with `extractReplacementNodesFromOoxml(...)` or use
   `applyOperationToDocumentXml(...).documentXml` for full-document replacement.
+- Run `validateRedlineOoxml(oxml)` on generated output before packaging it;
+  it reports structural invariant violations as `{ valid, issues }`.
 
 
 ## Build Output
@@ -150,11 +154,23 @@ The bundle inlines `diff-match-patch` and keeps `@xmldom/xmldom` external.
 - `npm run check:types`
   - Smoke-checks `index.d.ts`.
 - `node scripts/export-validation-fixtures.mjs`
-  - Writes release-time validation fixtures to `tmp/validation-docx/`.
+  - Writes release-time validation fixtures to `tmp/validation-docx/` as
+    `word/document.xml` parts, assembled `.docx` files, and expected-text sidecars.
+- `tests/roundtrip_fuzz_tests.mjs` (part of `npm test`)
+  - Seeded fuzz sweep of the accept/reject round-trip invariant; tune with
+    `FUZZ_SEED` / `FUZZ_ITERATIONS`.
 - `npm run smoke:word -- path/to/file.docx`
   - Optional Windows/Word COM smoke test for a completed `.docx`.
+- `npm run smoke:word:diff`
+  - Windows/Word COM differential test: Word itself accepts/rejects the
+    generated fixtures and the resulting text is compared to expectations.
+- `bash scripts/validate-fixtures-xsd.sh`
+  - Validates exported fixtures against the ECMA-376 transitional `wml.xsd`.
+- `.github/workflows/validation.yml`
+  - Nightly independent-oracle validation: XSD schema check, LibreOffice
+    conversion, and an extended 20k-case fuzz sweep with a fresh seed.
 
-Use these checks before publishing or tagging.
+Use these checks before publishing or tagging. See `docs/VALIDATION.md`.
 
 ## Fast Orientation For Contributors
 
