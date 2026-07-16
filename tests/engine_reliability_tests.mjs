@@ -3,10 +3,39 @@ import './setup-xml-provider.mjs';
 import assert from 'assert/strict';
 import { applyRedlineToOxml } from '../engine/oxml-engine.js';
 import { applySurgicalMode } from '../engine/surgical-mode.js';
-import { elementsByLocalName, parseXml, serializeXml, textIndex } from './helpers/ooxml-assertions.mjs';
+import {
+    directChildByLocalName,
+    elementsByLocalName,
+    formatIsEnabled,
+    parseXml,
+    serializeXml,
+    textIndex
+} from './helpers/ooxml-assertions.mjs';
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const NS_R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+
+function findRunWithText(doc, expectedText) {
+    return elementsByLocalName(doc, 'r').find(run =>
+        elementsByLocalName(run, 't').map(node => node.textContent || '').join('') === expectedText
+    ) || null;
+}
+
+function assertHeadingFormattingPreserved(xml, headingText) {
+    const doc = parseXml(xml);
+    const run = findRunWithText(doc, headingText);
+    assert(run, `Expected an unchanged run containing "${headingText}"`);
+
+    const rPr = directChildByLocalName(run, 'rPr');
+    assert(rPr, 'Expected unchanged heading run properties to survive');
+    assert.equal(formatIsEnabled(rPr, 'b'), true, 'Expected unchanged heading to remain bold');
+
+    const fonts = directChildByLocalName(rPr, 'rFonts');
+    assert(fonts, 'Expected unchanged font family to survive');
+    assert.equal(fonts.getAttribute('w:ascii') || fonts.getAttribute('ascii'), 'Aptos');
+    assert.equal(elementsByLocalName(rPr, 'rPrChange').length, 0,
+        'Preserving existing formatting must not create a formatting revision');
+}
 
 async function testSurgicalInsertionSplitsRunAtCharacterOffset() {
     const xml = `
@@ -186,6 +215,57 @@ async function testFootnoteReferenceSurvivesEditAfterReference() {
     assert.equal(elementsByLocalName(doc, 'del').some(node => node.getElementsByTagNameNS(NS_W, 'footnoteReference').length > 0), false, 'Footnote reference must not be wrapped in deletion');
 }
 
+async function testReconstructionPreservesUnchangedInlineFormatting() {
+    const xml = `
+        <w:p xmlns:w="${NS_W}">
+            <w:r>
+                <w:rPr><w:rFonts w:ascii="Aptos"/><w:b/></w:rPr>
+                <w:t>Incident Management:</w:t>
+            </w:r>
+            <w:r><w:t xml:space="preserve"> existing text.</w:t></w:r>
+        </w:p>
+    `;
+
+    const result = await applyRedlineToOxml(
+        xml,
+        'Incident Management: existing text.',
+        'Incident Management: existing text. Added clause.',
+        { author: 'Tester', generateRedlines: true }
+    );
+
+    assert.equal(result.hasChanges, true);
+    assertHeadingFormattingPreserved(result.oxml, 'Incident Management:');
+}
+
+async function testSurgicalModePreservesUnchangedInlineFormatting() {
+    const xml = `
+        <w:document xmlns:w="${NS_W}">
+            <w:body>
+                <w:p>
+                    <w:r>
+                        <w:rPr><w:rFonts w:ascii="Aptos"/><w:b/></w:rPr>
+                        <w:t>Incident Management:</w:t>
+                    </w:r>
+                    <w:r><w:t xml:space="preserve"> existing text.</w:t></w:r>
+                </w:p>
+            </w:body>
+        </w:document>
+    `;
+    const doc = parseXml(xml);
+    const result = applySurgicalMode(
+        doc,
+        'Incident Management: existing text.',
+        'Incident Management: existing text. Added clause.',
+        new XMLSerializer(),
+        'Tester',
+        [],
+        true
+    );
+
+    assert.equal(result.hasChanges, true);
+    assertHeadingFormattingPreserved(result.oxml, 'Incident Management:');
+}
+
 await testSurgicalInsertionSplitsRunAtCharacterOffset();
 await testSurgicalDeletionPreservesNeighboringRunChildren();
 await testEmptyDefaultNamespaceTableCellCanReceiveInsertion();
@@ -194,5 +274,7 @@ await testHyperlinkEditKeepsRevisionsInsideHyperlink();
 await testCommentAndBookmarkMarkersSurviveEdit();
 await testTabSurvivesAdjacentEdit();
 await testFootnoteReferenceSurvivesEditAfterReference();
+await testReconstructionPreservesUnchangedInlineFormatting();
+await testSurgicalModePreservesUnchangedInlineFormatting();
 
 console.log('engine_reliability_tests.mjs ... PASS');

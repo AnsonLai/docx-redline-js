@@ -10,6 +10,12 @@ import { getDefaultAuthor } from '../adapters/config.js';
 import { createRevisionMetadata } from '../core/types.js';
 import { createWordElement } from '../core/word-xml.js';
 
+function removeNode(node) {
+    if (node?.parentNode) {
+        node.parentNode.removeChild(node);
+    }
+}
+
 /**
  * Removes specific formatting properties from a run properties (w:rPr) element.
  * This allows surgical removal of bold, italic, underline, color, etc. from OOXML.
@@ -31,7 +37,7 @@ export function removeFormattingFromRPr(rPr, formatTypes = ['all']) {
         toRemove.forEach(tag => {
             // Handle both namespaced and non-namespaced versions
             const elements = rPrClone.querySelectorAll(`${tag}, ${tag.replace('w:', '')}`);
-            elements.forEach(el => el.remove());
+            elements.forEach(removeNode);
         });
     } else {
         // Remove specific properties
@@ -55,7 +61,7 @@ export function removeFormattingFromRPr(rPr, formatTypes = ['all']) {
             if (tag) {
                 // Handle both namespaced and non-namespaced versions
                 const elements = rPrClone.querySelectorAll(`${tag}, ${tag.replace('w:', '')}`);
-                elements.forEach(el => el.remove());
+                elements.forEach(removeNode);
             }
         });
     }
@@ -112,7 +118,7 @@ export function applyFormattingRemovalToOoxml(ooxmlString, targetText, formatTyp
                     }
                 } else {
                     // Remove entire rPr if empty
-                    rPr.remove();
+                    removeNode(rPr);
                 }
             }
         }
@@ -179,7 +185,7 @@ export function injectHighlightIntoRPr(doc, rPr, color = 'yellow', options = {})
     // --- APPLY CHANGE ---
     // Remove any existing highlight
     const existingHighlight = rPrElement.getElementsByTagNameNS(NS_W, 'highlight');
-    Array.from(existingHighlight).forEach(el => el.remove());
+    Array.from(existingHighlight).forEach(removeNode);
 
     // Create and add new highlight element
     const highlightEl = createWordElement(doc, 'w:highlight');
@@ -201,7 +207,7 @@ export function injectHighlightIntoRPr(doc, rPr, color = 'yellow', options = {})
 
         // Remove any EXISTING rPrChange to avoid duplicates or nested weirdness
         const existingChange = rPrElement.getElementsByTagNameNS(NS_W, 'rPrChange');
-        Array.from(existingChange).forEach(el => el.remove());
+        Array.from(existingChange).forEach(removeNode);
 
         // Append to rPr
         rPrElement.appendChild(rPrChange);
@@ -274,7 +280,7 @@ export function applyHighlightToOoxml(ooxmlString, targetText, color = 'yellow',
             // Update text content
             const tNodes = prefixRun.getElementsByTagNameNS(NS_W, 't');
             // Simply remove all t nodes and add one with new text to avoid complexity of multiple t nodes
-            Array.from(tNodes).forEach(t => t.remove());
+            Array.from(tNodes).forEach(removeNode);
             const newT = createWordElement(doc, 'w:t');
             // Preserve xml:space="preserve" if it existed, or just add it usually
             newT.setAttribute('xml:space', 'preserve');
@@ -288,7 +294,7 @@ export function applyHighlightToOoxml(ooxmlString, targetText, color = 'yellow',
             const matchRun = run.cloneNode(true);
             // Update text content
             const tNodes = matchRun.getElementsByTagNameNS(NS_W, 't');
-            Array.from(tNodes).forEach(t => t.remove());
+            Array.from(tNodes).forEach(removeNode);
             const newT = createWordElement(doc, 'w:t');
             newT.setAttribute('xml:space', 'preserve');
             newT.textContent = matchText;
@@ -312,7 +318,7 @@ export function applyHighlightToOoxml(ooxmlString, targetText, color = 'yellow',
             const suffixRun = run.cloneNode(true);
             // Update text content
             const tNodes = suffixRun.getElementsByTagNameNS(NS_W, 't');
-            Array.from(tNodes).forEach(t => t.remove());
+            Array.from(tNodes).forEach(removeNode);
             const newT = createWordElement(doc, 'w:t');
             newT.setAttribute('xml:space', 'preserve');
             newT.textContent = suffixText;

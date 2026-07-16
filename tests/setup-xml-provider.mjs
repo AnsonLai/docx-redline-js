@@ -25,21 +25,6 @@ function ensureIterable(collection) {
     });
 }
 
-function ensureRemove(node) {
-    if (!node) return;
-    const proto = Object.getPrototypeOf(node);
-    if (!proto || proto.remove) return;
-    Object.defineProperty(proto, 'remove', {
-        configurable: true,
-        writable: true,
-        value: function remove() {
-            if (this.parentNode) {
-                this.parentNode.removeChild(this);
-            }
-        }
-    });
-}
-
 try {
     const { JSDOM } = await import('jsdom');
     const dom = new JSDOM('');
@@ -56,8 +41,6 @@ try {
     doc = parser.parseFromString('<root/>', 'text/xml');
     ensureIterable(doc.getElementsByTagName('*'));
     ensureIterable(doc.childNodes);
-    ensureRemove(doc.documentElement);
-    ensureRemove(doc.documentElement?.firstChild);
     win = {
         DOMParser: DOMParserCtor,
         XMLSerializer: XMLSerializerCtor,

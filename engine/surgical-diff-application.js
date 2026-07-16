@@ -1,5 +1,4 @@
 import { getApplicableFormatHints } from '../pipeline/markdown-processor.js';
-import { isWordElement } from '../core/word-xml.js';
 import {
     createTrackChange,
     createTextRun,
@@ -20,30 +19,17 @@ import {
     findLastSpanEndingBeforeOrAt,
     forEachOverlappingSpan
 } from './surgical-spans.js';
+import { extractFormatFromRPr } from './rpr-helpers.js';
 
 export function reconcileFormattingForTextSpan(xmlDoc, span, start, end, applicableHints, author, generateRedlines) {
-    const desiredFormat = {};
-    if (applicableHints.length > 0) {
-        applicableHints.forEach(h => Object.assign(desiredFormat, h.format));
-    }
+    // Plain modified text carries no negative formatting instruction. Preserve
+    // unchanged source formatting unless Markdown explicitly targets this span.
+    if (applicableHints.length === 0) return false;
 
     const rPr = span.rPr;
-    const hasElement = (localName) => {
-        if (!rPr) return false;
-        for (let node = rPr.firstChild; node; node = node.nextSibling) {
-            if (isWordElement(node, localName)) {
-                return true;
-            }
-        }
-        return false;
-    };
-
-    const existingFormat = {
-        bold: hasElement('b'),
-        italic: hasElement('i'),
-        underline: hasElement('u'),
-        strikethrough: hasElement('strike')
-    };
+    const existingFormat = extractFormatFromRPr(rPr);
+    const desiredFormat = { ...existingFormat };
+    applicableHints.forEach(h => Object.assign(desiredFormat, h.format));
 
     const formatsToCheck = ['bold', 'italic', 'underline', 'strikethrough'];
     const changesNeeded = formatsToCheck.some(f => !!desiredFormat[f] !== existingFormat[f]);

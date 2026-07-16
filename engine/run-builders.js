@@ -5,7 +5,7 @@
  * and `w:pPrChange` elements used by surgical and reconstruction modes.
  */
 
-import { RPR_SCHEMA_ORDER } from './rpr-helpers.js';
+import { extractFormatFromRPr, RPR_SCHEMA_ORDER } from './rpr-helpers.js';
 import { createRevisionMetadata } from '../core/types.js';
 import { getFirstElementByTag } from '../core/xml-query.js';
 import { createWordElement } from '../core/word-xml.js';
@@ -167,12 +167,16 @@ export function createFormattedRuns(xmlDoc, text, baseRPr, formatHints, baseOffs
             h.start <= segmentBaseOffset && h.end >= segmentEndOffset
         );
 
-        const combinedFormat = {};
+        const combinedFormat = { ...extractFormatFromRPr(baseRPr) };
         applicableHints.forEach(h => {
             if (h.format) Object.assign(combinedFormat, h.format);
         });
 
-        const formattedRPr = injectFormattingToRPr(xmlDoc, baseRPr, combinedFormat, author, generateRedlines);
+        // During a text edit, missing Markdown is not an instruction to clear
+        // the source run's formatting. Only synchronize explicitly hinted spans.
+        const formattedRPr = applicableHints.length > 0
+            ? injectFormattingToRPr(xmlDoc, baseRPr, combinedFormat, author, generateRedlines)
+            : baseRPr?.cloneNode(true) || null;
         runs.push(createTextRunWithRPrElement(xmlDoc, segment, formattedRPr, false));
     }
 
