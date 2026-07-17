@@ -124,12 +124,21 @@ export class ReconciliationPipeline {
 
             // Count actual paragraph elements ingested
             const paragraphCount = runModel.filter(r => r.kind === RunKind.PARAGRAPH_START).length;
+            const sourceIsMarkedMultilineList = isListTargetStrict(acceptedText) || isListTargetLoose(acceptedText);
+            const canPatchExistingMarkedList = isTargetList
+                && sourceIsMarkedMultilineList
+                && paragraphCount > 1
+                && acceptedText !== cleanText;
 
             log(`[Reconcile] isTargetList: ${isTargetList}, paragraphCount: ${paragraphCount}`);
 
-            // If target is a list, always use list generation logic
-            // This handles both expansion (1 para -> N items) and conversion (N paras -> M items)
-            if (isTargetList) {
+            // Preserve already-marked multi-paragraph lists during ordinary text edits.
+            // Rebuilding the whole block would discard unchanged run formatting and
+            // place all source deletion runs in the first generated paragraph, which
+            // makes rejection merge the original paragraph boundaries.
+            if (canPatchExistingMarkedList) {
+                log('[Reconcile] Existing marked list edit detected; using run-aware patching to preserve formatting and paragraph boundaries.');
+            } else if (isTargetList) {
                 log('[Reconcile] 🎯 ENTERING LIST GENERATION PATH');
                 log(`[Reconcile] cleanText preview: ${cleanText.substring(0, 100)}...`);
                 log(`[Reconcile] acceptedText preview: ${acceptedText.substring(0, 100)}...`);

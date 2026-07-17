@@ -2,7 +2,11 @@ import './setup-xml-provider.mjs';
 
 import assert from 'assert';
 import { buildTargetReferenceSnapshot, getParagraphText } from '../index.js';
-import { applyOperationToDocumentXml } from '../services/standalone-operation-runner.js';
+import {
+    applyOperationToDocumentXml,
+    applyOperationsToDocumentXml,
+    orderOperationsForStableTargets
+} from '../services/standalone-operation-runner.js';
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
@@ -692,6 +696,55 @@ async function testDuplicateTableStructuralOpsAreDedupedPerTurn() {
     );
 }
 
+async function testBatchRunsCommentsBeforeTextEditsOnSameParagraph() {
+    const inputXml = buildDocumentXml('The Customer may terminate the Agreement by written notice.');
+    const operations = [
+        {
+            type: 'replace',
+            targetRef: 'P1',
+            target: 'The Customer may terminate the Agreement by written notice.',
+            modified: 'The Customer may end this Agreement on written notice.'
+        },
+        {
+            type: 'comment',
+            targetRef: 'P1',
+            target: 'The Customer may terminate the Agreement by written notice.',
+            textToComment: 'terminate the Agreement by written notice',
+            commentContent: 'Confirm the termination standard.'
+        }
+    ];
+
+    const ordered = orderOperationsForStableTargets(operations);
+    assert.deepStrictEqual(
+        ordered.map(operation => operation.type),
+        ['comment', 'replace'],
+        'anchor-based comments should execute before text replacements'
+    );
+    assert.deepStrictEqual(operations.map(operation => operation.type), ['replace', 'comment'],
+        'ordering helper must not mutate the caller array');
+
+    const result = await applyOperationsToDocumentXml(
+        inputXml,
+        operations,
+        'BatchRunnerTest',
+        null,
+        { generateRedlines: true }
+    );
+
+    assert.deepStrictEqual(result.executionOrder, [2, 1]);
+    assert.deepStrictEqual(result.results.map(entry => entry.status), ['applied', 'applied']);
+    assert.ok(result.commentsXml?.includes('Confirm the termination standard.'),
+        'batch result should merge the applied comment payload');
+
+    const resultDoc = parseXmlStrict(result.documentXml, 'comment-before-replace batch output');
+    assert.ok(resultDoc.getElementsByTagNameNS(NS_W, 'commentRangeStart').length > 0,
+        'comment anchors should survive the later replacement');
+    assert.ok(resultDoc.getElementsByTagNameNS(NS_W, 'ins').length > 0,
+        'replacement should still emit an insertion revision');
+    assert.ok(resultDoc.getElementsByTagNameNS(NS_W, 'del').length > 0,
+        'replacement should still emit a deletion revision');
+}
+
 async function run() {
     await testRedlineOperation();
     await testCommentOperation();
@@ -707,6 +760,7 @@ async function run() {
     await testFormatOnlyRedlineFallsBackToOoxmlWhenNoSpansAreExtractable();
     await testRedlinePreprocessesFieldInstructionsAndProofingMarkers();
     await testDuplicateTableStructuralOpsAreDedupedPerTurn();
+    await testBatchRunsCommentsBeforeTextEditsOnSameParagraph();
     console.log('PASS: standalone operation runner tests');
 }
 

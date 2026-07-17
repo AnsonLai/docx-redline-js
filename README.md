@@ -121,6 +121,7 @@ Common `applyRedlineToOxml` options:
 | `generateRedlines` | When `true`, emit Word-native tracked changes; when `false`, apply clean text changes. |
 | `author` | Track-change author used for generated revisions. |
 | `existingRevisions` | Policy for source OOXML that already contains tracked changes: `'reject-input'` (default) returns `status: 'error'` with code `EXISTING_REVISIONS`; `'accept-all-first'` accepts existing revisions before applying the new edit. |
+| `removeFormatting` | When `true` and the text is unchanged with no Markdown hints, explicitly remove existing bold/italic/underline/strikethrough formatting. Defaults to `false`. |
 
 Common result fields:
 
@@ -160,9 +161,15 @@ Common result fields:
 For advanced usage, import specific submodules:
 
 ```js
-import { applyOperationToDocumentXml } from '@ansonlai/docx-redline-js/services/standalone-operation-runner.js';
+import {
+  applyOperationToDocumentXml,
+  applyOperationsToDocumentXml,
+  orderOperationsForStableTargets
+} from '@ansonlai/docx-redline-js/services/standalone-operation-runner.js';
 import { getParagraphText } from '@ansonlai/docx-redline-js/core/paragraph-targeting.js';
 ```
+
+Use `applyOperationsToDocumentXml(...)` for mixed batches. It stably runs comments before text-changing operations so replacements cannot invalidate their original anchors. Other operation types retain their relative order. Batch results retain each operation's original 1-based index and expose the actual `executionOrder`.
 
 ### Output Shape Matrix
 
@@ -174,11 +181,13 @@ Different APIs return different OOXML shapes. Use this as a packaging safety che
 | `applyRedlineToOxmlWithListFallback(...)` | Paragraph or range-scope OOXML | `result.oxml` | Fragment, `<w:document>`, or package payload (`<pkg:package>`) | No. Inspect first. |
 | `reconcileMarkdownTableOoxml(...)` | Table or paragraph-scope OOXML | `result.oxml` | Same shapes as `applyRedlineToOxml(...)` for the supplied scope | No. Inspect first. |
 | `applyOperationToDocumentXml(...)` | Full `word/document.xml` string | `result.documentXml` | `<w:document>` | Yes. This is the document-safe helper. |
+| `applyOperationsToDocumentXml(...)` | Full `word/document.xml` plus an operation batch | `result.documentXml` | `<w:document>` | Yes. Comments are applied before text-changing operations. |
 | `extractReplacementNodesFromOoxml(...)` | Any OOXML payload | `{ replacementNodes, numberingXml, sourceType }` | Normalized to `fragment`, `document`, or `package` | Yes. Use this when consuming `result.oxml`. |
 
 ### Do / Don't for Packaging
 
 - Do use `applyOperationToDocumentXml(...).documentXml` when your intent is to replace `word/document.xml`.
+- Do use `applyOperationsToDocumentXml(...)` rather than an unsorted loop for batches containing comments and replacements that target the same original paragraph.
 - Redline application now strips non-visible field scaffolding (`w:fldChar`, `w:instrText`) and proofing markers (`w:proofErr`) from the matched target paragraph before diffing, while preserving the visible field result text. This avoids a class of Word-open failures caused by tracked changes spanning hidden field instruction runs.
 - Hyperlinks, bookmarks, comment range markers, tabs/breaks, and footnote/endnote references are treated as structural OOXML that should survive adjacent redline edits instead of being orphaned or wrapped in deletions.
 - Do use `extractReplacementNodesFromOoxml(...)` when you are consuming `result.oxml` from paragraph/range/table APIs.

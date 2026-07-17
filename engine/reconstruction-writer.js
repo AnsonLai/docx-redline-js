@@ -11,8 +11,9 @@ import {
     markParagraphMarkDeleted,
     markParagraphMarkInserted
 } from './run-builders.js';
-import { getFirstElementByTag } from '../core/xml-query.js';
-import { createWordElement } from '../core/word-xml.js';
+import { getFirstElementByTagNSOrTag } from '../core/xml-query.js';
+import { NS_W } from '../core/types.js';
+import { createWordElement, isWordElement } from '../core/word-xml.js';
 
 /**
  * Applies diffs to reconstruction context and writes updated XML.
@@ -189,7 +190,7 @@ function appendTextToCurrent(
 
         commentMarkers.forEach(marker => {
             emittedCommentMarkers.add(marker.node);
-            if (marker.node.nodeName === 'w:commentReference') {
+            if (isWordElement(marker.node, 'commentReference')) {
                 const run = createWordElement(xmlDoc, 'w:r');
                 run.appendChild(marker.node.cloneNode(true));
                 localParagraph.appendChild(run);
@@ -222,7 +223,7 @@ function appendTextToCurrent(
             if (sentinel) {
                 const clone = sentinel.node.cloneNode(true);
                 if (sentinel.isTextBox && sentinel.originalContainer) {
-                    const newContainer = getFirstElementByTag(clone, 'w:txbxContent');
+                    const newContainer = getFirstElementByTagNSOrTag(clone, NS_W, 'txbxContent');
                     if (newContainer) {
                         while (newContainer.firstChild) newContainer.removeChild(newContainer.firstChild);
                         replacementContainers.set(sentinel.originalContainer, newContainer);

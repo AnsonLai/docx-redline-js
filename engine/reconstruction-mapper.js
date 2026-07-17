@@ -6,7 +6,20 @@
 
 import { appendParagraphBoundary } from '../core/paragraph-offset-policy.js';
 import { getDocumentParagraphs } from './format-extraction.js';
-import { getElementsByTag, getFirstElementByTag } from '../core/xml-query.js';
+import { getElementsByTagNSOrTag, getFirstElementByTagNSOrTag } from '../core/xml-query.js';
+import { NS_W } from '../core/types.js';
+import { isWordElement } from '../core/word-xml.js';
+
+function localNameOf(node) {
+    return String(node?.localName || node?.nodeName || '').replace(/^.*:/, '');
+}
+
+function wordAttribute(node, localName) {
+    return node?.getAttributeNS?.(NS_W, localName)
+        || node?.getAttribute?.(`w:${localName}`)
+        || node?.getAttribute?.(localName)
+        || '';
+}
 
 function createRangeCursorLookup(ranges) {
     let cursor = 0;
@@ -61,10 +74,10 @@ function indexSentinelsByStart(sentinelMap) {
  */
 export function buildReconstructionMapping(xmlDoc, modifiedText) {
     const rootElement = xmlDoc.documentElement;
-    const isBodyRoot = rootElement.nodeName === 'w:body' || rootElement.nodeName.endsWith(':package');
+    const isBodyRoot = isWordElement(rootElement, 'body') || localNameOf(rootElement) === 'package';
     const paragraphs = getDocumentParagraphs(xmlDoc);
 
-    let body = getFirstElementByTag(xmlDoc, 'w:body');
+    let body = getFirstElementByTagNSOrTag(xmlDoc, NS_W, 'body');
     if (!body && isBodyRoot) body = rootElement;
 
     let originalFullText = '';
@@ -97,7 +110,7 @@ export function buildReconstructionMapping(xmlDoc, modifiedText) {
         originalFullText = appendParagraphBoundary(originalFullText, paragraphIndex, paragraphs.length);
 
         const paragraphEnd = originalFullText.length;
-        const pPr = getFirstElementByTag(paragraph, 'w:pPr');
+        const pPr = getFirstElementByTagNSOrTag(paragraph, NS_W, 'pPr');
         const container = paragraph.parentNode;
         if (container) uniqueContainers.add(container);
 
@@ -199,17 +212,23 @@ function preserveReferencePlaceholders(originalFullText, modifiedText, reference
 }
 
 function processChildNode(child, originalFullText, propertyMap, sentinelMap, referenceMap, tokenToCharMap, nextCharCode) {
-    if (child.nodeName === 'w:r') {
+    if (isWordElement(child, 'r')) {
         return processRunForReconstruction(child, originalFullText, propertyMap, sentinelMap, referenceMap, tokenToCharMap, nextCharCode);
     }
-    if (child.nodeName === 'w:hyperlink') {
+    if (isWordElement(child, 'hyperlink')) {
         return processHyperlinkForReconstruction(child, originalFullText, propertyMap);
     }
-    if (['w:sdt', 'w:oMath', 'm:oMath', 'w:bookmarkStart', 'w:bookmarkEnd'].includes(child.nodeName)) {
+    if (
+        isWordElement(child, 'sdt')
+        || isWordElement(child, 'oMath')
+        || localNameOf(child) === 'oMath'
+        || isWordElement(child, 'bookmarkStart')
+        || isWordElement(child, 'bookmarkEnd')
+    ) {
         sentinelMap.push({ start: originalFullText.length, node: child });
         return originalFullText + '\uFFFC';
     }
-    if (['w:commentRangeStart', 'w:commentRangeEnd'].includes(child.nodeName)) {
+    if (isWordElement(child, 'commentRangeStart') || isWordElement(child, 'commentRangeEnd')) {
         sentinelMap.push({ start: originalFullText.length, node: child, isCommentMarker: true });
         return originalFullText;
     }
@@ -218,10 +237,10 @@ function processChildNode(child, originalFullText, propertyMap, sentinelMap, ref
 
 function processRunForReconstruction(runElement, originalFullText, propertyMap, sentinelMap, referenceMap, tokenToCharMap, nextCharCode) {
     let fullText = originalFullText;
-    const rPr = getFirstElementByTag(runElement, 'w:rPr');
+    const rPr = getFirstElementByTagNSOrTag(runElement, NS_W, 'rPr');
 
     Array.from(runElement.childNodes).forEach(runChild => {
-        if (runChild.nodeName === 'w:t') {
+        if (isWordElement(runChild, 't')) {
             const textContent = runChild.textContent || '';
             if (textContent.length > 0) {
                 propertyMap.push({
@@ -231,18 +250,18 @@ function processRunForReconstruction(runElement, originalFullText, propertyMap, 
                 });
                 fullText += textContent;
             }
-        } else if (runChild.nodeName === 'w:br' || runChild.nodeName === 'w:cr') {
+        } else if (isWordElement(runChild, 'br') || isWordElement(runChild, 'cr')) {
             fullText += '\n';
             propertyMap.push({ start: fullText.length - 1, end: fullText.length, rPr });
-        } else if (runChild.nodeName === 'w:tab') {
+        } else if (isWordElement(runChild, 'tab')) {
             fullText += '\t';
             propertyMap.push({ start: fullText.length - 1, end: fullText.length, rPr });
-        } else if (runChild.nodeName === 'w:noBreakHyphen') {
+        } else if (isWordElement(runChild, 'noBreakHyphen')) {
             fullText += '\u2011';
             propertyMap.push({ start: fullText.length - 1, end: fullText.length, rPr });
-        } else if (['w:drawing', 'w:pict', 'w:object', 'w:fldChar', 'w:instrText', 'w:sym'].includes(runChild.nodeName)) {
-            const textBoxContent = getFirstElementByTag(runChild, 'w:txbxContent');
-            const hasTextBox = runChild.nodeName === 'w:pict' && !!textBoxContent;
+        } else if (['drawing', 'pict', 'object', 'fldChar', 'instrText', 'sym'].some(name => isWordElement(runChild, name))) {
+            const textBoxContent = getFirstElementByTagNSOrTag(runChild, NS_W, 'txbxContent');
+            const hasTextBox = isWordElement(runChild, 'pict') && !!textBoxContent;
 
             sentinelMap.push({
                 start: fullText.length,
@@ -252,10 +271,10 @@ function processRunForReconstruction(runElement, originalFullText, propertyMap, 
             });
             fullText += '\uFFFC';
             propertyMap.push({ start: fullText.length - 1, end: fullText.length, rPr });
-        } else if (runChild.nodeName === 'w:footnoteReference' || runChild.nodeName === 'w:endnoteReference') {
-            const id = runChild.getAttribute('w:id');
+        } else if (isWordElement(runChild, 'footnoteReference') || isWordElement(runChild, 'endnoteReference')) {
+            const id = wordAttribute(runChild, 'id');
             if (id) {
-                const type = runChild.nodeName === 'w:footnoteReference' ? 'FN' : 'EN';
+                const type = isWordElement(runChild, 'footnoteReference') ? 'FN' : 'EN';
                 const tokenString = `{{__${type}_${id}__}}`;
                 const char = String.fromCharCode(nextCharCode);
                 referenceMap.set(char, runChild);
@@ -263,7 +282,7 @@ function processRunForReconstruction(runElement, originalFullText, propertyMap, 
                 fullText += char;
                 propertyMap.push({ start: fullText.length - 1, end: fullText.length, rPr });
             }
-        } else if (runChild.nodeName === 'w:commentReference') {
+        } else if (isWordElement(runChild, 'commentReference')) {
             sentinelMap.push({ start: fullText.length, node: runChild, isCommentMarker: true });
         }
     });
@@ -275,10 +294,10 @@ function processHyperlinkForReconstruction(hyperlinkElement, originalFullText, p
     let fullText = originalFullText;
 
     Array.from(hyperlinkElement.childNodes).forEach(hyperlinkChild => {
-        if (hyperlinkChild.nodeName !== 'w:r') return;
+        if (!isWordElement(hyperlinkChild, 'r')) return;
 
-        const rPr = getFirstElementByTag(hyperlinkChild, 'w:rPr');
-        const texts = getElementsByTag(hyperlinkChild, 'w:t');
+        const rPr = getFirstElementByTagNSOrTag(hyperlinkChild, NS_W, 'rPr');
+        const texts = getElementsByTagNSOrTag(hyperlinkChild, NS_W, 't');
         texts.forEach(textNode => {
             const textContent = textNode.textContent || '';
             if (textContent.length === 0) return;

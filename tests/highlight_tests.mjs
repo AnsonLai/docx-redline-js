@@ -4,6 +4,7 @@ import assert from 'assert/strict';
 import { applyHighlightToOoxml } from '../engine/formatting-removal.js';
 import {
     directChildByLocalName,
+    elementsByLocalName,
     findRunByText,
     parseXml
 } from './helpers/ooxml-assertions.mjs';
@@ -119,11 +120,32 @@ function testDefaultNamespaceHighlightOutputStaysParseable() {
     assertHighlight(result, 'world', 'yellow');
 }
 
+function testHighlightsEveryRepeatedOccurrenceInOneRun() {
+    const originalOoxml = `
+    <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:r><w:t>target and target and target</w:t></w:r>
+    </w:p>`;
+
+    const result = applyHighlightToOoxml(originalOoxml, 'target', 'yellow');
+    const doc = parseXml(result);
+    const highlightedRuns = elementsByLocalName(doc, 'r').filter(run => {
+        const rPr = directChildByLocalName(run, 'rPr');
+        return !!directChildByLocalName(rPr, 'highlight');
+    });
+
+    assert.equal(highlightedRuns.length, 3, 'Expected every non-overlapping occurrence to be highlighted');
+    assert.deepEqual(
+        highlightedRuns.map(run => elementsByLocalName(run, 't').map(t => t.textContent || '').join('')),
+        ['target', 'target', 'target']
+    );
+}
+
 testApplyHighlightSplitsRun();
 testHighlightPreservesExistingRunProperties();
 testHighlightNormalizesColorCase();
 testHighlightWithRedlines();
 testHighlightNoTargetReturnsEquivalentXml();
 testDefaultNamespaceHighlightOutputStaysParseable();
+testHighlightsEveryRepeatedOccurrenceInOneRun();
 
 console.log('highlight_tests.mjs ... PASS');

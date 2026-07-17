@@ -66,9 +66,18 @@ async function testFormattingSubtraction() {
             </w:r>
         </w:p>
     `;
-    const result = await applyRedlineToOxml(originalOxml, 'Bold Text', 'Bold Text', {
+    const noOpResult = await applyRedlineToOxml(originalOxml, 'Bold Text', 'Bold Text', {
         author: 'Tester',
         generateRedlines: true
+    });
+
+    assert.equal(noOpResult.hasChanges, false, 'Identical plain text should preserve existing formatting by default');
+    assertRunFormat(noOpResult.oxml, 'Bold Text', { bold: true });
+
+    const result = await applyRedlineToOxml(originalOxml, 'Bold Text', 'Bold Text', {
+        author: 'Tester',
+        generateRedlines: true,
+        removeFormatting: true
     });
 
     assert.equal(result.hasChanges, true);

@@ -111,11 +111,17 @@ const removedAll = deleteCommentsByAuthorInOoxml(packageOrDocumentOoxml, { allAu
 ### Apply multiple operations to full document XML
 
 ```js
-import { applyOperationToDocumentXml } from '@ansonlai/docx-redline-js/services/standalone-operation-runner.js';
-const result = await applyOperationToDocumentXml(documentXml, operation, options);
+import {
+  applyOperationToDocumentXml,
+  applyOperationsToDocumentXml
+} from '@ansonlai/docx-redline-js/services/standalone-operation-runner.js';
+
+const result = await applyOperationsToDocumentXml(documentXml, operations, 'Agent', runtimeContext, options);
 ```
 
-Use `result.documentXml` from this API when replacing full `word/document.xml`.
+Use `result.documentXml` from these APIs when replacing full `word/document.xml`.
+For mixed batches, prefer `applyOperationsToDocumentXml(...)`; it applies comments
+before replacements so earlier edits cannot invalidate their anchors.
 
 ### Detect existing tracked changes
 
@@ -195,7 +201,8 @@ orchestration/
 {
   generateRedlines: true,
   author: 'Name',
-  existingRevisions: 'reject-input'
+  existingRevisions: 'reject-input',
+  removeFormatting: false
 }
 ```
 

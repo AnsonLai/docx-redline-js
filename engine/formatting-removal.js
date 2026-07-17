@@ -240,26 +240,45 @@ export function applyHighlightToOoxml(ooxmlString, targetText, color = 'yellow',
     // Find all runs recursively (this already includes runs inside w:ins)
     const allRuns = Array.from(doc.getElementsByTagNameNS(NS_W, 'r'));
 
-    // Process runs 
-    // Note: We need to be careful about mutating the DOM while iterating.
-    // However, since we split one run into multiple, we don't disturb the *order* of subsequent processed runs usually,
-    // but a safe approach is to process updates after identification, or break after first match if we assume 1 match per call.
-    // Given the task usually implies "highlight all occurrences" or "highlight this specific recurrence", 
-    // but the current API is simple "textToFind". We'll assume "highlight all non-overlapping occurrences".
+    const cloneRunWithText = (sourceRun, text, shouldHighlight) => {
+        const clonedRun = sourceRun.cloneNode(true);
+        const textNodes = clonedRun.getElementsByTagNameNS(NS_W, 't');
+        Array.from(textNodes).forEach(removeNode);
 
-    for (let i = 0; i < allRuns.length; i++) {
-        const run = allRuns[i];
+        const newText = createWordElement(doc, 'w:t');
+        newText.setAttribute('xml:space', 'preserve');
+        newText.textContent = text;
+        clonedRun.appendChild(newText);
+
+        if (shouldHighlight) {
+            const rPrElements = clonedRun.getElementsByTagNameNS(NS_W, 'rPr');
+            const existingRPr = rPrElements.length > 0 ? rPrElements[0] : null;
+            const newRPr = injectHighlightIntoRPr(doc, existingRPr, color, options);
+
+            if (existingRPr) {
+                clonedRun.replaceChild(newRPr, existingRPr);
+            } else {
+                clonedRun.insertBefore(newRPr, clonedRun.firstChild);
+            }
+        }
+
+        return clonedRun;
+    };
+
+    for (const run of allRuns) {
         const runText = getRunText(run);
 
         if (!runText) continue;
 
-        const matchIndex = runText.indexOf(targetText);
-        if (matchIndex === -1) continue;
-
-        // --- SPLITTING LOGIC ---
-        // 1. Prefix (if match > 0)
-        // 2. Match (highlighted)
-        // 3. Suffix (if match + len < total len)
+        const matchIndexes = [];
+        let searchOffset = 0;
+        while (searchOffset <= runText.length - targetText.length) {
+            const matchIndex = runText.indexOf(targetText, searchOffset);
+            if (matchIndex === -1) break;
+            matchIndexes.push(matchIndex);
+            searchOffset = matchIndex + targetText.length;
+        }
+        if (matchIndexes.length === 0) continue;
 
         const parent = run.parentNode;
         if (!parent) {
@@ -267,72 +286,26 @@ export function applyHighlightToOoxml(ooxmlString, targetText, color = 'yellow',
             continue;
         }
 
-        const prefixText = runText.substring(0, matchIndex);
-        const matchText = runText.substring(matchIndex, matchIndex + targetText.length);
-        const suffixText = runText.substring(matchIndex + targetText.length);
-
-        // We replace the single 'run' with a fragment of 1-3 runs
         const fragment = doc.createDocumentFragment();
+        let cursor = 0;
 
-        // 1. Create Prefix Run
-        if (prefixText.length > 0) {
-            const prefixRun = run.cloneNode(true);
-            // Update text content
-            const tNodes = prefixRun.getElementsByTagNameNS(NS_W, 't');
-            // Simply remove all t nodes and add one with new text to avoid complexity of multiple t nodes
-            Array.from(tNodes).forEach(removeNode);
-            const newT = createWordElement(doc, 'w:t');
-            // Preserve xml:space="preserve" if it existed, or just add it usually
-            newT.setAttribute('xml:space', 'preserve');
-            newT.textContent = prefixText;
-            prefixRun.appendChild(newT);
-            fragment.appendChild(prefixRun);
-        }
-
-        // 2. Create Match Run (With Highlight)
-        if (matchText.length > 0) {
-            const matchRun = run.cloneNode(true);
-            // Update text content
-            const tNodes = matchRun.getElementsByTagNameNS(NS_W, 't');
-            Array.from(tNodes).forEach(removeNode);
-            const newT = createWordElement(doc, 'w:t');
-            newT.setAttribute('xml:space', 'preserve');
-            newT.textContent = matchText;
-            matchRun.appendChild(newT);
-
-            // Inject Highlight
-            const rPrElements = matchRun.getElementsByTagNameNS(NS_W, 'rPr');
-            const existingRPr = rPrElements.length > 0 ? rPrElements[0] : null;
-            const newRPr = injectHighlightIntoRPr(doc, existingRPr, color, options);
-
-            if (existingRPr) {
-                matchRun.replaceChild(newRPr, existingRPr);
-            } else {
-                matchRun.insertBefore(newRPr, matchRun.firstChild);
+        for (const matchIndex of matchIndexes) {
+            if (matchIndex > cursor) {
+                fragment.appendChild(cloneRunWithText(run, runText.slice(cursor, matchIndex), false));
             }
-            fragment.appendChild(matchRun);
+            fragment.appendChild(cloneRunWithText(
+                run,
+                runText.slice(matchIndex, matchIndex + targetText.length),
+                true
+            ));
+            cursor = matchIndex + targetText.length;
         }
 
-        // 3. Create Suffix Run
-        if (suffixText.length > 0) {
-            const suffixRun = run.cloneNode(true);
-            // Update text content
-            const tNodes = suffixRun.getElementsByTagNameNS(NS_W, 't');
-            Array.from(tNodes).forEach(removeNode);
-            const newT = createWordElement(doc, 'w:t');
-            newT.setAttribute('xml:space', 'preserve');
-            newT.textContent = suffixText;
-            suffixRun.appendChild(newT);
-            fragment.appendChild(suffixRun);
+        if (cursor < runText.length) {
+            fragment.appendChild(cloneRunWithText(run, runText.slice(cursor), false));
         }
 
-        // Replace original run
         parent.replaceChild(fragment, run);
-
-        // IMPORTANT: If we had a suffix that *also* contained the text (e.g. "target target"), 
-        // our simple loop won't catch it because we replaced the node 'run'.
-        // For now, we'll assume one match per run for simplicity, or we would need to recurse on the suffix.
-        // Given the short contexts usually, this is acceptable for v1 fix.
     }
 
     return serializeOoxml(doc);

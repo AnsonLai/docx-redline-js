@@ -16,6 +16,7 @@ import {
     getParagraphText as getParagraphTextFromOxml,
     isMarkdownTableText,
     findContainingWordElement,
+    buildTargetReferenceSnapshot,
     resolveTargetParagraphWithSnapshot as resolveTargetParagraphWithSnapshotShared,
     buildSingleLineListStructuralFallbackPlan,
     executeSingleLineListStructuralFallback,
@@ -1166,6 +1167,50 @@ async function applyCommentToParagraphByExactText(documentXml, targetText, textT
     return { documentXml: serializer.serializeToString(xmlDoc), hasChanges: true, commentsXml: commentResult.commentsXml || null, warnings: commentResult.warnings || [] };
 }
 
+function operationTargetPriority(op) {
+    if (op?.type === 'comment') return 0;
+    return 1;
+}
+
+/**
+ * Returns a stable operation order that resolves anchor-based operations before
+ * text edits can mutate their target text. Comments run first; all other
+ * operation types retain their original relative order.
+ *
+ * @param {Object[]} operations - Structured document operations
+ * @returns {Object[]} A reordered copy; input objects and input array are not mutated
+ */
+export function orderOperationsForStableTargets(operations = []) {
+    return (Array.isArray(operations) ? operations : [])
+        .map((operation, index) => ({ operation, index }))
+        .sort((a, b) => operationTargetPriority(a.operation) - operationTargetPriority(b.operation) || a.index - b.index)
+        .map(entry => entry.operation);
+}
+
+function mergeCommentsXml(existingXml, incomingXml) {
+    if (!incomingXml) return existingXml || null;
+    if (!existingXml) return incomingXml;
+
+    const parser = createParser();
+    const serializer = createSerializer();
+    const existingDoc = parser.parseFromString(existingXml, 'application/xml');
+    const incomingDoc = parser.parseFromString(incomingXml, 'application/xml');
+    const existingRoot = existingDoc.documentElement;
+    const existingIds = new Set(
+        Array.from(existingRoot.getElementsByTagNameNS(NS_W, 'comment'))
+            .map(comment => comment.getAttribute('w:id') || comment.getAttribute('id'))
+            .filter(Boolean)
+    );
+
+    for (const comment of Array.from(incomingDoc.getElementsByTagNameNS(NS_W, 'comment'))) {
+        const id = comment.getAttribute('w:id') || comment.getAttribute('id');
+        if (id && existingIds.has(id)) continue;
+        existingRoot.appendChild(existingDoc.importNode(comment, true));
+        if (id) existingIds.add(id);
+    }
+    return serializer.serializeToString(existingDoc);
+}
+
 /**
  * Applies one structured operation (`redline`, `highlight`, or `comment`) to
  * a full `word/document.xml` payload.
@@ -1216,4 +1261,88 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
         runtimeContext,
         options
     );
+}
+
+/**
+ * Applies a batch of operations using stable target ordering. This prevents a
+ * later comment from missing original text changed by an earlier replacement
+ * in the same batch.
+ *
+ * Results retain each operation's original 1-based index even though execution
+ * is reordered. Numbering payloads are returned as an array so package callers
+ * can merge each one with `ensureNumberingArtifactsInZip`.
+ *
+ * @param {string} documentXml - Full `word/document.xml` payload
+ * @param {Object[]} operations - Structured operations
+ * @param {string} author - Revision/comment author
+ * @param {Object|null} [runtimeContext=null] - Shared turn context
+ * @param {Object} [options={}] - Runner options
+ * @returns {Promise<{
+ *   documentXml: string,
+ *   hasChanges: boolean,
+ *   commentsXml: string|null,
+ *   numberingXmlParts: string[],
+ *   results: Array<{index:number,type:string,status:string,warnings?:string[],error?:Object}>,
+ *   executionOrder: number[]
+ * }>}
+ */
+export async function applyOperationsToDocumentXml(documentXml, operations, author, runtimeContext = null, options = {}) {
+    const sourceOperations = Array.isArray(operations) ? operations : [];
+    const scheduled = sourceOperations
+        .map((operation, index) => ({ operation, index }))
+        .sort((a, b) => operationTargetPriority(a.operation) - operationTargetPriority(b.operation) || a.index - b.index);
+
+    const context = runtimeContext && typeof runtimeContext === 'object' ? runtimeContext : {};
+    if (!(context.targetRefSnapshot instanceof Map)) {
+        const snapshotDoc = createParser().parseFromString(documentXml, 'application/xml');
+        context.targetRefSnapshot = buildTargetReferenceSnapshot(snapshotDoc);
+    }
+
+    let currentDocumentXml = documentXml;
+    let commentsXml = null;
+    let hasChanges = false;
+    const numberingXmlParts = [];
+    const results = [];
+
+    for (const entry of scheduled) {
+        const { operation, index } = entry;
+        try {
+            const result = await applyOperationToDocumentXml(
+                currentDocumentXml,
+                operation,
+                author,
+                context,
+                options
+            );
+            currentDocumentXml = result.documentXml;
+            hasChanges = hasChanges || result.hasChanges === true;
+            commentsXml = mergeCommentsXml(commentsXml, result.commentsXml || null);
+            if (result.numberingXml) numberingXmlParts.push(result.numberingXml);
+            results.push({
+                index: index + 1,
+                type: operation?.type || 'redline',
+                status: result.hasChanges ? 'applied' : (result.status === 'error' ? 'error' : 'no_change'),
+                ...(Array.isArray(result.warnings) && result.warnings.length > 0 ? { warnings: result.warnings } : {}),
+                ...(result.error ? { error: result.error } : {})
+            });
+        } catch (error) {
+            results.push({
+                index: index + 1,
+                type: operation?.type || 'redline',
+                status: 'error',
+                warnings: [error?.message || String(error)]
+            });
+            if (options.continueOnError === false) throw error;
+        }
+    }
+
+    results.sort((a, b) => a.index - b.index);
+    return {
+        documentXml: currentDocumentXml,
+        hasChanges,
+        commentsXml,
+        numberingXmlParts,
+        results,
+        executionOrder: scheduled.map(entry => entry.index + 1)
+    };
 }

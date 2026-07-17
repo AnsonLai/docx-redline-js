@@ -12,6 +12,7 @@ export interface RedlineOptions {
   author?: string;
   targetParagraphId?: string | null;
   existingRevisions?: ExistingRevisionsPolicy;
+  removeFormatting?: boolean;
   [key: string]: unknown;
 }
 

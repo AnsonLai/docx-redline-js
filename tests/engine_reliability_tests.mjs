@@ -4,6 +4,11 @@ import assert from 'assert/strict';
 import { applyRedlineToOxml } from '../engine/oxml-engine.js';
 import { applySurgicalMode } from '../engine/surgical-mode.js';
 import {
+    acceptTrackedChangesInOoxml,
+    ingestWordOoxmlToPlainText,
+    rejectTrackedChangesInOoxml
+} from '../index.js';
+import {
     directChildByLocalName,
     elementsByLocalName,
     formatIsEnabled,
@@ -35,6 +40,10 @@ function assertHeadingFormattingPreserved(xml, headingText) {
     assert.equal(fonts.getAttribute('w:ascii') || fonts.getAttribute('ascii'), 'Aptos');
     assert.equal(elementsByLocalName(rPr, 'rPrChange').length, 0,
         'Preserving existing formatting must not create a formatting revision');
+}
+
+function normalizeText(text) {
+    return String(text || '').replace(/\s+/g, ' ').trim();
 }
 
 async function testSurgicalInsertionSplitsRunAtCharacterOffset() {
@@ -266,6 +275,68 @@ async function testSurgicalModePreservesUnchangedInlineFormatting() {
     assertHeadingFormattingPreserved(result.oxml, 'Incident Management:');
 }
 
+async function testDefaultNamespaceReconstructionRoundTrip() {
+    const xml = `
+        <p xmlns="${NS_W}">
+            <r>
+                <rPr><rFonts ascii="Aptos"/><b/></rPr>
+                <t>Incident Management:</t>
+            </r>
+            <r><t xml:space="preserve"> existing text.</t></r>
+        </p>
+    `;
+    const original = 'Incident Management: existing text.';
+    const modified = 'Incident Management: existing text. Added clause.';
+    const result = await applyRedlineToOxml(xml, original, modified, {
+        author: 'NamespaceTester',
+        generateRedlines: true
+    });
+
+    assert.equal(result.hasChanges, true);
+    assertHeadingFormattingPreserved(result.oxml, 'Incident Management:');
+
+    const accepted = acceptTrackedChangesInOoxml(result.oxml, { author: 'NamespaceTester' });
+    const rejected = rejectTrackedChangesInOoxml(result.oxml, { author: 'NamespaceTester' });
+    assert.equal(normalizeText(ingestWordOoxmlToPlainText(accepted.oxml)), normalizeText(modified));
+    assert.equal(normalizeText(ingestWordOoxmlToPlainText(rejected.oxml)), normalizeText(original));
+}
+
+async function testNumberedParagraphEditPreservesFormattingAndRoundTrip() {
+    const xml = `
+        <w:document xmlns:w="${NS_W}">
+            <w:body>
+                <w:p>
+                    <w:r><w:rPr><w:rFonts w:ascii="Aptos"/><w:b/></w:rPr><w:t>1. Heading:</w:t></w:r>
+                    <w:r><w:t xml:space="preserve"> body</w:t></w:r>
+                </w:p>
+                <w:p>
+                    <w:r><w:rPr><w:rFonts w:ascii="Aptos"/><w:b/></w:rPr><w:t>2. Second:</w:t></w:r>
+                    <w:r><w:t xml:space="preserve"> body</w:t></w:r>
+                </w:p>
+            </w:body>
+        </w:document>
+    `;
+    const original = '1. Heading: body\n2. Second: body';
+    const modified = '1. Heading: body\n2. Second: body added';
+    const result = await applyRedlineToOxml(xml, original, modified, {
+        author: 'ListTester',
+        generateRedlines: true
+    });
+
+    assert.equal(result.hasChanges, true);
+    assertHeadingFormattingPreserved(result.oxml, '1. Heading:');
+    assertHeadingFormattingPreserved(result.oxml, '2. Second:');
+
+    const doc = parseXml(result.oxml);
+    assert.equal(elementsByLocalName(doc, 'del').length, 0,
+        'An insertion-only list edit must not delete and rebuild unchanged list items');
+
+    const accepted = acceptTrackedChangesInOoxml(result.oxml, { author: 'ListTester' });
+    const rejected = rejectTrackedChangesInOoxml(result.oxml, { author: 'ListTester' });
+    assert.equal(normalizeText(ingestWordOoxmlToPlainText(accepted.oxml)), normalizeText(modified));
+    assert.equal(normalizeText(ingestWordOoxmlToPlainText(rejected.oxml)), normalizeText(original));
+}
+
 await testSurgicalInsertionSplitsRunAtCharacterOffset();
 await testSurgicalDeletionPreservesNeighboringRunChildren();
 await testEmptyDefaultNamespaceTableCellCanReceiveInsertion();
@@ -276,5 +347,7 @@ await testTabSurvivesAdjacentEdit();
 await testFootnoteReferenceSurvivesEditAfterReference();
 await testReconstructionPreservesUnchangedInlineFormatting();
 await testSurgicalModePreservesUnchangedInlineFormatting();
+await testDefaultNamespaceReconstructionRoundTrip();
+await testNumberedParagraphEditPreservesFormattingAndRoundTrip();
 
 console.log('engine_reliability_tests.mjs ... PASS');

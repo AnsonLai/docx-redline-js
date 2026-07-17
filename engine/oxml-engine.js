@@ -39,6 +39,7 @@ import { acceptTrackedChangesInOoxml } from '../services/revision-comment-manage
  * @param {string} [options.author='AI'] - Author for track changes
  * @param {string|null} [options.targetParagraphId=null] - Preferred paragraph identity for table wrappers
  * @param {'reject-input'|'accept-all-first'} [options.existingRevisions='reject-input'] - Policy for source OOXML with tracked changes
+ * @param {boolean} [options.removeFormatting=false] - Remove existing core formatting when text is otherwise unchanged
  * @returns {Promise<{ oxml: string, hasChanges: boolean, sourceType?: 'package'|'document'|'fragment', status?: 'ok'|'no-op'|'error', error?: { code: string, message: string } }>}
  */
 export async function applyRedlineToOxml(oxml, originalText, modifiedText, options = {}) {
@@ -189,10 +190,18 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
 
     log(`[OxmlEngine] Text changes: ${hasTextChanges}, New format hints: ${formatHints.length}, Existing format hints: ${existingFormatHints.length}`);
 
-    const needsFormatRemoval = !hasTextChanges && !hasFormatHints && hasExistingFormatting;
+    const needsFormatRemoval = options.removeFormatting === true
+        && !hasTextChanges
+        && !hasFormatHints
+        && hasExistingFormatting;
 
     if (!hasTextChanges && !hasFormatHints && !hasExistingFormatting) {
         log('[OxmlEngine] No text changes, no format hints, and no existing formatting detected');
+        return noChanges();
+    }
+
+    if (!hasTextChanges && !hasFormatHints && hasExistingFormatting && !needsFormatRemoval) {
+        log('[OxmlEngine] No text or explicit formatting changes; preserving existing formatting');
         return noChanges();
     }
 
@@ -307,9 +316,10 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
         const result = await pipeline.execute(oxml, modifiedText, { xmlDoc });
 
         if (result.isValid && result.ooxml && result.ooxml !== oxml) {
-            log(`[OxmlEngine] Wrapping list OOXML with numbering definitions, includeNumbering=${result.includeNumbering}`);
+            const includeNumbering = result.includeNumbering === true;
+            log(`[OxmlEngine] Wrapping list OOXML with numbering definitions, includeNumbering=${includeNumbering}`);
             const wrapped = wrapInDocumentFragment(result.ooxml, {
-                includeNumbering: result.includeNumbering ?? true,
+                includeNumbering,
                 numberingXml: result.numberingXml
             });
             log(`[OxmlEngine] ✅ Wrapped OOXML length: ${wrapped.length}`);
