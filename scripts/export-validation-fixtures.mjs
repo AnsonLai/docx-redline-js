@@ -1,17 +1,23 @@
 import { mkdirSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { join, resolve } from 'path';
 
 import { configureXmlProvider } from '../adapters/xml-adapter.js';
 import { validateRedlineOoxml } from '../core/redline-validation.js';
 import { preprocessMarkdown } from '../pipeline/markdown-processor.js';
 import { applyOperationToDocumentXml } from '../services/standalone-operation-runner.js';
 import { buildMinimalDocx } from './lib/minimal-zip.mjs';
+import { WORD_TASK_CASES } from '../tests/fixtures/word-task-cases.mjs';
 
 const { DOMParser, XMLSerializer } = await import('@xmldom/xmldom');
 configureXmlProvider({ DOMParser, XMLSerializer });
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
-const outputDir = join(process.cwd(), 'tmp', 'validation-docx');
+const outputArgIndex = process.argv.indexOf('--output-dir');
+const requestedOutputDir = outputArgIndex >= 0 ? process.argv[outputArgIndex + 1] : null;
+if (outputArgIndex >= 0 && !requestedOutputDir) throw new Error('--output-dir requires a path');
+const outputDir = requestedOutputDir
+  ? resolve(process.cwd(), requestedOutputDir)
+  : join(process.cwd(), 'tmp', 'validation-docx');
 mkdirSync(outputDir, { recursive: true });
 
 const baseDocument = text => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -22,33 +28,7 @@ const baseDocument = text => `<?xml version="1.0" encoding="UTF-8" standalone="y
   </w:body>
 </w:document>`;
 
-const cases = [
-  {
-    name: 'simple-redline',
-    original: 'The old sentence.',
-    modified: 'The new sentence.'
-  },
-  {
-    name: 'paragraph-insert',
-    original: 'one',
-    modified: 'one\ntwo'
-  },
-  {
-    name: 'format-only',
-    original: 'Make word bold',
-    modified: 'Make **word** bold'
-  },
-  {
-    name: 'whitespace-heavy',
-    original: 'Alpha beta gamma delta.',
-    modified: 'Alpha  beta REPLACED delta.'
-  },
-  {
-    name: 'unicode-replace',
-    original: 'Term 条款 applies to café.',
-    modified: 'Term 合同 applies to café 🚀.'
-  }
-];
+const cases = WORD_TASK_CASES;
 
 let failures = 0;
 
@@ -88,6 +68,9 @@ for (const testCase of cases) {
   // act as independent oracles.
   const expected = {
     name: testCase.name,
+    category: testCase.category,
+    task: testCase.task,
+    textFidelity: testCase.textFidelity || 'exact',
     expectedAcceptedText: preprocessMarkdown(testCase.modified).cleanText,
     expectedRejectedText: testCase.original
   };
@@ -95,6 +78,11 @@ for (const testCase of cases) {
 
   console.log(`wrote ${testCase.name}: .document.xml, .docx, .expected.json`);
 }
+
+writeFileSync(join(outputDir, 'suite.json'), `${JSON.stringify({
+  name: 'English legal and administrative Word differential suite',
+  cases: cases.map(testCase => testCase.name)
+}, null, 2)}\n`, 'utf8');
 
 writeFileSync(join(outputDir, 'README.md'), `# Validation Fixtures
 

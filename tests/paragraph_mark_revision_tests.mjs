@@ -46,7 +46,7 @@ async function testInsertedParagraphMarkRoundTrip() {
 
     const redlinedParagraphs = wordParagraphs(result.oxml);
     assert.equal(redlinedParagraphs.length, 2, 'redlined insertion should contain the inserted paragraph node');
-    assert.ok(paragraphMarkRevision(redlinedParagraphs[1], 'ins'), 'inserted paragraph should carry a paragraph-mark insertion');
+    assert.ok(paragraphMarkRevision(redlinedParagraphs[0], 'ins'), 'inserted boundary should carry a paragraph-mark insertion');
 
     const accepted = acceptTrackedChangesInOoxml(result.oxml, { author: 'Phase3' });
     const acceptedParagraphs = wordParagraphs(accepted.oxml);
@@ -71,7 +71,7 @@ async function testDeletedParagraphMarkRoundTrip() {
 
     const redlinedParagraphs = wordParagraphs(result.oxml);
     assert.equal(redlinedParagraphs.length, 2, 'redlined deletion should retain the deleted paragraph node');
-    assert.ok(paragraphMarkRevision(redlinedParagraphs[1], 'del'), 'deleted paragraph should carry a paragraph-mark deletion');
+    assert.ok(paragraphMarkRevision(redlinedParagraphs[0], 'del'), 'deleted boundary should carry a paragraph-mark deletion');
     assert.ok(elementsByLocalName(redlinedParagraphs[1], 'delText').some(node => node.textContent === 'two'), 'deleted paragraph text should be in w:delText');
 
     const accepted = acceptTrackedChangesInOoxml(result.oxml, { author: 'Phase3' });

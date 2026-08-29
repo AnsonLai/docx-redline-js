@@ -3,7 +3,7 @@
  */
 
 import { computeWordDiffs } from '../pipeline/diff-engine.js';
-import { buildReconstructionMapping } from './reconstruction-mapper.js';
+import { buildReconstructionMapping, findReconstructionParagraphRange } from './reconstruction-mapper.js';
 import { applyReconstructionDiffs } from './reconstruction-writer.js';
 import { withOoxmlSourceType } from '../core/word-xml.js';
 
@@ -20,7 +20,20 @@ import { withOoxmlSourceType } from '../core/word-xml.js';
  * @returns {{ oxml: string, hasChanges: boolean }}
  */
 export function applyReconstructionMode(xmlDoc, originalText, modifiedText, serializer, author, formatHints, generateRedlines = true) {
-    const mapping = buildReconstructionMapping(xmlDoc, modifiedText);
+    const selectedParagraphs = findReconstructionParagraphRange(xmlDoc, originalText);
+    if (selectedParagraphs === null) {
+        return withOoxmlSourceType({
+            oxml: serializer.serializeToString(xmlDoc),
+            hasChanges: false,
+            status: 'error',
+            error: {
+                code: 'PARTIAL_TARGET',
+                message: 'Original text did not identify a complete contiguous paragraph range for reconstruction.'
+            }
+        });
+    }
+
+    const mapping = buildReconstructionMapping(xmlDoc, modifiedText, selectedParagraphs);
     if (mapping.paragraphs.length === 0) {
         return withOoxmlSourceType({ oxml: serializer.serializeToString(xmlDoc), hasChanges: false });
     }

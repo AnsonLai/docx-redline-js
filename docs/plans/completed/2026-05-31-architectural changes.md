@@ -1,5 +1,7 @@
 # Redline Reliability Improvement Plan
 
+**Status:** Completed
+
 This plan hardens the library against the ways Microsoft Word redlines are brittle.
 It is written to be executed phase by phase, in order. Each phase is independently
 shippable and ends with a green `npm test`.

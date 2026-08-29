@@ -131,6 +131,16 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
         }
     }
 
+    const paragraphSet = new Set(paragraphs);
+    const insertionAnchors = new Map();
+    paragraphs.forEach(paragraph => {
+        const container = paragraph.parentNode;
+        if (!container || insertionAnchors.has(container)) return;
+        let anchor = paragraph.nextSibling;
+        while (anchor && paragraphSet.has(anchor)) anchor = anchor.nextSibling;
+        insertionAnchors.set(container, anchor);
+    });
+
     paragraphs.forEach(paragraph => {
         if (paragraph.parentNode) {
             paragraph.parentNode.removeChild(paragraph);
@@ -152,7 +162,12 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
             return;
         }
 
-        target.appendChild(fragment);
+        const anchor = replacement ? null : insertionAnchors.get(container);
+        if (anchor && anchor.parentNode === target) {
+            target.insertBefore(fragment, anchor);
+        } else {
+            target.appendChild(fragment);
+        }
     });
 
     return { oxml: serializer.serializeToString(xmlDoc), hasChanges: true };
@@ -203,9 +218,9 @@ function appendTextToCurrent(
             const info = getParagraphInfo(localBaseIndex + 1);
             const nextParagraph = createNewParagraph(info.pPr);
             if (generateRedlines && type === 'insert') {
-                markParagraphMarkInserted(xmlDoc, nextParagraph, author);
+                markParagraphMarkInserted(xmlDoc, localParagraph, author);
             } else if (generateRedlines && type === 'delete') {
-                markParagraphMarkDeleted(xmlDoc, nextParagraph, author);
+                markParagraphMarkDeleted(xmlDoc, localParagraph, author);
             }
 
             const fragment = containerFragments.get(info.container);

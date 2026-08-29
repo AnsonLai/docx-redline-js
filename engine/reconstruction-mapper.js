@@ -4,11 +4,15 @@
  * Builds paragraph/property/sentinel mappings and indexed lookups used by reconstruction writing.
  */
 
+import { diff_match_patch } from 'diff-match-patch';
+
 import { appendParagraphBoundary } from '../core/paragraph-offset-policy.js';
 import { getDocumentParagraphs } from './format-extraction.js';
 import { getElementsByTagNSOrTag, getFirstElementByTagNSOrTag } from '../core/xml-query.js';
 import { NS_W } from '../core/types.js';
 import { isWordElement } from '../core/word-xml.js';
+
+const DMP = new diff_match_patch();
 
 function localNameOf(node) {
     return String(node?.localName || node?.nodeName || '').replace(/^.*:/, '');
@@ -72,10 +76,10 @@ function indexSentinelsByStart(sentinelMap) {
  *   isParagraphStart: (index:number) => boolean
  * }}
  */
-export function buildReconstructionMapping(xmlDoc, modifiedText) {
+export function buildReconstructionMapping(xmlDoc, modifiedText, selectedParagraphs = null) {
     const rootElement = xmlDoc.documentElement;
     const isBodyRoot = isWordElement(rootElement, 'body') || localNameOf(rootElement) === 'package';
-    const paragraphs = getDocumentParagraphs(xmlDoc);
+    const paragraphs = selectedParagraphs || getDocumentParagraphs(xmlDoc);
 
     let body = getFirstElementByTagNSOrTag(xmlDoc, NS_W, 'body');
     if (!body && isBodyRoot) body = rootElement;
@@ -86,7 +90,8 @@ export function buildReconstructionMapping(xmlDoc, modifiedText) {
     const sentinelMap = [];
     const referenceMap = new Map();
     const tokenToCharMap = new Map();
-    let nextCharCode = 0xe000;
+    const breakChars = new Set();
+    const characterState = { nextCharCode: 0xe000 };
     const uniqueContainers = new Set();
 
     paragraphs.forEach((paragraph, paragraphIndex) => {
@@ -100,11 +105,9 @@ export function buildReconstructionMapping(xmlDoc, modifiedText) {
                 sentinelMap,
                 referenceMap,
                 tokenToCharMap,
-                nextCharCode
+                characterState,
+                breakChars
             );
-            if (referenceMap.size > tokenToCharMap.size) {
-                nextCharCode++;
-            }
         });
 
         originalFullText = appendParagraphBoundary(originalFullText, paragraphIndex, paragraphs.length);
@@ -122,7 +125,12 @@ export function buildReconstructionMapping(xmlDoc, modifiedText) {
         });
     });
 
-    let processedModifiedText = modifiedText;
+    let displayOriginalText = '';
+    for (let index = 0; index < originalFullText.length; index++) {
+        const char = originalFullText[index];
+        displayOriginalText += breakChars.has(char) ? '\n' : char;
+    }
+    let processedModifiedText = preserveStructuralBreaks(displayOriginalText, originalFullText, modifiedText, breakChars);
     tokenToCharMap.forEach((char, tokenString) => {
         const escapedToken = tokenString.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
         processedModifiedText = processedModifiedText.replace(new RegExp(escapedToken, 'g'), char);
@@ -185,6 +193,90 @@ export function buildReconstructionMapping(xmlDoc, modifiedText) {
     };
 }
 
+/**
+ * Finds the contiguous paragraph range named by caller-provided original text.
+ * Reconstruction replaces whole paragraphs, so returning null is safer than
+ * silently rebuilding unrelated paragraphs around a partial match.
+ */
+export function findReconstructionParagraphRange(xmlDoc, originalText) {
+    const paragraphs = getDocumentParagraphs(xmlDoc);
+    if (paragraphs.length === 0) return [];
+
+    const wanted = normalizeComparisonText(originalText);
+    const paragraphTexts = paragraphs.map(extractParagraphVisibleText);
+    if (!wanted) {
+        const emptyIndex = paragraphTexts.findIndex(text => text === '');
+        return emptyIndex >= 0 ? [paragraphs[emptyIndex]] : null;
+    }
+    if (paragraphs.length === 1 && paragraphTexts[0] === '') {
+        return paragraphs;
+    }
+
+    const comparisons = [
+        text => text,
+        text => text.trim(),
+        text => text.replace(/\s+/g, ' ').trim()
+    ];
+    for (const compare of comparisons) {
+        const expected = compare(wanted);
+        for (let start = 0; start < paragraphs.length; start++) {
+            let combined = '';
+            for (let end = start; end < paragraphs.length; end++) {
+                combined += (end === start ? '' : '\n') + paragraphTexts[end];
+                const candidate = compare(combined);
+                if (candidate === expected) return paragraphs.slice(start, end + 1);
+            }
+        }
+    }
+
+    return null;
+}
+
+function normalizeComparisonText(text) {
+    return String(text ?? '').replace(/\r\n?/g, '\n').replace(/\u00a0/g, ' ');
+}
+
+function extractParagraphVisibleText(paragraph) {
+    let text = '';
+    const visit = node => {
+        for (const child of Array.from(node?.childNodes || [])) {
+            if (child.nodeType !== 1) continue;
+            if (isWordElement(child, 'pPr') || isWordElement(child, 'del') || isWordElement(child, 'moveFrom')) continue;
+            if (isWordElement(child, 't')) text += child.textContent || '';
+            else if (isWordElement(child, 'tab')) text += '\t';
+            else if (isWordElement(child, 'br') || isWordElement(child, 'cr')) text += '\n';
+            else if (isWordElement(child, 'noBreakHyphen')) text += '\u2011';
+            else visit(child);
+        }
+    };
+    visit(paragraph);
+    return normalizeComparisonText(text);
+}
+
+function preserveStructuralBreaks(displayOriginalText, internalOriginalText, modifiedText, breakChars) {
+    if (breakChars.size === 0) return modifiedText;
+
+    const diffs = DMP.diff_main(displayOriginalText, modifiedText);
+    let originalOffset = 0;
+    let result = '';
+
+    for (const [op, text] of diffs) {
+        if (op === 0) {
+            for (let index = 0; index < text.length; index++) {
+                const internalChar = internalOriginalText[originalOffset + index];
+                result += breakChars.has(internalChar) ? internalChar : text[index];
+            }
+            originalOffset += text.length;
+        } else if (op === -1) {
+            originalOffset += text.length;
+        } else {
+            result += text;
+        }
+    }
+
+    return result;
+}
+
 function preserveReferencePlaceholders(originalFullText, modifiedText, referenceMap) {
     let result = modifiedText;
 
@@ -211,9 +303,9 @@ function preserveReferencePlaceholders(originalFullText, modifiedText, reference
     return result;
 }
 
-function processChildNode(child, originalFullText, propertyMap, sentinelMap, referenceMap, tokenToCharMap, nextCharCode) {
+function processChildNode(child, originalFullText, propertyMap, sentinelMap, referenceMap, tokenToCharMap, characterState, breakChars) {
     if (isWordElement(child, 'r')) {
-        return processRunForReconstruction(child, originalFullText, propertyMap, sentinelMap, referenceMap, tokenToCharMap, nextCharCode);
+        return processRunForReconstruction(child, originalFullText, propertyMap, sentinelMap, referenceMap, tokenToCharMap, characterState, breakChars);
     }
     if (isWordElement(child, 'hyperlink')) {
         return processHyperlinkForReconstruction(child, originalFullText, propertyMap);
@@ -235,7 +327,7 @@ function processChildNode(child, originalFullText, propertyMap, sentinelMap, ref
     return originalFullText;
 }
 
-function processRunForReconstruction(runElement, originalFullText, propertyMap, sentinelMap, referenceMap, tokenToCharMap, nextCharCode) {
+function processRunForReconstruction(runElement, originalFullText, propertyMap, sentinelMap, referenceMap, tokenToCharMap, characterState, breakChars) {
     let fullText = originalFullText;
     const rPr = getFirstElementByTagNSOrTag(runElement, NS_W, 'rPr');
 
@@ -251,7 +343,10 @@ function processRunForReconstruction(runElement, originalFullText, propertyMap, 
                 fullText += textContent;
             }
         } else if (isWordElement(runChild, 'br') || isWordElement(runChild, 'cr')) {
-            fullText += '\n';
+            const char = String.fromCharCode(characterState.nextCharCode++);
+            referenceMap.set(char, runChild);
+            breakChars.add(char);
+            fullText += char;
             propertyMap.push({ start: fullText.length - 1, end: fullText.length, rPr });
         } else if (isWordElement(runChild, 'tab')) {
             fullText += '\t';
@@ -276,7 +371,7 @@ function processRunForReconstruction(runElement, originalFullText, propertyMap, 
             if (id) {
                 const type = isWordElement(runChild, 'footnoteReference') ? 'FN' : 'EN';
                 const tokenString = `{{__${type}_${id}__}}`;
-                const char = String.fromCharCode(nextCharCode);
+                const char = String.fromCharCode(characterState.nextCharCode++);
                 referenceMap.set(char, runChild);
                 tokenToCharMap.set(tokenString, char);
                 fullText += char;

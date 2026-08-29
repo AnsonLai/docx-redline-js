@@ -43,6 +43,18 @@ async function testNoOpStatus() {
     assert.equal(result.status, 'no-op');
 }
 
+async function testPartialParagraphTargetReportsError() {
+    const source = paragraph('<w:r><w:t>Prefix target suffix</w:t></w:r>');
+    const result = await applyRedlineToOxml(source, 'target', 'changed', {
+        author: 'Hardening'
+    });
+
+    assert.equal(result.hasChanges, false);
+    assert.equal(result.status, 'error');
+    assert.equal(result.error?.code, 'PARTIAL_TARGET');
+    assert.equal(result.oxml, source);
+}
+
 async function testGeneratedRevisionIdsSeedAboveExistingIds() {
     const source = paragraph([
         '<w:ins w:id="5000" w:author="Prior" w:date="2026-01-01T00:00:00Z"><w:r><w:t>Old</w:t></w:r></w:ins>',
@@ -67,6 +79,7 @@ async function testGeneratedRevisionIdsSeedAboveExistingIds() {
 await testMalformedXmlReportsParseError();
 await testMissingTargetReportsTargetNotFound();
 await testNoOpStatus();
+await testPartialParagraphTargetReportsError();
 await testGeneratedRevisionIdsSeedAboveExistingIds();
 
 console.log('PASS: hardening status tests');

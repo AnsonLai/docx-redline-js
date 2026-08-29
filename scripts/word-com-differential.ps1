@@ -15,10 +15,16 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-function Get-NormalizedText([string]$text) {
+function Get-ComparableText([string]$text, [string]$fidelity = 'exact') {
     if ($null -eq $text) { return '' }
-    $text = $text -replace [string][char]7, ' '   # table cell markers
-    return ($text -replace '\s+', ' ').Trim()
+    $text = $text -replace [string][char]7, ''   # table cell markers
+    $text = $text -replace "`r`n", "`n"
+    $text = $text -replace "`r", "`n"
+    $text = $text -replace "`n+$", ''           # Word's terminal paragraph mark
+    if ($fidelity -eq 'normalized') {
+        return ($text -replace '\s+', ' ').Trim()
+    }
+    return $text
 }
 
 $resolvedDir = Resolve-Path -LiteralPath $FixturesDir -ErrorAction SilentlyContinue
@@ -27,7 +33,16 @@ if (-not $resolvedDir) {
     exit 1
 }
 
-$expectations = Get-ChildItem -LiteralPath $resolvedDir -Filter '*.expected.json' | Sort-Object Name
+$suitePath = Join-Path $resolvedDir 'suite.json'
+if (Test-Path -LiteralPath $suitePath) {
+    $suite = Get-Content -LiteralPath $suitePath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $expectations = @($suite.cases | ForEach-Object {
+        Get-Item -LiteralPath (Join-Path $resolvedDir "$_.expected.json") -ErrorAction Stop
+    })
+}
+else {
+    $expectations = @(Get-ChildItem -LiteralPath $resolvedDir -Filter '*.expected.json' | Sort-Object Name)
+}
 if ($expectations.Count -eq 0) {
     Write-Error "No *.expected.json fixtures in '$resolvedDir'. Run: node scripts/export-validation-fixtures.mjs"
     exit 1
@@ -60,8 +75,9 @@ try {
         # -Encoding UTF8 is required: Windows PowerShell 5.1 otherwise reads
         # BOM-less UTF-8 sidecars as ANSI and garbles non-ASCII expectations.
         $expected = Get-Content -LiteralPath $expectationFile.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
-        $expectedAccepted = Get-NormalizedText $expected.expectedAcceptedText
-        $expectedRejected = Get-NormalizedText $expected.expectedRejectedText
+        $fidelity = if ($expected.textFidelity) { [string]$expected.textFidelity } else { 'exact' }
+        $expectedAccepted = Get-ComparableText $expected.expectedAcceptedText $fidelity
+        $expectedRejected = Get-ComparableText $expected.expectedRejectedText $fidelity
         $caseFailed = $false
         $document = $null
 
@@ -75,7 +91,7 @@ try {
             }
             else {
                 $document.AcceptAllRevisions()
-                $acceptedText = Get-NormalizedText $document.Content.Text
+                $acceptedText = Get-ComparableText $document.Content.Text $fidelity
                 if ($acceptedText -ne $expectedAccepted) {
                     Write-Output "FAIL ${name}: accept-all mismatch"
                     Write-Output "  expected: $expectedAccepted"
@@ -97,7 +113,7 @@ try {
             try {
                 $document = Open-FixtureDocument $word ([string]$docxPath)
                 $document.RejectAllRevisions()
-                $rejectedText = Get-NormalizedText $document.Content.Text
+                $rejectedText = Get-ComparableText $document.Content.Text $fidelity
                 if ($rejectedText -ne $expectedRejected) {
                     Write-Output "FAIL ${name}: reject-all mismatch"
                     Write-Output "  expected: $expectedRejected"

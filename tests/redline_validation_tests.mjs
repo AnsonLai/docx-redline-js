@@ -56,6 +56,31 @@ function issueCodes(result) {
     assert(issueCodes(result).includes('NESTED_REVISION'));
 }
 
+// --- Nested paragraphs are schema-invalid ---
+{
+    const result = validateRedlineOoxml(paragraph(
+        '<w:r><w:t>outer</w:t></w:r><w:p><w:r><w:t>inner</w:t></w:r></w:p>'
+    ));
+    assert.equal(result.valid, false);
+    assert(issueCodes(result).includes('NESTED_PARAGRAPH'));
+}
+
+// --- Body-level section properties must be last and unique ---
+{
+    const result = validateRedlineOoxml(
+        `<w:document xmlns:w="${NS_W}"><w:body><w:sectPr/>${paragraph('<w:r><w:t>late</w:t></w:r>')}</w:body></w:document>`
+    );
+    assert.equal(result.valid, false);
+    assert(issueCodes(result).includes('SECTPR_NOT_LAST'));
+}
+{
+    const result = validateRedlineOoxml(
+        `<w:document xmlns:w="${NS_W}"><w:body><w:sectPr/><w:sectPr/></w:body></w:document>`
+    );
+    assert.equal(result.valid, false);
+    assert(issueCodes(result).includes('MULTIPLE_BODY_SECTPR'));
+}
+
 // --- w:t inside w:del ---
 {
     const result = validateRedlineOoxml(paragraph(

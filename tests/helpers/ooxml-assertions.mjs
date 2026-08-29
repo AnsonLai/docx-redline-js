@@ -178,3 +178,149 @@ export function assertSpacePreserved(xml) {
         assert.equal(xmlSpace(node), 'preserve', `Expected ${node.nodeName} with boundary whitespace to preserve space`);
     }
 }
+
+/**
+ * Asserts no w:p is nested inside another w:p.
+ *
+ * CT_P has no paragraph child in WordprocessingML, so nested paragraphs are
+ * schema-invalid and Word treats the file as corrupt. None of the text-level
+ * assertions can see this, because the visible characters can still come out
+ * in the right order.
+ */
+export function assertNoNestedParagraphs(xml) {
+    const doc = parseXmlFragment(xml);
+
+    for (const paragraph of elementsByLocalName(doc, 'p')) {
+        const nested = Array.from(paragraph.getElementsByTagName('*'))
+            .filter(el => el !== paragraph && localName(el) === 'p');
+        assert.equal(nested.length, 0, 'Expected <w:p> not to contain a nested <w:p>');
+    }
+}
+
+/**
+ * Asserts w:sectPr is the last child of w:body when present.
+ *
+ * CT_Body puts section properties last. services/standalone-docx-plumbing.js
+ * already rejects a misplaced sectPr ("Validation failed: w:sectPr not last"),
+ * so engine output that violates it fails the package's own plumbing later.
+ */
+export function assertSectPrLast(xml) {
+    const doc = parseXmlFragment(xml);
+    const body = elementsByLocalName(doc, 'body')[0];
+    if (!body) return;
+
+    const children = Array.from(body.childNodes).filter(node => node.nodeType === 1);
+    const index = children.findIndex(child => localName(child) === 'sectPr');
+    if (index === -1) return;
+
+    assert.equal(
+        index,
+        children.length - 1,
+        `Expected <w:sectPr> to be the last child of <w:body>, found it at index ${index} of ${children.length}`
+    );
+}
+
+/*
+ * Lossless visible-text extraction for verification.
+ *
+ * ingestWordOoxmlToPlainText is deliberately lossy: normalizeInlineWhitespace in
+ * pipeline/ingestion-export.js collapses runs of spaces/tabs and trims each line
+ * so the output reads well as plain text. That is correct for a display reader
+ * and wrong for a test oracle -- a redline that drops a w:tab, loses an
+ * xml:space="preserve", or doubles a space at a splice point would compare equal.
+ *
+ * These helpers walk the DOM independently of the production reader so a bug in
+ * ingestion cannot mask itself.
+ */
+
+// Container properties carry no visible text; w:instrText is field plumbing.
+const NON_VISIBLE_CONTAINERS = new Set([
+    'pPr', 'rPr', 'sectPr', 'tblPr', 'trPr', 'tcPr', 'tblGrid', 'numPr', 'instrText'
+]);
+
+// Content inside these is invisible in Word's accepted view.
+const ACCEPTED_VIEW_HIDDEN = new Set(['del', 'moveFrom']);
+
+function collectExactText(node, out) {
+    for (const child of Array.from(node?.childNodes || [])) {
+        if (child.nodeType !== 1) continue;
+
+        const name = localName(child);
+        if (ACCEPTED_VIEW_HIDDEN.has(name) || NON_VISIBLE_CONTAINERS.has(name)) continue;
+        // A nested w:p is malformed OOXML, but extraction must stay well-defined:
+        // every paragraph is enumerated separately, so never recurse into one.
+        if (name === 'p') continue;
+
+        if (name === 't') {
+            out.push(child.textContent || '');
+        } else if (name === 'tab') {
+            out.push('\t');
+        } else if (name === 'br' || name === 'cr') {
+            out.push('\n');
+        } else if (name === 'noBreakHyphen') {
+            out.push('‑');
+        } else if (name === 'delText' || name === 'softHyphen') {
+            // delText only appears inside w:del (already skipped); softHyphen is invisible.
+            continue;
+        } else {
+            collectExactText(child, out);
+        }
+    }
+}
+
+/** True when the paragraph's own mark is marked deleted (w:pPr/w:rPr/w:del). */
+function paragraphMarkIsDeleted(paragraph) {
+    const pPr = directChildByLocalName(paragraph, 'pPr');
+    const rPr = pPr && directChildByLocalName(pPr, 'rPr');
+    return Boolean(rPr && directChildByLocalName(rPr, 'del'));
+}
+
+/**
+ * Extracts the exact visible text of an OOXML fragment with NO whitespace
+ * normalization, modelling Word's *accepted* view: w:del and w:moveFrom content
+ * is invisible, w:ins and w:moveTo content is visible, and a deleted paragraph
+ * mark merges its paragraph into the next one.
+ *
+ * Mapping: w:t -> textContent, w:tab -> '\t', w:br|w:cr -> '\n',
+ * w:noBreakHyphen -> U+2011. Paragraph boundaries emit '\n'.
+ *
+ * @param {string} xml - OOXML fragment, document, or package payload
+ * @returns {string}
+ */
+export function extractExactVisibleText(xml) {
+    const doc = parseXmlFragment(xml);
+    const paragraphs = elementsByLocalName(doc, 'p');
+
+    if (paragraphs.length === 0) {
+        const out = [];
+        collectExactText(doc, out);
+        return out.join('');
+    }
+
+    let text = '';
+    paragraphs.forEach((paragraph, index) => {
+        const out = [];
+        collectExactText(paragraph, out);
+        text += out.join('');
+
+        const isLast = index === paragraphs.length - 1;
+        if (!isLast && !paragraphMarkIsDeleted(paragraph)) {
+            text += '\n';
+        }
+    });
+    return text;
+}
+
+/**
+ * Normalizes only paragraph separators, leaving spaces and tabs byte-exact.
+ *
+ * Markdown treats a blank line as a paragraph separator while OOXML represents
+ * one paragraph break as one boundary, so `\n\n` and `\n` are the same document.
+ * Every other whitespace difference is a real regression and stays visible.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+export function normalizeParagraphBreaks(text) {
+    return String(text ?? '').replace(/\r\n?/g, '\n').replace(/\n{2,}/g, '\n');
+}

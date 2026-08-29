@@ -85,6 +85,28 @@ export function validateRedlineOoxml(oxml) {
     const delElements = elementsByLocalName(doc, 'del');
     const revisions = insElements.concat(delElements);
 
+    // Paragraphs cannot contain other paragraphs (CT_P has no w:p child).
+    for (const paragraph of elementsByLocalName(doc, 'p')) {
+        const nested = Array.from(paragraph.getElementsByTagName('*'))
+            .find(el => el !== paragraph && localNameOf(el) === 'p');
+        if (nested) {
+            addIssue('NESTED_PARAGRAPH', 'error', `<${paragraph.nodeName}> contains nested <${nested.nodeName}>.`);
+        }
+    }
+
+    // Body-level section properties must be the final body element.
+    for (const body of elementsByLocalName(doc, 'body')) {
+        const children = Array.from(body.childNodes || []).filter(child => child.nodeType === 1);
+        const sectPrIndexes = children
+            .map((child, index) => localNameOf(child) === 'sectPr' ? index : -1)
+            .filter(index => index >= 0);
+        if (sectPrIndexes.length > 1) {
+            addIssue('MULTIPLE_BODY_SECTPR', 'error', '<w:body> contains multiple direct <w:sectPr> elements.');
+        } else if (sectPrIndexes.length === 1 && sectPrIndexes[0] !== children.length - 1) {
+            addIssue('SECTPR_NOT_LAST', 'error', '<w:sectPr> is not the last element child of <w:body>.');
+        }
+    }
+
     // No w:ins/w:del nested inside another w:ins/w:del.
     for (const revision of revisions) {
         const nested = Array.from(revision.getElementsByTagName('*'))

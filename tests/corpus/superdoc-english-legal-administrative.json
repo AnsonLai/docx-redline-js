@@ -1,0 +1,77 @@
+{
+  "name": "SuperDoc docx-corpus pinned English legal/administrative references",
+  "source": "https://docxcorp.us/",
+  "api": "https://api.docxcorp.us/",
+  "datasetLicense": "ODC-By 1.0",
+  "licenseUrl": "https://opendatacommons.org/licenses/by/1-0/",
+  "attribution": "docx-corpus, built by SuperDoc (https://superdoc.dev/)",
+  "selectedAt": "2026-08-29",
+  "selectionPolicy": {
+    "language": "en",
+    "types": ["legal", "administrative"],
+    "minimumClassificationConfidence": 0.9,
+    "note": "Only these content-addressed documents may be fetched by the initial corpus tooling. No bulk or floating manifest is used."
+  },
+  "documents": [
+    {
+      "id": "0f582727deba41aebc5643adda1ac39970360ef3aa2ba6a18e85203b092ac534",
+      "filename": "1668784045_9152.docx",
+      "type": "legal",
+      "topic": "government",
+      "language": "en",
+      "wordCount": 639,
+      "confidence": 0.98732984,
+      "downloadUrl": "https://docxcorp.us/documents/0f582727deba41aebc5643adda1ac39970360ef3aa2ba6a18e85203b092ac534.docx"
+    },
+    {
+      "id": "8b77c5c08f8f60da23cb76005854e38aac104be29c8eb1f29c620db07fe2addb",
+      "filename": "Public-Notices-Ordinances-Publication-4-2-24.docx.aspx",
+      "type": "legal",
+      "topic": "government",
+      "language": "en",
+      "wordCount": 151,
+      "confidence": 0.9870733,
+      "downloadUrl": "https://docxcorp.us/documents/8b77c5c08f8f60da23cb76005854e38aac104be29c8eb1f29c620db07fe2addb.docx"
+    },
+    {
+      "id": "82325c95040adfb3dd9fc013594756da689547def47ab120b35f6be132084693",
+      "filename": "file",
+      "type": "legal",
+      "topic": "government",
+      "language": "en",
+      "wordCount": 8238,
+      "confidence": 0.987069,
+      "downloadUrl": "https://docxcorp.us/documents/82325c95040adfb3dd9fc013594756da689547def47ab120b35f6be132084693.docx"
+    },
+    {
+      "id": "5078747afec134839ca5009f296730a89e0c877e9d00085186a7c6c307ce784c",
+      "filename": "COBCalendar_Agenda.aspx",
+      "type": "administrative",
+      "topic": "government",
+      "language": "en",
+      "wordCount": 91,
+      "confidence": 0.9880344,
+      "downloadUrl": "https://docxcorp.us/documents/5078747afec134839ca5009f296730a89e0c877e9d00085186a7c6c307ce784c.docx"
+    },
+    {
+      "id": "bd56a6ff3e08992fc3331cfca61515507c00cf96f38e771fbfaa4c487af1039d",
+      "filename": "Minutes",
+      "type": "administrative",
+      "topic": "government",
+      "language": "en",
+      "wordCount": 605,
+      "confidence": 0.98802096,
+      "downloadUrl": "https://docxcorp.us/documents/bd56a6ff3e08992fc3331cfca61515507c00cf96f38e771fbfaa4c487af1039d.docx"
+    },
+    {
+      "id": "8b0f4f46292113aeb389445b035d62621f28a8075fe26b46d339a5658801d087",
+      "filename": "Agenda_-_7.14.25.docx",
+      "type": "administrative",
+      "topic": "government",
+      "language": "en",
+      "wordCount": 108,
+      "confidence": 0.98797745,
+      "downloadUrl": "https://docxcorp.us/documents/8b0f4f46292113aeb389445b035d62621f28a8075fe26b46d339a5658801d087.docx"
+    }
+  ]
+}
