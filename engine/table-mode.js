@@ -2,7 +2,12 @@
  * Table-specific reconciliation and transformation flows.
  */
 
-import { NS_W, createRevisionMetadata } from '../core/types.js';
+import {
+    NS_W,
+    createRevisionMetadata,
+    getRevisionIdAllocatorForDocument,
+    setRevisionIdAllocatorForDocument
+} from '../core/types.js';
 import {
     getElementsByTagNS,
     getElementsByTagNSOrTag,
@@ -50,7 +55,11 @@ export function applyTableReconciliation(xmlDoc, modifiedText, serializer, parse
         return noChanges(serializer, xmlDoc);
     }
 
-    const options = { generateRedlines, author };
+    const options = {
+        generateRedlines,
+        author,
+        revisionIdAllocator: getRevisionIdAllocatorForDocument(xmlDoc)
+    };
     const reconciledOxml = serializeVirtualGridToOoxml(oldGrid, operations, options);
     const wrappedOxml = `<root xmlns:w="${NS_W}">${reconciledOxml}</root>`;
     const reconciledDoc = parseOoxmlSafe(wrappedOxml, 'application/xml').doc;
@@ -86,13 +95,14 @@ export function applyTableReconciliation(xmlDoc, modifiedText, serializer, parse
  * @returns {{ oxml: string, hasChanges: boolean }}
  */
 export function applyTextToTableTransformation(xmlDoc, modifiedText, serializer, parser, author, generateRedlines) {
+    const revisionIdAllocator = getRevisionIdAllocatorForDocument(xmlDoc);
     const tableData = parseTable(modifiedText);
     if (!tableData || (tableData.rows.length === 0 && tableData.headers.length === 0)) {
         log('[OxmlEngine] Failed to parse table data from Markdown');
         return noChanges(serializer, xmlDoc);
     }
 
-    const tableOoxml = generateTableOoxml(tableData, { generateRedlines, author });
+    const tableOoxml = generateTableOoxml(tableData, { generateRedlines, author, revisionIdAllocator });
     const tableDoc = parseOoxmlSafe(`<root xmlns:w="${NS_W}">${tableOoxml}</root>`, 'application/xml').doc;
     if (!tableDoc) return noChanges(serializer, xmlDoc);
 
@@ -131,6 +141,7 @@ export function applyTextToTableTransformation(xmlDoc, modifiedText, serializer,
         paragraphs.forEach(p => wrappedBody.appendChild(wrappedDoc.importNode(p, true)));
 
         workingDoc = wrappedDoc;
+        setRevisionIdAllocatorForDocument(workingDoc, revisionIdAllocator);
         paragraphs = getElementsByTagNS(workingDoc, NS_W, 'p');
         firstParagraph = paragraphs[0];
         parent = firstParagraph.parentNode;
@@ -154,7 +165,7 @@ export function applyTextToTableTransformation(xmlDoc, modifiedText, serializer,
                 });
 
                 const del = createWordElement(workingDoc, 'w:del');
-                const metadata = createRevisionMetadata(author);
+                const metadata = createRevisionMetadata(author, workingDoc);
                 del.setAttribute('w:id', String(metadata.id));
                 del.setAttribute('w:author', metadata.author);
                 del.setAttribute('w:date', metadata.date);

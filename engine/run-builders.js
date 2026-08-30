@@ -21,7 +21,7 @@ import { createWordElement } from '../core/word-xml.js';
  */
 export function createTrackChange(xmlDoc, type, run, author) {
     const wrapper = createWordElement(xmlDoc, type === 'ins' ? 'w:ins' : 'w:del');
-    const metadata = createRevisionMetadata(author);
+    const metadata = createRevisionMetadata(author, xmlDoc);
     wrapper.setAttribute('w:id', String(metadata.id));
     wrapper.setAttribute('w:author', metadata.author);
     wrapper.setAttribute('w:date', metadata.date);
@@ -70,7 +70,7 @@ function markParagraphMark(xmlDoc, paragraph, author, type) {
     }
 
     const marker = createWordElement(xmlDoc, type === 'ins' ? 'w:ins' : 'w:del');
-    const metadata = createRevisionMetadata(author);
+    const metadata = createRevisionMetadata(author, xmlDoc);
     marker.setAttribute('w:id', String(metadata.id));
     marker.setAttribute('w:author', metadata.author);
     marker.setAttribute('w:date', metadata.date);
@@ -311,7 +311,7 @@ export function injectFormattingToRPr(xmlDoc, baseRPr, format, author, generateR
  */
 export function snapshotAndAttachRPrChange(xmlDoc, rPr, author, dateStr, sourceNode) {
     const rPrChange = createWordElement(xmlDoc, 'w:rPrChange');
-    const metadata = createRevisionMetadata(author);
+    const metadata = createRevisionMetadata(author, xmlDoc);
     rPrChange.setAttribute('w:id', String(metadata.id));
     rPrChange.setAttribute('w:author', metadata.author);
     rPrChange.setAttribute('w:date', dateStr || metadata.date);

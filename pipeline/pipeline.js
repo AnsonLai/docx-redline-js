@@ -54,6 +54,7 @@ export class ReconciliationPipeline {
         this.validationMode = options.validationMode ?? 'auto';
         this.numberingService = options.numberingService || new NumberingService();
         this.font = options.font || null;
+        this.revisionIdAllocator = options.revisionIdAllocator || null;
         this.platform = options.platform ?? getPlatform();
         this.isWebPlatform = options.isWebPlatform ?? isWebPlatform(this.platform);
         this.enableEventLoopYielding = options.enableEventLoopYielding ?? this.isWebPlatform;
@@ -174,7 +175,8 @@ export class ReconciliationPipeline {
             // Stage 6: Serialize to OOXML
             const resultOoxml = serializeToOoxml(patchedModel, pPr, formatHints, {
                 author: this.author,
-                generateRedlines: this.generateRedlines
+                generateRedlines: this.generateRedlines,
+                revisionIdAllocator: this.revisionIdAllocator
             });
 
             // Stage 7: Basic validation
@@ -303,6 +305,7 @@ export class ReconciliationPipeline {
             generateRedlines: this.generateRedlines,
             author: this.author,
             font: this.font,
+            revisionIdAllocator: this.revisionIdAllocator,
             numberingService: this.numberingService
         });
     }
@@ -336,7 +339,8 @@ export class ReconciliationPipeline {
 
         const tableOoxml = generateTableOoxml(tableData, {
             generateRedlines: this.generateRedlines,
-            author: this.author
+            author: this.author,
+            revisionIdAllocator: this.revisionIdAllocator
         });
 
         return {

@@ -2,7 +2,7 @@ import assert from 'assert/strict';
 
 import { WORD_TASK_CASES } from './fixtures/word-task-cases.mjs';
 
-assert.ok(WORD_TASK_CASES.length >= 19, 'Word task catalogue should cover at least nineteen tasks');
+assert.ok(WORD_TASK_CASES.length >= 25, 'Word task catalogue should cover at least twenty-five tasks');
 
 const names = new Set();
 const categories = new Set();
@@ -33,6 +33,13 @@ for (const testCase of WORD_TASK_CASES) {
             assert.equal(typeof operation.modified, 'string');
             assert.ok(/^[\x00-\x7F]*$/.test(operation.target));
             assert.ok(/^[\x00-\x7F]*$/.test(operation.modified));
+        }
+    }
+    if (testCase.requiredElements) {
+        assert.equal(typeof testCase.sourceDocumentXml, 'string');
+        for (const [localName, minimumCount] of Object.entries(testCase.requiredElements)) {
+            assert.match(localName, /^[A-Za-z][A-Za-z0-9]*$/);
+            assert.ok(Number.isInteger(minimumCount) && minimumCount > 0);
         }
     }
     for (const [field, value] of Object.entries({

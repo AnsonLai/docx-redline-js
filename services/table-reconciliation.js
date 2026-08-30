@@ -19,8 +19,8 @@ import { preprocessMarkdown } from '../pipeline/markdown-processor.js';
  * @returns {string} Complete w:tbl OOXML
  */
 export function generateTableOoxml(tableData, options = {}) {
-    const { generateRedlines = false, author = 'AI' } = options;
-    const tableInsertMeta = generateRedlines ? createRevisionMetadata(author) : null;
+    const { generateRedlines = false, author = 'AI', revisionIdAllocator = null } = options;
+    const tableInsertMeta = generateRedlines ? createRevisionMetadata(author, revisionIdAllocator) : null;
 
     // Determine number of columns
     const numCols = tableData.headers?.length || (tableData.rows?.[0]?.length || 1);
@@ -68,7 +68,11 @@ export function generateTableOoxml(tableData, options = {}) {
                 endOffset: cleanText.length
             }];
 
-            const runsOoxml = serializeToOoxml(runModel, null, formatHints, { author, generateRedlines });
+            const runsOoxml = serializeToOoxml(runModel, null, formatHints, {
+                author,
+                generateRedlines,
+                revisionIdAllocator
+            });
 
             // Cell properties
             const tcPr = '<w:tcPr><w:tcW w:w="0" w:type="auto"/></w:tcPr>';
@@ -164,7 +168,7 @@ export function diffTablesWithVirtualGrid(oldGrid, newTableData) {
  * @returns {string} Reconciled w:tbl OOXML
  */
 export function serializeVirtualGridToOoxml(grid, operations, options) {
-    const { generateRedlines, author } = options;
+    const { generateRedlines, author, revisionIdAllocator = null } = options;
     const opIndex = buildTableOperationIndex(operations);
 
     let rowsXml = '';
@@ -206,7 +210,7 @@ export function serializeVirtualGridToOoxml(grid, operations, options) {
         let trPr = grid.trPrList[row] || '<w:trPr/>';
 
         if (rowDeleteOp && generateRedlines) {
-            const metadata = createRevisionMetadata(author);
+            const metadata = createRevisionMetadata(author, revisionIdAllocator);
             const delMark = `<w:del w:id="${metadata.id}" w:author="${escapeXml(metadata.author)}" w:date="${metadata.date}"/>`;
             if (trPr.includes('</w:trPr>')) {
                 trPr = trPr.replace('</w:trPr>', `${delMark}</w:trPr>`);
@@ -222,7 +226,7 @@ export function serializeVirtualGridToOoxml(grid, operations, options) {
     const insertOps = opIndex.rowInsertOperations;
     for (const op of insertOps) {
         let cellsXml = '';
-        const rowInsertMeta = generateRedlines ? createRevisionMetadata(author) : null;
+        const rowInsertMeta = generateRedlines ? createRevisionMetadata(author, revisionIdAllocator) : null;
 
         for (const cellText of op.cells) {
             const { cleanText, formatHints } = preprocessMarkdown(cellText);
@@ -236,7 +240,11 @@ export function serializeVirtualGridToOoxml(grid, operations, options) {
                 endOffset: cleanText.length
             }];
 
-            const runsOoxml = serializeToOoxml(runModel, null, formatHints, { author, generateRedlines });
+            const runsOoxml = serializeToOoxml(runModel, null, formatHints, {
+                author,
+                generateRedlines,
+                revisionIdAllocator
+            });
             // serializeToOoxml already returns one or more w:p blocks.
             cellsXml += `<w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/></w:tcPr>${runsOoxml}</w:tc>`;
         }
@@ -293,7 +301,7 @@ function buildTableOperationIndex(operations) {
 }
 
 function reconcileCellContent(cell, newText, options) {
-    const { generateRedlines, author } = options;
+    const { generateRedlines, author, revisionIdAllocator = null } = options;
     const { cleanText, formatHints } = preprocessMarkdown(newText);
 
     // For now, satisfy with single block or join blocks
@@ -310,7 +318,11 @@ function reconcileCellContent(cell, newText, options) {
         formatHints
     });
 
-    const runsOoxml = serializeToOoxml(patchedModel, baseBlock.pPr, formatHints, { author, generateRedlines });
+    const runsOoxml = serializeToOoxml(patchedModel, baseBlock.pPr, formatHints, {
+        author,
+        generateRedlines,
+        revisionIdAllocator
+    });
     return runsOoxml;
 }
 

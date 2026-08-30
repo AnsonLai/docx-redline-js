@@ -32,6 +32,7 @@ export async function executeListGeneration(options) {
         generateRedlines = true,
         author = 'AI',
         font = null,
+        revisionIdAllocator = null,
         numberingService
     } = options;
 
@@ -74,11 +75,16 @@ export async function executeListGeneration(options) {
                     results.push(serializeToOoxml(deletionRuns, null, [], {
                         author,
                         generateRedlines,
-                        font
+                        font,
+                        revisionIdAllocator
                     }));
                 }
 
-                results.push(generateTableOoxml(tableData, { generateRedlines, author }));
+                results.push(generateTableOoxml(tableData, {
+                    generateRedlines,
+                    author,
+                    revisionIdAllocator
+                }));
                 i = tableBlock.endIndex;
                 continue;
             }
@@ -94,6 +100,7 @@ export async function executeListGeneration(options) {
             generateRedlines,
             author,
             font,
+            revisionIdAllocator,
             deletionRuns
         );
         results.push(entry.ooxml);
@@ -228,6 +235,7 @@ function buildListEntry(
     generateRedlines,
     author,
     font,
+    revisionIdAllocator,
     deletionRuns
 ) {
     let pPrXml = '';
@@ -274,7 +282,8 @@ function buildListEntry(
         ooxml: serializeToOoxml(runModel, pPrXml, formatHints, {
             author,
             generateRedlines,
-            font
+            font,
+            revisionIdAllocator
         })
     };
 }

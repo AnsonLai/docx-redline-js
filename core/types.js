@@ -157,15 +157,116 @@ export function escapeXml(str) {
         .replace(/'/g, '&apos;');
 }
 
-// Global revision ID counter for track changes
-let revisionIdCounter = 1000;
+const DEFAULT_REVISION_ID_START = 1000;
+const MAX_PRACTICAL_REVISION_ID = 2147483647;
+const REVISION_ID_SAFETY_MARGIN = 10000;
+const REVISION_ELEMENT_NAMES = new Set([
+    'ins',
+    'del',
+    'moveFrom',
+    'moveTo',
+    'rPrChange',
+    'pPrChange',
+    'cellIns',
+    'cellDel',
+    'comment'
+]);
+const revisionAllocatorByDocument = new WeakMap();
+
+function isRevisionIdElement(element) {
+    if (!element || element.nodeType !== 1) return false;
+    const localName = String(element.localName || element.nodeName || '').replace(/^.*:/, '');
+    if (!REVISION_ELEMENT_NAMES.has(localName)) return false;
+    return !element.namespaceURI || element.namespaceURI === NS_W || String(element.nodeName || '').startsWith('w:');
+}
+
+function readWordId(element) {
+    const raw = element?.getAttributeNS?.(NS_W, 'id')
+        || element?.getAttribute?.('w:id')
+        || element?.getAttribute?.('id');
+    const parsed = Number.parseInt(String(raw ?? ''), 10);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+/**
+ * Document-scoped allocator for Word revision IDs.
+ */
+export class RevisionIdAllocator {
+    constructor(startValue = DEFAULT_REVISION_ID_START) {
+        this.startValue = Number.isInteger(startValue) && startValue >= 0
+            ? startValue
+            : DEFAULT_REVISION_ID_START;
+        this.nextId = this.startValue;
+        this.occupiedIds = new Set();
+    }
+
+    seed(xmlDoc) {
+        let maxFound = -1;
+        const elements = Array.from(xmlDoc?.getElementsByTagName?.('*') || []);
+        if (xmlDoc?.nodeType === 1) elements.unshift(xmlDoc);
+
+        for (const element of elements) {
+            if (!isRevisionIdElement(element)) continue;
+            const id = readWordId(element);
+            if (id == null) continue;
+            this.occupiedIds.add(id);
+            maxFound = Math.max(maxFound, id);
+        }
+
+        const highRiskBoundary = MAX_PRACTICAL_REVISION_ID - REVISION_ID_SAFETY_MARGIN;
+        this.nextId = maxFound >= highRiskBoundary
+            ? this.startValue
+            : Math.max(this.nextId, maxFound + 1);
+        this.advanceToAvailableId();
+        return this.nextId;
+    }
+
+    advanceToAvailableId() {
+        const highRiskBoundary = MAX_PRACTICAL_REVISION_ID - REVISION_ID_SAFETY_MARGIN;
+        if (this.nextId >= highRiskBoundary) this.nextId = this.startValue;
+        while (this.occupiedIds.has(this.nextId)) {
+            this.nextId += 1;
+            if (this.nextId >= highRiskBoundary) this.nextId = this.startValue;
+        }
+    }
+
+    next() {
+        this.advanceToAvailableId();
+        const id = this.nextId;
+        this.occupiedIds.add(id);
+        this.nextId += 1;
+        return id;
+    }
+}
+
+let defaultRevisionIdAllocator = new RevisionIdAllocator();
+
+export function setRevisionIdAllocatorForDocument(xmlNode, allocator) {
+    const xmlDoc = xmlNode?.nodeType === 9 ? xmlNode : xmlNode?.ownerDocument;
+    if (xmlDoc && allocator instanceof RevisionIdAllocator) {
+        revisionAllocatorByDocument.set(xmlDoc, allocator);
+    }
+    return allocator;
+}
+
+export function getRevisionIdAllocatorForDocument(xmlNode) {
+    const xmlDoc = xmlNode?.nodeType === 9 ? xmlNode : xmlNode?.ownerDocument;
+    return xmlDoc ? (revisionAllocatorByDocument.get(xmlDoc) || null) : null;
+}
+
+export function createRevisionIdAllocator(xmlDoc, startValue = DEFAULT_REVISION_ID_START) {
+    const allocator = new RevisionIdAllocator(startValue);
+    allocator.seed(xmlDoc);
+    setRevisionIdAllocatorForDocument(xmlDoc, allocator);
+    return allocator;
+}
 
 /**
  * Gets the next unique revision ID for track changes
  * @returns {number} Unique revision ID
  */
 export function getNextRevisionId() {
-    return revisionIdCounter++;
+    return defaultRevisionIdAllocator.next();
 }
 
 /**
@@ -182,15 +283,19 @@ export function getRevisionTimestamp(date = new Date()) {
  * Creates shared revision metadata for OOXML track-change tags.
  *
  * @param {string} [author] - Track-change author (defaults to configured default author)
+ * @param {RevisionIdAllocator|Document|Element|null} [allocatorOrNode] - Scoped allocator or registered OOXML node
  * @returns {{ id: number, author: string, date: string }}
  */
-export function createRevisionMetadata(author) {
+export function createRevisionMetadata(author, allocatorOrNode = null) {
     const resolvedAuthor = typeof author === 'string' && author.trim()
         ? author.trim()
         : getDefaultAuthor();
+    const allocator = allocatorOrNode instanceof RevisionIdAllocator
+        ? allocatorOrNode
+        : (getRevisionIdAllocatorForDocument(allocatorOrNode) || defaultRevisionIdAllocator);
 
     return {
-        id: getNextRevisionId(),
+        id: allocator.next(),
         author: resolvedAuthor,
         date: getRevisionTimestamp()
     };
@@ -200,26 +305,16 @@ export function createRevisionMetadata(author) {
  * Seeds the revision ID counter above any existing Word revision/comment id values.
  *
  * @param {Document|Element} xmlDoc - Parsed OOXML document or element
+ * @param {RevisionIdAllocator} [allocator=defaultRevisionIdAllocator] - Allocator to seed
  * @returns {number} Next revision id after seeding
  */
-export function seedRevisionIdsFromDocument(xmlDoc) {
-    let maxFound = -1;
-    const elements = Array.from(xmlDoc?.getElementsByTagName?.('*') || []);
-
-    for (const element of elements) {
-        for (const attr of Array.from(element.attributes || [])) {
-            if ((attr.localName || '').toLowerCase() !== 'id') continue;
-            const parsed = Number.parseInt(attr.value, 10);
-            if (Number.isFinite(parsed)) {
-                maxFound = Math.max(maxFound, parsed);
-            }
-        }
-    }
-
-    if (maxFound >= revisionIdCounter) {
-        revisionIdCounter = maxFound + 1;
-    }
-    return revisionIdCounter;
+export function seedRevisionIdsFromDocument(xmlDoc, allocator = defaultRevisionIdAllocator) {
+    const resolvedAllocator = allocator instanceof RevisionIdAllocator
+        ? allocator
+        : defaultRevisionIdAllocator;
+    const nextId = resolvedAllocator.seed(xmlDoc);
+    setRevisionIdAllocatorForDocument(xmlDoc, resolvedAllocator);
+    return nextId;
 }
 
 /**
@@ -227,5 +322,5 @@ export function seedRevisionIdsFromDocument(xmlDoc) {
  * @param {number} [startValue=1000] - Value to reset to
  */
 export function resetRevisionIdCounter(startValue = 1000) {
-    revisionIdCounter = startValue;
+    defaultRevisionIdAllocator = new RevisionIdAllocator(startValue);
 }

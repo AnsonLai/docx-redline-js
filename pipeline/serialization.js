@@ -140,7 +140,8 @@ function normalizeSerializationOptions(options) {
         return {
             author: getDefaultAuthor(),
             generateRedlines: true,
-            font: options
+            font: options,
+            revisionIdAllocator: null
         };
     }
 
@@ -152,7 +153,8 @@ function normalizeSerializationOptions(options) {
     return {
         author: resolvedAuthor,
         generateRedlines: normalized.generateRedlines ?? true,
-        font: normalized.font ?? null
+        font: normalized.font ?? null,
+        revisionIdAllocator: normalized.revisionIdAllocator ?? null
     };
 }
 
@@ -228,7 +230,10 @@ function buildSimpleRun(text, rPrXml) {
  * @returns {string}
  */
 function buildDeletionXml(item, options = {}) {
-    const metadata = createRevisionMetadata(options.author ?? getDefaultAuthor());
+    const metadata = createRevisionMetadata(
+        options.author ?? getDefaultAuthor(),
+        options.revisionIdAllocator
+    );
     const font = options.font ?? null;
     let rPr = item.rPrXml ? stripNamespaceDeclarations(item.rPrXml) : '';
 
@@ -250,7 +255,10 @@ function buildDeletionXml(item, options = {}) {
  * @returns {string}
  */
 function buildInsertionXml(item, formatHints, options = {}) {
-    const metadata = createRevisionMetadata(options.author ?? getDefaultAuthor());
+    const metadata = createRevisionMetadata(
+        options.author ?? getDefaultAuthor(),
+        options.revisionIdAllocator
+    );
     const font = options.font ?? null;
 
     // Build the inner run content with format hints

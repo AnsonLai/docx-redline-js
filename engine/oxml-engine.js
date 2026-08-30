@@ -26,7 +26,11 @@ import { applyReconstructionMode } from './reconstruction-mode.js';
 import { applyTableReconciliation, applyTextToTableTransformation } from './table-mode.js';
 import { getDefaultAuthor } from '../adapters/config.js';
 import { containsTrackedChanges, withOoxmlSourceType } from '../core/word-xml.js';
-import { NS_W, seedRevisionIdsFromDocument } from '../core/types.js';
+import {
+    NS_W,
+    RevisionIdAllocator,
+    seedRevisionIdsFromDocument
+} from '../core/types.js';
 import { acceptTrackedChangesInOoxml } from '../services/revision-comment-management.js';
 import { isDiffTokenLimitError } from '../pipeline/diff-engine.js';
 
@@ -105,7 +109,10 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
             error: { code: 'PARSE_ERROR', message }
         });
     }
-    seedRevisionIdsFromDocument(xmlDoc);
+    const revisionIdAllocator = options?._revisionIdAllocator instanceof RevisionIdAllocator
+        ? options._revisionIdAllocator
+        : new RevisionIdAllocator();
+    seedRevisionIdsFromDocument(xmlDoc, revisionIdAllocator);
 
     if (containsTrackedChanges(xmlDoc)) {
         const existingRevisionsPolicy = options.existingRevisions || 'reject-input';
@@ -132,7 +139,7 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
                     }
                 });
             }
-            seedRevisionIdsFromDocument(xmlDoc);
+            seedRevisionIdsFromDocument(xmlDoc, revisionIdAllocator);
         } else {
             log('[OxmlEngine] Existing revisions detected; rejecting input per existingRevisions policy');
             return finalize({
@@ -363,7 +370,11 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
     }
     if (isTargetList) {
         log('[OxmlEngine] 🎯 Using reconciliation pipeline for list generation');
-        const pipeline = new ReconciliationPipeline({ author, generateRedlines });
+        const pipeline = new ReconciliationPipeline({
+            author,
+            generateRedlines,
+            revisionIdAllocator
+        });
         const result = await pipeline.execute(workingOoxml, sanitizedText, { xmlDoc });
 
         if (result.error?.code === 'DIFF_TOKEN_LIMIT') {

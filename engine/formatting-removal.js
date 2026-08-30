@@ -7,7 +7,12 @@
 
 import { parseOoxml, serializeOoxml } from './oxml-engine.js';
 import { getDefaultAuthor } from '../adapters/config.js';
-import { createRevisionMetadata } from '../core/types.js';
+import {
+    RevisionIdAllocator,
+    createRevisionIdAllocator,
+    createRevisionMetadata,
+    seedRevisionIdsFromDocument
+} from '../core/types.js';
 import { createWordElement } from '../core/word-xml.js';
 
 function removeNode(node) {
@@ -198,7 +203,7 @@ export function injectHighlightIntoRPr(doc, rPr, color = 'yellow', options = {})
         const rPrChange = createWordElement(doc, 'w:rPrChange');
 
         // Attributes
-        const metadata = createRevisionMetadata(author);
+        const metadata = createRevisionMetadata(author, doc);
         rPrChange.setAttribute('w:id', String(metadata.id));
         rPrChange.setAttribute('w:author', metadata.author);
         rPrChange.setAttribute('w:date', metadata.date);
@@ -231,6 +236,11 @@ export function applyHighlightToOoxml(ooxmlString, targetText, color = 'yellow',
 
     const doc = parseOoxml(ooxmlString);
     if (!doc) return ooxmlString;
+    if (options?._revisionIdAllocator instanceof RevisionIdAllocator) {
+        seedRevisionIdsFromDocument(doc, options._revisionIdAllocator);
+    } else {
+        createRevisionIdAllocator(doc);
+    }
     const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
     // Helper to get text from a run

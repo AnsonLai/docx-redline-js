@@ -1,6 +1,6 @@
 # Redline Reliability Improvement Plan — Round 2
 
-**Status:** In Progress (Phases 1, 1.5, 2, 3, 4, 6, 7, and 8 Complete; Phase 5 Open)
+**Status:** Complete (Phases 1–8, including Phase 1.5, complete)
 
 Follow-on to `completed/2026-05-31-architectural changes.md`, which is complete. That plan
 hardened the *OOXML shape* of generated redlines (paragraph marks, moves, inert
@@ -83,7 +83,7 @@ Additional convention for this plan:
 | F4 | Public API error contract is inconsistent: some functions throw raw `ParseError`, some return `''`, some return `status:'error'` | High | 3 | **Fixed** |
 | F5 | `existingRevisions: 'accept-all-first'` can silently discard another reviewer's revisions while reporting `hasChanges: false` | High (data loss) | 4 | **Fixed** |
 | F6 | `sanitizeAiResponse` unconditionally mutates legitimate document text | High (data corruption) | 4 | **Fixed** |
-| F7 | Revision-ID counter is process-global and permanently poisonable | Medium | 5 | Open |
+| F7 | Revision-ID counter is process-global and permanently poisonable | Medium | 5 | **Fixed** |
 | F8 | `TARGET_NOT_FOUND` detection is disabled whenever `original` contains a newline | Medium | 3 | **Fixed** |
 | F9 | `npm run check:types` does not type-check anything | Medium | 7 | **Fixed** |
 | F10 | `applyOperationsToDocumentXml` is non-atomic; a mid-batch failure returns a half-applied document | Medium | 6 | **Fixed** |
@@ -380,16 +380,25 @@ legal, 10 administrative) cover the matrix above; each has deterministic task
 definitions and provenance; no corpus `.docx` is committed; README attribution
 and ODC-By notice remain present.
 
-**Acceptance recorded 2026-08-29:** the synthetic Word differential now contains
-18 cases and passed 18/18. Six reliability-focused cases cover dollar-delimited
-text, literal escape sequences, inline preface-like legal text, multi-paragraph
-target replacement, leading whitespace, and a prior-author revision no-op. The
-pinned corpus contains 10 legal and 10 administrative reviewed
-scenarios across all five matrix shapes; `npm run test:corpus:word` passed 20/20
-in desktop Word. The corpus lane verified every untouched package part by
-SHA-256 and left all source/output `.docx` files under ignored `tmp/` storage.
-The Phase 6 expansion on 2026-08-30 added an atomic batch rollback fixture;
-the synthetic Word differential now passes 19/19.
+**Acceptance recorded 2026-08-30:** the synthetic Word differential contains 25
+cases and passes 25/25 in desktop Word. In addition to the original text,
+formatting, whitespace, multi-paragraph, and prior-revision scenarios, it now
+checks atomic rollback, hostile revision IDs, bookmark and internal-hyperlink
+adjacency, mixed formatted runs, content controls, and table-cell editing. The
+last five cases also assert that their required structural OOXML survives before
+Word independently verifies Accept All and Reject All. The pinned corpus
+contains 10 legal and 10 administrative reviewed scenarios across all five
+matrix shapes; `npm run test:corpus:word` passes 20/20 in desktop Word. The
+corpus lane verifies every untouched package part by SHA-256 and leaves all
+source/output `.docx` files under ignored `tmp/` storage.
+
+**Post-completion test backlog:** targeting a paragraph containing `w:tab`
+currently cannot identify the same complete text range used by reconstruction,
+and a reconstruction adjacent to a complex field does not preserve `w:fldChar`
+and `w:instrText`. Keep those as explicit engine/test follow-ups. The next
+synthetic package expansion should then cover comments, footnotes/endnotes, and
+headers/footers; those require the fixture packager to emit the related package
+parts and relationships before Word can serve as a meaningful oracle.
 
 ---
 
@@ -736,11 +745,20 @@ and retain prior-author revisions; the explicit
 sanitization warns when it changes text, and sanitization now removes only a
 standalone leading preface line. Dollar-delimited text, literal `\\n` and
 `\\r\\n`, and inline preface-like contract sentences are covered. The fuzz
-corpus includes prior-revision no-ops and the full suite is green at 29/29.
+corpus includes prior-revision no-ops and the full suite was green at 29/29 at
+that phase checkpoint (30/30 after Phase 5).
 
 ---
 
 ## Phase 5 — Remove process-global mutable state
+
+**Status: Complete (2026-08-30).** Public redline and standalone operation
+invocations now use a document-scoped `RevisionIdAllocator`, shared through DOM,
+list, table, formatting, and string-serialization paths. Seeding considers only
+revision-bearing Word elements and comments, ignores bookmark/relationship ID
+spaces, and restarts from a collision-free low value near the signed 32-bit
+boundary. Tests cover hostile-to-clean document isolation, comment seeding,
+standalone calls, and interleaved explicit authors.
 
 **Why (F7):** `revisionIdCounter` in `core/types.js:161` is a module-level
 counter that `seedRevisionIdsFromDocument` only ever raises, never resets or
@@ -1048,7 +1066,7 @@ Phase 1.5 (Word + real corpus)  ← DONE; expand alongside every later phase
 Phase 2  (diff correctness)     ← DONE
 Phase 3  (error contract)       ← DONE
 Phase 4  (silent mutation)      ← DONE
-Phase 5  (global state)         ← ready
+Phase 5  (global state)         ← DONE
 Phase 6  (batch atomicity)      ← DONE
 Phase 7  (tooling)              ← DONE
 ```
@@ -1105,7 +1123,7 @@ New, from this plan:
 ## Verification commands
 
 ```bash
-npm test                          # 29/29 as of Phase 4
+npm test                          # 30/30 as of Phase 5
 npm run test:isolation
 npm run check:types
 npm run test:word                 # Windows + installed desktop Word
@@ -1115,7 +1133,7 @@ npm run test:coverage             # added in Phase 7.3
 node scripts/export-validation-fixtures.mjs
 npm run corpus:fetch:superdoc -- --id <pinned-sha256>
 FUZZ_SEED=1 FUZZ_ITERATIONS=5000 node tests/roundtrip_fuzz_tests.mjs
-grep -rn "KNOWN-GAP" tests/       # every suppression names the phase that owns it
+rg -n "KNOWN-GAP" tests/           # should print nothing after Phase 8
 ```
 
 The fuzz run prints a per-shape breakdown and a line per known gap, if any. As

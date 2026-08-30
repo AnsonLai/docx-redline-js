@@ -129,7 +129,7 @@ Common result fields:
 | Field | Purpose |
 |-------|---------|
 | `status` | Optional non-breaking status: `'ok'`, `'no-op'`, or `'error'`. |
-| `error` | Present when `status === 'error'`; includes a stable `code` such as `PARSE_ERROR`, `TARGET_NOT_FOUND`, `EXISTING_REVISIONS`, or `DIFF_TOKEN_LIMIT`. |
+| `error` | Present when `status === 'error'`; includes a stable `code` such as `PARSE_ERROR`, `TARGET_NOT_FOUND`, `PARTIAL_TARGET`, `EXISTING_REVISIONS`, `DIFF_TOKEN_LIMIT`, or `BATCH_OPERATION_FAILED`. |
 
 Word diffs are deterministic by default (no wall-clock timeout). Inputs above
 the safe ceiling of 262,144 unique diff tokens return `DIFF_TOKEN_LIMIT` with
@@ -270,6 +270,9 @@ const output = await zip.generateAsync({ type: 'nodebuffer' });
 
 ## Validating Output
 
+For the test-lane design and instructions for adding regression, synthetic
+Word, and real-corpus cases, see [docs/TESTING.md](./docs/TESTING.md).
+
 Run the automated package checks:
 
 ```bash
@@ -302,10 +305,13 @@ npm run test:word
 
 This Windows-only test command generates an English legal/administrative task
 suite under `tmp/word-validation/` and drives installed desktop Microsoft Word
-through COM. Its 19 cases include targeted reliability checks for literal
-content, multi-paragraph replacement, leading whitespace, and prior-revision
-no-op and atomic-batch rollback safety. The published library remains clean, host-independent JavaScript;
-Word automation exists only in development scripts.
+through COM. Its 25 cases include targeted reliability checks for literal
+content, multi-paragraph replacement, prior-revision no-op, atomic rollback,
+hostile revision IDs, bookmarks, internal hyperlinks, mixed formatted runs,
+content controls, and table cells. Structure-focused cases also assert required
+OOXML elements before Word independently checks Accept All and Reject All. The
+published library remains clean, host-independent JavaScript; Word automation
+exists only in development scripts.
 
 A nightly GitHub Actions workflow additionally validates generated fixtures
 against the ECMA-376 transitional schemas (`xmllint`), opens them with
@@ -319,6 +325,9 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for module layout, data flow, and contr
 See [AGENTS.md](./AGENTS.md) for a concise reference for AI coding agents.
 
 See [docs/VALIDATION.md](./docs/VALIDATION.md) for release-time validation steps.
+
+See [docs/TESTING.md](./docs/TESTING.md) for how the test lanes work and how to
+add new cases.
 
 ## Test Corpus Attribution
 

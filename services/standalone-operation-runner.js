@@ -7,7 +7,12 @@
 
 import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { findReconstructionParagraphRange } from '../engine/reconstruction-mapper.js';
-import { createRevisionMetadata, seedRevisionIdsFromDocument } from '../core/types.js';
+import {
+    RevisionIdAllocator,
+    createRevisionMetadata,
+    seedRevisionIdsFromDocument,
+    setRevisionIdAllocatorForDocument
+} from '../core/types.js';
 import { createWordElement } from '../core/word-xml.js';
 import {
     applyRedlineToOxml,
@@ -44,6 +49,15 @@ import {
 } from '../index.js';
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+
+function prepareRevisionAllocator(xmlDoc, options = {}) {
+    const allocator = options?._revisionIdAllocator instanceof RevisionIdAllocator
+        ? options._revisionIdAllocator
+        : new RevisionIdAllocator();
+    seedRevisionIdsFromDocument(xmlDoc, allocator);
+    setRevisionIdAllocatorForDocument(xmlDoc, allocator);
+    return allocator;
+}
 
 function getParagraphText(paragraph) {
     return getParagraphTextFromOxml(paragraph);
@@ -216,7 +230,7 @@ function buildInsertedListParagraph(xmlDoc, anchorParagraph, entry, revisionMeta
     textNode.textContent = safeText;
     run.appendChild(textNode);
     if (generateRedlines) {
-        const metadata = revisionMetadata || createRevisionMetadata(author);
+        const metadata = revisionMetadata || createRevisionMetadata(author, xmlDoc);
         const ins = createWordElement(xmlDoc, 'w:ins');
         ins.setAttribute('w:id', String(metadata.id));
         ins.setAttribute('w:author', metadata.author);
@@ -357,7 +371,7 @@ function applyExplicitRangeListInsertions({
                 numId: entry.numId,
                 text: entry.text
             },
-            generateRedlines ? createRevisionMetadata(author) : null,
+            generateRedlines ? createRevisionMetadata(author, xmlDoc) : null,
             author,
             { generateRedlines }
         );
@@ -487,7 +501,7 @@ function buildFallbackInsertedPlainParagraph(xmlDoc, text, revisionMetadata, aut
     run.appendChild(textNode);
 
     if (generateRedlines) {
-        const metadata = revisionMetadata || createRevisionMetadata(author);
+        const metadata = revisionMetadata || createRevisionMetadata(author, xmlDoc);
         const ins = createWordElement(xmlDoc, 'w:ins');
         ins.setAttribute('w:id', String(metadata.id));
         ins.setAttribute('w:author', metadata.author);
@@ -524,7 +538,7 @@ function wrapParagraphContentInInsertion(xmlDoc, paragraph, revisionMetadata, au
     if (pPr) wrappedParagraph.appendChild(pPr.cloneNode(true));
 
     const ins = createWordElement(xmlDoc, 'w:ins');
-    const metadata = revisionMetadata || createRevisionMetadata(author);
+    const metadata = revisionMetadata || createRevisionMetadata(author, xmlDoc);
     ins.setAttribute('w:id', String(metadata.id));
     ins.setAttribute('w:author', metadata.author);
     ins.setAttribute('w:date', metadata.date);
@@ -823,7 +837,7 @@ async function applyToParagraphByExactText(documentXml, targetText, modifiedText
     const serializer = createSerializer();
     const xmlDoc = parseOoxmlSafe(documentXml, 'application/xml').doc;
     if (!xmlDoc) return { documentXml, hasChanges: false, status: 'error', error: { code: 'PARSE_ERROR', message: 'Could not parse document OOXML.' } };
-    seedRevisionIdsFromDocument(xmlDoc);
+    const revisionIdAllocator = prepareRevisionAllocator(xmlDoc, options);
     const resolved = resolveTargetParagraph(xmlDoc, targetText, targetRef, 'redline', runtimeContext, { onInfo, onWarn });
     const targetParagraph = resolved.paragraph;
     preprocessRedlineTargetParagraph(targetParagraph);
@@ -932,7 +946,7 @@ async function applyToParagraphByExactText(documentXml, targetText, modifiedText
                 markerType: 'numbered',
                 text: adjacencyInsertionCandidate.text
             },
-            generateRedlines ? createRevisionMetadata(author) : null,
+            generateRedlines ? createRevisionMetadata(author, xmlDoc) : null,
             author,
             { generateRedlines }
         );
@@ -965,7 +979,7 @@ async function applyToParagraphByExactText(documentXml, targetText, modifiedText
                 xmlDoc,
                 targetParagraph,
                 paragraphText,
-                generateRedlines ? createRevisionMetadata(author) : null,
+                generateRedlines ? createRevisionMetadata(author, xmlDoc) : null,
                 author,
                 { generateRedlines }
             );
@@ -996,7 +1010,7 @@ async function applyToParagraphByExactText(documentXml, targetText, modifiedText
                 xmlDoc,
                 targetParagraph,
                 { ...entry, numId: insertionOnlyPlan.numId },
-                generateRedlines ? createRevisionMetadata(author) : null,
+                generateRedlines ? createRevisionMetadata(author, xmlDoc) : null,
                 author,
                 { generateRedlines }
             );
@@ -1074,12 +1088,14 @@ async function applyToParagraphByExactText(documentXml, targetText, modifiedText
             author,
             generateRedlines,
             existingRevisions: options.existingRevisions,
+            _revisionIdAllocator: revisionIdAllocator,
             _isolatedTableCell: useTableScope
         })
         : await applyRedlineToOxml(scopedXml, originalTextForApply, effectiveModifiedText, {
             author,
             generateRedlines,
             existingRevisions: options.existingRevisions,
+            _revisionIdAllocator: revisionIdAllocator,
             _isolatedTableCell: useTableScope
         });
     if (!result?.hasChanges) {
@@ -1138,10 +1154,15 @@ async function applyHighlightToParagraphByExactText(documentXml, targetText, tex
     const serializer = createSerializer();
     const xmlDoc = parseOoxmlSafe(documentXml, 'application/xml').doc;
     if (!xmlDoc) return { documentXml, hasChanges: false, status: 'error', error: { code: 'PARSE_ERROR', message: 'Could not parse document OOXML.' } };
+    const revisionIdAllocator = prepareRevisionAllocator(xmlDoc, options);
     const resolved = resolveTargetParagraph(xmlDoc, targetText, targetRef, 'highlight', runtimeContext, { onInfo, onWarn });
     const targetParagraph = resolved.paragraph;
     const paragraphXml = serializer.serializeToString(targetParagraph);
-    const highlightedXml = applyHighlightToOoxml(paragraphXml, textToHighlight, color, { generateRedlines, author });
+    const highlightedXml = applyHighlightToOoxml(paragraphXml, textToHighlight, color, {
+        generateRedlines,
+        author,
+        _revisionIdAllocator: revisionIdAllocator
+    });
     if (!highlightedXml || highlightedXml === paragraphXml) return { documentXml, hasChanges: false };
     const { replacementNodes } = extractReplacementNodes(highlightedXml);
     const parent = targetParagraph.parentNode;
@@ -1157,6 +1178,7 @@ async function applyCommentToParagraphByExactText(documentXml, targetText, textT
     const serializer = createSerializer();
     const xmlDoc = parseOoxmlSafe(documentXml, 'application/xml').doc;
     if (!xmlDoc) return { documentXml, hasChanges: false, commentsXml: null, status: 'error', error: { code: 'PARSE_ERROR', message: 'Could not parse document OOXML.' } };
+    prepareRevisionAllocator(xmlDoc, options);
     const resolved = resolveTargetParagraph(xmlDoc, targetText, targetRef, 'comment', runtimeContext, { onInfo, onWarn });
     const targetParagraph = resolved.paragraph;
     const paragraphXml = serializer.serializeToString(targetParagraph);
@@ -1311,6 +1333,10 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
     if (parsed.error || !parsed.doc) {
         return { documentXml, hasChanges: false, status: 'error', error: parsed.error, warnings: parsed.warnings };
     }
+    const operationOptions = {
+        ...options,
+        _revisionIdAllocator: prepareRevisionAllocator(parsed.doc, options)
+    };
     if (op?.type === 'highlight') {
         return applyHighlightToParagraphByExactText(
             documentXml,
@@ -1320,7 +1346,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
             author,
             op.targetRef,
             runtimeContext,
-            options
+            operationOptions
         );
     }
     if (op?.type === 'comment') {
@@ -1332,7 +1358,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
             author,
             op.targetRef,
             runtimeContext,
-            options
+            operationOptions
         );
     }
     return applyToParagraphByExactText(
@@ -1343,7 +1369,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
         op?.targetRef,
         op?.targetEndRef,
         runtimeContext,
-        options
+        operationOptions
     );
 }
 

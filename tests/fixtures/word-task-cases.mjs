@@ -17,6 +17,93 @@ const PRIOR_REVISION_NO_OP_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" stan
   </w:body>
 </w:document>`;
 
+const HIGH_REVISION_ID_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}">
+  <w:body>
+    <w:p>
+      <w:ins w:id="2147483000" w:author="Prior" w:date="2026-01-01T00:00:00Z"><w:r><w:t>Old</w:t></w:r></w:ins>
+      <w:r><w:t xml:space="preserve"> clause</w:t></w:r>
+    </w:p>
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+
+const BOOKMARK_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}">
+  <w:body>
+    <w:p>
+      <w:r><w:t xml:space="preserve">This </w:t></w:r>
+      <w:bookmarkStart w:id="0" w:name="Agreement"/>
+      <w:r><w:t>Agreement</w:t></w:r>
+      <w:bookmarkEnd w:id="0"/>
+      <w:r><w:t xml:space="preserve"> binds the Seller.</w:t></w:r>
+    </w:p>
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+
+const INTERNAL_HYPERLINK_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}">
+  <w:body>
+    <w:p>
+      <w:bookmarkStart w:id="1" w:name="Definitions"/>
+      <w:r><w:t>Definitions</w:t></w:r>
+      <w:bookmarkEnd w:id="1"/>
+    </w:p>
+    <w:p>
+      <w:r><w:t xml:space="preserve">See </w:t></w:r>
+      <w:hyperlink w:anchor="Definitions"><w:r><w:t>Definitions</w:t></w:r></w:hyperlink>
+      <w:r><w:t xml:space="preserve"> within ten days.</w:t></w:r>
+    </w:p>
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+
+const MIXED_FORMATTING_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}">
+  <w:body>
+    <w:p>
+      <w:r><w:rPr><w:b/></w:rPr><w:t>Agreement</w:t></w:r>
+      <w:r><w:t xml:space="preserve"> requires </w:t></w:r>
+      <w:r><w:rPr><w:i/></w:rPr><w:t>notice</w:t></w:r>
+      <w:r><w:t xml:space="preserve"> within ten calendar days.</w:t></w:r>
+    </w:p>
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+
+const CONTENT_CONTROL_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}">
+  <w:body>
+    <w:sdt>
+      <w:sdtPr><w:tag w:val="filing-status"/><w:alias w:val="Filing status"/></w:sdtPr>
+      <w:sdtContent>
+        <w:p><w:r><w:t>The application status is pending.</w:t></w:r></w:p>
+      </w:sdtContent>
+    </w:sdt>
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+
+const TABLE_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}">
+  <w:body>
+    <w:tbl>
+      <w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr>
+      <w:tblGrid><w:gridCol w:w="3000"/><w:gridCol w:w="3000"/></w:tblGrid>
+      <w:tr>
+        <w:tc><w:p><w:r><w:t>Agency</w:t></w:r></w:p></w:tc>
+        <w:tc><w:p><w:r><w:t>Status</w:t></w:r></w:p></w:tc>
+      </w:tr>
+      <w:tr>
+        <w:tc><w:p><w:r><w:t>Finance</w:t></w:r></w:p></w:tc>
+        <w:tc><w:p><w:r><w:t>Pending</w:t></w:r></w:p></w:tc>
+      </w:tr>
+    </w:tbl>
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+
 export const WORD_TASK_CASES = [
     {
         name: 'simple-redline',
@@ -176,5 +263,68 @@ export const WORD_TASK_CASES = [
         expectAtomicRollback: true,
         expectedAcceptedText: 'A new end',
         expectedRejectedText: 'A old end'
+    },
+    {
+        name: 'legal-hostile-revision-id-clamped',
+        category: 'legal',
+        task: 'clamp-hostile-revision-id',
+        sourceDocumentXml: HIGH_REVISION_ID_DOCUMENT,
+        original: 'Old clause',
+        modified: 'Updated clause',
+        operationOptions: { existingRevisions: 'accept-all-first' },
+        maxRevisionId: 9999,
+        expectedAcceptedText: 'Updated clause',
+        expectedRejectedText: 'Old clause'
+    },
+    {
+        name: 'legal-bookmark-adjacent-replacement',
+        category: 'legal',
+        task: 'replace-adjacent-to-bookmark',
+        sourceDocumentXml: BOOKMARK_DOCUMENT,
+        original: 'This Agreement binds the Seller.',
+        modified: 'This Agreement binds the Purchaser.',
+        requiredElements: { bookmarkStart: 1, bookmarkEnd: 1 }
+    },
+    {
+        name: 'legal-internal-hyperlink-adjacent-replacement',
+        category: 'legal',
+        task: 'replace-adjacent-to-hyperlink',
+        sourceDocumentXml: INTERNAL_HYPERLINK_DOCUMENT,
+        original: 'See Definitions within ten days.',
+        modified: 'See Definitions within fifteen days.',
+        expectedAcceptedText: 'Definitions\nSee Definitions within fifteen days.',
+        expectedRejectedText: 'Definitions\nSee Definitions within ten days.',
+        requiredElements: { hyperlink: 1, bookmarkStart: 1, bookmarkEnd: 1 }
+    },
+    {
+        name: 'legal-mixed-run-formatting-preserved',
+        category: 'legal',
+        task: 'replace-across-formatted-runs',
+        sourceDocumentXml: MIXED_FORMATTING_DOCUMENT,
+        original: 'Agreement requires notice within ten calendar days.',
+        modified: 'Agreement requires notice within ten business days.',
+        requiredElements: { b: 1, i: 1 }
+    },
+    {
+        name: 'administrative-content-control-replacement',
+        category: 'administrative',
+        task: 'replace-in-content-control',
+        sourceDocumentXml: CONTENT_CONTROL_DOCUMENT,
+        original: 'The application status is pending.',
+        modified: 'The application status is approved.',
+        requiredElements: { sdt: 1, sdtPr: 1, sdtContent: 1, tag: 1 }
+    },
+    {
+        name: 'administrative-table-cell-replacement',
+        category: 'administrative',
+        task: 'replace-table-cell',
+        sourceDocumentXml: TABLE_DOCUMENT,
+        original: 'Pending',
+        modified: 'Approved',
+        // Word exposes a paragraph boundary for each cell plus an additional
+        // row boundary after the first row once cell markers are removed.
+        expectedAcceptedText: 'Agency\nStatus\n\nFinance\nApproved',
+        expectedRejectedText: 'Agency\nStatus\n\nFinance\nPending',
+        requiredElements: { tbl: 1, tr: 2, tc: 4 }
     }
 ];

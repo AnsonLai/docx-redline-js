@@ -83,6 +83,34 @@ for (const testCase of cases) {
     continue;
   }
 
+  if (Number.isInteger(testCase.maxRevisionId)) {
+    const resultDoc = new DOMParser().parseFromString(result.documentXml, 'application/xml');
+    const revisionNames = ['ins', 'del', 'moveFrom', 'moveTo', 'rPrChange', 'pPrChange', 'cellIns', 'cellDel'];
+    const revisionIds = revisionNames
+      .flatMap(name => Array.from(resultDoc.getElementsByTagNameNS(NS_W, name)))
+      .map(node => Number.parseInt(node.getAttribute('w:id') || node.getAttribute('id') || '', 10))
+      .filter(Number.isFinite);
+    if (revisionIds.length === 0 || revisionIds.some(id => id > testCase.maxRevisionId)) {
+      console.error(`FAIL ${testCase.name}: revision IDs exceeded ${testCase.maxRevisionId}: ${revisionIds.join(', ')}`);
+      failures++;
+      continue;
+    }
+  }
+
+  if (testCase.requiredElements) {
+    const resultDoc = new DOMParser().parseFromString(result.documentXml, 'application/xml');
+    let missingRequiredElement = false;
+    for (const [localName, minimumCount] of Object.entries(testCase.requiredElements)) {
+      const actualCount = resultDoc.getElementsByTagNameNS(NS_W, localName).length;
+      if (actualCount < minimumCount) {
+        console.error(`FAIL ${testCase.name}: expected at least ${minimumCount} w:${localName} element(s), found ${actualCount}`);
+        failures++;
+        missingRequiredElement = true;
+      }
+    }
+    if (missingRequiredElement) continue;
+  }
+
   const validation = validateRedlineOoxml(result.documentXml);
   const validationErrors = validation.issues.filter(issue => issue.severity === 'error');
   if (validationErrors.length > 0) {

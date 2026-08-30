@@ -230,8 +230,8 @@ orchestration/
 }
 ```
 
-Known error codes include `PARSE_ERROR`, `TARGET_NOT_FOUND`,
-`EXISTING_REVISIONS`, and `DIFF_TOKEN_LIMIT`.
+Known error codes include `PARSE_ERROR`, `TARGET_NOT_FOUND`, `PARTIAL_TARGET`,
+`EXISTING_REVISIONS`, `DIFF_TOKEN_LIMIT`, and `BATCH_OPERATION_FAILED`.
 
 For ingestion that must distinguish an empty document from malformed OOXML,
 use `ingestWordOoxmlToPlainTextResult` or
@@ -268,6 +268,9 @@ directly into `word/document.xml`.
 9. Caller content is not sanitized by default. Pass `sanitizeInput: true` only for raw assistant output; literal dollar delimiters and `\\n` sequences are never rewritten.
 10. Hyperlinks, bookmarks, comment markers, tabs/breaks, and footnote/endnote references are structural OOXML and should survive adjacent redline edits.
 11. Internally, create Word elements through `createWordElement` and tracked-change metadata through `createRevisionMetadata`.
+12. Revision IDs are document-scoped in public operation paths. Thread the
+    internal allocator through new string-serialization paths; generated
+    `w:id` values are not stable across documents.
 
 ## Validation Commands
 

@@ -1,5 +1,8 @@
 # Validation
 
+This document is the release-validation reference. For the testing model and
+step-by-step instructions for adding cases, see [TESTING.md](./TESTING.md).
+
 This package works on OOXML strings and intentionally leaves `.docx` zip
 packaging to consumers (release *tooling* assembles minimal `.docx` fixtures
 with a script-local zip writer; the published library still has no zip
@@ -64,10 +67,13 @@ itself resolves the revisions this library generated.
 `npm run test:word` exports the current English legal/administrative task
 catalogue to `tmp/word-validation/` before running the differential. Expected
 text is compared exactly by default; only Word's paragraph terminators are
-normalized. The 19-case catalogue includes reliability regressions for literal
+normalized. The 25-case catalogue includes reliability regressions for literal
 dollar/escape content, inline assistant-like text, leading whitespace,
 multi-paragraph replacement, preserving prior revisions on no-op, and atomic
-batch rollback after a later target failure. The
+batch rollback after a later target failure. It also verifies that a document
+with a near-limit prior revision ID produces safe low-range IDs, and exercises
+bookmark/hyperlink adjacency, mixed formatted runs, content controls, and table
+cells with explicit structural-preservation assertions. The
 lower-level `npm run smoke:word:diff` remains available for an
 already-exported fixture directory.
 
@@ -119,7 +125,13 @@ npm run test:coverage
 ```
 
 The command runs the complete JavaScript test suite under c8 and prints a
-per-file report. The initial Phase 7 baseline recorded on 2026-08-29 is:
+per-file report. Coverage answers “which implementation paths did the automated
+JavaScript tests execute?” It does not prove that executed paths are correct,
+that generated OOXML opens in Word, or that the real-document corpus is broad
+enough. Treat it as a map for finding thinly tested code; Word, schema,
+LibreOffice, fuzz, and corpus checks provide different evidence.
+
+The initial Phase 7 baseline recorded on 2026-08-29 was:
 
 | Metric | Coverage |
 |---|---:|
@@ -131,6 +143,10 @@ This is a visibility baseline, not a CI threshold. Notable opportunities from
 the baseline are `services/numbering-helpers.js` (23.55% lines),
 `orchestration/route-plan.js` (23.75%), and
 `orchestration/list-structural-fallback.js` (57.19%).
+
+The post-Phase-5 snapshot recorded on 2026-08-30 is 79.96% lines/statements,
+80.95% functions, and 69.52% branches. Preserve both snapshots so changes are
+visible over time rather than presenting coverage as a pass/fail quality score.
 
 ## Pinned SuperDoc Corpus References
 
