@@ -2,6 +2,21 @@
  * English legal/administrative task catalogue for independent Word validation.
  * Keep expectations derived from edit intent rather than engine output.
  */
+const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+
+const PRIOR_REVISION_NO_OP_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}">
+  <w:body>
+    <w:p>
+      <w:r><w:t xml:space="preserve">A </w:t></w:r>
+      <w:del w:id="1" w:author="Prior" w:date="2026-01-01T00:00:00Z"><w:r><w:delText>old</w:delText></w:r></w:del>
+      <w:ins w:id="2" w:author="Prior" w:date="2026-01-01T00:00:00Z"><w:r><w:t>new</w:t></w:r></w:ins>
+      <w:r><w:t xml:space="preserve"> end</w:t></w:r>
+    </w:p>
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+
 export const WORD_TASK_CASES = [
     {
         name: 'simple-redline',
@@ -89,5 +104,53 @@ export const WORD_TASK_CASES = [
         task: 'preserve-significant-spacing',
         original: 'Section  1 applies to the Agency.',
         modified: 'Section  1 applies to the Department.'
+    },
+    {
+        name: 'legal-dollar-delimiters-preserved',
+        category: 'legal',
+        task: 'preserve-dollar-delimiters',
+        original: 'The rate is stated in Schedule A.',
+        modified: 'The rate is $X$ per unit as defined in Schedule A.'
+    },
+    {
+        name: 'administrative-literal-escapes-preserved',
+        category: 'administrative',
+        task: 'preserve-literal-escapes',
+        original: 'The filing guide describes supported notation.',
+        modified: String.raw`The filing guide preserves literal \n and \r\n notation.`
+    },
+    {
+        name: 'legal-inline-preface-preserved',
+        category: 'legal',
+        task: 'preserve-inline-preface',
+        original: 'This clause is part of the Agreement.',
+        modified: 'Here is the text: this clause is part of the actual Agreement.'
+    },
+    {
+        name: 'administrative-multiline-target',
+        category: 'administrative',
+        task: 'replace-multiline-target',
+        sourceText: 'The Clerk records the application.\nThe Director reviews the application.',
+        original: 'The Clerk records the application.\nThe Director reviews the application.',
+        modified: 'The Clerk records the application.\nThe Director approves the application.'
+    },
+    {
+        name: 'legal-leading-whitespace-preserved',
+        category: 'legal',
+        task: 'preserve-leading-whitespace',
+        original: '  Indented covenant applies to the Seller.',
+        modified: '  Indented covenant applies to the Purchaser.'
+    },
+    {
+        name: 'legal-prior-revision-no-op',
+        category: 'legal',
+        task: 'preserve-prior-revisions-on-no-op',
+        sourceDocumentXml: PRIOR_REVISION_NO_OP_DOCUMENT,
+        original: 'A new end',
+        modified: 'A new end',
+        operationOptions: { existingRevisions: 'accept-all-first' },
+        expectNoOp: true,
+        expectedAcceptedText: 'A new end',
+        expectedRejectedText: 'A old end'
     }
 ];

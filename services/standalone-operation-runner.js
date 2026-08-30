@@ -6,6 +6,7 @@
  */
 
 import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
+import { findReconstructionParagraphRange } from '../engine/reconstruction-mapper.js';
 import { createRevisionMetadata, seedRevisionIdsFromDocument } from '../core/types.js';
 import { createWordElement } from '../core/word-xml.js';
 import {
@@ -866,7 +867,9 @@ async function applyToParagraphByExactText(documentXml, targetText, modifiedText
             onInfo,
             onWarn
         })
-        : null;
+        : (typeof targetText === 'string' && /\r?\n/.test(targetText)
+            ? findReconstructionParagraphRange(xmlDoc, targetText)
+            : null);
     const hasExplicitRangeScope = Array.isArray(explicitRangeParagraphs) && explicitRangeParagraphs.length > 0;
     if (!useTableScope && hasExplicitRangeScope) {
         const insertionEntries = buildExplicitRangeInsertionEntries(explicitRangeParagraphs, effectiveModifiedText);

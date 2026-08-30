@@ -64,7 +64,10 @@ itself resolves the revisions this library generated.
 `npm run test:word` exports the current English legal/administrative task
 catalogue to `tmp/word-validation/` before running the differential. Expected
 text is compared exactly by default; only Word's paragraph terminators are
-normalized. The lower-level `npm run smoke:word:diff` remains available for an
+normalized. The 18-case catalogue includes reliability regressions for literal
+dollar/escape content, inline assistant-like text, leading whitespace,
+multi-paragraph replacement, and preserving prior revisions on no-op. The
+lower-level `npm run smoke:word:diff` remains available for an
 already-exported fixture directory.
 
 The older `npm run smoke:word -- path/to/file.docx` open-only smoke check

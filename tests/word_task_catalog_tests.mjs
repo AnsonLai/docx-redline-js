@@ -2,7 +2,7 @@ import assert from 'assert/strict';
 
 import { WORD_TASK_CASES } from './fixtures/word-task-cases.mjs';
 
-assert.ok(WORD_TASK_CASES.length >= 10, 'Word task catalogue should cover at least ten tasks');
+assert.ok(WORD_TASK_CASES.length >= 18, 'Word task catalogue should cover at least eighteen tasks');
 
 const names = new Set();
 const categories = new Set();
@@ -18,13 +18,19 @@ for (const testCase of WORD_TASK_CASES) {
     tasks.add(testCase.task);
     assert.equal(typeof testCase.original, 'string');
     assert.equal(typeof testCase.modified, 'string');
-    assert.notEqual(testCase.original, testCase.modified);
+    if (testCase.expectNoOp) {
+        assert.equal(testCase.original, testCase.modified);
+        assert.equal(typeof testCase.sourceDocumentXml, 'string');
+    } else {
+        assert.notEqual(testCase.original, testCase.modified);
+    }
     for (const [field, value] of Object.entries({
         original: testCase.original,
         modified: testCase.modified,
         sourceText: testCase.sourceText,
         expectedAcceptedText: testCase.expectedAcceptedText,
-        expectedRejectedText: testCase.expectedRejectedText
+        expectedRejectedText: testCase.expectedRejectedText,
+        sourceDocumentXml: testCase.sourceDocumentXml
     })) {
         if (value !== undefined) {
             assert.ok(/^[\x00-\x7F]*$/.test(value), `${testCase.name} ${field} must be English/ASCII for this lane`);

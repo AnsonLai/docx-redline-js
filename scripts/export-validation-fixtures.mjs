@@ -40,16 +40,22 @@ const cases = WORD_TASK_CASES;
 let failures = 0;
 
 for (const testCase of cases) {
+  const sourceDocumentXml = testCase.sourceDocumentXml || baseDocument(testCase.sourceText || testCase.original);
   const result = await applyOperationToDocumentXml(
-    baseDocument(testCase.sourceText || testCase.original),
+    sourceDocumentXml,
     { type: 'redline', target: testCase.original, modified: testCase.modified },
     'Validation',
     null,
-    { generateRedlines: true }
+    { generateRedlines: true, ...(testCase.operationOptions || {}) }
   );
 
-  if (!result?.hasChanges || result?.status === 'error') {
+  if ((!result?.hasChanges && !testCase.expectNoOp) || result?.status === 'error') {
     console.error(`FAIL ${testCase.name}: redline did not apply (status=${result?.status}, error=${result?.error?.message})`);
+    failures++;
+    continue;
+  }
+  if (testCase.expectNoOp && (result?.hasChanges || result?.status !== 'no-op' || result?.documentXml !== sourceDocumentXml)) {
+    console.error(`FAIL ${testCase.name}: expected a byte-identical no-op preserving prior revisions`);
     failures++;
     continue;
   }

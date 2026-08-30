@@ -380,8 +380,11 @@ legal, 10 administrative) cover the matrix above; each has deterministic task
 definitions and provenance; no corpus `.docx` is committed; README attribution
 and ODC-By notice remain present.
 
-**Acceptance recorded 2026-08-29:** the 12-case synthetic Word differential
-passed 12/12. The pinned corpus contains 10 legal and 10 administrative reviewed
+**Acceptance recorded 2026-08-29:** the synthetic Word differential now contains
+18 cases and passed 18/18. Six reliability-focused cases cover dollar-delimited
+text, literal escape sequences, inline preface-like legal text, multi-paragraph
+target replacement, leading whitespace, and a prior-author revision no-op. The
+pinned corpus contains 10 legal and 10 administrative reviewed
 scenarios across all five matrix shapes; `npm run test:corpus:word` passed 20/20
 in desktop Word. The corpus lane verified every untouched package part by
 SHA-256 and left all source/output `.docx` files under ignored `tmp/` storage.

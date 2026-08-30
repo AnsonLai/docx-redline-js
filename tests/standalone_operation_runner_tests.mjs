@@ -1,7 +1,13 @@
 import './setup-xml-provider.mjs';
 
 import assert from 'assert';
-import { buildTargetReferenceSnapshot, getParagraphText } from '../index.js';
+import {
+    acceptTrackedChangesInOoxml,
+    buildTargetReferenceSnapshot,
+    getParagraphText,
+    ingestWordOoxmlToPlainText,
+    rejectTrackedChangesInOoxml
+} from '../index.js';
 import {
     applyOperationToDocumentXml,
     applyOperationsToDocumentXml,
@@ -81,6 +87,31 @@ async function testRedlineOperation() {
     const paragraphs = Array.from(resultDoc.getElementsByTagNameNS(NS_W, 'p'));
     const firstParagraphText = getParagraphText(paragraphs[0]).trim();
     assert.strictEqual(firstParagraphText, modifiedText, 'redline operation should rewrite paragraph text');
+}
+
+async function testImplicitMultilineTargetReplacesWholeRange() {
+    const original = 'The Clerk records the application.\nThe Director reviews the application.';
+    const modified = 'The Clerk records the application.\nThe Director approves the application.';
+    const paragraphs = original.split('\n')
+        .map(text => `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`)
+        .join('');
+    const inputXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+        + `<w:document xmlns:w="${NS_W}"><w:body>${paragraphs}<w:sectPr/></w:body></w:document>`;
+
+    const result = await applyOperationToDocumentXml(
+        inputXml,
+        { type: 'redline', target: original, modified },
+        'StandaloneRunnerTest',
+        null,
+        { generateRedlines: true }
+    );
+
+    assert.strictEqual(result.hasChanges, true);
+    const accepted = acceptTrackedChangesInOoxml(result.documentXml, { allAuthors: true });
+    const rejected = rejectTrackedChangesInOoxml(result.documentXml, { allAuthors: true });
+    const normalizeParagraphs = text => text.replace(/\n\n/g, '\n');
+    assert.strictEqual(normalizeParagraphs(ingestWordOoxmlToPlainText(accepted.oxml)), modified);
+    assert.strictEqual(normalizeParagraphs(ingestWordOoxmlToPlainText(rejected.oxml)), original);
 }
 
 async function testCommentOperation() {
@@ -747,6 +778,7 @@ async function testBatchRunsCommentsBeforeTextEditsOnSameParagraph() {
 
 async function run() {
     await testRedlineOperation();
+    await testImplicitMultilineTargetReplacesWholeRange();
     await testCommentOperation();
     await testRangeListRedlineDoesNotDuplicateExistingItems();
     await testSingleParagraphListConcatenationUsesSurgicalInsertion();

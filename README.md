@@ -293,7 +293,9 @@ npm run test:word
 
 This Windows-only test command generates an English legal/administrative task
 suite under `tmp/word-validation/` and drives installed desktop Microsoft Word
-through COM. The published library remains clean, host-independent JavaScript;
+through COM. Its 18 cases include targeted reliability checks for literal
+content, multi-paragraph replacement, leading whitespace, and prior-revision
+no-op safety. The published library remains clean, host-independent JavaScript;
 Word automation exists only in development scripts.
 
 A nightly GitHub Actions workflow additionally validates generated fixtures
