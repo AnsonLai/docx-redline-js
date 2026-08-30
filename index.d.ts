@@ -3,7 +3,7 @@ export type RedlineStatus = 'ok' | 'no-op' | 'error';
 export type ExistingRevisionsPolicy = 'reject-input' | 'accept-all-first';
 
 export interface RedlineError {
-  code: 'PARSE_ERROR' | 'TARGET_NOT_FOUND' | 'EXISTING_REVISIONS' | string;
+  code: 'PARSE_ERROR' | 'TARGET_NOT_FOUND' | 'EXISTING_REVISIONS' | 'DIFF_TOKEN_LIMIT' | string;
   message: string;
 }
 

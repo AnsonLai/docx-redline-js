@@ -220,8 +220,8 @@ orchestration/
 }
 ```
 
-Known error codes include `PARSE_ERROR`, `TARGET_NOT_FOUND`, and
-`EXISTING_REVISIONS`.
+Known error codes include `PARSE_ERROR`, `TARGET_NOT_FOUND`,
+`EXISTING_REVISIONS`, and `DIFF_TOKEN_LIMIT`.
 
 ### OOXML wrapping for Word insertOoxml scenarios
 

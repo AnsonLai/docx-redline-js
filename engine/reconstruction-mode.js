@@ -17,9 +17,10 @@ import { withOoxmlSourceType } from '../core/word-xml.js';
  * @param {string} author - Author name
  * @param {Array} formatHints - Format hints
  * @param {boolean} [generateRedlines=true] - Track change toggle
+ * @param {{ diffTimeoutSeconds?: number }} [diffOptions={}] - Diff configuration
  * @returns {{ oxml: string, hasChanges: boolean }}
  */
-export function applyReconstructionMode(xmlDoc, originalText, modifiedText, serializer, author, formatHints, generateRedlines = true) {
+export function applyReconstructionMode(xmlDoc, originalText, modifiedText, serializer, author, formatHints, generateRedlines = true, diffOptions = {}) {
     const selectedParagraphs = findReconstructionParagraphRange(xmlDoc, originalText);
     if (selectedParagraphs === null) {
         return withOoxmlSourceType({
@@ -38,7 +39,7 @@ export function applyReconstructionMode(xmlDoc, originalText, modifiedText, seri
         return withOoxmlSourceType({ oxml: serializer.serializeToString(xmlDoc), hasChanges: false });
     }
 
-    const diffs = computeWordDiffs(mapping.originalFullText, mapping.processedModifiedText);
+    const diffs = computeWordDiffs(mapping.originalFullText, mapping.processedModifiedText, diffOptions);
 
     return withOoxmlSourceType(applyReconstructionDiffs(
         xmlDoc,

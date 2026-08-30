@@ -186,7 +186,8 @@ export class ReconciliationPipeline {
             return {
                 ooxml: originalOoxml,
                 isValid: false,
-                warnings: [`Pipeline error: ${error.message}`]
+                warnings: [`Pipeline error: ${error.message}`],
+                error: error?.code ? { code: error.code, message: error.message } : undefined
             };
         }
     }

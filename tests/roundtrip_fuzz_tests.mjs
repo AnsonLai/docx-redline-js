@@ -1,5 +1,8 @@
 import './setup-xml-provider.mjs';
 
+import assert from 'assert/strict';
+
+import { computeWordDiffs } from '../pipeline/diff-engine.js';
 import { assertRoundTrip } from './helpers/roundtrip.mjs';
 
 /**
@@ -321,22 +324,7 @@ function generateCase(caseSeed) {
  * fail the build. Delete an entry the moment its phase lands -- if the matching
  * failures stop appearing, the run reports that the entry is stale.
  */
-const KNOWN_GAPS = [
-    {
-        id: 'leading-whitespace-dropped',
-        phase: 'Phase 2',
-        note: 'diff tokenizer /(\\S+)(\\s*)/g cannot match whitespace before the first word',
-        // Deliberately narrow: only a mismatch whose ENTIRE difference is leading
-        // whitespace counts. Any other text difference stays a hard failure.
-        matches: error => {
-            const { expected, actual } = error || {};
-            if (typeof expected !== 'string' || typeof actual !== 'string') return false;
-            if (expected === actual) return false;
-            if (!/^\s/.test(expected)) return false;
-            return expected.replace(/^\s+/, '') === actual.replace(/^\s+/, '');
-        }
-    }
-];
+const KNOWN_GAPS = [];
 
 function classifyFailure(error) {
     return KNOWN_GAPS.find(gap => gap.matches(error)) || null;
@@ -372,6 +360,23 @@ for (let i = 0; i < ITERATIONS; i++) {
             break;
         }
     }
+}
+
+// One deterministic corpus member crosses the old 65,536-token boundary on
+// every run without making the ordinary randomized shapes prohibitively large.
+try {
+    const uniqueTokens = Array.from({ length: 70000 }, (_, index) => `u${BASE_SEED}_${index}`);
+    const original = uniqueTokens.join(' ');
+    uniqueTokens[35000] = `changed_${BASE_SEED}`;
+    const modified = uniqueTokens.join(' ');
+    const diffs = computeWordDiffs(original, modified);
+    assert.equal(diffs.filter(([op]) => op !== 1).map(([, text]) => text).join(''), original);
+    assert.equal(diffs.filter(([op]) => op !== -1).map(([, text]) => text).join(''), modified);
+    shapeCounts.set('highUniqueToken', 1);
+} catch (error) {
+    failures++;
+    console.error(`\nFUZZ CASE FAILED (seed ${BASE_SEED}, shape highUniqueToken)`);
+    console.error(`  ${error?.message || error}`);
 }
 
 if (failures > 0) {

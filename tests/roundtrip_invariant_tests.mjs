@@ -187,15 +187,10 @@ const corpus = [
         modified: 'para one\npara three'
     },
     {
-        // KNOWN-GAP: Phase 2. The word tokenizer in pipeline/diff-engine.js uses
-        // /(\S+)(\s*)/g, which cannot match whitespace occurring before the first
-        // non-space character, so leading whitespace is dropped from both sides of
-        // the diff and every diff offset shifts by its length. Un-skip in Phase 2.1.
         name: 'leading whitespace is preserved',
         oxml: leadingSpace,
         original: '  indented text',
-        modified: '  indented copy',
-        knownGap: 'Phase 2 (diff tokenizer drops leading whitespace)'
+        modified: '  indented copy'
     }
 ];
 

@@ -1,6 +1,6 @@
 # Redline Reliability Improvement Plan — Round 2
 
-**Status:** In Progress (Phases 1, 1.5, and 8 Complete; Phases 2–7 Open)
+**Status:** In Progress (Phases 1, 1.5, 2, and 8 Complete; Phases 3–7 Open)
 
 Follow-on to `completed/2026-05-31-architectural changes.md`, which is complete. That plan
 hardened the *OOXML shape* of generated redlines (paragraph marks, moves, inert
@@ -78,8 +78,8 @@ Additional convention for this plan:
 | # | Finding | Severity | Phase | Status |
 |---|---------|----------|-------|--------|
 | F1 | Round-trip oracle is lossy — whitespace/tab/break corruption is invisible to the entire suite | Critical (test blindness) | 1 | **Fixed** |
-| F2 | Diff engine silently drops text in documents with >65,536 unique tokens | Critical (data loss) | 2 | Open |
-| F3 | Diff output depends on wall-clock time (`Diff_Timeout = 1s`) | High (non-reproducible output) | 2 | Open |
+| F2 | Diff engine silently drops text in documents with >65,536 unique tokens | Critical (data loss) | 2 | **Fixed** |
+| F3 | Diff output depends on wall-clock time (`Diff_Timeout = 1s`) | High (non-reproducible output) | 2 | **Fixed** |
 | F4 | Public API error contract is inconsistent: some functions throw raw `ParseError`, some return `''`, some return `status:'error'` | High | 3 | Open |
 | F5 | `existingRevisions: 'accept-all-first'` can silently discard another reviewer's revisions while reporting `hasChanges: false` | High (data loss) | 4 | Open |
 | F6 | `sanitizeAiResponse` unconditionally mutates legitimate document text | High (data corruption) | 4 | Open |
@@ -94,7 +94,7 @@ Additional convention for this plan:
 
 | # | Finding | Severity | Phase | Status |
 |---|---------|----------|-------|--------|
-| F12 | Diff tokenizer `/(\S+)(\s*)/g` cannot match whitespace before the first word, so **leading whitespace is dropped from both sides of every diff** and all diff offsets shift by its length | High (data loss) | 2 | Open |
+| F12 | Diff tokenizer `/(\S+)(\s*)/g` cannot match whitespace before the first word, so **leading whitespace is dropped from both sides of every diff** and all diff offsets shift by its length | High (data loss) | 2 | **Fixed** |
 | F13 | An edit next to a `w:br` emits a **`w:p` nested inside a `w:p`** (schema-invalid, Word reports corruption) and destroys the `w:br` | Critical (corrupt output) | 8 | **Fixed** |
 | F14 | Reconstruction moves `w:sectPr` to the **front** of `w:body`, violating `CT_Body` and the package's own plumbing validator | High (corrupt output) | 8 | **Fixed** |
 | F15 | `applyRedlineToOxml` on a document whose `original` covers only some paragraphs **silently deletes the untargeted paragraphs** and returns `status: 'ok'` | High (data loss) | 8 | **Fixed** |
@@ -145,7 +145,7 @@ by Phase 2 and the new Phase 8:
 
 | Defect | Where it shows up | Rate |
 |---|---|---|
-| F12 leading whitespace dropped | corpus case + fuzz classifier `leading-whitespace-dropped` | 12 / 12,000 fuzz cases |
+| F12 leading whitespace dropped | corpus case + fuzz classifier `leading-whitespace-dropped` | 12 / 12,000 fuzz cases *(fixed and suppression removed in Phase 2)* |
 | F13 `w:br` → nested `w:p` | corpus case `w:br survives an edit in an adjacent run` | — |
 | F14 `w:sectPr` moved to front | corpus case + fuzz classifier `sectPr-not-last` | 10,000 / 12,000 fuzz cases (i.e. **every** case that has a `sectPr` at all) |
 
@@ -395,6 +395,8 @@ SHA-256 and left all source/output `.docx` files under ignored `tmp/` storage.
 > `DIFF_TOKEN_LIMIT` error instead of producing corrupted output. The whitespace
 > and determinism fixes can also change generated OOXML for affected inputs.
 
+**Status: Complete (2026-08-29).**
+
 ### 2.1 Token-space overflow silently destroys text (F2)
 
 `wordsToChars` in `pipeline/diff-engine.js:35-48` assigns each unique token a
@@ -514,6 +516,16 @@ sweep flake for reasons unrelated to any code change.
 handles ≥200k unique tokens with exact reconstruction; `charsToWords` throws
 rather than dropping; diff output is deterministic; fuzz corpus gains a
 high-unique-token case.
+
+**Acceptance recorded 2026-08-30:** token encoding now uses Unicode scalar
+values with a hard 262,144-unique-token ceiling. DMP receives a separate
+surrogate-free BMP encoding for ordinary inputs; larger valid inputs use a
+deterministic token-level fallback. Tests reconstruct both sides exactly at
+1,000 / 65,535 / 65,537 / 200,000 unique words, unmappable codes throw,
+overflow returns `DIFF_TOKEN_LIMIT` with caller OOXML byte-identical, leading
+whitespace and offsets are exact, and the default per-call DMP timeout is zero.
+The seeded fuzz corpus includes a 70,000-unique-token case and has no Phase 2
+suppression remaining.
 
 ---
 
@@ -990,8 +1002,8 @@ done as part of this phase.
 Phase 1  (honest oracle)        ← DONE; every later phase is verified through it
 Phase 8  (reconstruction shape) ← DONE
 Phase 1.5 (Word + real corpus)  ← DONE; expand alongside every later phase
-Phase 2  (diff correctness)     ← needs 1 for the whitespace-exact assertions
-Phase 3  (error contract)       ← needs 2 (introduces DIFF_TOKEN_LIMIT)
+Phase 2  (diff correctness)     ← DONE
+Phase 3  (error contract)       ← ready; DIFF_TOKEN_LIMIT landed in Phase 2
 Phase 4  (silent mutation)      ← needs 1; independent of 2/3
 Phase 5  (global state)         ← independent
 Phase 6  (batch atomicity)      ← independent
@@ -1009,7 +1021,7 @@ Each phase is a separate commit with the suite green. Suggested messages:
 - `test: compare round-trip text losslessly and widen the fuzz corpus` *(done)*
 - `fix: keep w:sectPr last and stop emitting nested paragraphs` *(done)*
 - `test: add Word differential task suite and pinned SuperDoc corpus references` *(done)*
-- `fix: guard and widen diff token space; make diff output deterministic`
+- `fix: guard and widen diff token space; make diff output deterministic` *(done)*
 - `feat: return structured errors instead of throwing on malformed OOXML`
 - `fix: stop discarding existing revisions and mutating caller text`
 - `refactor: scope revision id allocation to a single document`
@@ -1050,7 +1062,7 @@ New, from this plan:
 ## Verification commands
 
 ```bash
-npm test                          # 24/24 as of Phase 1
+npm test                          # 27/27 as of Phase 2
 npm run test:isolation
 npm run check:types
 npm run test:word                 # Windows + installed desktop Word
@@ -1063,13 +1075,11 @@ FUZZ_SEED=1 FUZZ_ITERATIONS=5000 node tests/roundtrip_fuzz_tests.mjs
 grep -rn "KNOWN-GAP" tests/       # every suppression names the phase that owns it
 ```
 
-The fuzz run prints a per-shape breakdown and a line per known gap, e.g.:
+The fuzz run prints a per-shape breakdown and a line per known gap, if any. As
+of Phase 2 there are no suppressed gaps, so the deterministic release gate is:
 
 ```
-PASS: 12000 fuzz round-trip cases (base seed 20260704)
-  [paragraph=4000 multiParagraph=2000 tableCell=2000 whitespace=2000 existingRevisions=2000]
-  KNOWN-GAP sectPr-not-last (Phase 8): 10000 case(s)
-  KNOWN-GAP leading-whitespace-dropped (Phase 2): 12 case(s)
+PASS: 5000 fuzz round-trip cases (base seed 1) [paragraph=1667 multiParagraph=834 tableCell=833 whitespace=833 existingRevisions=833 highUniqueToken=1]
 ```
 
 A gap reporting `0 cases -- possibly fixed` means the entry is stale: confirm

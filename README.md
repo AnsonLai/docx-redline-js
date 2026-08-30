@@ -128,7 +128,12 @@ Common result fields:
 | Field | Purpose |
 |-------|---------|
 | `status` | Optional non-breaking status: `'ok'`, `'no-op'`, or `'error'`. |
-| `error` | Present when `status === 'error'`; includes a stable `code` such as `PARSE_ERROR`, `TARGET_NOT_FOUND`, or `EXISTING_REVISIONS`. |
+| `error` | Present when `status === 'error'`; includes a stable `code` such as `PARSE_ERROR`, `TARGET_NOT_FOUND`, `EXISTING_REVISIONS`, or `DIFF_TOKEN_LIMIT`. |
+
+Word diffs are deterministic by default (no wall-clock timeout). Inputs above
+the safe ceiling of 262,144 unique diff tokens return `DIFF_TOKEN_LIMIT` with
+the original OOXML unchanged so callers can split the operation without risking
+silent text loss.
 
 ### Pipeline (lower-level access)
 

@@ -28,6 +28,7 @@ import { getDefaultAuthor } from '../adapters/config.js';
 import { containsTrackedChanges, withOoxmlSourceType } from '../core/word-xml.js';
 import { NS_W, seedRevisionIdsFromDocument } from '../core/types.js';
 import { acceptTrackedChangesInOoxml } from '../services/revision-comment-management.js';
+import { isDiffTokenLimitError } from '../pipeline/diff-engine.js';
 
 /**
  * Applies redline track changes to OOXML by modifying the DOM in-place.
@@ -277,6 +278,7 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
 
     log(`[OxmlEngine] Mode: ${hasTables ? 'SURGICAL' : 'RECONSTRUCTION'}, formatHints: ${formatHints.length}, isMarkdownTable: ${isMarkdownTable}, isTargetList: ${isTargetList}, isTableCellParagraph: ${tableCellContext.isTableCellParagraph}`);
 
+    try {
     if (isMarkdownTable && !hasTables) {
         log('[OxmlEngine] Text-to-table transformation: generating new table from Markdown');
         return finalize(applyTextToTableTransformation(xmlDoc, cleanModifiedText, serializer, parser, author, generateRedlines));
@@ -315,6 +317,10 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
         const pipeline = new ReconciliationPipeline({ author, generateRedlines });
         const result = await pipeline.execute(oxml, modifiedText, { xmlDoc });
 
+        if (result.error?.code === 'DIFF_TOKEN_LIMIT') {
+            return finalize({ oxml, hasChanges: false, status: 'error', error: result.error });
+        }
+
         if (result.isValid && result.ooxml && result.ooxml !== oxml) {
             const includeNumbering = result.includeNumbering === true;
             log(`[OxmlEngine] Wrapping list OOXML with numbering definitions, includeNumbering=${includeNumbering}`);
@@ -328,7 +334,26 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
         return noChanges();
     }
 
-    return finalize(applyReconstructionMode(xmlDoc, originalText, cleanModifiedText, serializer, author, formatHints, generateRedlines));
+    return finalize(applyReconstructionMode(
+        xmlDoc,
+        originalText,
+        cleanModifiedText,
+        serializer,
+        author,
+        formatHints,
+        generateRedlines
+    ));
+    } catch (caught) {
+        if (isDiffTokenLimitError(caught)) {
+            return finalize({
+                oxml,
+                hasChanges: false,
+                status: 'error',
+                error: { code: caught.code, message: caught.message }
+            });
+        }
+        throw caught;
+    }
 }
 
 function normalizeTargetText(text) {

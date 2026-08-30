@@ -27,9 +27,10 @@ import { withOoxmlSourceType } from '../core/word-xml.js';
  * @param {Array} formatHints - Format hints
  * @param {boolean} [generateRedlines=true] - Track change toggle
  * @param {Element|null} [targetParagraph=null] - Optional scope paragraph
+ * @param {{ diffTimeoutSeconds?: number }} [diffOptions={}] - Diff configuration
  * @returns {{ oxml: string, hasChanges: boolean, sourceType?: 'package'|'document'|'fragment' }}
  */
-export function applySurgicalMode(xmlDoc, originalText, modifiedText, serializer, author, formatHints, generateRedlines = true, targetParagraph = null) {
+export function applySurgicalMode(xmlDoc, originalText, modifiedText, serializer, author, formatHints, generateRedlines = true, targetParagraph = null, diffOptions = {}) {
     void originalText;
 
     const allParagraphs = targetParagraph
@@ -37,7 +38,7 @@ export function applySurgicalMode(xmlDoc, originalText, modifiedText, serializer
         : getDocumentParagraphs(xmlDoc);
 
     const { fullText, textSpans } = buildSurgicalTextSpans(allParagraphs);
-    const diffs = computeWordDiffs(fullText, modifiedText);
+    const diffs = computeWordDiffs(fullText, modifiedText, diffOptions);
     const spanIndex = buildSpanIndex(textSpans);
 
     let originalPos = 0;
