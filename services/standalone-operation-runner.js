@@ -5,7 +5,7 @@
  * stay focused on UI + prompt orchestration.
  */
 
-import { createParser, createSerializer } from '../adapters/xml-adapter.js';
+import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { createRevisionMetadata, seedRevisionIdsFromDocument } from '../core/types.js';
 import { createWordElement } from '../core/word-xml.js';
 import {
@@ -819,9 +819,9 @@ async function applyToParagraphByExactText(documentXml, targetText, modifiedText
     const generateRedlines = options.generateRedlines !== false;
     const onInfo = typeof options?.onInfo === 'function' ? options.onInfo : () => { };
     const onWarn = typeof options?.onWarn === 'function' ? options.onWarn : () => { };
-    const parser = createParser();
     const serializer = createSerializer();
-    const xmlDoc = parser.parseFromString(documentXml, 'application/xml');
+    const xmlDoc = parseOoxmlSafe(documentXml, 'application/xml').doc;
+    if (!xmlDoc) return { documentXml, hasChanges: false, status: 'error', error: { code: 'PARSE_ERROR', message: 'Could not parse document OOXML.' } };
     seedRevisionIdsFromDocument(xmlDoc);
     const resolved = resolveTargetParagraph(xmlDoc, targetText, targetRef, 'redline', runtimeContext, { onInfo, onWarn });
     const targetParagraph = resolved.paragraph;
@@ -1132,9 +1132,9 @@ async function applyHighlightToParagraphByExactText(documentXml, targetText, tex
     const generateRedlines = options.generateRedlines !== false;
     const onInfo = typeof options?.onInfo === 'function' ? options.onInfo : () => { };
     const onWarn = typeof options?.onWarn === 'function' ? options.onWarn : () => { };
-    const parser = createParser();
     const serializer = createSerializer();
-    const xmlDoc = parser.parseFromString(documentXml, 'application/xml');
+    const xmlDoc = parseOoxmlSafe(documentXml, 'application/xml').doc;
+    if (!xmlDoc) return { documentXml, hasChanges: false, status: 'error', error: { code: 'PARSE_ERROR', message: 'Could not parse document OOXML.' } };
     const resolved = resolveTargetParagraph(xmlDoc, targetText, targetRef, 'highlight', runtimeContext, { onInfo, onWarn });
     const targetParagraph = resolved.paragraph;
     const paragraphXml = serializer.serializeToString(targetParagraph);
@@ -1151,9 +1151,9 @@ async function applyHighlightToParagraphByExactText(documentXml, targetText, tex
 async function applyCommentToParagraphByExactText(documentXml, targetText, textToComment, commentContent, author, targetRef = null, runtimeContext = null, options = {}) {
     const onInfo = typeof options?.onInfo === 'function' ? options.onInfo : () => { };
     const onWarn = typeof options?.onWarn === 'function' ? options.onWarn : () => { };
-    const parser = createParser();
     const serializer = createSerializer();
-    const xmlDoc = parser.parseFromString(documentXml, 'application/xml');
+    const xmlDoc = parseOoxmlSafe(documentXml, 'application/xml').doc;
+    if (!xmlDoc) return { documentXml, hasChanges: false, commentsXml: null, status: 'error', error: { code: 'PARSE_ERROR', message: 'Could not parse document OOXML.' } };
     const resolved = resolveTargetParagraph(xmlDoc, targetText, targetRef, 'comment', runtimeContext, { onInfo, onWarn });
     const targetParagraph = resolved.paragraph;
     const paragraphXml = serializer.serializeToString(targetParagraph);
@@ -1191,10 +1191,10 @@ function mergeCommentsXml(existingXml, incomingXml) {
     if (!incomingXml) return existingXml || null;
     if (!existingXml) return incomingXml;
 
-    const parser = createParser();
     const serializer = createSerializer();
-    const existingDoc = parser.parseFromString(existingXml, 'application/xml');
-    const incomingDoc = parser.parseFromString(incomingXml, 'application/xml');
+    const existingDoc = parseOoxmlSafe(existingXml, 'application/xml').doc;
+    const incomingDoc = parseOoxmlSafe(incomingXml, 'application/xml').doc;
+    if (!existingDoc || !incomingDoc) return existingXml;
     const existingRoot = existingDoc.documentElement;
     const existingIds = new Set(
         Array.from(existingRoot.getElementsByTagNameNS(NS_W, 'comment'))
@@ -1227,6 +1227,10 @@ function mergeCommentsXml(existingXml, incomingXml) {
  * @returns {Promise<{ documentXml: string, hasChanges: boolean, numberingXml?: string|null, commentsXml?: string|null, warnings?: string[] }>}
  */
 export async function applyOperationToDocumentXml(documentXml, op, author, runtimeContext = null, options = {}) {
+    const parsed = parseOoxmlSafe(documentXml, 'application/xml');
+    if (parsed.error || !parsed.doc) {
+        return { documentXml, hasChanges: false, status: 'error', error: parsed.error, warnings: parsed.warnings };
+    }
     if (op?.type === 'highlight') {
         return applyHighlightToParagraphByExactText(
             documentXml,
@@ -1287,6 +1291,20 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
  * }>}
  */
 export async function applyOperationsToDocumentXml(documentXml, operations, author, runtimeContext = null, options = {}) {
+    const parsed = parseOoxmlSafe(documentXml, 'application/xml');
+    if (parsed.error || !parsed.doc) {
+        return {
+            documentXml,
+            hasChanges: false,
+            commentsXml: null,
+            numberingXmlParts: [],
+            results: [],
+            executionOrder: [],
+            status: 'error',
+            error: parsed.error,
+            warnings: parsed.warnings
+        };
+    }
     const sourceOperations = Array.isArray(operations) ? operations : [];
     const scheduled = sourceOperations
         .map((operation, index) => ({ operation, index }))
@@ -1294,8 +1312,7 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
 
     const context = runtimeContext && typeof runtimeContext === 'object' ? runtimeContext : {};
     if (!(context.targetRefSnapshot instanceof Map)) {
-        const snapshotDoc = createParser().parseFromString(documentXml, 'application/xml');
-        context.targetRefSnapshot = buildTargetReferenceSnapshot(snapshotDoc);
+        context.targetRefSnapshot = buildTargetReferenceSnapshot(parsed.doc);
     }
 
     let currentDocumentXml = documentXml;

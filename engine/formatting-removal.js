@@ -83,6 +83,7 @@ export function applyFormattingRemovalToOoxml(ooxmlString, targetText, formatTyp
     if (!targetText || !ooxmlString) return ooxmlString;
 
     const doc = parseOoxml(ooxmlString);
+    if (!doc) return ooxmlString;
     const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
     // Find all text runs
@@ -229,6 +230,7 @@ export function applyHighlightToOoxml(ooxmlString, targetText, color = 'yellow',
     if (!targetText || !ooxmlString) return ooxmlString;
 
     const doc = parseOoxml(ooxmlString);
+    if (!doc) return ooxmlString;
     const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
     // Helper to get text from a run

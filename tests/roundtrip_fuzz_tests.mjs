@@ -303,13 +303,31 @@ function shapeExistingRevisions(rng) {
     };
 }
 
+function shapeExistingRevisionsNoOp(rng) {
+    const keep = randomText(rng, 2, 5);
+    const inserted = randomText(rng, 1, 3);
+    const paragraphXml = `<w:p>`
+        + textRunXml(`${keep} `, '')
+        + `<w:ins w:id="9101" w:author="Prior" w:date="2020-01-01T00:00:00Z">${textRunXml(inserted, '')}</w:ins>`
+        + `</w:p>`;
+    const visible = `${keep} ${inserted}`;
+    return {
+        shape: 'existingRevisionsNoOp',
+        oxml: wrapBody(paragraphXml),
+        original: visible,
+        modified: visible,
+        options: { existingRevisions: 'accept-all-first' }
+    };
+}
+
 const SHAPES = [
     shapeParagraph,
     shapeParagraph,
     shapeMultiParagraph,
     shapeTableCell,
     shapeWhitespace,
-    shapeExistingRevisions
+    shapeExistingRevisions,
+    shapeExistingRevisionsNoOp
 ];
 
 function generateCase(caseSeed) {
@@ -340,7 +358,11 @@ for (let i = 0; i < ITERATIONS; i++) {
     shapeCounts.set(testCase.shape, (shapeCounts.get(testCase.shape) || 0) + 1);
 
     try {
-        await assertRoundTrip(testCase.oxml, testCase.original, testCase.modified, testCase.options || {});
+        const roundTrip = await assertRoundTrip(testCase.oxml, testCase.original, testCase.modified, testCase.options || {});
+        if (testCase.shape === 'existingRevisionsNoOp') {
+            assert.equal(roundTrip.redlined.hasChanges, false);
+            assert.equal(roundTrip.redlined.oxml, testCase.oxml);
+        }
     } catch (error) {
         const knownGap = classifyFailure(error);
         if (knownGap) {

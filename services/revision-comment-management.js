@@ -3,7 +3,7 @@
  */
 
 import { NS_W } from '../core/types.js';
-import { createParser, createSerializer } from '../adapters/xml-adapter.js';
+import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { createWordElement } from '../core/word-xml.js';
 import { getXmlParseError } from '../core/xml-query.js';
 
@@ -62,17 +62,19 @@ function authorMatchesNode(node, filter) {
 }
 
 function parseXmlWithWarnings(oxml, parseFailurePrefix) {
-    const parser = createParser();
-    const xmlDoc = parser.parseFromString(oxml, 'application/xml');
-    const parseError = getXmlParseError(xmlDoc);
-    if (parseError) {
+    const parsed = parseOoxmlSafe(oxml, 'application/xml');
+    const parseError = parsed.doc ? getXmlParseError(parsed.doc) : null;
+    if (parsed.error || parseError) {
+        const message = parsed.error?.message || parseError?.textContent || 'parse error';
         return {
             xmlDoc: null,
             serializer: null,
-            warning: `${parseFailurePrefix}: ${parseError.textContent || 'parse error'}`
+            warning: `${parseFailurePrefix}: ${message}`,
+            warnings: parsed.warnings,
+            error: { code: 'PARSE_ERROR', message }
         };
     }
-    return { xmlDoc, serializer: createSerializer(), warning: null };
+    return { xmlDoc: parsed.doc, serializer: createSerializer(), warning: null, warnings: parsed.warnings, error: null };
 }
 
 function removeNode(node) {
@@ -150,10 +152,18 @@ export function acceptTrackedChangesInOoxml(oxml, options = {}) {
 
     const parseResult = parseXmlWithWarnings(oxml, 'Failed to parse OOXML');
     if (!parseResult.xmlDoc) {
-        return { oxml, hasChanges: false, acceptedCount: 0, warnings: [parseResult.warning] };
+        return {
+            oxml,
+            hasChanges: false,
+            acceptedCount: 0,
+            status: 'error',
+            error: parseResult.error,
+            warnings: [...(parseResult.warnings || []), parseResult.warning]
+        };
     }
 
     const { xmlDoc, serializer } = parseResult;
+    warnings.push(...(parseResult.warnings || []));
     let acceptedCount = 0;
 
     for (const insNode of getWordElementsByLocalName(xmlDoc, 'ins')) {
@@ -321,10 +331,18 @@ export function rejectTrackedChangesInOoxml(oxml, options = {}) {
 
     const parseResult = parseXmlWithWarnings(oxml, 'Failed to parse OOXML');
     if (!parseResult.xmlDoc) {
-        return { oxml, hasChanges: false, rejectedCount: 0, warnings: [parseResult.warning] };
+        return {
+            oxml,
+            hasChanges: false,
+            rejectedCount: 0,
+            status: 'error',
+            error: parseResult.error,
+            warnings: [...(parseResult.warnings || []), parseResult.warning]
+        };
     }
 
     const { xmlDoc, serializer } = parseResult;
+    warnings.push(...(parseResult.warnings || []));
     let rejectedCount = 0;
 
     for (const insNode of getWordElementsByLocalName(xmlDoc, 'ins')) {
@@ -472,11 +490,14 @@ export function deleteCommentsByAuthorInOoxml(oxml, options = {}) {
             hasChanges: false,
             commentsRemoved: 0,
             referencesRemoved: 0,
-            warnings: [parseResult.warning]
+            status: 'error',
+            error: parseResult.error,
+            warnings: [...(parseResult.warnings || []), parseResult.warning]
         };
     }
 
     const { xmlDoc, serializer } = parseResult;
+    warnings.push(...(parseResult.warnings || []));
     const { targetIds, commentNodes } = collectCommentTargetIds(xmlDoc, filter);
 
     if (filter.allAuthors) {

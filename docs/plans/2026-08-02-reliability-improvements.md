@@ -1,6 +1,6 @@
 # Redline Reliability Improvement Plan — Round 2
 
-**Status:** In Progress (Phases 1, 1.5, 2, and 8 Complete; Phases 3–7 Open)
+**Status:** In Progress (Phases 1, 1.5, 2, 3, 4, and 8 Complete; Phases 5–7 Open)
 
 Follow-on to `completed/2026-05-31-architectural changes.md`, which is complete. That plan
 hardened the *OOXML shape* of generated redlines (paragraph marks, moves, inert
@@ -531,6 +531,8 @@ suppression remaining.
 
 ## Phase 3 — One error contract across the public API
 
+**Status: Complete (2026-08-29).**
+
 > **Production API: BREAKING.** Existing callers that catch parse exceptions, or
 > assume the current return shape from the affected functions, must adapt when
 > malformed-input handling changes to structured results. The new sibling
@@ -627,9 +629,21 @@ original that does match, and one that does not.
 multi-line `TARGET_NOT_FOUND` covered; README/AGENTS error-code tables updated
 with `DIFF_TOKEN_LIMIT` (Phase 2) and the new result helpers.
 
+**Acceptance recorded:** `parseOoxmlSafe` is the only production call site for
+`DOMParser.parseFromString`; it normalizes browser `<parsererror>` documents and
+xmldom exceptions, routes diagnostics through the logger, and retains
+recoverable diagnostics in `warnings`. The export-driven error matrix covers 19
+OOXML-consuming main-entry exports across malformed XML, empty strings,
+`null`, `undefined`, and well-formed non-OOXML. Cleanup transforms return
+structured `PARSE_ERROR` results without changing caller input; both ingestion
+result helpers distinguish parse failures from empty content; normalized
+multi-line matches and misses are covered. The suite is green at 28/28.
+
 ---
 
 ## Phase 4 — Stop silent mutation of caller content
+
+**Status: Complete (2026-08-29).**
 
 > **Production API: BREAKING if `sanitizeInput` defaults to `false`.** That
 > default changes the behavior of existing callers that rely on implicit input
@@ -708,6 +722,16 @@ splits one paragraph into several.
 **Acceptance for Phase 4:** no-op under `'accept-all-first'` preserves input;
 sanitization is opt-in (or loudly warned); all six corruption samples covered by
 tests; README documents `sanitizeInput`.
+
+**Acceptance recorded:** the engine keeps immutable caller OOXML separate from
+working normalized OOXML. Default `accept-all-first` no-ops are byte-identical
+and retain prior-author revisions; the explicit
+`accept-all-first-keep-normalized` policy returns normalization with
+`hasChanges: true` and a warning. `sanitizeInput` defaults to `false`, opt-in
+sanitization warns when it changes text, and sanitization now removes only a
+standalone leading preface line. Dollar-delimited text, literal `\\n` and
+`\\r\\n`, and inline preface-like contract sentences are covered. The fuzz
+corpus includes prior-revision no-ops and the full suite is green at 29/29.
 
 ---
 
@@ -1003,9 +1027,9 @@ Phase 1  (honest oracle)        ← DONE; every later phase is verified through 
 Phase 8  (reconstruction shape) ← DONE
 Phase 1.5 (Word + real corpus)  ← DONE; expand alongside every later phase
 Phase 2  (diff correctness)     ← DONE
-Phase 3  (error contract)       ← ready; DIFF_TOKEN_LIMIT landed in Phase 2
-Phase 4  (silent mutation)      ← needs 1; independent of 2/3
-Phase 5  (global state)         ← independent
+Phase 3  (error contract)       ← DONE
+Phase 4  (silent mutation)      ← DONE
+Phase 5  (global state)         ← ready
 Phase 6  (batch atomicity)      ← independent
 Phase 7  (tooling)              ← 7.1/7.2 anytime; 7.3 last
 ```
@@ -1022,8 +1046,8 @@ Each phase is a separate commit with the suite green. Suggested messages:
 - `fix: keep w:sectPr last and stop emitting nested paragraphs` *(done)*
 - `test: add Word differential task suite and pinned SuperDoc corpus references` *(done)*
 - `fix: guard and widen diff token space; make diff output deterministic` *(done)*
-- `feat: return structured errors instead of throwing on malformed OOXML`
-- `fix: stop discarding existing revisions and mutating caller text`
+- `feat: return structured errors instead of throwing on malformed OOXML` *(done)*
+- `fix: stop discarding existing revisions and mutating caller text` *(done)*
 - `refactor: scope revision id allocation to a single document`
 - `feat: make batched document operations atomic by default`
 - `build: type-check index.d.ts for real, add lint and coverage`
@@ -1062,7 +1086,7 @@ New, from this plan:
 ## Verification commands
 
 ```bash
-npm test                          # 27/27 as of Phase 2
+npm test                          # 29/29 as of Phase 4
 npm run test:isolation
 npm run check:types
 npm run test:word                 # Windows + installed desktop Word

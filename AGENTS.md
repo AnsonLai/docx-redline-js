@@ -54,7 +54,9 @@ const result = await applyRedlineToOxml(oxml, originalText, modifiedText, {
 
 `existingRevisions` defaults to `'reject-input'`. Use `'accept-all-first'` only
 when the caller intentionally wants to accept prior tracked changes before
-applying a new edit.
+applying a new edit. A no-op still returns the untouched input; use
+`'accept-all-first-keep-normalized'` only when accepted revisions should be
+returned as a real change even without a new redline.
 
 ### Apply a text edit without tracked changes
 
@@ -202,7 +204,8 @@ orchestration/
   generateRedlines: true,
   author: 'Name',
   existingRevisions: 'reject-input',
-  removeFormatting: false
+  removeFormatting: false,
+  sanitizeInput: false
 }
 ```
 
@@ -222,6 +225,11 @@ orchestration/
 
 Known error codes include `PARSE_ERROR`, `TARGET_NOT_FOUND`,
 `EXISTING_REVISIONS`, and `DIFF_TOKEN_LIMIT`.
+
+For ingestion that must distinguish an empty document from malformed OOXML,
+use `ingestWordOoxmlToPlainTextResult` or
+`ingestWordOoxmlToMarkdownResult`. The legacy ingestion helpers intentionally
+retain their string-only return type and return `''` for parse failures.
 
 ### OOXML wrapping for Word insertOoxml scenarios
 
@@ -249,9 +257,10 @@ directly into `word/document.xml`.
 5. `useNativeApi: true` means standalone mode cannot fully handle that operation path.
 6. `deleteCommentsByAuthorInOoxml` removes matching `comments.xml` entries and linked comment anchors/references in the document.
 7. If output begins with `<pkg:package`, treat it as package-level OOXML and normalize it before writing anything back to `word/document.xml`.
-8. Existing revisions are rejected by default; pass `existingRevisions: 'accept-all-first'` only when that is desired.
-9. Hyperlinks, bookmarks, comment markers, tabs/breaks, and footnote/endnote references are structural OOXML and should survive adjacent redline edits.
-10. Internally, create Word elements through `createWordElement` and tracked-change metadata through `createRevisionMetadata`.
+8. Existing revisions are rejected by default; `accept-all-first` preserves the original OOXML on no-op, while `accept-all-first-keep-normalized` explicitly returns normalization as a change.
+9. Caller content is not sanitized by default. Pass `sanitizeInput: true` only for raw assistant output; literal dollar delimiters and `\\n` sequences are never rewritten.
+10. Hyperlinks, bookmarks, comment markers, tabs/breaks, and footnote/endnote references are structural OOXML and should survive adjacent redline edits.
+11. Internally, create Word elements through `createWordElement` and tracked-change metadata through `createRevisionMetadata`.
 
 ## Validation Commands
 

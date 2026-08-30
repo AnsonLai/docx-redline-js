@@ -120,8 +120,9 @@ Common `applyRedlineToOxml` options:
 |--------|---------|
 | `generateRedlines` | When `true`, emit Word-native tracked changes; when `false`, apply clean text changes. |
 | `author` | Track-change author used for generated revisions. |
-| `existingRevisions` | Policy for source OOXML that already contains tracked changes: `'reject-input'` (default) returns `status: 'error'` with code `EXISTING_REVISIONS`; `'accept-all-first'` accepts existing revisions before applying the new edit. |
+| `existingRevisions` | Existing-revision policy. `'reject-input'` is the default. `'accept-all-first'` normalizes before a real edit but returns the untouched input on no-op. `'accept-all-first-keep-normalized'` explicitly returns accepted revisions as a change even on no-op. |
 | `removeFormatting` | When `true` and the text is unchanged with no Markdown hints, explicitly remove existing bold/italic/underline/strikethrough formatting. Defaults to `false`. |
+| `sanitizeInput` | Opt-in removal of a standalone leading assistant-preface line. Defaults to `false`; dollar-delimited text and literal `\\n` sequences are always preserved. |
 
 Common result fields:
 
@@ -142,6 +143,8 @@ silent text loss.
 | `ReconciliationPipeline` | Direct pipeline access (ingest, diff, patch, serialize). |
 | `ingestWordOoxmlToPlainText(oxml)` | Extract plain text from OOXML. |
 | `ingestWordOoxmlToMarkdown(oxml)` | Convert OOXML to markdown. |
+| `ingestWordOoxmlToPlainTextResult(oxml)` | Extract text as `{ text, status, error?, warnings? }`, distinguishing malformed input from an empty document. |
+| `ingestWordOoxmlToMarkdownResult(oxml)` | Markdown counterpart to the result-returning plain-text helper. |
 | `ingestOoxml(oxml)` | Flatten OOXML into an internal run model with offsets. |
 | `preprocessMarkdown(text)` | Normalize markdown and extract format hints. |
 | `containsTrackedChanges(xmlDoc)` | Detect `w:ins`, `w:del`, move revisions, property changes, and paragraph-mark revision markup in a parsed OOXML document/fragment. |
@@ -160,6 +163,12 @@ silent text loss.
 | `ensureNumberingArtifactsInZip(zip, numberingXml)` | Merge numbering artifacts into a `.docx` package. |
 | `ensureCommentsArtifactsInZip(zip, commentsXml)` | Merge comments artifacts into a `.docx` package. |
 | `validateDocxPackage(zip)` | Validate `.docx` structural consistency. |
+
+Malformed OOXML never escapes these public transform APIs as a raw parser
+exception. Transforms return `status: 'error'` with `error.code === 'PARSE_ERROR'`;
+validators return a `PARSE_ERROR` issue. Recoverable XML parser
+diagnostics are forwarded through the configured logger and included in
+`warnings` where the result shape supports them.
 
 ### Deep Imports
 

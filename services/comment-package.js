@@ -2,7 +2,7 @@
  * Comment package builders and pkg:part wiring.
  */
 
-import { createParser, createSerializer } from '../adapters/xml-adapter.js';
+import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { error as logError } from '../adapters/logger.js';
 import { buildDocumentCommentsPackage, buildParagraphCommentsPackage } from './package-builder.js';
 import { getElementsByTagNS, getXmlParseError } from '../core/xml-query.js';
@@ -29,13 +29,13 @@ export function wrapParagraphWithComments(paragraphXml, commentsXml) {
  * @returns {string}
  */
 export function injectCommentsIntoPackage(packageOxml, commentsXml) {
-    const parser = createParser();
     const serializer = createSerializer();
-    const pkgDoc = parser.parseFromString(packageOxml, 'text/xml');
+    const packageParsed = parseOoxmlSafe(packageOxml, 'text/xml');
+    const pkgDoc = packageParsed.doc;
 
-    const parseError = getXmlParseError(pkgDoc);
-    if (parseError) {
-        logError('[CommentEngine] Failed to parse package:', parseError.textContent);
+    const parseError = pkgDoc ? getXmlParseError(pkgDoc) : null;
+    if (packageParsed.error || parseError) {
+        logError('[CommentEngine] Failed to parse package:', packageParsed.error?.message || parseError?.textContent);
         return packageOxml;
     }
 
@@ -46,7 +46,8 @@ export function injectCommentsIntoPackage(packageOxml, commentsXml) {
     commentsPart.setAttribute('pkg:contentType', 'application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml');
 
     const commentsXmlData = pkgDoc.createElementNS(PKG_NS, 'pkg:xmlData');
-    const commentsDoc = parser.parseFromString(commentsXml, 'text/xml');
+    const commentsDoc = parseOoxmlSafe(commentsXml, 'text/xml').doc;
+    if (!commentsDoc) return packageOxml;
     commentsXmlData.appendChild(pkgDoc.importNode(commentsDoc.documentElement, true));
     commentsPart.appendChild(commentsXmlData);
     pkgPackage.appendChild(commentsPart);

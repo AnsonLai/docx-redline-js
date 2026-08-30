@@ -3,7 +3,7 @@
  * text no-op but the target is marker-prefixed plain text (for example `1. X`).
  */
 
-import { createParser, createSerializer } from '../adapters/xml-adapter.js';
+import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { getXmlParseError } from '../core/xml-query.js';
 import {
     getDocumentParagraphNodes,
@@ -269,8 +269,8 @@ export function enforceListBindingOnParagraphNodes(nodes, options = {}) {
 }
 
 function getFirstParagraphFromOxml(oxml) {
-    const parser = createParser();
-    const doc = parser.parseFromString(String(oxml || ''), 'application/xml');
+    const doc = parseOoxmlSafe(oxml, 'application/xml').doc;
+    if (!doc) return null;
     const parseError = getXmlParseError(doc);
     if (parseError) return null;
     const paragraphs = getDocumentParagraphNodes(doc);
@@ -301,8 +301,8 @@ function setElementVal(element, value) {
 }
 
 function extractFirstParagraphNumIdFromOxml(oxml) {
-    const parser = createParser();
-    const doc = parser.parseFromString(String(oxml || ''), 'application/xml');
+    const doc = parseOoxmlSafe(oxml, 'application/xml').doc;
+    if (!doc) return null;
     const parseError = getXmlParseError(doc);
     if (parseError) return null;
 
@@ -321,9 +321,9 @@ function extractFirstParagraphNumIdFromOxml(oxml) {
 function applyStartOverrideToNumberingXml(numberingXml, targetNumId, startAt, options = {}) {
     if (!numberingXml || !targetNumId || !Number.isInteger(startAt) || startAt < 1) return numberingXml;
     const setAbstractStartOverride = options.setAbstractStartOverride !== false;
-    const parser = createParser();
     const serializer = createSerializer();
-    const numberingDoc = parser.parseFromString(String(numberingXml || ''), 'application/xml');
+    const numberingDoc = parseOoxmlSafe(numberingXml, 'application/xml').doc;
+    if (!numberingDoc) return numberingXml;
     const parseError = getXmlParseError(numberingDoc);
     if (parseError) return numberingXml;
 

@@ -6,7 +6,7 @@
 
 import { NS_W, RunKind, ContainerKind } from '../core/types.js';
 import { appendParagraphBoundary, advanceOffsetForParagraphBoundary } from '../core/paragraph-offset-policy.js';
-import { createParser, serializeXml } from '../adapters/xml-adapter.js';
+import { parseOoxmlSafe, serializeXml } from '../adapters/xml-adapter.js';
 import { warn, error as logError } from '../adapters/logger.js';
 import {
     getElementsByTagNS,
@@ -35,10 +35,12 @@ export function ingestOoxml(ooxmlString, options = {}) {
     }
 
     try {
-        const doc = preParsedDoc || (() => {
-            const parser = createParser();
-            return parser.parseFromString(ooxmlString, 'application/xml');
-        })();
+        const parsed = preParsedDoc ? { doc: preParsedDoc, error: null } : parseOoxmlSafe(ooxmlString, 'application/xml');
+        const doc = parsed.doc;
+        if (parsed.error || !doc) {
+            logError('OOXML parse error:', parsed.error?.message);
+            return { runModel, acceptedText, pPr: null, error: parsed.error };
+        }
 
         const parseError = getXmlParseError(doc);
         if (parseError) {

@@ -89,7 +89,9 @@ export function getFirstElementByTagNSOrTag(node, namespaceUri, localName, fallb
 }
 
 /**
- * Returns XML parser error element if present.
+ * Returns XML parser error element if present. This is a browser DOMParser
+ * compatibility probe; xmldom reports diagnostics through `parseOoxmlSafe`
+ * and does not normally create `<parsererror>` elements.
  *
  * @param {Document|Element|null|undefined} xmlDoc - Parsed XML document
  * @returns {Element|null}

@@ -16,7 +16,7 @@ import { detectNumberingContext } from './ingestion.js';
 import { generateTableOoxml } from '../services/table-reconciliation.js';
 import { executeListGeneration, detectIndentationStep } from './list-generation.js';
 import { detectContentType, parseListItems, parseTable } from './content-analysis.js';
-import { createParser } from '../adapters/xml-adapter.js';
+import { parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { log, error as logError } from '../adapters/logger.js';
 import { getFirstElementByTagNS, getXmlParseError } from '../core/xml-query.js';
 import { getPlatform } from '../adapters/config.js';
@@ -75,10 +75,20 @@ export class ReconciliationPipeline {
 
         try {
             // Stage 1: Ingest OOXML
-            const doc = options.xmlDoc || (() => {
-                const parser = createParser();
-                return parser.parseFromString(originalOoxml, 'application/xml');
-            })();
+            const parsed = options.xmlDoc
+                ? { doc: options.xmlDoc, error: null, warnings: [] }
+                : parseOoxmlSafe(originalOoxml, 'application/xml');
+            if (parsed.error || !parsed.doc) {
+                return {
+                    ooxml: originalOoxml,
+                    isValid: false,
+                    status: 'error',
+                    error: parsed.error,
+                    warnings: parsed.warnings || []
+                };
+            }
+            warnings.push(...(parsed.warnings || []));
+            const doc = parsed.doc;
             const pElement = getFirstElementByTagNS(doc, '*', 'p');
 
             const { runModel, acceptedText, pPr } = ingestOoxml(originalOoxml, { xmlDoc: doc });
@@ -204,8 +214,13 @@ export class ReconciliationPipeline {
         try {
             // Check for well-formed XML by wrapping in namespace container
             const wrappedXml = `<root xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${ooxml}</root>`;
-            const parser = createParser();
-            const doc = parser.parseFromString(wrappedXml, 'application/xml');
+            const parsed = parseOoxmlSafe(wrappedXml, 'application/xml');
+            const doc = parsed.doc;
+
+            if (parsed.error || !doc) {
+                errors.push('Generated OOXML is not well-formed XML: ' + (parsed.error?.message || 'parse error'));
+                return { isValid: false, errors };
+            }
 
             const parseError = getXmlParseError(doc);
             if (parseError) {

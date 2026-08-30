@@ -11,7 +11,7 @@ import {
     getFirstElementByTagNSOrTag,
     getXmlParseError
 } from '../core/xml-query.js';
-import { createParser } from '../adapters/xml-adapter.js';
+import { parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { log, error } from '../adapters/logger.js';
 import { diffTablesWithVirtualGrid, serializeVirtualGridToOoxml, generateTableOoxml } from '../services/table-reconciliation.js';
 import { parseTable } from '../pipeline/pipeline.js';
@@ -54,8 +54,8 @@ export function applyTableReconciliation(xmlDoc, modifiedText, serializer, parse
     const options = { generateRedlines, author };
     const reconciledOxml = serializeVirtualGridToOoxml(oldGrid, operations, options);
     const wrappedOxml = `<root xmlns:w="${NS_W}">${reconciledOxml}</root>`;
-    const reconcileParser = parser || createParser();
-    const reconciledDoc = reconcileParser.parseFromString(wrappedOxml, 'application/xml');
+    const reconciledDoc = parseOoxmlSafe(wrappedOxml, 'application/xml').doc;
+    if (!reconciledDoc) return noChanges(serializer, xmlDoc);
 
     const parseError = getXmlParseError(reconciledDoc);
     if (parseError) {
@@ -94,8 +94,8 @@ export function applyTextToTableTransformation(xmlDoc, modifiedText, serializer,
     }
 
     const tableOoxml = generateTableOoxml(tableData, { generateRedlines, author });
-    const activeParser = parser || createParser();
-    const tableDoc = activeParser.parseFromString(`<root xmlns:w="${NS_W}">${tableOoxml}</root>`, 'application/xml');
+    const tableDoc = parseOoxmlSafe(`<root xmlns:w="${NS_W}">${tableOoxml}</root>`, 'application/xml').doc;
+    if (!tableDoc) return noChanges(serializer, xmlDoc);
 
     const tableParseError = getXmlParseError(tableDoc);
     if (tableParseError) {
@@ -123,10 +123,11 @@ export function applyTextToTableTransformation(xmlDoc, modifiedText, serializer,
     let parent = firstParagraph.parentNode;
 
     if (parent && parent.nodeType === 9) {
-        const wrappedDoc = activeParser.parseFromString(
+        const wrappedDoc = parseOoxmlSafe(
             `<w:document xmlns:w="${NS_W}"><w:body/></w:document>`,
             'application/xml'
-        );
+        ).doc;
+        if (!wrappedDoc) return noChanges(serializer, workingDoc);
         const wrappedBody = getFirstElementByTagNS(wrappedDoc, NS_W, 'body');
         paragraphs.forEach(p => wrappedBody.appendChild(wrappedDoc.importNode(p, true)));
 

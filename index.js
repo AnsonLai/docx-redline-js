@@ -3,7 +3,7 @@
  */
 
 // Adapters
-export { configureXmlProvider } from './adapters/xml-adapter.js';
+export { configureXmlProvider, parseOoxmlSafe } from './adapters/xml-adapter.js';
 export { configureLogger } from './adapters/logger.js';
 export { setDefaultAuthor, getDefaultAuthor, setPlatform, getPlatform } from './adapters/config.js';
 
@@ -119,10 +119,14 @@ export { inferTableReplacementParagraphBlock, isLikelyStructuredTableSourceParag
  */
 export async function applyRedlineToOxmlWithListFallback(oxml, originalText, modifiedText, options = {}) {
     const allowExistingListForFallback = options.listFallbackAllowExistingList !== false;
+    const fallbackModifiedText = options.sanitizeInput === true ? sanitizeAiResponse(modifiedText) : modifiedText;
+    const sanitizationWarnings = fallbackModifiedText !== modifiedText
+        ? ['Input was sanitized; pass sanitizeInput: false to disable.']
+        : [];
     const plan = buildSingleLineListStructuralFallbackPlan({
         oxml,
         originalText,
-        modifiedText,
+        modifiedText: fallbackModifiedText,
         allowExistingList: allowExistingListForFallback
     });
     const preferListFallback = options.preferListStructuralFallback !== false;
@@ -143,7 +147,7 @@ export async function applyRedlineToOxmlWithListFallback(oxml, originalText, mod
             return withOoxmlSourceType({
                 oxml: wrappedOxml,
                 hasChanges: true,
-                warnings: fallbackWarnings,
+                warnings: [...sanitizationWarnings, ...fallbackWarnings],
                 listStructuralFallbackApplied: true,
                 listStructuralFallbackKey: fallbackResult.listStructuralFallbackKey || null,
                 listStructuralFallbackNumberingXml: fallbackResult.numberingXml || null
@@ -232,7 +236,12 @@ export {
 // Pipeline components
 export { ReconciliationPipeline } from './pipeline/pipeline.js';
 export { ingestOoxml } from './pipeline/ingestion.js';
-export { ingestWordOoxmlToPlainText, ingestWordOoxmlToMarkdown } from './pipeline/ingestion-export.js';
+export {
+    ingestWordOoxmlToPlainText,
+    ingestWordOoxmlToMarkdown,
+    ingestWordOoxmlToPlainTextResult,
+    ingestWordOoxmlToMarkdownResult
+} from './pipeline/ingestion-export.js';
 export { preprocessMarkdown } from './pipeline/markdown-processor.js';
 export { serializeToOoxml, wrapInDocumentFragment } from './pipeline/serialization.js';
 
@@ -260,7 +269,6 @@ export {
 export { generateTableOoxml } from './services/table-reconciliation.js';
 export { NumberingService } from './services/numbering-service.js';
 export {
-    parseXmlStrictStandalone,
     getBodyElementFromDocument,
     insertBodyElementBeforeSectPr,
     normalizeBodySectionOrderStandalone,
@@ -312,5 +320,3 @@ export {
     planListInsertionOnlyEdit,
     stripRedundantLeadingListMarkers
 } from './core/list-targeting.js';
-
-

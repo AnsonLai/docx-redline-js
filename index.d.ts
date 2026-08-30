@@ -1,6 +1,6 @@
 export type OoxmlSourceType = 'package' | 'document' | 'fragment';
 export type RedlineStatus = 'ok' | 'no-op' | 'error';
-export type ExistingRevisionsPolicy = 'reject-input' | 'accept-all-first';
+export type ExistingRevisionsPolicy = 'reject-input' | 'accept-all-first' | 'accept-all-first-keep-normalized';
 
 export interface RedlineError {
   code: 'PARSE_ERROR' | 'TARGET_NOT_FOUND' | 'EXISTING_REVISIONS' | 'DIFF_TOKEN_LIMIT' | string;
@@ -13,6 +13,7 @@ export interface RedlineOptions {
   targetParagraphId?: string | null;
   existingRevisions?: ExistingRevisionsPolicy;
   removeFormatting?: boolean;
+  sanitizeInput?: boolean;
   [key: string]: unknown;
 }
 
@@ -47,6 +48,8 @@ export interface AcceptTrackedChangesResult {
   hasChanges: boolean;
   acceptedCount: number;
   warnings: string[];
+  status?: RedlineStatus;
+  error?: RedlineError;
 }
 
 export interface RejectTrackedChangesResult {
@@ -54,6 +57,8 @@ export interface RejectTrackedChangesResult {
   hasChanges: boolean;
   rejectedCount: number;
   warnings: string[];
+  status?: RedlineStatus;
+  error?: RedlineError;
 }
 
 export interface DeleteCommentsResult {
@@ -62,6 +67,15 @@ export interface DeleteCommentsResult {
   commentsRemoved: number;
   referencesRemoved: number;
   warnings: string[];
+  status?: RedlineStatus;
+  error?: RedlineError;
+}
+
+export interface IngestionTextResult {
+  text: string;
+  status: 'ok' | 'error';
+  error?: RedlineError;
+  warnings?: string[];
 }
 
 export interface XmlProvider {
@@ -86,6 +100,7 @@ export interface DocumentOperationResult {
 }
 
 export function configureXmlProvider(provider: XmlProvider): void;
+export function parseOoxmlSafe(oxml: unknown, contentType?: string): { doc: Document | null; error: RedlineError | null; warnings: string[] };
 export function configureLogger(logger: LoggerConfig): void;
 export function setDefaultAuthor(name: string): void;
 export function getDefaultAuthor(): string;
@@ -115,6 +130,8 @@ export function reconcileMarkdownTableOoxml(
 
 export function ingestWordOoxmlToPlainText(oxml: string): string;
 export function ingestWordOoxmlToMarkdown(oxml: string): string;
+export function ingestWordOoxmlToPlainTextResult(oxml: unknown): IngestionTextResult;
+export function ingestWordOoxmlToMarkdownResult(oxml: unknown): IngestionTextResult;
 export function ingestOoxml(oxml: string): unknown;
 export function preprocessMarkdown(text: string): { cleanText: string; formatHints: unknown[] };
 export function serializeToOoxml(runModel: unknown[], pPrXml?: string | null, formatHints?: unknown[], options?: Record<string, unknown>): string;
@@ -159,7 +176,7 @@ export function ensureNumberingArtifactsInZip(zip: unknown, numberingXml: string
 export function ensureCommentsArtifactsInZip(zip: unknown, commentsXml: string): Promise<unknown> | unknown;
 export function createDynamicNumberingIdState(numberingXml?: string): unknown;
 
-export function parseOoxml(ooxml: string): Document;
+export function parseOoxml(ooxml: string): Document | null;
 export function serializeOoxml(node: Node): string;
 export function sanitizeAiResponse(text: string): string;
 

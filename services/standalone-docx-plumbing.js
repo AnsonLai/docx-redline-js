@@ -2,7 +2,7 @@
  * Standalone OOXML/Docx plumbing helpers shared by browser and Node hosts.
  */
 
-import { createParser, createSerializer } from '../adapters/xml-adapter.js';
+import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const NS_CT = 'http://schemas.openxmlformats.org/package/2006/content-types';
@@ -19,13 +19,13 @@ const CONTENT_TYPES_PATH = '[Content_Types].xml';
 const DOCUMENT_RELS_PATH = 'word/_rels/document.xml.rels';
 
 export function parseXmlStrictStandalone(xmlText, label = 'xml') {
-    const parser = createParser();
-    const xmlDoc = parser.parseFromString(xmlText, 'application/xml');
-    const parseError = xmlDoc.getElementsByTagName('parsererror')[0];
-    if (parseError) {
-        throw new Error(`[XML parse error] ${label}: ${parseError.textContent || 'Unknown'}`);
+    const parsed = parseOoxmlSafe(xmlText, 'application/xml');
+    if (parsed.error || !parsed.doc) {
+        const error = new Error(`[XML parse error] ${label}: ${parsed.error?.message || 'Unknown'}`);
+        error.code = 'PARSE_ERROR';
+        throw error;
     }
-    return xmlDoc;
+    return parsed.doc;
 }
 
 function isSectionPropertiesElement(node) {
@@ -104,9 +104,8 @@ export function getPackagePartName(partElement) {
 }
 
 function extractFromPackageXml(packageXml) {
-    const parser = createParser();
     const serializer = createSerializer();
-    const pkgDoc = parser.parseFromString(packageXml, 'application/xml');
+    const pkgDoc = parseXmlStrictStandalone(packageXml, 'package OOXML');
     const parts = Array.from(pkgDoc.getElementsByTagNameNS('*', 'part'));
     const documentPart = parts.find(part => getPackagePartName(part) === '/word/document.xml');
     if (!documentPart) {
@@ -154,28 +153,42 @@ function extractFromPackageXml(packageXml) {
  */
 export function extractReplacementNodesFromOoxml(outputOxml) {
     if (typeof outputOxml !== 'string' || !outputOxml.trim()) {
-        throw new Error('Reconciliation engine returned no OOXML payload for this operation');
+        return {
+            replacementNodes: [],
+            numberingXml: null,
+            sourceType: 'fragment',
+            status: 'error',
+            error: { code: 'PARSE_ERROR', message: 'Reconciliation engine returned no OOXML payload for this operation' }
+        };
     }
 
-    if (outputOxml.includes('<pkg:package')) {
-        return extractFromPackageXml(outputOxml);
-    }
+    try {
+        if (outputOxml.includes('<pkg:package')) {
+            return extractFromPackageXml(outputOxml);
+        }
 
-    if (outputOxml.includes('<w:document')) {
-        const parser = createParser();
-        const doc = parser.parseFromString(outputOxml, 'application/xml');
-        const body = doc.getElementsByTagNameNS('*', 'body')[0];
-        const replacementNodes = body
-            ? Array.from(body.childNodes || []).filter(node => node.nodeType === 1 && !isSectionPropertiesElement(node))
-            : Array.from(doc.childNodes || []).filter(node => node.nodeType === 1);
-        return { replacementNodes, numberingXml: null, sourceType: 'document' };
-    }
+        if (outputOxml.includes('<w:document')) {
+            const doc = parseXmlStrictStandalone(outputOxml, 'document OOXML');
+            const body = doc.getElementsByTagNameNS('*', 'body')[0];
+            const replacementNodes = body
+                ? Array.from(body.childNodes || []).filter(node => node.nodeType === 1 && !isSectionPropertiesElement(node))
+                : Array.from(doc.childNodes || []).filter(node => node.nodeType === 1);
+            return { replacementNodes, numberingXml: null, sourceType: 'document' };
+        }
 
-    const wrapped = `<root xmlns:w="${NS_W}">${outputOxml}</root>`;
-    const parser = createParser();
-    const fragmentDoc = parser.parseFromString(wrapped, 'application/xml');
-    const replacementNodes = Array.from(fragmentDoc.documentElement.childNodes || []).filter(node => node.nodeType === 1);
-    return { replacementNodes, numberingXml: null, sourceType: 'fragment' };
+        const wrapped = `<root xmlns:w="${NS_W}">${outputOxml}</root>`;
+        const fragmentDoc = parseXmlStrictStandalone(wrapped, 'OOXML fragment');
+        const replacementNodes = Array.from(fragmentDoc.documentElement.childNodes || []).filter(node => node.nodeType === 1);
+        return { replacementNodes, numberingXml: null, sourceType: 'fragment' };
+    } catch (caught) {
+        return {
+            replacementNodes: [],
+            numberingXml: null,
+            sourceType: 'fragment',
+            status: 'error',
+            error: { code: 'PARSE_ERROR', message: caught?.message || 'Could not parse OOXML payload.' }
+        };
+    }
 }
 
 function upsertContentTypeOverride(ctDoc, partName, contentType) {
@@ -258,12 +271,11 @@ export async function ensureNumberingArtifactsInZip(zip, numberingXmlList, optio
     }
     zip.file(NUMBERING_PATH, mergedNumberingXml);
 
-    const parser = createParser();
     const serializer = createSerializer();
 
     const ctText = await readZipText(zip, CONTENT_TYPES_PATH);
     if (ctText) {
-        const ctDoc = parser.parseFromString(ctText, 'application/xml');
+        const ctDoc = parseXmlStrictStandalone(ctText, CONTENT_TYPES_PATH);
         if (upsertContentTypeOverride(ctDoc, '/word/numbering.xml', NUMBERING_CONTENT_TYPE)) {
             zip.file(CONTENT_TYPES_PATH, serializer.serializeToString(ctDoc));
         }
@@ -271,7 +283,7 @@ export async function ensureNumberingArtifactsInZip(zip, numberingXmlList, optio
 
     const relsText = await readZipText(zip, DOCUMENT_RELS_PATH);
     if (relsText) {
-        const relsDoc = parser.parseFromString(relsText, 'application/xml');
+        const relsDoc = parseXmlStrictStandalone(relsText, DOCUMENT_RELS_PATH);
         if (upsertDocumentRelationship(relsDoc, NUMBERING_REL_TYPE, 'numbering.xml')) {
             zip.file(DOCUMENT_RELS_PATH, serializer.serializeToString(relsDoc));
         }
@@ -289,7 +301,6 @@ export async function ensureCommentsArtifactsInZip(zip, commentsXml, options = {
     const onInfo = typeof options?.onInfo === 'function' ? options.onInfo : () => {};
     if (!commentsXml) return;
 
-    const parser = createParser();
     const serializer = createSerializer();
     const existingText = await readZipText(zip, COMMENTS_PATH);
     if (!existingText) {
@@ -316,7 +327,7 @@ export async function ensureCommentsArtifactsInZip(zip, commentsXml, options = {
 
     const ctText = await readZipText(zip, CONTENT_TYPES_PATH);
     if (ctText) {
-        const ctDoc = parser.parseFromString(ctText, 'application/xml');
+        const ctDoc = parseXmlStrictStandalone(ctText, CONTENT_TYPES_PATH);
         if (upsertContentTypeOverride(ctDoc, '/word/comments.xml', COMMENTS_CONTENT_TYPE)) {
             zip.file(CONTENT_TYPES_PATH, serializer.serializeToString(ctDoc));
         }
@@ -324,7 +335,7 @@ export async function ensureCommentsArtifactsInZip(zip, commentsXml, options = {
 
     const relsText = await readZipText(zip, DOCUMENT_RELS_PATH);
     if (relsText) {
-        const relsDoc = parser.parseFromString(relsText, 'application/xml');
+        const relsDoc = parseXmlStrictStandalone(relsText, DOCUMENT_RELS_PATH);
         if (upsertDocumentRelationship(relsDoc, COMMENTS_REL_TYPE, 'comments.xml')) {
             zip.file(DOCUMENT_RELS_PATH, serializer.serializeToString(relsDoc));
         }

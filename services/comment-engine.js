@@ -5,7 +5,7 @@
  */
 
 import { NS_W, getNextRevisionId, getRevisionTimestamp, resetRevisionIdCounter } from '../core/types.js';
-import { createParser, createSerializer } from '../adapters/xml-adapter.js';
+import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { log, error as logError } from '../adapters/logger.js';
 import { getElementsByTag, getFirstElementByTag, getXmlParseError } from '../core/xml-query.js';
 import { buildCommentElement, buildCommentsPartXml, buildCommentMarkers } from './comment-builders.js';
@@ -35,17 +35,19 @@ export { buildCommentElement, buildCommentsPartXml, buildCommentMarkers };
  * @property {string[]} warnings - Any issues encountered
  */
 
-function parseDocumentOxml(oxml, parser, parseFailureWarning) {
-    try {
-        const xmlDoc = parser.parseFromString(oxml, 'text/xml');
-        const parseError = getXmlParseError(xmlDoc);
-        if (parseError) {
-            return { xmlDoc: null, warning: parseFailureWarning(parseError.textContent || 'parse error') };
-        }
-        return { xmlDoc, warning: null };
-    } catch (error) {
-        return { xmlDoc: null, warning: parseFailureWarning(error.message) };
+function parseDocumentOxml(oxml, parseFailureWarning) {
+    const parsed = parseOoxmlSafe(oxml, 'text/xml');
+    const parseError = parsed.doc ? getXmlParseError(parsed.doc) : null;
+    if (parsed.error || parseError) {
+        const message = parsed.error?.message || parseError?.textContent || 'parse error';
+        return {
+            xmlDoc: null,
+            warning: parseFailureWarning(message),
+            warnings: parsed.warnings,
+            error: { code: 'PARSE_ERROR', message }
+        };
     }
+    return { xmlDoc: parsed.doc, warning: null, warnings: parsed.warnings, error: null };
 }
 
 /**
@@ -66,25 +68,28 @@ export function injectCommentsIntoOoxml(oxml, comments, options = {}) {
     if (!comments || comments.length === 0) {
         return {
             oxml,
+            hasChanges: false,
             commentsApplied: 0,
             warnings: ['No comments to inject']
         };
     }
 
-    const parser = createParser();
     const serializer = createSerializer();
     const parseResult = parseDocumentOxml(
         oxml,
-        parser,
         warning => `Failed to parse OXML: ${warning}`
     );
+    warnings.push(...(parseResult.warnings || []));
 
     if (!parseResult.xmlDoc) {
         logError('[CommentEngine] Parse failure:', parseResult.warning);
         return {
             oxml,
+            hasChanges: false,
             commentsApplied: 0,
-            warnings: [parseResult.warning]
+            status: 'error',
+            error: parseResult.error,
+            warnings: [...warnings, parseResult.warning]
         };
     }
 
@@ -157,6 +162,7 @@ export function injectCommentsIntoOoxml(oxml, comments, options = {}) {
     if (placedComments.length === 0) {
         return {
             oxml,
+            hasChanges: false,
             commentsApplied: 0,
             warnings
         };
@@ -164,6 +170,7 @@ export function injectCommentsIntoOoxml(oxml, comments, options = {}) {
 
     return {
         oxml: serializer.serializeToString(xmlDoc),
+        hasChanges: true,
         commentsXml: buildCommentsPartXml(placedComments),
         commentsApplied: placedComments.length,
         warnings
@@ -185,11 +192,9 @@ export function injectCommentIntoParagraphOoxml(paragraphOoxml, textToFind, comm
     const date = getRevisionTimestamp();
     const commentId = getNextRevisionId();
 
-    const parser = createParser();
     const serializer = createSerializer();
     const parseResult = parseDocumentOxml(
         paragraphOoxml,
-        parser,
         warning => `Failed to parse paragraph OOXML: ${warning}`
     );
 

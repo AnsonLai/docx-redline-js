@@ -1,6 +1,6 @@
 {
   "name": "@ansonlai/docx-redline-js",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Host-independent OOXML reconciliation engine for .docx manipulation with track changes",
   "license": "MIT",
   "type": "module",

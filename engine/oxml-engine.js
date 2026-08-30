@@ -12,7 +12,7 @@ import {
     getElementsByTagNSOrTag,
     getXmlParseError
 } from '../core/xml-query.js';
-import { createParser, createSerializer, parseXml, serializeXml } from '../adapters/xml-adapter.js';
+import { createSerializer, parseOoxmlSafe, serializeXml } from '../adapters/xml-adapter.js';
 import { log, error } from '../adapters/logger.js';
 import { extractFormattingFromOoxml } from './format-extraction.js';
 import {
@@ -39,66 +39,96 @@ import { isDiffTokenLimitError } from '../pipeline/diff-engine.js';
  * @param {Object} [options={}] - Options
  * @param {string} [options.author='AI'] - Author for track changes
  * @param {string|null} [options.targetParagraphId=null] - Preferred paragraph identity for table wrappers
- * @param {'reject-input'|'accept-all-first'} [options.existingRevisions='reject-input'] - Policy for source OOXML with tracked changes
+ * @param {'reject-input'|'accept-all-first'|'accept-all-first-keep-normalized'} [options.existingRevisions='reject-input'] - Policy for source OOXML with tracked changes
  * @param {boolean} [options.removeFormatting=false] - Remove existing core formatting when text is otherwise unchanged
+ * @param {boolean} [options.sanitizeInput=false] - Strip a standalone leading assistant preface line
  * @returns {Promise<{ oxml: string, hasChanges: boolean, sourceType?: 'package'|'document'|'fragment', status?: 'ok'|'no-op'|'error', error?: { code: string, message: string } }>}
  */
 export async function applyRedlineToOxml(oxml, originalText, modifiedText, options = {}) {
+    const inputOoxml = oxml;
+    let workingOoxml = oxml;
+    originalText = typeof originalText === 'string' ? originalText : String(originalText ?? '');
+    modifiedText = typeof modifiedText === 'string' ? modifiedText : String(modifiedText ?? '');
     const generateRedlines = options.generateRedlines ?? true;
     const author = options.author || getDefaultAuthor();
-    const parser = createParser();
     const serializer = createSerializer();
+    let parseWarnings = [];
+    const operationWarnings = [];
+    let normalizedExistingRevisions = false;
+    const keepNormalizedNoOp = options.existingRevisions === 'accept-all-first-keep-normalized';
     const finalize = result => {
         const withStatus = { ...result };
+        if (normalizedExistingRevisions && withStatus.hasChanges === false && withStatus.status !== 'error') {
+            if (keepNormalizedNoOp) {
+                withStatus.oxml = workingOoxml;
+                withStatus.hasChanges = true;
+                withStatus.warnings = [
+                    ...(Array.isArray(withStatus.warnings) ? withStatus.warnings : []),
+                    'Existing revisions were accepted before redlining.'
+                ];
+            } else {
+                withStatus.oxml = inputOoxml;
+            }
+        }
+        const warnings = [...parseWarnings, ...operationWarnings, ...(Array.isArray(withStatus.warnings) ? withStatus.warnings : [])];
+        if (warnings.length > 0) {
+            withStatus.warnings = [...new Set(warnings)];
+        }
         if (!withStatus.status) {
             withStatus.status = withStatus.hasChanges ? 'ok' : 'no-op';
         }
         return withOoxmlSourceType(withStatus);
     };
-    const noChanges = () => finalize({ oxml, hasChanges: false });
+    const finalizeUnchanged = () => {
+        if (normalizedExistingRevisions && keepNormalizedNoOp) {
+            return finalize({
+                oxml: workingOoxml,
+                hasChanges: true,
+                warnings: ['Existing revisions were accepted before redlining.']
+            });
+        }
+        return finalize({ oxml: inputOoxml, hasChanges: false });
+    };
 
-    let xmlDoc;
-    try {
-        xmlDoc = parser.parseFromString(oxml, 'text/xml');
-    } catch (e) {
-        error('[OxmlEngine] Failed to parse OXML:', e);
+    const parsed = parseOoxmlSafe(inputOoxml, 'text/xml');
+    parseWarnings = parsed.warnings;
+    let xmlDoc = parsed.doc;
+
+    const parseError = xmlDoc ? getXmlParseError(xmlDoc) : null;
+    if (parsed.error || parseError) {
+        const message = parsed.error?.message || parseError?.textContent || 'Could not parse OOXML input.';
+        error('[OxmlEngine] XML parse error:', message);
         return finalize({
-            oxml,
+            oxml: inputOoxml,
             hasChanges: false,
             status: 'error',
-            error: { code: 'PARSE_ERROR', message: 'Could not parse OOXML input.' }
-        });
-    }
-
-    const parseError = getXmlParseError(xmlDoc);
-    if (parseError) {
-        error('[OxmlEngine] XML parse error:', parseError.textContent);
-        return finalize({
-            oxml,
-            hasChanges: false,
-            status: 'error',
-            error: { code: 'PARSE_ERROR', message: parseError.textContent || 'Could not parse OOXML input.' }
+            error: { code: 'PARSE_ERROR', message }
         });
     }
     seedRevisionIdsFromDocument(xmlDoc);
 
     if (containsTrackedChanges(xmlDoc)) {
         const existingRevisionsPolicy = options.existingRevisions || 'reject-input';
-        if (existingRevisionsPolicy === 'accept-all-first') {
+        if (existingRevisionsPolicy === 'accept-all-first' || existingRevisionsPolicy === 'accept-all-first-keep-normalized') {
             log('[OxmlEngine] Existing revisions detected; accepting all input revisions before redlining');
-            const accepted = acceptTrackedChangesInOoxml(oxml, { allAuthors: true });
-            oxml = accepted.oxml;
-            xmlDoc = parser.parseFromString(oxml, 'text/xml');
-            const acceptedParseError = getXmlParseError(xmlDoc);
-            if (acceptedParseError) {
-                error('[OxmlEngine] XML parse error after accepting existing revisions:', acceptedParseError.textContent);
+            const accepted = acceptTrackedChangesInOoxml(inputOoxml, { allAuthors: true });
+            if (accepted.status === 'error') return finalize(accepted);
+            workingOoxml = accepted.oxml;
+            normalizedExistingRevisions = true;
+            const acceptedParsed = parseOoxmlSafe(workingOoxml, 'text/xml');
+            parseWarnings.push(...acceptedParsed.warnings);
+            xmlDoc = acceptedParsed.doc;
+            const acceptedParseError = xmlDoc ? getXmlParseError(xmlDoc) : null;
+            if (acceptedParsed.error || acceptedParseError) {
+                const message = acceptedParsed.error?.message || acceptedParseError?.textContent || 'Could not parse OOXML after accepting existing revisions.';
+                error('[OxmlEngine] XML parse error after accepting existing revisions:', message);
                 return finalize({
-                    oxml,
+                    oxml: inputOoxml,
                     hasChanges: false,
                     status: 'error',
                     error: {
                         code: 'PARSE_ERROR',
-                        message: 'Could not parse OOXML after accepting existing revisions.'
+                        message
                     }
                 });
             }
@@ -106,7 +136,7 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
         } else {
             log('[OxmlEngine] Existing revisions detected; rejecting input per existingRevisions policy');
             return finalize({
-                oxml,
+                oxml: inputOoxml,
                 hasChanges: false,
                 status: 'error',
                 error: {
@@ -121,13 +151,20 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
     if (initialTableCellContext.hasTableWrapper && initialTableCellContext.targetParagraph && !options._isolatedTableCell) {
         log('[OxmlEngine] Isolating table-cell paragraph before diff');
         const isolatedOxml = serializeParagraphOnly(xmlDoc, initialTableCellContext.targetParagraph, serializer);
-        return applyRedlineToOxml(isolatedOxml, originalText, modifiedText, {
+        const isolatedResult = await applyRedlineToOxml(isolatedOxml, originalText, modifiedText, {
             ...options,
             _isolatedTableCell: true
         });
+        if (!isolatedResult.hasChanges && isolatedResult.status === 'no-op') {
+            return finalizeUnchanged();
+        }
+        return isolatedResult;
     }
 
-    const sanitizedText = sanitizeAiResponse(modifiedText);
+    const sanitizedText = options.sanitizeInput === true ? sanitizeAiResponse(modifiedText) : modifiedText;
+    if (sanitizedText !== modifiedText) {
+        operationWarnings.push('Input was sanitized; pass sanitizeInput: false to disable.');
+    }
     const { cleanText: cleanModifiedText, formatHints } = preprocessMarkdown(sanitizedText);
 
     const hasTextChanges = cleanModifiedText.trim() !== originalText.trim();
@@ -136,18 +173,30 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
     const { existingFormatHints, textSpans, paragraphs } = extractFormattingFromOoxml(xmlDoc);
     const hasExistingFormatting = existingFormatHints.length > 0;
     const visibleText = textSpans.map(span => textSpanVisibleText(span)).join('');
+    const targetFound = originalText.includes('\n') || originalText.includes('\r')
+        ? originalText
+            .split(/\r?\n/)
+            .map(normalizeTargetText)
+            .filter(Boolean)
+            .every(line => paragraphs.some(paragraph => {
+                const paragraphText = textSpans
+                    .filter(span => span.paragraph === paragraph)
+                    .map(textSpanVisibleText)
+                    .join('');
+                return normalizeTargetText(paragraphText).includes(line);
+            }))
+        : visibleText.includes(originalText.trim())
+            || visibleText.replace(/[\t\n\u2011]/g, '').includes(originalText.trim().replace(/[\t\n\u2011]/g, ''))
+            || normalizeTargetText(visibleText).includes(normalizeTargetText(originalText));
     if (
         hasTextChanges
         && typeof originalText === 'string'
         && originalText.trim()
-        && !originalText.includes('\n')
-        && !visibleText.includes(originalText.trim())
-        && !visibleText.replace(/[\t\n\u2011]/g, '').includes(originalText.trim().replace(/[\t\n\u2011]/g, ''))
-        && !normalizeTargetText(visibleText).includes(normalizeTargetText(originalText))
+        && !targetFound
     ) {
         log('[OxmlEngine] Target text not found in OOXML');
         return finalize({
-            oxml,
+            oxml: inputOoxml,
             hasChanges: false,
             status: 'error',
             error: {
@@ -198,12 +247,12 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
 
     if (!hasTextChanges && !hasFormatHints && !hasExistingFormatting) {
         log('[OxmlEngine] No text changes, no format hints, and no existing formatting detected');
-        return noChanges();
+        return finalizeUnchanged();
     }
 
     if (!hasTextChanges && !hasFormatHints && hasExistingFormatting && !needsFormatRemoval) {
         log('[OxmlEngine] No text or explicit formatting changes; preserving existing formatting');
-        return noChanges();
+        return finalizeUnchanged();
     }
 
     if (needsFormatRemoval) {
@@ -281,11 +330,11 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
     try {
     if (isMarkdownTable && !hasTables) {
         log('[OxmlEngine] Text-to-table transformation: generating new table from Markdown');
-        return finalize(applyTextToTableTransformation(xmlDoc, cleanModifiedText, serializer, parser, author, generateRedlines));
+        return finalize(applyTextToTableTransformation(xmlDoc, cleanModifiedText, serializer, null, author, generateRedlines));
     }
 
     if (hasTables && isMarkdownTable) {
-        return finalize(applyTableReconciliation(xmlDoc, cleanModifiedText, serializer, parser, author, generateRedlines));
+        return finalize(applyTableReconciliation(xmlDoc, cleanModifiedText, serializer, null, author, generateRedlines));
     }
     if (hasTables) {
         const surgicalTarget = tableCellContext.hasTableWrapper && tableCellContext.targetParagraph
@@ -315,13 +364,13 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
     if (isTargetList) {
         log('[OxmlEngine] 🎯 Using reconciliation pipeline for list generation');
         const pipeline = new ReconciliationPipeline({ author, generateRedlines });
-        const result = await pipeline.execute(oxml, modifiedText, { xmlDoc });
+        const result = await pipeline.execute(workingOoxml, sanitizedText, { xmlDoc });
 
         if (result.error?.code === 'DIFF_TOKEN_LIMIT') {
-            return finalize({ oxml, hasChanges: false, status: 'error', error: result.error });
+            return finalize({ oxml: inputOoxml, hasChanges: false, status: 'error', error: result.error });
         }
 
-        if (result.isValid && result.ooxml && result.ooxml !== oxml) {
+        if (result.isValid && result.ooxml && result.ooxml !== workingOoxml) {
             const includeNumbering = result.includeNumbering === true;
             log(`[OxmlEngine] Wrapping list OOXML with numbering definitions, includeNumbering=${includeNumbering}`);
             const wrapped = wrapInDocumentFragment(result.ooxml, {
@@ -331,7 +380,7 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
             log(`[OxmlEngine] ✅ Wrapped OOXML length: ${wrapped.length}`);
             return finalize({ oxml: wrapped, hasChanges: true });
         }
-        return noChanges();
+        return finalizeUnchanged();
     }
 
     return finalize(applyReconstructionMode(
@@ -346,7 +395,7 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
     } catch (caught) {
         if (isDiffTokenLimitError(caught)) {
             return finalize({
-                oxml,
+                oxml: inputOoxml,
                 hasChanges: false,
                 status: 'error',
                 error: { code: caught.code, message: caught.message }
@@ -376,12 +425,10 @@ function textSpanVisibleText(span) {
  * @returns {string}
  */
 export function sanitizeAiResponse(text) {
-    let cleaned = text;
-    cleaned = cleaned.replace(/^(Here is the redline:|Here is the text:|Sure, I can help:|Here's the updated text:)\s*/i, '');
-    cleaned = cleaned.replace(/\$\\text\{/g, '').replace(/\}\$/g, '');
-    cleaned = cleaned.replace(/\$([^0-9\n]+?)\$/g, '$1');
-    cleaned = cleaned.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n');
-    return cleaned;
+    return String(text ?? '').replace(
+        /^(?:Here is the redline:|Here is the text:|Sure, I can help:|Here's the updated text:)[ \t]*\r?\n/i,
+        ''
+    );
 }
 
 /**
@@ -391,7 +438,7 @@ export function sanitizeAiResponse(text) {
  * @returns {Document}
  */
 export function parseOoxml(ooxmlString) {
-    return parseXml(ooxmlString, 'application/xml');
+    return parseOoxmlSafe(ooxmlString, 'application/xml').doc;
 }
 
 /**

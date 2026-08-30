@@ -8,7 +8,7 @@
  * - Run-level bold/italic formatting
  */
 
-import { createParser } from '../adapters/xml-adapter.js';
+import { parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { NS_W } from '../core/types.js';
 import { getXmlParseError } from '../core/xml-query.js';
 
@@ -19,21 +19,9 @@ function hasParserError(doc) {
 }
 
 function parseWordOoxml(ooxml) {
-    const source = typeof ooxml === 'string' ? ooxml : String(ooxml || '');
-    if (!source.trim()) {
-        return null;
-    }
-
-    try {
-        const parser = createParser();
-        const doc = parser.parseFromString(source, 'application/xml');
-        if (hasParserError(doc)) {
-            return null;
-        }
-        return doc;
-    } catch {
-        return null;
-    }
+    const parsed = parseOoxmlSafe(ooxml, 'application/xml');
+    if (parsed.error || hasParserError(parsed.doc)) return { ...parsed, doc: null };
+    return parsed;
 }
 
 function getWordParagraphs(doc) {
@@ -223,17 +211,31 @@ function paragraphToMarkdown(paragraph) {
  * @returns {string}
  */
 export function ingestWordOoxmlToPlainText(ooxml) {
-    const doc = parseWordOoxml(ooxml);
-    if (!doc) return '';
+    return ingestWordOoxmlToPlainTextResult(ooxml).text;
+}
+
+/**
+ * Result-returning plain-text ingestion for callers that need parse failures
+ * distinguished from legitimately empty documents.
+ *
+ * @param {unknown} ooxml
+ * @returns {{ text: string, status: 'ok'|'error', error?: {code:string,message:string}, warnings?: string[] }}
+ */
+export function ingestWordOoxmlToPlainTextResult(ooxml) {
+    const parsed = parseWordOoxml(ooxml);
+    if (!parsed.doc) {
+        return { text: '', status: 'error', error: parsed.error, warnings: parsed.warnings };
+    }
+    const doc = parsed.doc;
 
     const paragraphs = getWordParagraphs(doc);
     if (paragraphs.length === 0) {
         const fallback = normalizeInlineWhitespace(doc.documentElement?.textContent || '');
-        return fallback;
+        return { text: fallback, status: 'ok', warnings: parsed.warnings };
     }
 
     const lines = paragraphs.map(paragraphToPlainText);
-    return lines.join('\n\n').trim();
+    return { text: lines.join('\n\n').trim(), status: 'ok', warnings: parsed.warnings };
 }
 
 /**
@@ -243,14 +245,27 @@ export function ingestWordOoxmlToPlainText(ooxml) {
  * @returns {string}
  */
 export function ingestWordOoxmlToMarkdown(ooxml) {
-    const doc = parseWordOoxml(ooxml);
-    if (!doc) return '';
+    return ingestWordOoxmlToMarkdownResult(ooxml).text;
+}
+
+/**
+ * Result-returning markdown ingestion counterpart.
+ *
+ * @param {unknown} ooxml
+ * @returns {{ text: string, status: 'ok'|'error', error?: {code:string,message:string}, warnings?: string[] }}
+ */
+export function ingestWordOoxmlToMarkdownResult(ooxml) {
+    const parsed = parseWordOoxml(ooxml);
+    if (!parsed.doc) {
+        return { text: '', status: 'error', error: parsed.error, warnings: parsed.warnings };
+    }
+    const doc = parsed.doc;
 
     const paragraphs = getWordParagraphs(doc);
     if (paragraphs.length === 0) {
-        return '';
+        return { text: '', status: 'ok', warnings: parsed.warnings };
     }
 
     const lines = paragraphs.map(paragraphToMarkdown);
-    return lines.join('\n\n').trim();
+    return { text: lines.join('\n\n').trim(), status: 'ok', warnings: parsed.warnings };
 }
