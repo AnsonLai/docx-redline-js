@@ -42,8 +42,11 @@ export const WORD_TASK_CASES = [
         name: 'legal-paragraph-deletion',
         category: 'legal',
         task: 'delete-paragraph',
-        original: 'The parties agree to the following terms.\nThis paragraph is intentionally removed.',
-        modified: 'The parties agree to the following terms.'
+        sourceText: 'The parties agree to the following terms.\nThis paragraph is intentionally removed.',
+        original: 'This paragraph is intentionally removed.',
+        modified: '',
+        expectedAcceptedText: 'The parties agree to the following terms.',
+        expectedRejectedText: 'The parties agree to the following terms.\nThis paragraph is intentionally removed.'
     },
     {
         name: 'administrative-deadline-change',

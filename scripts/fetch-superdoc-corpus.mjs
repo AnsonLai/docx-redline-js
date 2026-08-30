@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -33,13 +33,23 @@ for (const id of requestedIds) {
     const document = byId.get(id);
     if (!document) throw new Error(`Document ${id} is not in the pinned SuperDoc reference manifest.`);
 
-    const response = await fetch(document.downloadUrl);
-    if (!response.ok) throw new Error(`Failed to fetch ${id}: HTTP ${response.status}`);
-    const bytes = Buffer.from(await response.arrayBuffer());
-    const digest = createHash('sha256').update(bytes).digest('hex');
-    if (digest !== id) throw new Error(`Hash mismatch for ${id}: received ${digest}`);
+    const outputPath = join(outputDir, `${id}.docx`);
+    let bytes = existsSync(outputPath) ? readFileSync(outputPath) : null;
+    let fetched = false;
+    const expectedDigest = document.downloadSha256 || id;
+    let digest = bytes ? createHash('sha256').update(bytes).digest('hex') : null;
+    if (digest !== expectedDigest) {
+        const response = await fetch(document.downloadUrl);
+        if (!response.ok) throw new Error(`Failed to fetch ${id}: HTTP ${response.status}`);
+        bytes = Buffer.from(await response.arrayBuffer());
+        digest = createHash('sha256').update(bytes).digest('hex');
+        fetched = true;
+    }
+    if (digest !== expectedDigest) {
+        throw new Error(`Hash mismatch for ${id}: expected ${expectedDigest}, received ${digest}`);
+    }
 
-    writeFileSync(join(outputDir, `${id}.docx`), bytes);
+    writeFileSync(outputPath, bytes);
     writeFileSync(join(outputDir, `${id}.source.json`), `${JSON.stringify({
         ...document,
         dataset: manifest.name,
@@ -47,5 +57,5 @@ for (const id of requestedIds) {
         datasetLicense: manifest.datasetLicense,
         licenseUrl: manifest.licenseUrl
     }, null, 2)}\n`, 'utf8');
-    console.log(`Fetched ${id}.docx (${bytes.length} bytes)`);
+    console.log(`${fetched ? 'Fetched' : 'Verified cached'} ${id}.docx (${bytes.length} bytes)`);
 }

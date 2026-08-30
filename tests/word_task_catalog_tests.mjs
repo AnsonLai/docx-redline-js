@@ -19,8 +19,17 @@ for (const testCase of WORD_TASK_CASES) {
     assert.equal(typeof testCase.original, 'string');
     assert.equal(typeof testCase.modified, 'string');
     assert.notEqual(testCase.original, testCase.modified);
-    assert.ok(/^[\x00-\x7F]*$/.test(testCase.original), `${testCase.name} original must be English/ASCII for this lane`);
-    assert.ok(/^[\x00-\x7F]*$/.test(testCase.modified), `${testCase.name} modified must be English/ASCII for this lane`);
+    for (const [field, value] of Object.entries({
+        original: testCase.original,
+        modified: testCase.modified,
+        sourceText: testCase.sourceText,
+        expectedAcceptedText: testCase.expectedAcceptedText,
+        expectedRejectedText: testCase.expectedRejectedText
+    })) {
+        if (value !== undefined) {
+            assert.ok(/^[\x00-\x7F]*$/.test(value), `${testCase.name} ${field} must be English/ASCII for this lane`);
+        }
+    }
 }
 
 assert.deepEqual([...categories].sort(), ['administrative', 'legal']);

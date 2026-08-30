@@ -1,5 +1,6 @@
 param(
-    [string]$FixturesDir = "tmp/validation-docx"
+    [string]$FixturesDir = "tmp/validation-docx",
+    [string]$SourcesDir = ""
 )
 
 # Differential validation against desktop Microsoft Word (the authoritative
@@ -27,6 +28,23 @@ function Get-ComparableText([string]$text, [string]$fidelity = 'exact') {
     return $text
 }
 
+function Test-ContainsAssertions([string]$text, $required, $absent, [string]$phase, [string]$name) {
+    $passed = $true
+    foreach ($value in @($required)) {
+        if (-not $text.Contains([string]$value)) {
+            Write-Output "FAIL ${name}: ${phase} is missing expected text: $value"
+            $passed = $false
+        }
+    }
+    foreach ($value in @($absent)) {
+        if ($text.Contains([string]$value)) {
+            Write-Output "FAIL ${name}: ${phase} still contains superseded text: $value"
+            $passed = $false
+        }
+    }
+    return $passed
+}
+
 $resolvedDir = Resolve-Path -LiteralPath $FixturesDir -ErrorAction SilentlyContinue
 if (-not $resolvedDir) {
     Write-Error "Fixtures directory '$FixturesDir' not found. Run: node scripts/export-validation-fixtures.mjs"
@@ -37,7 +55,8 @@ $suitePath = Join-Path $resolvedDir 'suite.json'
 if (Test-Path -LiteralPath $suitePath) {
     $suite = Get-Content -LiteralPath $suitePath -Raw -Encoding UTF8 | ConvertFrom-Json
     $expectations = @($suite.cases | ForEach-Object {
-        Get-Item -LiteralPath (Join-Path $resolvedDir "$_.expected.json") -ErrorAction Stop
+        $caseName = if ($_ -is [string]) { [string]$_ } else { [string]$_.name }
+        Get-Item -LiteralPath (Join-Path $resolvedDir "$caseName.expected.json") -ErrorAction Stop
     })
 }
 else {
@@ -53,10 +72,10 @@ $failures = 0
 $results = @()
 
 function Open-FixtureDocument($word, [string]$path) {
-    # Single-argument Open: Windows PowerShell 5.1 COM binding rejects the
-    # long optional-parameter signature. Defaults leave the document
-    # writable, which accept/reject requires; nothing is ever saved.
-    return $word.Documents.Open($path)
+    # OpenNoRepairDialog prevents malformed real-world packages from blocking
+    # a headless run behind an invisible repair prompt. It still leaves the
+    # document writable for accept/reject; nothing is ever saved.
+    return $word.Documents.OpenNoRepairDialog($path)
 }
 
 try {
@@ -76,8 +95,28 @@ try {
         # BOM-less UTF-8 sidecars as ANSI and garbles non-ASCII expectations.
         $expected = Get-Content -LiteralPath $expectationFile.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
         $fidelity = if ($expected.textFidelity) { [string]$expected.textFidelity } else { 'exact' }
-        $expectedAccepted = Get-ComparableText $expected.expectedAcceptedText $fidelity
-        $expectedRejected = Get-ComparableText $expected.expectedRejectedText $fidelity
+        $assertionMode = if ($expected.assertionMode) { [string]$expected.assertionMode } else { 'exact' }
+        if ($assertionMode -eq 'exact') {
+            $expectedAccepted = Get-ComparableText $expected.expectedAcceptedText $fidelity
+            $expectedRejected = Get-ComparableText $expected.expectedRejectedText $fidelity
+        }
+        elseif ($assertionMode -eq 'word-source-exact') {
+            if (-not $SourcesDir) { throw "${name}: word-source-exact requires -SourcesDir" }
+            $sourcePath = Join-Path (Resolve-Path -LiteralPath $SourcesDir) "$($expected.sourceId).docx"
+            $sourceDocument = $null
+            try {
+                $sourceDocument = Open-FixtureDocument $word ([string]$sourcePath)
+                $expectedRejected = Get-ComparableText $sourceDocument.Content.Text $fidelity
+            }
+            finally {
+                if ($null -ne $sourceDocument) { $sourceDocument.Close(0) | Out-Null }
+            }
+            $targetCount = [regex]::Matches($expectedRejected, [regex]::Escape([string]$expected.originalTarget)).Count
+            if ($targetCount -ne 1) {
+                throw "${name}: expected target occurs $targetCount times in Word's source text"
+            }
+            $expectedAccepted = $expectedRejected.Replace([string]$expected.originalTarget, [string]$expected.modifiedTarget)
+        }
         $caseFailed = $false
         $document = $null
 
@@ -92,7 +131,12 @@ try {
             else {
                 $document.AcceptAllRevisions()
                 $acceptedText = Get-ComparableText $document.Content.Text $fidelity
-                if ($acceptedText -ne $expectedAccepted) {
+                if ($assertionMode -eq 'contains') {
+                    if (-not (Test-ContainsAssertions $acceptedText $expected.expectedAcceptedContains $expected.expectedAcceptedAbsent 'accept-all' $name)) {
+                        $caseFailed = $true
+                    }
+                }
+                elseif ($acceptedText -ne $expectedAccepted) {
                     Write-Output "FAIL ${name}: accept-all mismatch"
                     Write-Output "  expected: $expectedAccepted"
                     Write-Output "  actual:   $acceptedText"
@@ -114,7 +158,12 @@ try {
                 $document = Open-FixtureDocument $word ([string]$docxPath)
                 $document.RejectAllRevisions()
                 $rejectedText = Get-ComparableText $document.Content.Text $fidelity
-                if ($rejectedText -ne $expectedRejected) {
+                if ($assertionMode -eq 'contains') {
+                    if (-not (Test-ContainsAssertions $rejectedText $expected.expectedRejectedContains $expected.expectedRejectedAbsent 'reject-all' $name)) {
+                        $caseFailed = $true
+                    }
+                }
+                elseif ($rejectedText -ne $expectedRejected) {
                     Write-Output "FAIL ${name}: reject-all mismatch"
                     Write-Output "  expected: $expectedRejected"
                     Write-Output "  actual:   $rejectedText"

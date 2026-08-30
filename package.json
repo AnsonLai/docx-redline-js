@@ -60,6 +60,7 @@
     "smoke:word": "powershell -File scripts/word-com-smoke.ps1",
     "smoke:word:diff": "powershell -File scripts/word-com-differential.ps1",
     "test:word": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/word-com-suite.ps1",
+    "test:corpus:word": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/word-com-corpus-suite.ps1",
     "corpus:fetch:superdoc": "node scripts/fetch-superdoc-corpus.mjs",
     "test": "node scripts/run-tests.mjs",
     "test:isolation": "node tests/no_word_api_index_check.mjs && node tests/core_dependency_graph_check.mjs",

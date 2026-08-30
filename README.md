@@ -274,9 +274,13 @@ rejects the generated revisions and the resulting text is compared to the
 expected outcomes):
 
 ```bash
-node scripts/export-validation-fixtures.mjs
-npm run smoke:word:diff
+npm run test:word
 ```
+
+This Windows-only test command generates an English legal/administrative task
+suite under `tmp/word-validation/` and drives installed desktop Microsoft Word
+through COM. The published library remains clean, host-independent JavaScript;
+Word automation exists only in development scripts.
 
 A nightly GitHub Actions workflow additionally validates generated fixtures
 against the ECMA-376 transitional schemas (`xmllint`), opens them with
@@ -290,3 +294,23 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for module layout, data flow, and contr
 See [AGENTS.md](./AGENTS.md) for a concise reference for AI coding agents.
 
 See [docs/VALIDATION.md](./docs/VALIDATION.md) for release-time validation steps.
+
+## Test Corpus Attribution
+
+Real-document reliability testing uses selected references from
+[docx-corpus](https://docxcorp.us/), built by
+[SuperDoc](https://superdoc.dev/). The dataset is licensed under the
+[Open Data Commons Attribution License (ODC-By) 1.0](https://opendatacommons.org/licenses/by/1-0/).
+
+Only explicitly pinned English legal and administrative documents are eligible
+for the initial corpus lane. References and provenance live in
+`tests/corpus/superdoc-english-legal-administrative.json`; downloaded documents
+are hash-verified and kept in ignored `tmp/` storage rather than committed. On
+Windows with desktop Word installed, run the reviewed 20-document lane with:
+
+```bash
+npm run test:corpus:word
+```
+
+ODC-By applies to the database; individual documents may carry additional
+rights, so each selected document must be reviewed before becoming a test case.

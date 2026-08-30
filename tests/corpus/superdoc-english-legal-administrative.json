@@ -10,68 +10,28 @@
     "language": "en",
     "types": ["legal", "administrative"],
     "minimumClassificationConfidence": 0.9,
-    "note": "Only these content-addressed documents may be fetched by the initial corpus tooling. No bulk or floating manifest is used."
+    "note": "Only these reviewed documents may be fetched. Corpus IDs and observed download SHA-256 values are both pinned because the service bytes observed on 2026-08-29 did not hash to the advertised content IDs."
   },
   "documents": [
-    {
-      "id": "0f582727deba41aebc5643adda1ac39970360ef3aa2ba6a18e85203b092ac534",
-      "filename": "1668784045_9152.docx",
-      "type": "legal",
-      "topic": "government",
-      "language": "en",
-      "wordCount": 639,
-      "confidence": 0.98732984,
-      "downloadUrl": "https://docxcorp.us/documents/0f582727deba41aebc5643adda1ac39970360ef3aa2ba6a18e85203b092ac534.docx"
-    },
-    {
-      "id": "8b77c5c08f8f60da23cb76005854e38aac104be29c8eb1f29c620db07fe2addb",
-      "filename": "Public-Notices-Ordinances-Publication-4-2-24.docx.aspx",
-      "type": "legal",
-      "topic": "government",
-      "language": "en",
-      "wordCount": 151,
-      "confidence": 0.9870733,
-      "downloadUrl": "https://docxcorp.us/documents/8b77c5c08f8f60da23cb76005854e38aac104be29c8eb1f29c620db07fe2addb.docx"
-    },
-    {
-      "id": "82325c95040adfb3dd9fc013594756da689547def47ab120b35f6be132084693",
-      "filename": "file",
-      "type": "legal",
-      "topic": "government",
-      "language": "en",
-      "wordCount": 8238,
-      "confidence": 0.987069,
-      "downloadUrl": "https://docxcorp.us/documents/82325c95040adfb3dd9fc013594756da689547def47ab120b35f6be132084693.docx"
-    },
-    {
-      "id": "5078747afec134839ca5009f296730a89e0c877e9d00085186a7c6c307ce784c",
-      "filename": "COBCalendar_Agenda.aspx",
-      "type": "administrative",
-      "topic": "government",
-      "language": "en",
-      "wordCount": 91,
-      "confidence": 0.9880344,
-      "downloadUrl": "https://docxcorp.us/documents/5078747afec134839ca5009f296730a89e0c877e9d00085186a7c6c307ce784c.docx"
-    },
-    {
-      "id": "bd56a6ff3e08992fc3331cfca61515507c00cf96f38e771fbfaa4c487af1039d",
-      "filename": "Minutes",
-      "type": "administrative",
-      "topic": "government",
-      "language": "en",
-      "wordCount": 605,
-      "confidence": 0.98802096,
-      "downloadUrl": "https://docxcorp.us/documents/bd56a6ff3e08992fc3331cfca61515507c00cf96f38e771fbfaa4c487af1039d.docx"
-    },
-    {
-      "id": "8b0f4f46292113aeb389445b035d62621f28a8075fe26b46d339a5658801d087",
-      "filename": "Agenda_-_7.14.25.docx",
-      "type": "administrative",
-      "topic": "government",
-      "language": "en",
-      "wordCount": 108,
-      "confidence": 0.98797745,
-      "downloadUrl": "https://docxcorp.us/documents/8b0f4f46292113aeb389445b035d62621f28a8075fe26b46d339a5658801d087.docx"
-    }
+    { "id": "0f582727deba41aebc5643adda1ac39970360ef3aa2ba6a18e85203b092ac534", "downloadSha256": "bb67bf2d319d3f57bdb33c83853a9736181c235300e47b6e4200d2722f268b62", "filename": "1668784045_9152.docx", "type": "legal", "topic": "government", "language": "en", "wordCount": 639, "confidence": 0.98732984, "downloadUrl": "https://docxcorp.us/documents/0f582727deba41aebc5643adda1ac39970360ef3aa2ba6a18e85203b092ac534.docx" },
+    { "id": "6bc3b38986fc2163391dc0099a26640c566b801673c90e978d0edd5fb53a76eb", "downloadSha256": "bb9e187234201ba3c8e15d8b73900e5331bcaa58efde7d446f2508a8ceb6dcee", "filename": "GetFile.ashx", "type": "legal", "topic": "government", "language": "en", "wordCount": 233, "confidence": 0.9872405, "downloadUrl": "https://docxcorp.us/documents/6bc3b38986fc2163391dc0099a26640c566b801673c90e978d0edd5fb53a76eb.docx" },
+    { "id": "49e72bbe21f1cd201bac350075f7e1699e6d453c8e0a927dec907565ef86a223", "downloadSha256": "fc2ee8d324025f68da12e86d51e8ab8223818a1fda356011932d0f92d100a50b", "filename": "16717145db59755e60773ffb4d576e63", "type": "legal", "topic": "government", "language": "en", "wordCount": 108, "confidence": 0.9871343, "downloadUrl": "https://docxcorp.us/documents/49e72bbe21f1cd201bac350075f7e1699e6d453c8e0a927dec907565ef86a223.docx" },
+    { "id": "8b77c5c08f8f60da23cb76005854e38aac104be29c8eb1f29c620db07fe2addb", "downloadSha256": "2987e192675516e6d8d297463c3ca6946c840a2f69ef7f1c538ee41b38695a9c", "filename": "Public-Notices-Ordinances-Publication-4-2-24.docx.aspx", "type": "legal", "topic": "government", "language": "en", "wordCount": 151, "confidence": 0.9870733, "downloadUrl": "https://docxcorp.us/documents/8b77c5c08f8f60da23cb76005854e38aac104be29c8eb1f29c620db07fe2addb.docx" },
+    { "id": "82325c95040adfb3dd9fc013594756da689547def47ab120b35f6be132084693", "downloadSha256": "fb546f5cfb98b2c9e26a3e075958f9b445de7d2674ec1539e28bd22ecd046581", "filename": "file", "type": "legal", "topic": "government", "language": "en", "wordCount": 8238, "confidence": 0.987069, "downloadUrl": "https://docxcorp.us/documents/82325c95040adfb3dd9fc013594756da689547def47ab120b35f6be132084693.docx" },
+    { "id": "ed3e87e82817245fc606260af21cf3ef009cafffff2cf1c7e45e3c3cb47db9c6", "downloadSha256": "6a2150f69928e7cb5dd26e3551ca2fb086f5e53e33950b892184d794375371c0", "filename": "1668784083_151.docx", "type": "legal", "topic": "government", "language": "en", "wordCount": 93, "confidence": 0.9869632, "downloadUrl": "https://docxcorp.us/documents/ed3e87e82817245fc606260af21cf3ef009cafffff2cf1c7e45e3c3cb47db9c6.docx" },
+    { "id": "7561fb85f79c0304a4f79f9393739fb41a48bf32a6d7f99d010a048fd8151d74", "downloadSha256": "3ceb54c19b933856f93e3dd1fbf9be6be54892da9ff31c84133cf795a05b4b0f", "filename": "t237-notice-press-presc-orgs", "type": "legal", "topic": "government", "language": "en", "wordCount": 406, "confidence": 0.98695487, "downloadUrl": "https://docxcorp.us/documents/7561fb85f79c0304a4f79f9393739fb41a48bf32a6d7f99d010a048fd8151d74.docx" },
+    { "id": "daf32df8e3c8e300f1a568da7cef4aba133929e9ce7f83be0980bb69327cad33", "downloadSha256": "65704ce0384ac64ac48d9dc6890f07cb506dab3f528ffde3385358f3cc106c8e", "filename": "638070502650770000", "type": "legal", "topic": "government", "language": "en", "wordCount": 284, "confidence": 0.9869398, "downloadUrl": "https://docxcorp.us/documents/daf32df8e3c8e300f1a568da7cef4aba133929e9ce7f83be0980bb69327cad33.docx" },
+    { "id": "d27fe5513ca474bcd6c02136d2e4b8179203f5855c4333af81bc964755c7abe4", "downloadSha256": "9d63a1f37b5775499f570ad12407850c3ff9067d5b3341cf56a15ad4341c6e6c", "filename": "DownloadDocument.aspx", "type": "legal", "topic": "government", "language": "en", "wordCount": 2874, "confidence": 0.98693615, "downloadUrl": "https://docxcorp.us/documents/d27fe5513ca474bcd6c02136d2e4b8179203f5855c4333af81bc964755c7abe4.docx" },
+    { "id": "3290c8a96fe493248bf9e491655dae2df87dee7b81779739ce2bb347c41b0c34", "downloadSha256": "f14036335f4b7310809edeb67f71525bae9632989e85a9151eb63f25d24c0d92", "filename": "Cannabis_and_Hemp_-_Ordinance_Draft_-_12-19-24_PC.docx", "type": "legal", "topic": "government", "language": "en", "wordCount": 3087, "confidence": 0.9868824, "downloadUrl": "https://docxcorp.us/documents/3290c8a96fe493248bf9e491655dae2df87dee7b81779739ce2bb347c41b0c34.docx" },
+    { "id": "5078747afec134839ca5009f296730a89e0c877e9d00085186a7c6c307ce784c", "downloadSha256": "b76fd0aadad208b51c2fce609103e26c929ba75f863e3ac7a99145bd5c844c92", "filename": "COBCalendar_Agenda.aspx", "type": "administrative", "topic": "government", "language": "en", "wordCount": 91, "confidence": 0.9880344, "downloadUrl": "https://docxcorp.us/documents/5078747afec134839ca5009f296730a89e0c877e9d00085186a7c6c307ce784c.docx" },
+    { "id": "bd56a6ff3e08992fc3331cfca61515507c00cf96f38e771fbfaa4c487af1039d", "downloadSha256": "3bb9862f5b358fb23ee11e960e61128f1d7ef490116b22abf4ba5291f45f4e6a", "filename": "Minutes", "type": "administrative", "topic": "government", "language": "en", "wordCount": 605, "confidence": 0.98802096, "downloadUrl": "https://docxcorp.us/documents/bd56a6ff3e08992fc3331cfca61515507c00cf96f38e771fbfaa4c487af1039d.docx" },
+    { "id": "074e5b302e82cc7f5293314ca5bb463e08cf9ee06d5fab81a9843f8a27c21bd1", "downloadSha256": "8e13b278a8add252cc64447a93bd0cb604b87e9b3f99136ed764b286da599850", "filename": "mf.ashx", "type": "administrative", "topic": "healthcare", "language": "en", "wordCount": 790, "confidence": 0.9880173, "downloadUrl": "https://docxcorp.us/documents/074e5b302e82cc7f5293314ca5bb463e08cf9ee06d5fab81a9843f8a27c21bd1.docx" },
+    { "id": "1267649bf4eed47478921c55562fe8255575d10bb4cd45e534689d49556a0b64", "downloadSha256": "d19117bf05d9cbe5bcb1188cbb4d9185f2ab75e60ded4d291a31ada1f1cb5809", "filename": "getdocument", "type": "administrative", "topic": "healthcare", "language": "en", "wordCount": 158, "confidence": 0.9880074, "downloadUrl": "https://docxcorp.us/documents/1267649bf4eed47478921c55562fe8255575d10bb4cd45e534689d49556a0b64.docx" },
+    { "id": "8b0f4f46292113aeb389445b035d62621f28a8075fe26b46d339a5658801d087", "downloadSha256": "33271a70d63ddf0e804b75d06be748f01b4b4cbb360d22d841420b677d3792c2", "filename": "Agenda_-_7.14.25.docx", "type": "administrative", "topic": "government", "language": "en", "wordCount": 108, "confidence": 0.98797745, "downloadUrl": "https://docxcorp.us/documents/8b0f4f46292113aeb389445b035d62621f28a8075fe26b46d339a5658801d087.docx" },
+    { "id": "570572edcfec94b990c61b91e21e103699a39b800c3165ad436d0fd07c7cd80e", "downloadSha256": "47fe2c73b5328bbb5d31a1018bc8f1eee6f757892361b7ec56d7574b8f1f1d1a", "filename": "14.05.2024-ordinary-meeting.docx", "type": "administrative", "topic": "government", "language": "en", "wordCount": 410, "confidence": 0.9879772, "downloadUrl": "https://docxcorp.us/documents/570572edcfec94b990c61b91e21e103699a39b800c3165ad436d0fd07c7cd80e.docx" },
+    { "id": "a3b94b62e9505655d150eae21dc72bb99b37eda901bcb50516b7e9fded5ed33b", "downloadSha256": "b205b540ff5ccf8fb1b9e61396418c4e8cfaafef73e60a7aadab38afd10c6b84", "filename": "mf.ashx", "type": "administrative", "topic": "healthcare", "language": "en", "wordCount": 808, "confidence": 0.9879672, "downloadUrl": "https://docxcorp.us/documents/a3b94b62e9505655d150eae21dc72bb99b37eda901bcb50516b7e9fded5ed33b.docx" },
+    { "id": "16151cbd92f85ef11bf8121cc6f1ce541970fdc57432f95951a3a3440635afe4", "downloadSha256": "3f87c758bd04fab59b9d9765d5b5d8c4b8c39879b5c4b6b590e4e6daaeae0d50", "filename": "mf.ashx", "type": "administrative", "topic": "healthcare", "language": "en", "wordCount": 404, "confidence": 0.9879386, "downloadUrl": "https://docxcorp.us/documents/16151cbd92f85ef11bf8121cc6f1ce541970fdc57432f95951a3a3440635afe4.docx" },
+    { "id": "fb0db04c803132968cc176f7cfb4927bc33c665e9671760ebf31cabd4c1a7766", "downloadSha256": "91abb42d8e787770ad8517134261fe80bf76014701f76bd621ed8f85fb448cfa", "filename": "297846", "type": "administrative", "topic": "healthcare", "language": "en", "wordCount": 709, "confidence": 0.9879483, "downloadUrl": "https://docxcorp.us/documents/fb0db04c803132968cc176f7cfb4927bc33c665e9671760ebf31cabd4c1a7766.docx" },
+    { "id": "77c33ab2ca57efd0d4afb87f08c45c88f3984256c3fd5fdf3e81f87a24644760", "downloadSha256": "93603db61d612c48602692b4c831d690ad74317f4e0c942eb81344232209cfa6", "filename": "Agenda_-_2.10.25.docx", "type": "administrative", "topic": "government", "language": "en", "wordCount": 130, "confidence": 0.9879457, "downloadUrl": "https://docxcorp.us/documents/77c33ab2ca57efd0d4afb87f08c45c88f3984256c3fd5fdf3e81f87a24644760.docx" }
   ]
 }

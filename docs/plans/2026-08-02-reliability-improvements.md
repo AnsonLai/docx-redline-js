@@ -1,6 +1,6 @@
 # Redline Reliability Improvement Plan — Round 2
 
-**Status:** In Progress (Phases 1 and 8 Complete; Phases 2–7 Open)
+**Status:** In Progress (Phases 1, 1.5, and 8 Complete; Phases 2–7 Open)
 
 Follow-on to `completed/2026-05-31-architectural changes.md`, which is complete. That plan
 hardened the *OOXML shape* of generated redlines (paragraph marks, moves, inert
@@ -35,6 +35,7 @@ In this document:
 | Phase | Production API impact |
 |---|---|
 | 1 | **NOT BREAKING — production API.** Test-only verification and fuzz-corpus changes. |
+| 1.5 | **NOT BREAKING — production API.** Windows/Word verification and pinned real-document corpus tooling only. |
 | 2 | **CONDITIONAL — production behavior.** `DIFF_TOKEN_LIMIT` introduces an error path for oversized inputs; whitespace/schema fixes and deterministic diffs may change generated OOXML for affected inputs. |
 | 3 | **BREAKING — production API.** Several malformed-input paths change from throwing to returning result objects; multi-line target misses can change from no-op to error. |
 | 4 | **BREAKING — production API if `sanitizeInput` defaults to `false`.** Existing callers relying on implicit sanitization receive different edits. The existing-revision fix is **CONDITIONAL — production behavior**. |
@@ -87,15 +88,16 @@ Additional convention for this plan:
 | F9 | `npm run check:types` does not type-check anything | Medium | 7 | Open |
 | F10 | `applyOperationsToDocumentXml` is non-atomic; a mid-batch failure returns a half-applied document | Medium | 6 | Open |
 | F11 | Fuzz corpus is single-paragraph only — no tables, lists, multi-paragraph, or pre-existing revisions | Medium | 1 | **Fixed** |
+| F16 | Synthetic fixtures alone do not cover the structural diversity of real English legal and administrative DOCX files | High (test coverage) | 1.5 | **Fixed** |
 
 ### Found by Phase 1 once the oracle could see (added 2026-08-02)
 
 | # | Finding | Severity | Phase | Status |
 |---|---------|----------|-------|--------|
 | F12 | Diff tokenizer `/(\S+)(\s*)/g` cannot match whitespace before the first word, so **leading whitespace is dropped from both sides of every diff** and all diff offsets shift by its length | High (data loss) | 2 | Open |
-| F13 | An edit next to a `w:br` emits a **`w:p` nested inside a `w:p`** (schema-invalid, Word reports corruption) and destroys the `w:br` | Critical (corrupt output) | 8 | Open |
-| F14 | Reconstruction moves `w:sectPr` to the **front** of `w:body`, violating `CT_Body` and the package's own plumbing validator | High (corrupt output) | 8 | Open |
-| F15 | `applyRedlineToOxml` on a document whose `original` covers only some paragraphs **silently deletes the untargeted paragraphs** and returns `status: 'ok'` | High (data loss) | 8 | Open |
+| F13 | An edit next to a `w:br` emits a **`w:p` nested inside a `w:p`** (schema-invalid, Word reports corruption) and destroys the `w:br` | Critical (corrupt output) | 8 | **Fixed** |
+| F14 | Reconstruction moves `w:sectPr` to the **front** of `w:body`, violating `CT_Body` and the package's own plumbing validator | High (corrupt output) | 8 | **Fixed** |
+| F15 | `applyRedlineToOxml` on a document whose `original` covers only some paragraphs **silently deletes the untargeted paragraphs** and returns `status: 'ok'` | High (data loss) | 8 | **Fixed** |
 
 ---
 
@@ -298,6 +300,91 @@ only if wall-clock stays under ~15s for `npm test`.
 `assertRoundTrip` defaults to `'exact'` and no call site needs `'normalized'`;
 fuzz corpus emits four of five structure families (list deferred with a written
 reason); `npm test` green at 24/24.
+
+---
+
+## Phase 1.5 — Independent Word and real-document corpus verification
+
+> **Production API: NOT BREAKING.** Everything in this phase is development-only
+> test tooling. The published library remains host-independent clean JavaScript;
+> Microsoft Word COM automation is confined to Windows-only scripts.
+
+**Status: Complete (2026-08-29).**
+
+Synthetic OOXML remains valuable for exact regression tests, but it cannot
+represent the full variety of documents produced by Word in the wild. Add a
+layered verification lane before continuing engine changes:
+
+### 1.5.1 Make desktop Word a first-class independent oracle
+
+- Promote the existing COM differential from a two-command release smoke check
+  to `npm run test:word`. The command exports a fresh task suite, opens every
+  `.docx` in installed desktop Microsoft Word, verifies that Word sees tracked
+  revisions, then independently checks Accept All and Reject All against
+  intent-derived expected text.
+- Compare text exactly by default (normalizing Word paragraph terminators only),
+  rather than collapsing all whitespace. Individual cases may opt into
+  normalized comparison only with a written reason.
+- Keep this lane manual/local because it requires Windows and Word. Do not add a
+  Word dependency or COM code to `index.js`, `core/`, `engine/`, or any runtime
+  package path.
+
+The first catalogue covers English legal and administrative tasks: term and
+deadline replacement, clause/procedure insertion, sentence and paragraph
+deletion, paragraph insertion, bold/italic/underline formatting, and
+significant spacing. Continue adding tables, lists, comments, fields,
+headers/footers, footnotes, numbering, and mixed batches as the harness grows.
+
+### 1.5.2 Introduce a pinned SuperDoc docx-corpus lane
+
+Use [docx-corpus](https://docxcorp.us/), built by
+[SuperDoc](https://superdoc.dev/), as the real-document source. The dataset is
+offered under ODC-By 1.0; retain attribution in the README, the pinned manifest,
+and per-download metadata. Note that ODC-By governs the database and may not
+grant every right in each individual document, so corpus documents remain
+local, uncommitted test inputs.
+
+Initial guardrails:
+
+- English only (`language: en`).
+- Document type only `legal` or `administrative`, initially biased toward
+  government/legal-administrative topics and classifier confidence ≥0.9.
+- Pin every document by corpus ID, explicit download URL, and observed download
+  SHA-256 in `tests/corpus/superdoc-english-legal-administrative.json`. The
+  separate digest detects upstream byte changes even where served bytes do not
+  match the corpus's advertised content ID.
+- No bulk/floating manifest downloads. The fetch command requires one or more
+  explicit pinned `--id` arguments, verifies the downloaded SHA-256, and writes
+  the document plus attribution metadata under ignored `tmp/` storage.
+- Before a pinned document becomes a permanent test scenario, inspect it in
+  Word, record why it adds structural coverage, define deterministic operations
+  and assertions, and confirm that it contains no material unsuitable for a
+  local test corpus.
+
+### 1.5.3 Grow task coverage as a matrix
+
+For every selected real document, combine a structural shape with a task type
+and oracle:
+
+| Shape | Initial tasks | Required checks |
+|---|---|---|
+| Body paragraphs | replace, insert, delete, format | XML invariants; Word open; exact accept/reject |
+| Lists | item insert/delete, level change | numbering continuity; Word accept/reject |
+| Tables/forms | cell edit, row change, checkbox/field adjacency | no package repair; untargeted cells stable |
+| Administrative layout | headings, sections, headers/footers | section order; untouched parts stable |
+| Legal apparatus | definitions, citations, footnotes/comments | references and anchors survive |
+
+**Acceptance for Phase 1.5:** `npm run test:word` passes the expanded synthetic
+catalogue in desktop Word; at least 20 reviewed pinned corpus documents (10
+legal, 10 administrative) cover the matrix above; each has deterministic task
+definitions and provenance; no corpus `.docx` is committed; README attribution
+and ODC-By notice remain present.
+
+**Acceptance recorded 2026-08-29:** the 12-case synthetic Word differential
+passed 12/12. The pinned corpus contains 10 legal and 10 administrative reviewed
+scenarios across all five matrix shapes; `npm run test:corpus:word` passed 20/20
+in desktop Word. The corpus lane verified every untouched package part by
+SHA-256 and left all source/output `.docx` files under ignored `tmp/` storage.
 
 ---
 
@@ -901,7 +988,8 @@ done as part of this phase.
 
 ```
 Phase 1  (honest oracle)        ← DONE; every later phase is verified through it
-Phase 8  (reconstruction shape) ← needs 1; schedule next, output is schema-invalid today
+Phase 8  (reconstruction shape) ← DONE
+Phase 1.5 (Word + real corpus)  ← DONE; expand alongside every later phase
 Phase 2  (diff correctness)     ← needs 1 for the whitespace-exact assertions
 Phase 3  (error contract)       ← needs 2 (introduces DIFF_TOKEN_LIMIT)
 Phase 4  (silent mutation)      ← needs 1; independent of 2/3
@@ -919,7 +1007,8 @@ also small), **Phase 2.1** (silent text loss at scale), then **Phase 4.1**
 Each phase is a separate commit with the suite green. Suggested messages:
 
 - `test: compare round-trip text losslessly and widen the fuzz corpus` *(done)*
-- `fix: keep w:sectPr last and stop emitting nested paragraphs`
+- `fix: keep w:sectPr last and stop emitting nested paragraphs` *(done)*
+- `test: add Word differential task suite and pinned SuperDoc corpus references` *(done)*
 - `fix: guard and widen diff token space; make diff output deterministic`
 - `feat: return structured errors instead of throwing on malformed OOXML`
 - `fix: stop discarding existing revisions and mutating caller text`
@@ -964,9 +1053,12 @@ New, from this plan:
 npm test                          # 24/24 as of Phase 1
 npm run test:isolation
 npm run check:types
+npm run test:word                 # Windows + installed desktop Word
+npm run test:corpus:word          # Windows + Word + 20 reviewed real documents
 npm run lint                      # added in Phase 7.2
 npm run test:coverage             # added in Phase 7.3
 node scripts/export-validation-fixtures.mjs
+npm run corpus:fetch:superdoc -- --id <pinned-sha256>
 FUZZ_SEED=1 FUZZ_ITERATIONS=5000 node tests/roundtrip_fuzz_tests.mjs
 grep -rn "KNOWN-GAP" tests/       # every suppression names the phase that owns it
 ```

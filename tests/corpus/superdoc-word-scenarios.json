@@ -1,0 +1,148 @@
+{
+  "name": "Reviewed SuperDoc English legal/administrative Word scenarios",
+  "reviewedAt": "2026-08-29",
+  "author": "Docx Redline Phase 1.5",
+  "reviewPolicy": "Each source was hash-pinned, structurally inspected, and content-sampled as a public legal or administrative document. The local files are not committed.",
+  "scenarios": [
+    {
+      "id": "0f582727deba41aebc5643adda1ac39970360ef3aa2ba6a18e85203b092ac534",
+      "shape": "body-paragraph",
+      "coverage": ["ordinance", "body-paragraph", "section-properties"],
+      "review": "Public municipal ordinance notice; no unsuitable material observed.",
+      "operation": { "type": "replace", "target": "NOTICE OF FINAL PASSAGE OF ORDINANCE", "modified": "NOTICE OF FINAL PASSAGE OF AMENDED ORDINANCE" }
+    },
+    {
+      "id": "6bc3b38986fc2163391dc0099a26640c566b801673c90e978d0edd5fb53a76eb",
+      "shape": "legal-apparatus",
+      "coverage": ["decree", "bookmark-adjacency", "numbering"],
+      "review": "Published government decree; no unsuitable material observed.",
+      "operation": { "type": "replace", "target": "City of Tbilisi", "modified": "City of Tbilisi, Georgia" }
+    },
+    {
+      "id": "49e72bbe21f1cd201bac350075f7e1699e6d453c8e0a927dec907565ef86a223",
+      "shape": "legal-apparatus",
+      "coverage": ["chapter-heading", "citation", "footer", "footnotes-part"],
+      "review": "Published municipal code chapter; no unsuitable material observed.",
+      "operation": { "type": "replace", "target": "CHAPTER 152:  COMPREHENSIVE PLAN", "modified": "CHAPTER 152:  COMPREHENSIVE PLAN (AMENDED)" }
+    },
+    {
+      "id": "8b77c5c08f8f60da23cb76005854e38aac104be29c8eb1f29c620db07fe2addb",
+      "shape": "list",
+      "coverage": ["numbered-list", "citation", "public-notice"],
+      "review": "Published municipal public notice; no unsuitable material observed.",
+      "operation": { "type": "replace", "target": "Parking or storing commercial vehicles, construction equipment, trailers, busses or boats (Sec. 22-24).", "modified": "Parking or storing commercial vehicles, construction equipment, trailers, buses or boats (Sec. 22-24)." }
+    },
+    {
+      "id": "82325c95040adfb3dd9fc013594756da689547def47ab120b35f6be132084693",
+      "shape": "table-form",
+      "coverage": ["table-cell", "numbered-list", "multi-section", "footer"],
+      "review": "Published draft zoning resolution; no unsuitable material observed.",
+      "operation": { "type": "replace", "target": "Zoning Districts", "modified": "Zoning District Categories" }
+    },
+    {
+      "id": "ed3e87e82817245fc606260af21cf3ef009cafffff2cf1c7e45e3c3cb47db9c6",
+      "shape": "administrative-layout",
+      "coverage": ["public-notice", "field-adjacency", "signature-block"],
+      "review": "Published ordinance passage notice; no unsuitable material observed.",
+      "operation": { "type": "replace", "target": "A copy of said Ordinance is on file and open to public inspection in the office of the Town Clerk.", "modified": "A copy of said Ordinance is on file and open to public inspection in the office of the Town Clerk during regular business hours." }
+    },
+    {
+      "id": "7561fb85f79c0304a4f79f9393739fb41a48bf32a6d7f99d010a048fd8151d74",
+      "shape": "legal-apparatus",
+      "coverage": ["statutory-citation", "headers", "footers", "footnotes-part", "bookmarks"],
+      "review": "Published public path order; public contact information only and no unsuitable material observed.",
+      "operation": { "type": "replace", "target": "AND PARAGRAPH 1 OF SCHEDULE 14", "modified": "AND PARAGRAPH 1 OF SCHEDULE 14, AS AMENDED" }
+    },
+    {
+      "id": "daf32df8e3c8e300f1a568da7cef4aba133929e9ce7f83be0980bb69327cad33",
+      "shape": "administrative-layout",
+      "coverage": ["ordinance-summary", "headers", "footers", "footnotes-part"],
+      "review": "Published urgency ordinance summary; public official and office contact information only.",
+      "operation": { "type": "replace", "target": "SUMMARY OF URGENCY ORDINANCE NO. 22-1456U", "modified": "ADOPTED SUMMARY OF URGENCY ORDINANCE NO. 22-1456U" }
+    },
+    {
+      "id": "d27fe5513ca474bcd6c02136d2e4b8179203f5855c4333af81bc964755c7abe4",
+      "shape": "list",
+      "coverage": ["numbered-list", "table", "footer", "footnotes-part"],
+      "review": "Published county resolution and bylaws; no unsuitable material observed.",
+      "operation": { "type": "replace", "target": "MEMBERS.  The Advisory Council shall be comprised of fifteen (15) individuals as follows:", "modified": "MEMBERS.  The Advisory Council shall be comprised of sixteen (16) individuals as follows:" }
+    },
+    {
+      "id": "3290c8a96fe493248bf9e491655dae2df87dee7b81779739ce2bb347c41b0c34",
+      "shape": "body-paragraph",
+      "coverage": ["ordinance", "definitions", "multi-section", "footer"],
+      "review": "Published draft municipal zoning ordinance; no unsuitable material observed.",
+      "operation": { "type": "replace", "target": "ORDINANCE AMENDING THE ZONING ORDINANCE", "modified": "ORDINANCE AMENDING THE CITY ZONING ORDINANCE" }
+    },
+    {
+      "id": "5078747afec134839ca5009f296730a89e0c877e9d00085186a7c6c307ce784c",
+      "shape": "administrative-layout",
+      "coverage": ["agenda", "memorandum", "tabs", "bookmark"],
+      "review": "Published city budget meeting agenda; public officials only and no unsuitable material observed.",
+      "operation": { "type": "replace", "target": "Inter-Office Memorandum", "modified": "Inter-Office Budget Memorandum" }
+    },
+    {
+      "id": "bd56a6ff3e08992fc3331cfca61515507c00cf96f38e771fbfaa4c487af1039d",
+      "shape": "table-form",
+      "coverage": ["agenda", "tables", "numbered-list", "bookmark"],
+      "review": "Published county council meeting material; public officials only and no unsuitable material observed.",
+      "operation": { "type": "replace", "target": "SPECIAL MEETING COUNTY COUNCIL AGENDA", "modified": "SPECIAL MEETING OF THE COUNTY COUNCIL — AGENDA" }
+    },
+    {
+      "id": "074e5b302e82cc7f5293314ca5bb463e08cf9ee06d5fab81a9843f8a27c21bd1",
+      "shape": "list",
+      "coverage": ["meeting-minutes", "numbered-list", "table", "header", "footer", "footnotes-part"],
+      "review": "Published patient participation group minutes; names are meeting participants and no patient records were observed.",
+      "operation": { "type": "replace", "target": "Review minutes & any matters from previous meeting  – All", "modified": "Review minutes and matters arising from the previous meeting – All" }
+    },
+    {
+      "id": "1267649bf4eed47478921c55562fe8255575d10bb4cd45e534689d49556a0b64",
+      "shape": "list",
+      "coverage": ["meeting-notes", "numbered-list", "bookmark"],
+      "review": "Published patient group meeting notes; no patient records or private contact details observed.",
+      "operation": { "type": "replace", "target": "Agenda &minutes:", "modified": "Agenda and minutes:" }
+    },
+    {
+      "id": "8b0f4f46292113aeb389445b035d62621f28a8075fe26b46d339a5658801d087",
+      "shape": "list",
+      "coverage": ["board-agenda", "numbered-list", "section-properties"],
+      "review": "Published town board agenda; no unsuitable material observed.",
+      "operation": { "type": "replace", "target": "Pledge of Allegiance", "modified": "Pledge of Allegiance and opening remarks" }
+    },
+    {
+      "id": "570572edcfec94b990c61b91e21e103699a39b800c3165ad436d0fd07c7cd80e",
+      "shape": "table-form",
+      "coverage": ["council-minutes", "tables", "numbered-list", "header", "footer", "footnotes-part"],
+      "review": "Published council minutes; public officials only and no unsuitable material observed.",
+      "operation": { "type": "replace", "target": "PUBLIC QUESTION TIME", "modified": "PUBLIC QUESTION AND COMMENT TIME" }
+    },
+    {
+      "id": "a3b94b62e9505655d150eae21dc72bb99b37eda901bcb50516b7e9fded5ed33b",
+      "shape": "table-form",
+      "coverage": ["meeting-minutes", "table-cell", "numbered-list", "header", "footer", "footnotes-part"],
+      "review": "Published patient participation group minutes; names are meeting participants and no patient records were observed.",
+      "operation": { "type": "replace", "target": "Info on testing to be circulated", "modified": "Updated testing information to be circulated" }
+    },
+    {
+      "id": "16151cbd92f85ef11bf8121cc6f1ce541970fdc57432f95951a3a3440635afe4",
+      "shape": "table-form",
+      "coverage": ["meeting-agenda", "table-cell", "section-properties"],
+      "review": "Published patient participation group agenda; no patient records or private contact details observed.",
+      "operation": { "type": "replace", "target": "Agenda for Wednesday 1st February 2023 5.00 pm", "modified": "Agenda for Wednesday 1st February 2023 at 5.00 pm local time" }
+    },
+    {
+      "id": "fb0db04c803132968cc176f7cfb4927bc33c665e9671760ebf31cabd4c1a7766",
+      "shape": "table-form",
+      "coverage": ["meeting-minutes", "table", "section-properties"],
+      "review": "Published patient participation group minutes; names are meeting participants and no patient records were observed.",
+      "operation": { "type": "replace", "target": "Agenda Items;", "modified": "Agenda Items:" }
+    },
+    {
+      "id": "77c33ab2ca57efd0d4afb87f08c45c88f3984256c3fd5fdf3e81f87a24644760",
+      "shape": "list",
+      "coverage": ["board-agenda", "numbered-list", "section-properties"],
+      "review": "Published town board agenda; no unsuitable material observed.",
+      "operation": { "type": "replace", "target": "APPROVAL OF CLERK'S MINUTES", "modified": "APPROVAL OF THE CLERK'S MINUTES" }
+    }
+  ]
+}

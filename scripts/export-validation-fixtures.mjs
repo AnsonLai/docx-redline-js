@@ -20,10 +20,17 @@ const outputDir = requestedOutputDir
   : join(process.cwd(), 'tmp', 'validation-docx');
 mkdirSync(outputDir, { recursive: true });
 
+const escapeXmlText = text => String(text)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;');
+
 const baseDocument = text => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="${NS_W}">
   <w:body>
-    <w:p><w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>
+    ${String(text).split(/\r?\n/).map(paragraphText =>
+      `<w:p><w:r><w:t xml:space="preserve">${escapeXmlText(paragraphText)}</w:t></w:r></w:p>`
+    ).join('\n    ')}
     <w:sectPr/>
   </w:body>
 </w:document>`;
@@ -34,7 +41,7 @@ let failures = 0;
 
 for (const testCase of cases) {
   const result = await applyOperationToDocumentXml(
-    baseDocument(testCase.original),
+    baseDocument(testCase.sourceText || testCase.original),
     { type: 'redline', target: testCase.original, modified: testCase.modified },
     'Validation',
     null,
@@ -71,8 +78,8 @@ for (const testCase of cases) {
     category: testCase.category,
     task: testCase.task,
     textFidelity: testCase.textFidelity || 'exact',
-    expectedAcceptedText: preprocessMarkdown(testCase.modified).cleanText,
-    expectedRejectedText: testCase.original
+    expectedAcceptedText: testCase.expectedAcceptedText ?? preprocessMarkdown(testCase.modified).cleanText,
+    expectedRejectedText: testCase.expectedRejectedText ?? testCase.original
   };
   writeFileSync(join(outputDir, `${testCase.name}.expected.json`), `${JSON.stringify(expected, null, 2)}\n`, 'utf8');
 

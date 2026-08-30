@@ -52,8 +52,7 @@ Writes to `tmp/validation-docx/`, per case:
 ## Word Differential Check (Windows, desktop Word)
 
 ```bash
-node scripts/export-validation-fixtures.mjs
-npm run smoke:word:diff
+npm run test:word
 ```
 
 For each fixture, desktop Word opens the `.docx`, confirms revisions are
@@ -61,6 +60,12 @@ visible, runs **AcceptAllRevisions**, and compares the document text to the
 expected modified text; then reopens and runs **RejectAllRevisions** and
 compares to the original text. This is the strongest check available: Word
 itself resolves the revisions this library generated.
+
+`npm run test:word` exports the current English legal/administrative task
+catalogue to `tmp/word-validation/` before running the differential. Expected
+text is compared exactly by default; only Word's paragraph terminators are
+normalized. The lower-level `npm run smoke:word:diff` remains available for an
+already-exported fixture directory.
 
 The older `npm run smoke:word -- path/to/file.docx` open-only smoke check
 remains available for ad-hoc files.
@@ -102,3 +107,35 @@ A second independent OOXML consumer parsing the fixtures without error.
 
 The Word differential check stays manual because it requires desktop Word;
 run it before tagging a release.
+
+## Pinned SuperDoc Corpus References
+
+The real-document lane uses explicitly selected references from
+[SuperDoc's docx-corpus](https://docxcorp.us/) (ODC-By 1.0). It does not consume
+a floating or bulk manifest. The reviewed reference set contains 10 English
+legal and 10 English administrative documents. Run the complete local lane on
+Windows with desktop Word installed:
+
+```bash
+npm run test:corpus:word
+```
+
+To fetch only particular reviewed sources:
+
+```bash
+npm run corpus:fetch:superdoc -- --id <pinned-sha256>
+```
+
+Valid IDs and provenance are recorded in
+`tests/corpus/superdoc-english-legal-administrative.json`. The fetcher refuses
+unknown IDs, verifies downloaded bytes against a separately pinned observed
+SHA-256, and writes `.docx` plus attribution metadata under
+`tmp/superdoc-corpus/`. The separate digest is intentional: on 2026-08-29 the
+service returned valid DOCX bytes that did not hash to its advertised corpus
+IDs. Deterministic reviewed operations live in
+`tests/corpus/superdoc-word-scenarios.json`.
+
+The corpus suite replaces only `word/document.xml`, proves that the uncompressed
+bytes of every untouched package part remain identical, opens each result in
+Word without a repair dialog, and checks both Accept All and Reject All. Do not
+commit downloaded documents.
