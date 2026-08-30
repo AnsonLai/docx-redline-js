@@ -9,6 +9,12 @@ function toArray(nodeList) {
     return Array.from(nodeList || []);
 }
 
+function createTargetNotFoundError(message) {
+    const error = new Error(message);
+    error.code = 'TARGET_NOT_FOUND';
+    return error;
+}
+
 export const WORD_MAIN_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
 function getElementsByLocalName(node, localName) {
@@ -313,9 +319,9 @@ export function resolveTargetParagraph(xmlDoc, options = {}) {
         if (fuzzyMatch) return { paragraph: fuzzyMatch, resolvedBy: 'fuzzy_text' };
     }
 
-    if (cleanTargetText) throw new Error(`Target paragraph not found: "${cleanTargetText}"`);
-    if (parsedRef) throw new Error(`Target paragraph reference not found: [P${parsedRef}]`);
-    throw new Error('Operation target missing: provide "target" text or "targetRef" ([P#]).');
+    if (cleanTargetText) throw createTargetNotFoundError(`Target paragraph not found: "${cleanTargetText}"`);
+    if (parsedRef) throw createTargetNotFoundError(`Target paragraph reference not found: [P${parsedRef}]`);
+    throw createTargetNotFoundError('Operation target missing: provide "target" text or "targetRef" ([P#]).');
 }
 
 function isParagraphInTable(paragraph) {
@@ -444,7 +450,10 @@ export function resolveTargetParagraphWithSnapshot(xmlDoc, options = {}) {
         return { paragraph: bestCandidate.paragraph, resolvedBy: 'strict_text_after_ref_drift' };
     }
 
-    return resolved;
+    throw createTargetNotFoundError(
+        `Target paragraph [P${parsedRef}] no longer matches its batch-start anchor.`
+    );
+
 }
 
 /**

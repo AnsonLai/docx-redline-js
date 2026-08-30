@@ -185,6 +185,13 @@ import { getParagraphText } from '@ansonlai/docx-redline-js/core/paragraph-targe
 
 Use `applyOperationsToDocumentXml(...)` for mixed batches. It stably runs comments before text-changing operations so replacements cannot invalidate their original anchors. Other operation types retain their relative order. Batch results retain each operation's original 1-based index and expose the actual `executionOrder`.
 
+Batches are atomic by default: any operation error returns the original
+`documentXml`, `hasChanges: false`, empty package artifacts, and
+`rolledBack: true`. The default `continueOnError: true` still attempts the full
+batch so `results` describes what would have applied. Callers that intentionally
+consume partial results must pass `{ atomic: false }`; use
+`{ continueOnError: false }` to stop after the first error.
+
 ### Output Shape Matrix
 
 Different APIs return different OOXML shapes. Use this as a packaging safety check.
@@ -195,7 +202,7 @@ Different APIs return different OOXML shapes. Use this as a packaging safety che
 | `applyRedlineToOxmlWithListFallback(...)` | Paragraph or range-scope OOXML | `result.oxml` | Fragment, `<w:document>`, or package payload (`<pkg:package>`) | No. Inspect first. |
 | `reconcileMarkdownTableOoxml(...)` | Table or paragraph-scope OOXML | `result.oxml` | Same shapes as `applyRedlineToOxml(...)` for the supplied scope | No. Inspect first. |
 | `applyOperationToDocumentXml(...)` | Full `word/document.xml` string | `result.documentXml` | `<w:document>` | Yes. This is the document-safe helper. |
-| `applyOperationsToDocumentXml(...)` | Full `word/document.xml` plus an operation batch | `result.documentXml` | `<w:document>` | Yes. Comments are applied before text-changing operations. |
+| `applyOperationsToDocumentXml(...)` | Full `word/document.xml` plus an operation batch | `result.documentXml` | `<w:document>` | Yes. Atomic by default; comments are applied before text-changing operations. |
 | `extractReplacementNodesFromOoxml(...)` | Any OOXML payload | `{ replacementNodes, numberingXml, sourceType }` | Normalized to `fragment`, `document`, or `package` | Yes. Use this when consuming `result.oxml`. |
 
 ### Do / Don't for Packaging
@@ -295,9 +302,9 @@ npm run test:word
 
 This Windows-only test command generates an English legal/administrative task
 suite under `tmp/word-validation/` and drives installed desktop Microsoft Word
-through COM. Its 18 cases include targeted reliability checks for literal
+through COM. Its 19 cases include targeted reliability checks for literal
 content, multi-paragraph replacement, leading whitespace, and prior-revision
-no-op safety. The published library remains clean, host-independent JavaScript;
+no-op and atomic-batch rollback safety. The published library remains clean, host-independent JavaScript;
 Word automation exists only in development scripts.
 
 A nightly GitHub Actions workflow additionally validates generated fixtures

@@ -36,6 +36,16 @@ function buildDocumentXml(text) {
 </w:document>`;
 }
 
+function buildParagraphDocumentXml(paragraphs) {
+    const paragraphXml = paragraphs
+        .map(text => `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`)
+        .join('');
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}">
+  <w:body>${paragraphXml}<w:sectPr/></w:body>
+</w:document>`;
+}
+
 function buildNumberedListDocumentXml(items, numId = '77') {
     const paragraphs = items
         .map(item => `<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="${numId}"/></w:numPr></w:pPr><w:r><w:t>${item}</w:t></w:r></w:p>`)
@@ -776,6 +786,99 @@ async function testBatchRunsCommentsBeforeTextEditsOnSameParagraph() {
         'replacement should still emit a deletion revision');
 }
 
+async function testBatchAtomicRollbackAndLegacyPartialMode() {
+    const originalParagraphs = [
+        'Operation one source.',
+        'Operation two source.',
+        'Operation three source.',
+        'Operation four source.',
+        'Operation five source.'
+    ];
+    const inputXml = buildParagraphDocumentXml(originalParagraphs);
+    const operations = [
+        { type: 'replace', target: originalParagraphs[0], modified: 'Operation one applied.' },
+        { type: 'replace', target: originalParagraphs[1], modified: 'Operation two applied.' },
+        { type: 'replace', target: 'Missing operation three target.', modified: 'Must not apply.' },
+        { type: 'replace', target: originalParagraphs[3], modified: 'Operation four applied.' },
+        { type: 'replace', target: originalParagraphs[4], modified: 'Operation five applied.' }
+    ];
+    const atomicContext = {};
+
+    const atomicResult = await applyOperationsToDocumentXml(
+        inputXml,
+        operations,
+        'AtomicBatchTest',
+        atomicContext,
+        { generateRedlines: false }
+    );
+
+    assert.strictEqual(atomicResult.documentXml, inputXml,
+        'default atomic batch must return the byte-identical original document');
+    assert.strictEqual(atomicResult.hasChanges, false);
+    assert.strictEqual(atomicResult.rolledBack, true);
+    assert.strictEqual(atomicResult.error?.code, 'BATCH_OPERATION_FAILED');
+    assert.deepStrictEqual(
+        atomicResult.results.map(entry => entry.status),
+        ['applied', 'applied', 'error', 'applied', 'applied'],
+        'default continueOnError behavior should describe every attempted operation'
+    );
+    assert.strictEqual(atomicResult.results[2].error?.code, 'TARGET_NOT_FOUND');
+    assert.strictEqual(atomicResult.commentsXml, null);
+    assert.deepStrictEqual(atomicResult.numberingXmlParts, []);
+    assert.strictEqual(atomicContext.targetRefSnapshot, undefined,
+        'rolled-back batches must not commit mutable runtime context');
+
+    const partialContext = {};
+    const partialResult = await applyOperationsToDocumentXml(
+        inputXml,
+        operations,
+        'AtomicBatchTest',
+        partialContext,
+        { generateRedlines: false, atomic: false }
+    );
+
+    assert.strictEqual(partialResult.hasChanges, true,
+        'atomic:false should retain the established partial-result behavior');
+    assert.strictEqual(partialResult.rolledBack, undefined);
+    assert.ok(partialContext.targetRefSnapshot instanceof Map,
+        'successful partial mode should commit runtime context');
+    const partialDoc = parseXmlStrict(partialResult.documentXml, 'non-atomic batch output');
+    const partialTexts = Array.from(partialDoc.getElementsByTagNameNS(NS_W, 'p')).map(getParagraphText);
+    assert.deepStrictEqual(partialTexts, [
+        'Operation one applied.',
+        'Operation two applied.',
+        originalParagraphs[2],
+        'Operation four applied.',
+        'Operation five applied.'
+    ]);
+}
+
+async function testOverlappingBatchAnchorFailsInsteadOfEditingWrongSpan() {
+    const originalText = 'The agency shall issue the permit within ten days.';
+    const firstModified = 'The agency must issue the permit within ten days.';
+    const secondModified = 'The agency shall issue the permit within five days.';
+    const inputXml = buildDocumentXml(originalText);
+
+    const result = await applyOperationsToDocumentXml(
+        inputXml,
+        [
+            { type: 'replace', targetRef: 'P1', target: originalText, modified: firstModified },
+            { type: 'replace', targetRef: 'P1', target: originalText, modified: secondModified }
+        ],
+        'OverlapBatchTest',
+        null,
+        { generateRedlines: false, atomic: false }
+    );
+
+    assert.deepStrictEqual(result.results.map(entry => entry.status), ['applied', 'error']);
+    assert.strictEqual(result.results[1].error?.code, 'TARGET_NOT_FOUND',
+        'stale overlapping anchor should be reported explicitly');
+    const resultDoc = parseXmlStrict(result.documentXml, 'overlapping batch output');
+    const paragraph = resultDoc.getElementsByTagNameNS(NS_W, 'p')[0];
+    assert.strictEqual(getParagraphText(paragraph), firstModified,
+        'failed overlapping operation must not silently edit the stale paragraph');
+}
+
 async function run() {
     await testRedlineOperation();
     await testImplicitMultilineTargetReplacesWholeRange();
@@ -793,6 +896,8 @@ async function run() {
     await testRedlinePreprocessesFieldInstructionsAndProofingMarkers();
     await testDuplicateTableStructuralOpsAreDedupedPerTurn();
     await testBatchRunsCommentsBeforeTextEditsOnSameParagraph();
+    await testBatchAtomicRollbackAndLegacyPartialMode();
+    await testOverlappingBatchAnchorFailsInsteadOfEditingWrongSpan();
     console.log('PASS: standalone operation runner tests');
 }
 

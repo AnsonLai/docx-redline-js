@@ -125,6 +125,13 @@ Use `result.documentXml` from these APIs when replacing full `word/document.xml`
 For mixed batches, prefer `applyOperationsToDocumentXml(...)`; it applies comments
 before replacements so earlier edits cannot invalidate their anchors.
 
+Batches are atomic by default. If any operation fails, the batch returns the
+original `documentXml`, `hasChanges: false`, no comment/numbering artifacts, and
+`rolledBack: true`; `results` still describes every attempted operation because
+`continueOnError` defaults to `true`. Pass `{ atomic: false }` only when a
+partially applied document is intentional. Pass `{ continueOnError: false }` to
+stop attempting operations after the first error.
+
 ### Detect existing tracked changes
 
 ```js

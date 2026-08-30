@@ -4,7 +4,10 @@ import { join, resolve } from 'path';
 import { configureXmlProvider } from '../adapters/xml-adapter.js';
 import { validateRedlineOoxml } from '../core/redline-validation.js';
 import { preprocessMarkdown } from '../pipeline/markdown-processor.js';
-import { applyOperationToDocumentXml } from '../services/standalone-operation-runner.js';
+import {
+  applyOperationToDocumentXml,
+  applyOperationsToDocumentXml
+} from '../services/standalone-operation-runner.js';
 import { buildMinimalDocx } from './lib/minimal-zip.mjs';
 import { WORD_TASK_CASES } from '../tests/fixtures/word-task-cases.mjs';
 
@@ -41,15 +44,35 @@ let failures = 0;
 
 for (const testCase of cases) {
   const sourceDocumentXml = testCase.sourceDocumentXml || baseDocument(testCase.sourceText || testCase.original);
-  const result = await applyOperationToDocumentXml(
-    sourceDocumentXml,
-    { type: 'redline', target: testCase.original, modified: testCase.modified },
-    'Validation',
-    null,
-    { generateRedlines: true, ...(testCase.operationOptions || {}) }
-  );
+  const operationOptions = { generateRedlines: true, ...(testCase.operationOptions || {}) };
+  const result = Array.isArray(testCase.batchOperations)
+    ? await applyOperationsToDocumentXml(
+      sourceDocumentXml,
+      testCase.batchOperations,
+      'Validation',
+      null,
+      operationOptions
+    )
+    : await applyOperationToDocumentXml(
+      sourceDocumentXml,
+      { type: 'redline', target: testCase.original, modified: testCase.modified },
+      'Validation',
+      null,
+      operationOptions
+    );
 
-  if ((!result?.hasChanges && !testCase.expectNoOp) || result?.status === 'error') {
+  if (testCase.expectAtomicRollback) {
+    if (
+      result?.hasChanges ||
+      result?.rolledBack !== true ||
+      result?.error?.code !== 'BATCH_OPERATION_FAILED' ||
+      result?.documentXml !== sourceDocumentXml
+    ) {
+      console.error(`FAIL ${testCase.name}: expected an atomic batch rollback`);
+      failures++;
+      continue;
+    }
+  } else if ((!result?.hasChanges && !testCase.expectNoOp) || result?.status === 'error') {
     console.error(`FAIL ${testCase.name}: redline did not apply (status=${result?.status}, error=${result?.error?.message})`);
     failures++;
     continue;

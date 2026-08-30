@@ -1,6 +1,6 @@
 # Redline Reliability Improvement Plan — Round 2
 
-**Status:** In Progress (Phases 1, 1.5, 2, 3, 4, and 8 Complete; Phases 5–7 Open)
+**Status:** In Progress (Phases 1, 1.5, 2, 3, 4, 6, 7, and 8 Complete; Phase 5 Open)
 
 Follow-on to `completed/2026-05-31-architectural changes.md`, which is complete. That plan
 hardened the *OOXML shape* of generated redlines (paragraph marks, moves, inert
@@ -80,13 +80,13 @@ Additional convention for this plan:
 | F1 | Round-trip oracle is lossy — whitespace/tab/break corruption is invisible to the entire suite | Critical (test blindness) | 1 | **Fixed** |
 | F2 | Diff engine silently drops text in documents with >65,536 unique tokens | Critical (data loss) | 2 | **Fixed** |
 | F3 | Diff output depends on wall-clock time (`Diff_Timeout = 1s`) | High (non-reproducible output) | 2 | **Fixed** |
-| F4 | Public API error contract is inconsistent: some functions throw raw `ParseError`, some return `''`, some return `status:'error'` | High | 3 | Open |
-| F5 | `existingRevisions: 'accept-all-first'` can silently discard another reviewer's revisions while reporting `hasChanges: false` | High (data loss) | 4 | Open |
-| F6 | `sanitizeAiResponse` unconditionally mutates legitimate document text | High (data corruption) | 4 | Open |
+| F4 | Public API error contract is inconsistent: some functions throw raw `ParseError`, some return `''`, some return `status:'error'` | High | 3 | **Fixed** |
+| F5 | `existingRevisions: 'accept-all-first'` can silently discard another reviewer's revisions while reporting `hasChanges: false` | High (data loss) | 4 | **Fixed** |
+| F6 | `sanitizeAiResponse` unconditionally mutates legitimate document text | High (data corruption) | 4 | **Fixed** |
 | F7 | Revision-ID counter is process-global and permanently poisonable | Medium | 5 | Open |
-| F8 | `TARGET_NOT_FOUND` detection is disabled whenever `original` contains a newline | Medium | 3 | Open |
-| F9 | `npm run check:types` does not type-check anything | Medium | 7 | Open |
-| F10 | `applyOperationsToDocumentXml` is non-atomic; a mid-batch failure returns a half-applied document | Medium | 6 | Open |
+| F8 | `TARGET_NOT_FOUND` detection is disabled whenever `original` contains a newline | Medium | 3 | **Fixed** |
+| F9 | `npm run check:types` does not type-check anything | Medium | 7 | **Fixed** |
+| F10 | `applyOperationsToDocumentXml` is non-atomic; a mid-batch failure returns a half-applied document | Medium | 6 | **Fixed** |
 | F11 | Fuzz corpus is single-paragraph only — no tables, lists, multi-paragraph, or pre-existing revisions | Medium | 1 | **Fixed** |
 | F16 | Synthetic fixtures alone do not cover the structural diversity of real English legal and administrative DOCX files | High (test coverage) | 1.5 | **Fixed** |
 
@@ -388,6 +388,8 @@ pinned corpus contains 10 legal and 10 administrative reviewed
 scenarios across all five matrix shapes; `npm run test:corpus:word` passed 20/20
 in desktop Word. The corpus lane verified every untouched package part by
 SHA-256 and left all source/output `.docx` files under ignored `tmp/` storage.
+The Phase 6 expansion on 2026-08-30 added an atomic batch rollback fixture;
+the synthetic Word differential now passes 19/19.
 
 ---
 
@@ -801,6 +803,13 @@ authors correctly.
 
 ## Phase 6 — Batch operation atomicity (F10)
 
+**Status: Complete (2026-08-30).** Batches now default to `atomic: true` and
+roll back the document, package artifacts, and mutable runtime context after any
+operation error. `atomic: false` preserves partial-result behavior;
+`continueOnError` is explicit and defaults to `true`. Stale batch-start anchors
+must rematch exact visible text or return `TARGET_NOT_FOUND`. Tests cover a
+five-operation batch failing at operation 3 and overlapping replacements.
+
 > **Production API: BREAKING.** Making `atomic` default to `true` changes the
 > established batch result on failure from a partially applied document to the
 > untouched original. Existing callers that intentionally consume partial
@@ -1040,7 +1049,7 @@ Phase 2  (diff correctness)     ← DONE
 Phase 3  (error contract)       ← DONE
 Phase 4  (silent mutation)      ← DONE
 Phase 5  (global state)         ← ready
-Phase 6  (batch atomicity)      ← independent
+Phase 6  (batch atomicity)      ← DONE
 Phase 7  (tooling)              ← DONE
 ```
 

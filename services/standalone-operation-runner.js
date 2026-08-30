@@ -1214,6 +1214,83 @@ function mergeCommentsXml(existingXml, incomingXml) {
     return serializer.serializeToString(existingDoc);
 }
 
+function cloneBatchRuntimeContext(runtimeContext) {
+    if (!runtimeContext || typeof runtimeContext !== 'object') return {};
+
+    const context = { ...runtimeContext };
+    if (runtimeContext.listFallbackSharedNumIdByKey instanceof Map) {
+        context.listFallbackSharedNumIdByKey = new Map(runtimeContext.listFallbackSharedNumIdByKey);
+    }
+    if (runtimeContext.tableStructuralRedlineKeys instanceof Set) {
+        context.tableStructuralRedlineKeys = new Set(runtimeContext.tableStructuralRedlineKeys);
+    }
+    if (runtimeContext.numberingIdState && typeof runtimeContext.numberingIdState === 'object') {
+        context.numberingIdState = {
+            ...runtimeContext.numberingIdState,
+            usedNumIds: runtimeContext.numberingIdState.usedNumIds instanceof Set
+                ? new Set(runtimeContext.numberingIdState.usedNumIds)
+                : runtimeContext.numberingIdState.usedNumIds,
+            usedAbstractNumIds: runtimeContext.numberingIdState.usedAbstractNumIds instanceof Set
+                ? new Set(runtimeContext.numberingIdState.usedAbstractNumIds)
+                : runtimeContext.numberingIdState.usedAbstractNumIds
+        };
+    }
+    if (runtimeContext.listFallbackSequenceState && typeof runtimeContext.listFallbackSequenceState === 'object') {
+        context.listFallbackSequenceState = {
+            ...runtimeContext.listFallbackSequenceState,
+            explicitByNumberingKey: runtimeContext.listFallbackSequenceState.explicitByNumberingKey instanceof Map
+                ? new Map(runtimeContext.listFallbackSequenceState.explicitByNumberingKey)
+                : runtimeContext.listFallbackSequenceState.explicitByNumberingKey
+        };
+    }
+    return context;
+}
+
+function commitBatchRuntimeContext(runtimeContext, context) {
+    if (!runtimeContext || typeof runtimeContext !== 'object') return;
+
+    if (runtimeContext.listFallbackSharedNumIdByKey instanceof Map && context.listFallbackSharedNumIdByKey instanceof Map) {
+        runtimeContext.listFallbackSharedNumIdByKey.clear();
+        for (const entry of context.listFallbackSharedNumIdByKey) runtimeContext.listFallbackSharedNumIdByKey.set(...entry);
+        context.listFallbackSharedNumIdByKey = runtimeContext.listFallbackSharedNumIdByKey;
+    }
+    if (runtimeContext.tableStructuralRedlineKeys instanceof Set && context.tableStructuralRedlineKeys instanceof Set) {
+        runtimeContext.tableStructuralRedlineKeys.clear();
+        for (const value of context.tableStructuralRedlineKeys) runtimeContext.tableStructuralRedlineKeys.add(value);
+        context.tableStructuralRedlineKeys = runtimeContext.tableStructuralRedlineKeys;
+    }
+    if (runtimeContext.numberingIdState && context.numberingIdState) {
+        for (const key of ['usedNumIds', 'usedAbstractNumIds']) {
+            if (runtimeContext.numberingIdState[key] instanceof Set && context.numberingIdState[key] instanceof Set) {
+                runtimeContext.numberingIdState[key].clear();
+                for (const value of context.numberingIdState[key]) runtimeContext.numberingIdState[key].add(value);
+                context.numberingIdState[key] = runtimeContext.numberingIdState[key];
+            }
+        }
+        Object.assign(runtimeContext.numberingIdState, context.numberingIdState);
+        context.numberingIdState = runtimeContext.numberingIdState;
+    }
+    if (runtimeContext.listFallbackSequenceState && context.listFallbackSequenceState) {
+        const originalMap = runtimeContext.listFallbackSequenceState.explicitByNumberingKey;
+        const updatedMap = context.listFallbackSequenceState.explicitByNumberingKey;
+        if (originalMap instanceof Map && updatedMap instanceof Map) {
+            originalMap.clear();
+            for (const entry of updatedMap) originalMap.set(...entry);
+            context.listFallbackSequenceState.explicitByNumberingKey = originalMap;
+        }
+        Object.assign(runtimeContext.listFallbackSequenceState, context.listFallbackSequenceState);
+        context.listFallbackSequenceState = runtimeContext.listFallbackSequenceState;
+    }
+    Object.assign(runtimeContext, context);
+}
+
+function normalizeOperationError(error) {
+    return {
+        code: typeof error?.code === 'string' && error.code ? error.code : 'OPERATION_ERROR',
+        message: error?.message || String(error)
+    };
+}
+
 /**
  * Applies one structured operation (`redline`, `highlight`, or `comment`) to
  * a full `word/document.xml` payload.
@@ -1283,14 +1360,24 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
  * @param {Object[]} operations - Structured operations
  * @param {string} author - Revision/comment author
  * @param {Object|null} [runtimeContext=null] - Shared turn context
- * @param {Object} [options={}] - Runner options
+ * @param {{
+ *   atomic?: boolean,
+ *   continueOnError?: boolean,
+ *   generateRedlines?: boolean,
+ *   onInfo?: (message: string) => void,
+ *   onWarn?: (message: string) => void
+ * }} [options={}] - Runner options. `atomic` defaults to `true`, returning the
+ * original document and no package artifacts if any operation fails.
+ * `continueOnError` defaults to `true`, so all operations are attempted and
+ * represented in `results`; `false` stops after the first operation error.
  * @returns {Promise<{
  *   documentXml: string,
  *   hasChanges: boolean,
  *   commentsXml: string|null,
  *   numberingXmlParts: string[],
  *   results: Array<{index:number,type:string,status:string,warnings?:string[],error?:Object}>,
- *   executionOrder: number[]
+ *   executionOrder: number[],
+ *   rolledBack?: boolean
  * }>}
  */
 export async function applyOperationsToDocumentXml(documentXml, operations, author, runtimeContext = null, options = {}) {
@@ -1313,7 +1400,9 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
         .map((operation, index) => ({ operation, index }))
         .sort((a, b) => operationTargetPriority(a.operation) - operationTargetPriority(b.operation) || a.index - b.index);
 
-    const context = runtimeContext && typeof runtimeContext === 'object' ? runtimeContext : {};
+    const atomic = options.atomic !== false;
+    const continueOnError = options.continueOnError !== false;
+    const context = cloneBatchRuntimeContext(runtimeContext);
     if (!(context.targetRefSnapshot instanceof Map)) {
         context.targetRefSnapshot = buildTargetReferenceSnapshot(parsed.doc);
     }
@@ -1323,9 +1412,12 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
     let hasChanges = false;
     const numberingXmlParts = [];
     const results = [];
+    const executionOrder = [];
+    let operationFailed = false;
 
     for (const entry of scheduled) {
         const { operation, index } = entry;
+        executionOrder.push(index + 1);
         try {
             const result = await applyOperationToDocumentXml(
                 currentDocumentXml,
@@ -1338,31 +1430,48 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
             hasChanges = hasChanges || result.hasChanges === true;
             commentsXml = mergeCommentsXml(commentsXml, result.commentsXml || null);
             if (result.numberingXml) numberingXmlParts.push(result.numberingXml);
+            const isError = result.status === 'error' || !!result.error;
+            operationFailed = operationFailed || isError;
             results.push({
                 index: index + 1,
                 type: operation?.type || 'redline',
-                status: result.hasChanges ? 'applied' : (result.status === 'error' ? 'error' : 'no_change'),
+                status: isError ? 'error' : (result.hasChanges ? 'applied' : 'no_change'),
                 ...(Array.isArray(result.warnings) && result.warnings.length > 0 ? { warnings: result.warnings } : {}),
                 ...(result.error ? { error: result.error } : {})
             });
+            if (isError && !continueOnError) break;
         } catch (error) {
+            const normalizedError = normalizeOperationError(error);
+            operationFailed = true;
             results.push({
                 index: index + 1,
                 type: operation?.type || 'redline',
                 status: 'error',
-                warnings: [error?.message || String(error)]
+                warnings: [normalizedError.message],
+                error: normalizedError
             });
-            if (options.continueOnError === false) throw error;
+            if (!continueOnError) break;
         }
     }
 
     results.sort((a, b) => a.index - b.index);
+    const rolledBack = atomic && operationFailed;
+    if (!rolledBack) commitBatchRuntimeContext(runtimeContext, context);
+
     return {
-        documentXml: currentDocumentXml,
-        hasChanges,
-        commentsXml,
-        numberingXmlParts,
+        documentXml: rolledBack ? documentXml : currentDocumentXml,
+        hasChanges: rolledBack ? false : hasChanges,
+        commentsXml: rolledBack ? null : commentsXml,
+        numberingXmlParts: rolledBack ? [] : numberingXmlParts,
         results,
-        executionOrder: scheduled.map(entry => entry.index + 1)
+        executionOrder,
+        ...(rolledBack ? {
+            rolledBack: true,
+            status: 'error',
+            error: {
+                code: 'BATCH_OPERATION_FAILED',
+                message: 'Atomic batch rolled back because one or more operations failed.'
+            }
+        } : {})
     };
 }

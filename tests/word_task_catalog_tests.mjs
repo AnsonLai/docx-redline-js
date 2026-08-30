@@ -2,7 +2,7 @@ import assert from 'assert/strict';
 
 import { WORD_TASK_CASES } from './fixtures/word-task-cases.mjs';
 
-assert.ok(WORD_TASK_CASES.length >= 18, 'Word task catalogue should cover at least eighteen tasks');
+assert.ok(WORD_TASK_CASES.length >= 19, 'Word task catalogue should cover at least nineteen tasks');
 
 const names = new Set();
 const categories = new Set();
@@ -23,6 +23,17 @@ for (const testCase of WORD_TASK_CASES) {
         assert.equal(typeof testCase.sourceDocumentXml, 'string');
     } else {
         assert.notEqual(testCase.original, testCase.modified);
+    }
+    if (testCase.expectAtomicRollback) {
+        assert.equal(typeof testCase.sourceDocumentXml, 'string');
+        assert.ok(Array.isArray(testCase.batchOperations));
+        assert.ok(testCase.batchOperations.length >= 2);
+        for (const operation of testCase.batchOperations) {
+            assert.equal(typeof operation.target, 'string');
+            assert.equal(typeof operation.modified, 'string');
+            assert.ok(/^[\x00-\x7F]*$/.test(operation.target));
+            assert.ok(/^[\x00-\x7F]*$/.test(operation.modified));
+        }
     }
     for (const [field, value] of Object.entries({
         original: testCase.original,

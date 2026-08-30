@@ -152,5 +152,29 @@ export const WORD_TASK_CASES = [
         expectNoOp: true,
         expectedAcceptedText: 'A new end',
         expectedRejectedText: 'A old end'
+    },
+    {
+        name: 'administrative-atomic-batch-rollback',
+        category: 'administrative',
+        task: 'rollback-failed-batch',
+        sourceDocumentXml: PRIOR_REVISION_NO_OP_DOCUMENT,
+        original: 'A new end',
+        modified: 'A updated end',
+        batchOperations: [
+            {
+                type: 'replace',
+                target: 'A new end',
+                modified: 'A updated end'
+            },
+            {
+                type: 'replace',
+                target: 'Missing administrative target.',
+                modified: 'This operation must fail.'
+            }
+        ],
+        operationOptions: { existingRevisions: 'accept-all-first' },
+        expectAtomicRollback: true,
+        expectedAcceptedText: 'A new end',
+        expectedRejectedText: 'A old end'
     }
 ];
