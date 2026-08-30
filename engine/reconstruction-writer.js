@@ -30,7 +30,6 @@ import { createWordElement, isWordElement } from '../core/word-xml.js';
 export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, author, formatHints, generateRedlines = true) {
     const {
         paragraphs,
-        paragraphMap,
         containerFragments,
         sentinelMapByStart,
         referenceMap,

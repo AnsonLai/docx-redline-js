@@ -842,6 +842,13 @@ covered; `AGENTS.md` batch section documents the new default.
 
 ## Phase 7 — Make the tooling checks real
 
+**Status: Complete (2026-08-29).** `check:types` now runs TypeScript over a
+consumer fixture and checks all 99 runtime exports against `index.d.ts` with no
+allowlisted gaps. ESLint enforces the documented XML construction/parsing
+boundaries and correctness rules in CI. Per-file c8 reporting is available as
+`npm run test:coverage`, with the initial baseline recorded in
+`docs/VALIDATION.md`.
+
 > **Production API: NOT BREAKING.** This phase changes repository validation,
 > type fixtures, linting, and coverage visibility. It does not change runtime
 > behavior or the public API contract.
@@ -1034,7 +1041,7 @@ Phase 3  (error contract)       ← DONE
 Phase 4  (silent mutation)      ← DONE
 Phase 5  (global state)         ← ready
 Phase 6  (batch atomicity)      ← independent
-Phase 7  (tooling)              ← 7.1/7.2 anytime; 7.3 last
+Phase 7  (tooling)              ← DONE
 ```
 
 Highest value per unit of work, if the whole plan cannot be taken on:

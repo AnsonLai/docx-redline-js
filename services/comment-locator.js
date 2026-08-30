@@ -2,7 +2,6 @@
  * Comment text location and marker injection helpers.
  */
 
-import { NS_W } from '../core/types.js';
 import { createWordElement } from '../core/word-xml.js';
 import { getElementsByTag, getFirstElementByTag } from '../core/xml-query.js';
 

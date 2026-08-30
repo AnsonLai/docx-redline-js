@@ -8,7 +8,7 @@
 import { extractFormatFromRPr } from './rpr-helpers.js';
 import { advanceOffsetForParagraphBoundary } from '../core/paragraph-offset-policy.js';
 import { log } from '../adapters/logger.js';
-import { getElementsByTag, getElementsByTagNS, getFirstElementByTag } from '../core/xml-query.js';
+import { getElementsByTagNS, getFirstElementByTag } from '../core/xml-query.js';
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 

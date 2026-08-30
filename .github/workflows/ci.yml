@@ -32,8 +32,11 @@ jobs:
       - name: Isolation checks
         run: npm run test:isolation
 
-      - name: Type declaration smoke check
+      - name: Type declarations and export completeness
         run: npm run check:types
+
+      - name: Lint
+        run: npm run lint
 
       - name: Test suite
         run: npm test

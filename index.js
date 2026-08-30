@@ -18,12 +18,7 @@ import { parseTable as parseMarkdownTable } from './pipeline/pipeline.js';
 import { wrapInDocumentFragment as wrapInDocumentFragmentShared } from './pipeline/serialization.js';
 import {
     buildSingleLineListStructuralFallbackPlan,
-    executeSingleLineListStructuralFallback,
-    resolveSingleLineListFallbackNumberingAction,
-    recordSingleLineListFallbackExplicitSequence,
-    clearSingleLineListFallbackExplicitSequence,
-    enforceListBindingOnParagraphNodes,
-    stripSingleLineListMarkerPrefix
+    executeSingleLineListStructuralFallback
 } from './orchestration/list-structural-fallback.js';
 import { withOoxmlSourceType } from './core/word-xml.js';
 export { containsTrackedChanges } from './core/word-xml.js';

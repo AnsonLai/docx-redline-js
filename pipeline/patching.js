@@ -183,7 +183,6 @@ export function applyPatches(splitModel, diffOps, options) {
 function processInsertionOperation(context) {
     const {
         insertOp,
-        splitModel,
         styleLookup,
         patchedModel,
         state,

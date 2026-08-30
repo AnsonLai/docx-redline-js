@@ -269,6 +269,8 @@ Run the automated package checks:
 npm test
 npm run test:isolation
 npm run check:types
+npm run lint
+npm run test:coverage
 ```
 
 For release-time fixture export:

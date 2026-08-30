@@ -24,7 +24,7 @@ const XMLNS_ATTR_REGEX = /\s+xmlns:[^=]+="[^"]*"/g;
  */
 export function serializeToOoxml(patchedModel, pPr, formatHints = [], options = {}) {
     const serializationOptions = normalizeSerializationOptions(options);
-    const { author, generateRedlines } = serializationOptions;
+    const { generateRedlines } = serializationOptions;
     const paragraphs = [];
     let currentPPrXml = '';
     let currentPPrElement = null;

@@ -66,7 +66,7 @@ async function testSurgicalList() {
 </w:document>
 `;
 
-    const { runModel, acceptedText, pPr } = ingestOoxml(testOoxml);
+    const { runModel, pPr } = ingestOoxml(testOoxml);
 
     // Sub-test 2: Round-trip serialization
     console.log('--- Sub-test: Round-Trip Serialization ---');
@@ -709,8 +709,6 @@ E. Item five`;
 
     try {
         const result = await pipeline.executeListGeneration(modifiedText, null, null, "Original");
-        const numXml = result.numberingXml || '';
-
         // All 5 paragraphs should reference the SAME numId.
         // The original bug caused each paragraph to get its own numbering.xml
         // with a separate numId, breaking the list continuity.

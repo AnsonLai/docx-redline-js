@@ -1,29 +1,21 @@
-import { readFileSync } from 'fs';
+import { readFileSync } from 'node:fs';
 
-const dts = readFileSync(new URL('../index.d.ts', import.meta.url), 'utf8');
-
-const requiredSnippets = [
-  'export interface RedlineOptions',
-  'export interface RedlineResult',
-  'export function applyRedlineToOxml',
-  'export function acceptTrackedChangesInOoxml',
-  'export function rejectTrackedChangesInOoxml',
-  'export function deleteCommentsByAuthorInOoxml',
-  'export function validateRedlineOoxml'
-];
-
-for (const snippet of requiredSnippets) {
-  if (!dts.includes(snippet)) {
-    throw new Error(`Missing declaration snippet: ${snippet}`);
-  }
+const declarationPath = new URL('../index.d.ts', import.meta.url);
+const declarationText = readFileSync(declarationPath, 'utf8');
+const declaredRuntimeNames = new Set();
+const declarationPattern = /^export\s+(?:declare\s+)?(?:function|class|const|let|var|enum)\s+([A-Za-z_$][\w$]*)/gm;
+for (const match of declarationText.matchAll(declarationPattern)) {
+    declaredRuntimeNames.add(match[1]);
 }
 
-let balance = 0;
-for (const char of dts) {
-  if (char === '{') balance += 1;
-  if (char === '}') balance -= 1;
-  if (balance < 0) throw new Error('index.d.ts has unbalanced braces');
-}
-if (balance !== 0) throw new Error('index.d.ts has unbalanced braces');
+const runtimeModule = await import('../index.js');
+const runtimeNames = Object.keys(runtimeModule).sort();
+const missingDeclarations = runtimeNames.filter(name => !declaredRuntimeNames.has(name));
 
-console.log('PASS: index.d.ts declaration smoke check');
+if (missingDeclarations.length > 0) {
+    throw new Error(
+        `Runtime exports missing from index.d.ts:\n${missingDeclarations.map(name => `- ${name}`).join('\n')}`
+    );
+}
+
+console.log(`PASS: ${runtimeNames.length} runtime exports have declarations`);

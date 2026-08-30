@@ -188,3 +188,77 @@ export class ReconciliationPipeline {
 export class NumberingService {
   constructor(...args: unknown[]);
 }
+
+// Supporting public utilities. These declarations intentionally expose stable
+// boundary shapes while leaving internal planning records extensible.
+export const NS_W: string;
+export const WORD_MAIN_NS: string;
+export const DiffOp: Readonly<Record<'EQUAL' | 'DELETE' | 'INSERT', string>>;
+export const RunKind: Readonly<Record<string, string>>;
+export const ContainerKind: Readonly<Record<string, string>>;
+export const ContentType: Readonly<Record<string, string>>;
+export const RoutePlanKind: Readonly<Record<string, string>>;
+
+export function escapeXml(value: unknown): string;
+export function applyFormattingRemovalToOoxml(oxml: string, options?: Record<string, unknown>): string;
+export function removeFormattingFromRPr(rPr: Element, options?: Record<string, unknown>): Element;
+
+export function buildCommentElement(comment: Record<string, unknown>, id?: string | number): string;
+export function buildCommentsPartXml(comments: unknown[]): string;
+
+export function reserveNextNumberingId(state: unknown): number;
+export function reserveNextNumberingIdPair(state: unknown): { abstractNumId: number; numId: number };
+export function overwriteParagraphNumIds(oxml: string, numId: string | number): string;
+export function extractFirstParagraphNumId(oxml: string): string | null;
+export function buildExplicitDecimalMultilevelNumberingXml(options?: Record<string, unknown>): string;
+export function remapNumberingPayloadForDocument(numberingXml: string, state: unknown): unknown;
+export function mergeNumberingXmlBySchemaOrder(baseXml: string, incomingXml: string): string;
+
+export function buildListMarkdown(items: unknown[], options?: Record<string, unknown>): string;
+export function inferNumberingStyleFromMarker(marker: string): string;
+export function normalizeListItemsWithLevels(items: unknown[]): unknown[];
+export function parseMarkdownListContent(text: string): unknown;
+export function hasListItems(parsed: unknown): boolean;
+
+export function buildReconciliationPlan(params?: Record<string, unknown>): Record<string, unknown>;
+export function normalizeContentEscapesForRouting(content: string): string;
+export function buildSingleLineListStructuralFallbackPlan(options?: Record<string, unknown>): Record<string, unknown> | null;
+export function executeSingleLineListStructuralFallback(plan: unknown, options?: Record<string, unknown>): Promise<RedlineResult>;
+export function resolveSingleLineListFallbackNumberingAction(plan: unknown, sequenceState?: unknown): Record<string, unknown>;
+export function recordSingleLineListFallbackExplicitSequence(sequenceState: unknown, numberingKey: string | null, numId: string | number | null, startAt: number | null): void;
+export function clearSingleLineListFallbackExplicitSequence(sequenceState: unknown, numberingKey: string | null): void;
+export function enforceListBindingOnParagraphNodes(nodes: Node[], options?: Record<string, unknown>): number;
+export function stripSingleLineListMarkerPrefix(text: string): string;
+
+export function getParagraphText(paragraph: Element | null | undefined): string;
+export function getDocumentParagraphNodes(xmlDoc: Document | Element | null | undefined): Element[];
+export function normalizeWhitespaceForTargeting(text: string): string;
+export function isMarkdownTableText(text: string): boolean;
+export function parseParagraphReference(reference: unknown): unknown;
+export function stripLeadingParagraphMarker(text: string): string;
+export function splitLeadingParagraphMarker(text: string): Record<string, unknown>;
+export function findContainingWordElement(node: Node | null, localName: string): Element | null;
+export function findParagraphByReference(xmlDoc: Document | Element, reference: unknown): Element | null;
+export function findParagraphByStrictText(xmlDoc: Document | Element, text: string): Element | null;
+export function findParagraphByBestTextMatch(xmlDoc: Document | Element, text: string): Element | null;
+export function resolveTargetParagraph(xmlDoc: Document | Element, options?: Record<string, unknown>): Element | null;
+export function buildTargetReferenceSnapshot(paragraph: Element, options?: Record<string, unknown>): Record<string, unknown>;
+export function resolveTargetParagraphWithSnapshot(xmlDoc: Document | Element, snapshot: unknown): Element | null;
+export function resolveParagraphRangeByRefs(xmlDoc: Document | Element, references: unknown[]): Element[];
+export function extractParagraphIdFromOoxml(oxml: string): string | null;
+
+export function getParagraphListInfo(paragraph: Element): Record<string, unknown> | null;
+export function collectContiguousListParagraphBlock(paragraph: Element): Element[];
+export function synthesizeExpandedListScopeEdit(options: Record<string, unknown>): Record<string, unknown> | null;
+export function planListInsertionOnlyEdit(options: Record<string, unknown>): Record<string, unknown> | null;
+export function stripRedundantLeadingListMarkers(text: string): string;
+
+export function inferTableReplacementParagraphBlock(options: Record<string, unknown>): Record<string, unknown> | null;
+export function isLikelyStructuredTableSourceParagraph(paragraph: Element): boolean;
+export function synthesizeTableMarkdownFromMultilineCellEdit(options: Record<string, unknown>): string | null;
+
+export function getBodyElementFromDocument(xmlDoc: Document): Element | null;
+export function insertBodyElementBeforeSectPr(body: Element, element: Element): Element;
+export function normalizeBodySectionOrderStandalone(documentXml: string): string;
+export function sanitizeNestedParagraphsInTables(documentXml: string): string;
+export function getPackagePartName(part: unknown): string | null;

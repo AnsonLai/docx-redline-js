@@ -5,6 +5,7 @@
 
 import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { getXmlParseError } from '../core/xml-query.js';
+import { createWordElement } from '../core/word-xml.js';
 import {
     getDocumentParagraphNodes,
     normalizeWhitespaceForTargeting
@@ -217,10 +218,7 @@ export function enforceListBindingOnParagraphNodes(nodes, options = {}) {
 
         let pPr = getDirectWordChild(paragraph, 'pPr');
         if (!pPr) {
-            pPr = ownerDoc.createElementNS(
-                'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
-                'w:pPr'
-            );
+            pPr = createWordElement(ownerDoc, 'w:pPr');
             paragraph.insertBefore(pPr, paragraph.firstChild);
         }
 
@@ -236,29 +234,20 @@ export function enforceListBindingOnParagraphNodes(nodes, options = {}) {
 
         let numPr = getDirectWordChild(pPr, 'numPr');
         if (!numPr) {
-            numPr = ownerDoc.createElementNS(
-                'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
-                'w:numPr'
-            );
+            numPr = createWordElement(ownerDoc, 'w:numPr');
             pPr.appendChild(numPr);
         }
 
         let ilvlEl = getDirectWordChild(numPr, 'ilvl');
         if (!ilvlEl) {
-            ilvlEl = ownerDoc.createElementNS(
-                'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
-                'w:ilvl'
-            );
+            ilvlEl = createWordElement(ownerDoc, 'w:ilvl');
             numPr.appendChild(ilvlEl);
         }
         ilvlEl.setAttribute('w:val', String(ilvl));
 
         let numIdEl = getDirectWordChild(numPr, 'numId');
         if (!numIdEl) {
-            numIdEl = ownerDoc.createElementNS(
-                'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
-                'w:numId'
-            );
+            numIdEl = createWordElement(ownerDoc, 'w:numId');
             numPr.appendChild(numIdEl);
         }
         numIdEl.setAttribute('w:val', String(numId));
@@ -343,20 +332,14 @@ function applyStartOverrideToNumberingXml(numberingXml, targetNumId, startAt, op
             return ilvl === 0;
         }) || null;
     if (!lvlOverride) {
-        lvlOverride = numberingDoc.createElementNS(
-            'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
-            'w:lvlOverride'
-        );
+        lvlOverride = createWordElement(numberingDoc, 'w:lvlOverride');
         lvlOverride.setAttribute('w:ilvl', '0');
         target.appendChild(lvlOverride);
     }
 
     let startOverride = Array.from(lvlOverride.getElementsByTagNameNS('*', 'startOverride'))[0] || null;
     if (!startOverride) {
-        startOverride = numberingDoc.createElementNS(
-            'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
-            'w:startOverride'
-        );
+        startOverride = createWordElement(numberingDoc, 'w:startOverride');
         lvlOverride.appendChild(startOverride);
     }
     setElementVal(startOverride, startAt);
@@ -377,20 +360,14 @@ function applyStartOverrideToNumberingXml(numberingXml, targetNumId, startAt, op
                     return ilvl === 0;
                 }) || null;
             if (!lvl) {
-                lvl = numberingDoc.createElementNS(
-                    'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
-                    'w:lvl'
-                );
+                lvl = createWordElement(numberingDoc, 'w:lvl');
                 lvl.setAttribute('w:ilvl', '0');
                 abstractNum.appendChild(lvl);
             }
 
             let startNode = Array.from(lvl.getElementsByTagNameNS('*', 'start'))[0] || null;
             if (!startNode) {
-                startNode = numberingDoc.createElementNS(
-                    'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
-                    'w:start'
-                );
+                startNode = createWordElement(numberingDoc, 'w:start');
                 lvl.insertBefore(startNode, lvl.firstChild);
             }
             setElementVal(startNode, startAt);

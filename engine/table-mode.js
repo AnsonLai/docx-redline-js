@@ -6,7 +6,6 @@ import { NS_W, createRevisionMetadata } from '../core/types.js';
 import {
     getElementsByTagNS,
     getElementsByTagNSOrTag,
-    getFirstElementByTag,
     getFirstElementByTagNS,
     getFirstElementByTagNSOrTag,
     getXmlParseError

@@ -7,7 +7,7 @@
 import { computeWordLevelDiffOps } from '../pipeline/diff-engine.js';
 import { splitRunsAtDiffBoundaries, applyPatches } from '../pipeline/patching.js';
 import { serializeToOoxml } from '../pipeline/serialization.js';
-import { NS_W, createRevisionMetadata, escapeXml, RunKind } from '../core/types.js';
+import { createRevisionMetadata, escapeXml, RunKind } from '../core/types.js';
 import { preprocessMarkdown } from '../pipeline/markdown-processor.js';
 
 /**
@@ -322,7 +322,7 @@ function serializeCellBlocks(blocks) {
     }).join('');
 }
 
-function buildTcXml(cell, content, options) {
+function buildTcXml(cell, content, _options) {
     let tcPr = cell.tcPrXml;
 
     // Ensure gridSpan is preserved

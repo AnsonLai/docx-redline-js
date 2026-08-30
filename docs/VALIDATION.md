@@ -111,6 +111,26 @@ A second independent OOXML consumer parsing the fixtures without error.
 The Word differential check stays manual because it requires desktop Word;
 run it before tagging a release.
 
+## JavaScript Coverage Baseline
+
+```bash
+npm run test:coverage
+```
+
+The command runs the complete JavaScript test suite under c8 and prints a
+per-file report. The initial Phase 7 baseline recorded on 2026-08-29 is:
+
+| Metric | Coverage |
+|---|---:|
+| Lines / statements | 79.57% |
+| Functions | 80.07% |
+| Branches | 69.22% |
+
+This is a visibility baseline, not a CI threshold. Notable opportunities from
+the baseline are `services/numbering-helpers.js` (23.55% lines),
+`orchestration/route-plan.js` (23.75%), and
+`orchestration/list-structural-fallback.js` (57.19%).
+
 ## Pinned SuperDoc Corpus References
 
 The real-document lane uses explicitly selected references from
