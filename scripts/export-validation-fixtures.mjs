@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join, resolve } from 'path';
 
@@ -8,7 +9,8 @@ import {
   applyOperationToDocumentXml,
   applyOperationsToDocumentXml
 } from '../services/standalone-operation-runner.js';
-import { buildMinimalDocx } from './lib/minimal-zip.mjs';
+import { buildMinimalDocx, buildMinimalDocxEntries } from './lib/minimal-zip.mjs';
+import { unzipEntries } from './lib/zip-reader.mjs';
 import { WORD_TASK_CASES } from '../tests/fixtures/word-task-cases.mjs';
 
 const { DOMParser, XMLSerializer } = await import('@xmldom/xmldom');
@@ -111,6 +113,32 @@ for (const testCase of cases) {
     if (missingRequiredElement) continue;
   }
 
+  if (testCase.requiredElementParents || testCase.requiredElementText) {
+    const resultDoc = new DOMParser().parseFromString(result.documentXml, 'application/xml');
+    let structuralRequirementFailed = false;
+
+    for (const [localName, parentLocalName] of Object.entries(testCase.requiredElementParents || {})) {
+      const nodes = Array.from(resultDoc.getElementsByTagNameNS(NS_W, localName));
+      const invalidNodes = nodes.filter(node => node.parentNode?.namespaceURI !== NS_W || node.parentNode?.localName !== parentLocalName);
+      if (invalidNodes.length > 0) {
+        console.error(`FAIL ${testCase.name}: ${invalidNodes.length} w:${localName} element(s) were not direct children of w:${parentLocalName}`);
+        failures++;
+        structuralRequirementFailed = true;
+      }
+    }
+
+    for (const [localName, expectedTexts] of Object.entries(testCase.requiredElementText || {})) {
+      const actualTexts = Array.from(resultDoc.getElementsByTagNameNS(NS_W, localName), node => node.textContent || '');
+      if (JSON.stringify(actualTexts) !== JSON.stringify(expectedTexts)) {
+        console.error(`FAIL ${testCase.name}: w:${localName} text mismatch; expected ${JSON.stringify(expectedTexts)}, found ${JSON.stringify(actualTexts)}`);
+        failures++;
+        structuralRequirementFailed = true;
+      }
+    }
+
+    if (structuralRequirementFailed) continue;
+  }
+
   const validation = validateRedlineOoxml(result.documentXml);
   const validationErrors = validation.issues.filter(issue => issue.severity === 'error');
   if (validationErrors.length > 0) {
@@ -124,7 +152,35 @@ for (const testCase of cases) {
     writeFileSync(join(outputDir, `${testCase.name}.numbering.xml`), result.numberingXml, 'utf8');
   }
 
-  const docx = buildMinimalDocx(result.documentXml, { numberingXml: result.numberingXml || null });
+  const packageParts = {
+    numberingXml: result.numberingXml || null,
+    ...(testCase.packageParts || {})
+  };
+  let packageEntries;
+  let docx;
+  try {
+    packageEntries = buildMinimalDocxEntries(result.documentXml, packageParts);
+    docx = buildMinimalDocx(result.documentXml, packageParts);
+  } catch (error) {
+    console.error(`FAIL ${testCase.name}: package validation failed: ${error.message}`);
+    failures++;
+    continue;
+  }
+
+  const unpacked = unzipEntries(docx);
+  const untouchedPartSha256 = {};
+  for (const entry of packageEntries.filter(item => /^word\/(?:comments|footnotes|endnotes|header[0-9]+|footer[0-9]+)\.xml$/.test(item.name))) {
+    const expectedBytes = Buffer.isBuffer(entry.data) ? entry.data : Buffer.from(entry.data, 'utf8');
+    const actualBytes = unpacked.get(entry.name);
+    if (!actualBytes?.equals(expectedBytes)) {
+      console.error(`FAIL ${testCase.name}: packaged ${entry.name} was not byte-identical to the configured source part`);
+      failures++;
+      docx = null;
+      break;
+    }
+    untouchedPartSha256[entry.name] = createHash('sha256').update(actualBytes).digest('hex');
+  }
+  if (!docx) continue;
   writeFileSync(join(outputDir, `${testCase.name}.docx`), docx);
 
   // Expected text is derived from edit *intent*, not from this library's
@@ -136,7 +192,8 @@ for (const testCase of cases) {
     task: testCase.task,
     textFidelity: testCase.textFidelity || 'exact',
     expectedAcceptedText: testCase.expectedAcceptedText ?? preprocessMarkdown(testCase.modified).cleanText,
-    expectedRejectedText: testCase.expectedRejectedText ?? testCase.original
+    expectedRejectedText: testCase.expectedRejectedText ?? testCase.original,
+    untouchedPartSha256
   };
   writeFileSync(join(outputDir, `${testCase.name}.expected.json`), `${JSON.stringify(expected, null, 2)}\n`, 'utf8');
 

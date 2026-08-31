@@ -130,7 +130,8 @@ export function buildReconstructionMapping(xmlDoc, modifiedText, selectedParagra
         const char = originalFullText[index];
         displayOriginalText += breakChars.has(char) ? '\n' : char;
     }
-    let processedModifiedText = preserveStructuralBreaks(displayOriginalText, originalFullText, modifiedText, breakChars);
+    let processedModifiedText = preserveZeroWidthSentinels(displayOriginalText, modifiedText, sentinelMap);
+    processedModifiedText = preserveStructuralBreaks(displayOriginalText, originalFullText, processedModifiedText, breakChars);
     tokenToCharMap.forEach((char, tokenString) => {
         const escapedToken = tokenString.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
         processedModifiedText = processedModifiedText.replace(new RegExp(escapedToken, 'g'), char);
@@ -277,6 +278,65 @@ function preserveStructuralBreaks(displayOriginalText, internalOriginalText, mod
     return result;
 }
 
+function preserveZeroWidthSentinels(displayOriginalText, modifiedText, sentinelMap) {
+    const sentinelsByInternalOffset = new Map();
+    sentinelMap.forEach(sentinel => {
+        if (sentinel.zeroWidth) sentinelsByInternalOffset.set(sentinel.start, sentinel);
+    });
+    if (sentinelsByInternalOffset.size === 0) return modifiedText;
+
+    let visibleOriginalText = '';
+    let visibleOffset = 0;
+    const sentinelsByVisibleBoundary = new Map();
+
+    for (let internalOffset = 0; internalOffset < displayOriginalText.length; internalOffset++) {
+        const sentinel = sentinelsByInternalOffset.get(internalOffset);
+        if (sentinel) {
+            if (!sentinelsByVisibleBoundary.has(visibleOffset)) sentinelsByVisibleBoundary.set(visibleOffset, []);
+            sentinelsByVisibleBoundary.get(visibleOffset).push({
+                char: displayOriginalText[internalOffset],
+                affinity: sentinel.affinity || 'right',
+                emitted: false
+            });
+            continue;
+        }
+        visibleOriginalText += displayOriginalText[internalOffset];
+        visibleOffset++;
+    }
+
+    const diffs = DMP.diff_main(visibleOriginalText, modifiedText);
+    let originalOffset = 0;
+    let result = '';
+
+    const emitSentinels = (boundary, affinity) => {
+        const sentinels = sentinelsByVisibleBoundary.get(boundary) || [];
+        for (const sentinel of sentinels) {
+            if (sentinel.emitted || (affinity && sentinel.affinity !== affinity)) continue;
+            result += sentinel.char;
+            sentinel.emitted = true;
+        }
+    };
+
+    for (const [op, text] of diffs) {
+        if (op === 1) {
+            // Closing field markers belong before text inserted immediately
+            // after a field; opening markers stay after text inserted before it.
+            emitSentinels(originalOffset, 'left');
+            result += text;
+            continue;
+        }
+
+        for (let index = 0; index < text.length; index++) {
+            emitSentinels(originalOffset);
+            if (op === 0) result += text[index];
+            originalOffset++;
+        }
+    }
+
+    emitSentinels(originalOffset);
+    return result;
+}
+
 function preserveReferencePlaceholders(originalFullText, modifiedText, referenceMap) {
     let result = modifiedText;
 
@@ -357,10 +417,18 @@ function processRunForReconstruction(runElement, originalFullText, propertyMap, 
         } else if (['drawing', 'pict', 'object', 'fldChar', 'instrText', 'sym'].some(name => isWordElement(runChild, name))) {
             const textBoxContent = getFirstElementByTagNSOrTag(runChild, NS_W, 'txbxContent');
             const hasTextBox = isWordElement(runChild, 'pict') && !!textBoxContent;
+            const isFieldStructure = isWordElement(runChild, 'fldChar') || isWordElement(runChild, 'instrText');
+            const fieldCharType = isWordElement(runChild, 'fldChar')
+                ? (runChild.getAttributeNS?.(NS_W, 'fldCharType') || runChild.getAttribute('w:fldCharType') || runChild.getAttribute('fldCharType'))
+                : null;
 
             sentinelMap.push({
                 start: fullText.length,
                 node: runChild,
+                wrapInRun: true,
+                rPr,
+                zeroWidth: isFieldStructure,
+                affinity: fieldCharType === 'end' ? 'left' : 'right',
                 isTextBox: hasTextBox,
                 originalContainer: hasTextBox ? textBoxContent : undefined
             });

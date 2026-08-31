@@ -209,7 +209,7 @@ Different APIs return different OOXML shapes. Use this as a packaging safety che
 
 - Do use `applyOperationToDocumentXml(...).documentXml` when your intent is to replace `word/document.xml`.
 - Do use `applyOperationsToDocumentXml(...)` rather than an unsorted loop for batches containing comments and replacements that target the same original paragraph.
-- Redline application now strips non-visible field scaffolding (`w:fldChar`, `w:instrText`) and proofing markers (`w:proofErr`) from the matched target paragraph before diffing, while preserving the visible field result text. This avoids a class of Word-open failures caused by tracked changes spanning hidden field instruction runs.
+- Redline application strips proofing markers (`w:proofErr`) from the matched target paragraph before diffing, while preserving complex-field scaffolding (`w:fldChar`, `w:instrText`) and its cached visible result as inert structure. Adjacent edits do not revise or move an unchanged field result.
 - Hyperlinks, bookmarks, comment range markers, tabs/breaks, and footnote/endnote references are treated as structural OOXML that should survive adjacent redline edits instead of being orphaned or wrapped in deletions.
 - Do use `extractReplacementNodesFromOoxml(...)` when you are consuming `result.oxml` from paragraph/range/table APIs.
 - Do merge numbering/comments artifacts with `ensureNumberingArtifactsInZip(...)` and `ensureCommentsArtifactsInZip(...)` when those parts are present.
@@ -305,10 +305,12 @@ npm run test:word
 
 This Windows-only test command generates an English legal/administrative task
 suite under `tmp/word-validation/` and drives installed desktop Microsoft Word
-through COM. Its 25 cases include targeted reliability checks for literal
+through COM. Its 33 cases include targeted reliability checks for literal
 content, multi-paragraph replacement, prior-revision no-op, atomic rollback,
 hostile revision IDs, bookmarks, internal hyperlinks, mixed formatted runs,
-content controls, and table cells. Structure-focused cases also assert required
+content controls, table cells, structural tabs, locked complex fields,
+comments, footnotes/endnotes, headers/footers, and external hyperlinks.
+Structure-focused cases also assert required
 OOXML elements before Word independently checks Accept All and Reject All. The
 published library remains clean, host-independent JavaScript; Word automation
 exists only in development scripts.

@@ -2,7 +2,10 @@
  * English legal/administrative task catalogue for independent Word validation.
  * Keep expectations derived from edit intent rather than engine output.
  */
+import { createCommentsPart, createHeaderFooterPart, createNotesPart } from './word-package-parts.mjs';
+
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+const NS_R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 
 const PRIOR_REVISION_NO_OP_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="${NS_W}">
@@ -100,6 +103,116 @@ const TABLE_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
         <w:tc><w:p><w:r><w:t>Pending</w:t></w:r></w:p></w:tc>
       </w:tr>
     </w:tbl>
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+
+const TAB_ALIGNED_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}">
+  <w:body>
+    <w:p>
+      <w:r><w:t>Department</w:t><w:tab/><w:t>Finance</w:t><w:tab/><w:t>Draft notice</w:t></w:r>
+    </w:p>
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+
+const BOUNDARY_TAB_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}">
+  <w:body>
+    <w:p>
+      <w:r><w:tab/><w:t>Indented administrative draft</w:t><w:tab/></w:r>
+    </w:p>
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+
+const LOCKED_FIELD_INSTRUCTION = ' PAGE ';
+const LOCKED_FIELD_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}">
+  <w:body>
+    <w:p>
+      <w:r><w:t xml:space="preserve">See page </w:t></w:r>
+      <w:r><w:fldChar w:fldCharType="begin" w:fldLock="true"/></w:r>
+      <w:r><w:instrText xml:space="preserve">${LOCKED_FIELD_INSTRUCTION}</w:instrText></w:r>
+      <w:r><w:fldChar w:fldCharType="separate"/></w:r>
+      <w:r><w:t>1</w:t></w:r>
+      <w:r><w:fldChar w:fldCharType="end"/></w:r>
+      <w:r><w:t xml:space="preserve"> of this notice.</w:t></w:r>
+    </w:p>
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+
+const COMMENTED_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}">
+  <w:body>
+    <w:p>
+      <w:r><w:t xml:space="preserve">The </w:t></w:r>
+      <w:commentRangeStart w:id="0"/>
+      <w:r><w:t>Agency decision</w:t></w:r>
+      <w:commentRangeEnd w:id="0"/>
+      <w:r><w:commentReference w:id="0"/><w:t xml:space="preserve"> is preliminary.</w:t></w:r>
+    </w:p>
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+
+const COMMENTS_XML = createCommentsPart([{
+    id: 0,
+    author: 'Administrative Reviewer',
+    date: '2026-08-30T00:00:00Z',
+    text: 'Confirm the final decision before publication.'
+}]);
+
+const FOOTNOTE_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}">
+  <w:body>
+    <w:p><w:r><w:t>The filing deadline is Friday</w:t></w:r><w:r><w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:footnoteReference w:id="1"/></w:r><w:r><w:t>.</w:t></w:r></w:p>
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+
+const FOOTNOTES_XML = createNotesPart('footnote', [{
+    id: 1,
+    text: 'Deadlines falling on a holiday move to the next business day.'
+}]);
+
+const ENDNOTE_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}">
+  <w:body>
+    <w:p><w:r><w:t>The indemnity survives for two years</w:t></w:r><w:r><w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:endnoteReference w:id="1"/></w:r><w:r><w:t>.</w:t></w:r></w:p>
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+
+const ENDNOTES_XML = createNotesPart('endnote', [{
+    id: 1,
+    text: 'The survival period begins on termination.'
+}]);
+
+const HEADER_FOOTER_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}" xmlns:r="${NS_R}">
+  <w:body>
+    <w:p><w:r><w:t>The administrative report is a draft.</w:t></w:r></w:p>
+    <w:sectPr>
+      <w:headerReference w:type="default" r:id="rIdHeader1"/>
+      <w:footerReference w:type="default" r:id="rIdFooter1"/>
+    </w:sectPr>
+  </w:body>
+</w:document>`;
+
+const HEADER_XML = createHeaderFooterPart('header', 'Office of Administrative Review');
+const FOOTER_XML = createHeaderFooterPart('footer', 'Confidential working copy');
+
+const EXTERNAL_HYPERLINK_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}" xmlns:r="${NS_R}">
+  <w:body>
+    <w:p>
+      <w:r><w:t xml:space="preserve">Review the </w:t></w:r>
+      <w:hyperlink r:id="rIdExternalPolicy"><w:r><w:rPr><w:color w:val="0563C1"/><w:u w:val="single"/></w:rPr><w:t>filing policy</w:t></w:r></w:hyperlink>
+      <w:r><w:t xml:space="preserve"> before submitting within ten days.</w:t></w:r>
+    </w:p>
     <w:sectPr/>
   </w:body>
 </w:document>`;
@@ -326,5 +439,92 @@ export const WORD_TASK_CASES = [
         expectedAcceptedText: 'Agency\nStatus\n\nFinance\nApproved',
         expectedRejectedText: 'Agency\nStatus\n\nFinance\nPending',
         requiredElements: { tbl: 1, tr: 2, tc: 4 }
+    },
+    {
+        name: 'administrative-tab-aligned-status',
+        category: 'administrative',
+        task: 'replace-adjacent-to-tabs',
+        sourceDocumentXml: TAB_ALIGNED_DOCUMENT,
+        original: 'Department\tFinance\tDraft notice',
+        modified: 'Department\tFinance\tFinal notice',
+        requiredElements: { tab: 2 }
+    },
+    {
+        name: 'administrative-boundary-tabs-preserved',
+        category: 'administrative',
+        task: 'replace-between-boundary-tabs',
+        sourceDocumentXml: BOUNDARY_TAB_DOCUMENT,
+        original: '\tIndented administrative draft\t',
+        modified: '\tIndented administrative final\t',
+        requiredElements: { tab: 2 }
+    },
+    {
+        name: 'legal-locked-field-adjacent-replacement',
+        category: 'legal',
+        task: 'replace-adjacent-to-complex-field',
+        sourceDocumentXml: LOCKED_FIELD_DOCUMENT,
+        original: 'See page 1 of this notice.',
+        modified: 'See page 1 of this amended notice.',
+        requiredElements: { fldChar: 3, instrText: 1 },
+        requiredElementParents: { fldChar: 'r', instrText: 'r' },
+        requiredElementText: { instrText: [LOCKED_FIELD_INSTRUCTION] }
+    },
+    {
+        name: 'administrative-comment-anchor-adjacent-replacement',
+        category: 'administrative',
+        task: 'replace-adjacent-to-comment',
+        sourceDocumentXml: COMMENTED_DOCUMENT,
+        original: 'The Agency decision is preliminary.',
+        modified: 'The Agency decision is final.',
+        requiredElements: { commentRangeStart: 1, commentRangeEnd: 1, commentReference: 1 },
+        packageParts: { commentsXml: COMMENTS_XML }
+    },
+    {
+        name: 'administrative-footnote-adjacent-deadline',
+        category: 'administrative',
+        task: 'replace-adjacent-to-footnote',
+        sourceDocumentXml: FOOTNOTE_DOCUMENT,
+        original: 'The filing deadline is Friday.',
+        modified: 'The filing deadline is Monday.',
+        requiredElements: { footnoteReference: 1 },
+        packageParts: { footnotesXml: FOOTNOTES_XML }
+    },
+    {
+        name: 'legal-endnote-adjacent-duration',
+        category: 'legal',
+        task: 'replace-adjacent-to-endnote',
+        sourceDocumentXml: ENDNOTE_DOCUMENT,
+        original: 'The indemnity survives for two years.',
+        modified: 'The indemnity survives for three years.',
+        requiredElements: { endnoteReference: 1 },
+        packageParts: { endnotesXml: ENDNOTES_XML }
+    },
+    {
+        name: 'administrative-header-footer-package',
+        category: 'administrative',
+        task: 'replace-with-header-footer',
+        sourceDocumentXml: HEADER_FOOTER_DOCUMENT,
+        original: 'The administrative report is a draft.',
+        modified: 'The administrative report is final.',
+        requiredElements: { headerReference: 1, footerReference: 1 },
+        packageParts: {
+            headers: [{ relationshipId: 'rIdHeader1', partName: 'header1.xml', xml: HEADER_XML }],
+            footers: [{ relationshipId: 'rIdFooter1', partName: 'footer1.xml', xml: FOOTER_XML }]
+        }
+    },
+    {
+        name: 'legal-external-hyperlink-adjacent-replacement',
+        category: 'legal',
+        task: 'replace-adjacent-to-external-hyperlink',
+        sourceDocumentXml: EXTERNAL_HYPERLINK_DOCUMENT,
+        original: 'Review the filing policy before submitting within ten days.',
+        modified: 'Review the filing policy before submitting within fifteen days.',
+        requiredElements: { hyperlink: 1 },
+        packageParts: {
+            externalHyperlinks: [{
+                relationshipId: 'rIdExternalPolicy',
+                target: 'https://example.com/legal/filing-policy'
+            }]
+        }
     }
 ];

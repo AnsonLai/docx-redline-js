@@ -19,6 +19,7 @@ $ErrorActionPreference = 'Stop'
 function Get-ComparableText([string]$text, [string]$fidelity = 'exact') {
     if ($null -eq $text) { return '' }
     $text = $text -replace [string][char]7, ''   # table cell markers
+    $text = $text -replace [string][char]2, ''   # footnote/endnote reference markers
     $text = $text -replace "`r`n", "`n"
     $text = $text -replace "`r", "`n"
     $text = $text -replace "`n+$", ''           # Word's terminal paragraph mark
@@ -43,6 +44,40 @@ function Test-ContainsAssertions([string]$text, $required, $absent, [string]$pha
         }
     }
     return $passed
+}
+
+function Test-UntouchedPartHashes([string]$docxPath, $expectedHashes, [string]$name) {
+    $properties = @($expectedHashes.PSObject.Properties)
+    if ($properties.Count -eq 0) { return $true }
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($docxPath)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        foreach ($property in $properties) {
+            $entry = $archive.GetEntry([string]$property.Name)
+            if ($null -eq $entry) {
+                Write-Output "FAIL ${name}: package is missing untouched part $($property.Name)"
+                return $false
+            }
+            $stream = $entry.Open()
+            try {
+                $actual = ([System.BitConverter]::ToString($sha256.ComputeHash($stream))).Replace('-', '').ToLowerInvariant()
+            }
+            finally {
+                $stream.Dispose()
+            }
+            if ($actual -ne [string]$property.Value) {
+                Write-Output "FAIL ${name}: untouched part hash changed for $($property.Name)"
+                return $false
+            }
+        }
+    }
+    finally {
+        $sha256.Dispose()
+        $archive.Dispose()
+    }
+    return $true
 }
 
 $resolvedDir = Resolve-Path -LiteralPath $FixturesDir -ErrorAction SilentlyContinue
@@ -119,6 +154,12 @@ try {
         }
         $caseFailed = $false
         $document = $null
+
+        if ($expected.untouchedPartSha256 -and -not (Test-UntouchedPartHashes $docxPath $expected.untouchedPartSha256 $name)) {
+            $failures++
+            $results += "FAIL $name"
+            continue
+        }
 
         # Phase 1: open cleanly, revisions present, accept-all matches intent.
         try {

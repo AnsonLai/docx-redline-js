@@ -243,7 +243,14 @@ function appendTextToCurrent(
                         replacementContainers.set(sentinel.originalContainer, newContainer);
                     }
                 }
-                localParagraph.appendChild(clone);
+                if (sentinel.wrapInRun) {
+                    const run = createWordElement(xmlDoc, 'w:r');
+                    if (sentinel.rPr) run.appendChild(sentinel.rPr.cloneNode(true));
+                    run.appendChild(clone);
+                    localParagraph.appendChild(run);
+                } else {
+                    localParagraph.appendChild(clone);
+                }
             }
             localBaseIndex++;
             if (type !== 'delete') localInsertOffset++;

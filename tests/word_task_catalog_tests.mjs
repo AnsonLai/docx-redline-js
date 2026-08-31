@@ -2,7 +2,7 @@ import assert from 'assert/strict';
 
 import { WORD_TASK_CASES } from './fixtures/word-task-cases.mjs';
 
-assert.ok(WORD_TASK_CASES.length >= 25, 'Word task catalogue should cover at least twenty-five tasks');
+assert.ok(WORD_TASK_CASES.length >= 33, 'Word task catalogue should cover at least thirty-three tasks');
 
 const names = new Set();
 const categories = new Set();
@@ -40,6 +40,39 @@ for (const testCase of WORD_TASK_CASES) {
         for (const [localName, minimumCount] of Object.entries(testCase.requiredElements)) {
             assert.match(localName, /^[A-Za-z][A-Za-z0-9]*$/);
             assert.ok(Number.isInteger(minimumCount) && minimumCount > 0);
+        }
+    }
+    if (testCase.requiredElementParents) {
+        assert.equal(typeof testCase.sourceDocumentXml, 'string');
+        for (const [localName, parentLocalName] of Object.entries(testCase.requiredElementParents)) {
+            assert.match(localName, /^[A-Za-z][A-Za-z0-9]*$/);
+            assert.match(parentLocalName, /^[A-Za-z][A-Za-z0-9]*$/);
+        }
+    }
+    if (testCase.requiredElementText) {
+        assert.equal(typeof testCase.sourceDocumentXml, 'string');
+        for (const [localName, expectedTexts] of Object.entries(testCase.requiredElementText)) {
+            assert.match(localName, /^[A-Za-z][A-Za-z0-9]*$/);
+            assert.ok(Array.isArray(expectedTexts) && expectedTexts.length > 0);
+            for (const expectedText of expectedTexts) {
+                assert.equal(typeof expectedText, 'string');
+                assert.ok(/^[\x00-\x7F]*$/.test(expectedText));
+            }
+        }
+    }
+    if (testCase.packageParts) {
+        assert.equal(typeof testCase.sourceDocumentXml, 'string');
+        for (const xmlKey of ['commentsXml', 'footnotesXml', 'endnotesXml']) {
+            if (testCase.packageParts[xmlKey] !== undefined) {
+                assert.equal(typeof testCase.packageParts[xmlKey], 'string');
+                assert.ok(testCase.packageParts[xmlKey].length > 0);
+            }
+        }
+        for (const collectionKey of ['headers', 'footers', 'externalHyperlinks']) {
+            if (testCase.packageParts[collectionKey] !== undefined) {
+                assert.ok(Array.isArray(testCase.packageParts[collectionKey]));
+                assert.ok(testCase.packageParts[collectionKey].length > 0);
+            }
         }
     }
     for (const [field, value] of Object.entries({

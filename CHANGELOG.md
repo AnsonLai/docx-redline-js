@@ -39,6 +39,12 @@
 - Reconstruction preserves structural line breaks and body section-property
   placement. A target that names only part of a reconstruction range now
   returns `PARTIAL_TARGET` instead of risking deletion of untargeted content.
+- Paragraph targeting and reconstruction now preserve leading, middle, and
+  trailing `w:tab` elements as literal tab characters instead of omitting or
+  trimming them.
+- Adjacent redline edits now preserve complex-field instructions, begin/
+  separate/end markers, and unchanged cached display results in their original
+  field boundary. Field instructions remain inert and are not evaluated.
 - Added structured XML parse results and result-returning ingestion helpers.
 - Hardened deterministic diff token handling and leading-whitespace fidelity.
 
@@ -47,3 +53,12 @@
 - Expanded the desktop Word differential from 20 to 25 cases, adding structural
   checks for bookmarks, internal hyperlinks, mixed formatting, content
   controls, and tables.
+- Expanded the desktop Word differential from 25 to 28 cases with structural
+  tabs and a locked PAGE field, and added tab/field shapes to focused and fuzz
+  regression testing.
+- Expanded the desktop Word differential from 28 to 33 cases with comments,
+  footnotes, endnotes, headers/footers, and an external hyperlink.
+- Extended the deterministic script-only DOCX packager with opt-in related
+  parts, relationship/content-type validation, reusable fixture constructors,
+  and SHA-256 verification that supplied parts remain byte-identical. Runtime
+  library code and dependencies are unchanged.

@@ -3,6 +3,7 @@ import './setup-xml-provider.mjs';
 import assert from 'assert/strict';
 
 import { computeWordDiffs } from '../pipeline/diff-engine.js';
+import { elementsByLocalName, parseXmlFragment } from './helpers/ooxml-assertions.mjs';
 import { assertRoundTrip } from './helpers/roundtrip.mjs';
 
 /**
@@ -259,21 +260,63 @@ function shapeWhitespace(rng) {
     const useTab = rng.chance(0.4);
 
     const text = `${left}${separator}${right}`;
-    const runs = useTab
-        ? `${textRunXml(left, '')}<w:r><w:tab/></w:r>${textRunXml(right, '')}`
-        : textRunXml(text, '');
-    const original = useTab ? `${left}\t${right}` : text;
+    const tabPosition = useTab ? rng.pick(['leading', 'middle', 'trailing']) : null;
+    let runs = textRunXml(text, '');
+    let original = text;
+    if (tabPosition === 'leading') {
+        runs = `<w:r><w:tab/></w:r>${textRunXml(`${left} ${right}`, '')}`;
+        original = `\t${left} ${right}`;
+    } else if (tabPosition === 'middle') {
+        runs = `${textRunXml(left, '')}<w:r><w:tab/></w:r>${textRunXml(right, '')}`;
+        original = `${left}\t${right}`;
+    } else if (tabPosition === 'trailing') {
+        runs = `${textRunXml(`${left} ${right}`, '')}<w:r><w:tab/></w:r>`;
+        original = `${left} ${right}\t`;
+    }
 
     const replacement = randomWord(rng);
-    const modified = useTab
-        ? `${left}\t${right} ${replacement}`
-        : `${left}${separator}${right} ${replacement}`;
+    const modified = tabPosition === 'leading'
+        ? `\t${left} ${right} ${replacement}`
+        : tabPosition === 'middle'
+            ? `${left}\t${right} ${replacement}`
+            : tabPosition === 'trailing'
+                ? `${left} ${right} ${replacement}\t`
+                : `${left}${separator}${right} ${replacement}`;
 
     return {
         shape: 'whitespace',
         oxml: wrapBody(`<w:p>${runs}</w:p>`),
         original,
         modified: ensureChanged(rng, original, modified)
+    };
+}
+
+/* --- shape: complex field with editable surrounding text ----------------- */
+
+function shapeComplexField(rng) {
+    const prefix = randomText(rng, 2, 4);
+    const suffix = randomText(rng, 2, 4);
+    const result = `${1 + rng.int(20)}.${1 + rng.int(9)}`;
+    const fieldId = 1000 + rng.int(9000);
+    const instruction = ` REF FuzzBookmark${fieldId} \\h `;
+    const paragraphXml = `<w:p>`
+        + textRunXml(`${prefix} `, '')
+        + '<w:r><w:fldChar w:fldCharType="begin" w:fldLock="true"/></w:r>'
+        + `<w:r><w:instrText xml:space="preserve">${escapeXmlText(instruction)}</w:instrText></w:r>`
+        + '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+        + textRunXml(result, '')
+        + '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
+        + textRunXml(` ${suffix}`, '')
+        + '</w:p>';
+    const original = `${prefix} ${result} ${suffix}`;
+    const modified = `${prefix} ${result} ${suffix} ${randomWord(rng)}`;
+
+    return {
+        shape: 'complexField',
+        oxml: wrapBody(paragraphXml),
+        original,
+        modified,
+        requiredFieldInstruction: instruction
     };
 }
 
@@ -326,6 +369,7 @@ const SHAPES = [
     shapeMultiParagraph,
     shapeTableCell,
     shapeWhitespace,
+    shapeComplexField,
     shapeExistingRevisions,
     shapeExistingRevisionsNoOp
 ];
@@ -359,6 +403,16 @@ for (let i = 0; i < ITERATIONS; i++) {
 
     try {
         const roundTrip = await assertRoundTrip(testCase.oxml, testCase.original, testCase.modified, testCase.options || {});
+        if (testCase.shape === 'complexField') {
+            const parsed = parseXmlFragment(roundTrip.redlined.oxml);
+            const fieldChars = elementsByLocalName(parsed, 'fldChar');
+            const instructions = elementsByLocalName(parsed, 'instrText');
+            assert.equal(fieldChars.length, 3, 'complex field scaffolding must survive fuzz edit');
+            assert.deepEqual(instructions.map(node => node.textContent), [testCase.requiredFieldInstruction]);
+            for (const node of [...fieldChars, ...instructions]) {
+                assert.equal(node.parentNode?.localName, 'r', `${node.localName} must remain inside w:r`);
+            }
+        }
         if (testCase.shape === 'existingRevisionsNoOp') {
             assert.equal(roundTrip.redlined.hasChanges, false);
             assert.equal(roundTrip.redlined.oxml, testCase.oxml);

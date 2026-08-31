@@ -638,7 +638,7 @@ async function testFormatOnlyRedlineFallsBackToOoxmlWhenNoSpansAreExtractable() 
     );
 }
 
-async function testRedlinePreprocessesFieldInstructionsAndProofingMarkers() {
+async function testRedlinePreservesFieldInstructionsAndRemovesProofingMarkers() {
     const inputXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="${NS_W}">
   <w:body>
@@ -673,11 +673,17 @@ async function testRedlinePreprocessesFieldInstructionsAndProofingMarkers() {
     );
 
     assert.strictEqual(result.hasChanges, true, 'field/proofing redline should report changes');
-    assert.ok(!result.documentXml.includes('instrText'), 'field instruction text should be stripped before redlining');
-    assert.ok(!result.documentXml.includes('fldChar'), 'field character scaffolding should be stripped before redlining');
     assert.ok(!result.documentXml.includes('proofErr'), 'proofing markers should be stripped before redlining');
 
     const resultDoc = parseXmlStrict(result.documentXml, 'field/proofing redline output');
+    const fieldChars = Array.from(resultDoc.getElementsByTagNameNS(NS_W, 'fldChar'));
+    const instructions = Array.from(resultDoc.getElementsByTagNameNS(NS_W, 'instrText'));
+    assert.strictEqual(fieldChars.length, 3, 'complex field begin/separate/end characters should survive redlining');
+    assert.strictEqual(instructions.length, 1, 'complex field instruction should survive redlining');
+    assert.strictEqual(instructions[0].textContent, ' REF _Ref12345 \\w \\h ', 'field instruction bytes should remain unchanged');
+    for (const fieldNode of [...fieldChars, ...instructions]) {
+        assert.strictEqual(fieldNode.parentNode?.localName, 'r', `${fieldNode.localName} must remain inside w:r`);
+    }
     const paragraphs = Array.from(resultDoc.getElementsByTagNameNS(NS_W, 'p'));
     const outputText = paragraphs.map(paragraph => getParagraphText(paragraph)).join('\n');
     assert.ok(outputText.includes('10.6'), 'visible field result text should remain in the paragraph');
@@ -893,7 +899,7 @@ async function run() {
     await testFormatOnlyRedlineWithAllTextInsideInsertionWrapper();
     await testFormatOnlyRedlineRematchesWhenRefParagraphDrifts();
     await testFormatOnlyRedlineFallsBackToOoxmlWhenNoSpansAreExtractable();
-    await testRedlinePreprocessesFieldInstructionsAndProofingMarkers();
+    await testRedlinePreservesFieldInstructionsAndRemovesProofingMarkers();
     await testDuplicateTableStructuralOpsAreDedupedPerTurn();
     await testBatchRunsCommentsBeforeTextEditsOnSameParagraph();
     await testBatchAtomicRollbackAndLegacyPartialMode();

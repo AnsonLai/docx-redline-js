@@ -84,68 +84,15 @@ function normalizeBodySectionOrder(xmlDoc) {
     normalizeBodySectionOrderStandalone(xmlDoc);
 }
 
-function directFieldCharType(node) {
-    if (!node || node.nodeType !== 1 || node.namespaceURI !== NS_W || node.localName !== 'r') return '';
-    const fldChar = Array.from(node.childNodes || []).find(
-        child => child && child.nodeType === 1 && child.namespaceURI === NS_W && child.localName === 'fldChar'
-    ) || null;
-    return fldChar?.getAttribute('w:fldCharType') || fldChar?.getAttribute('fldCharType') || '';
-}
-
-function hasInstrText(node) {
-    if (!node || node.nodeType !== 1) return false;
-    return Array.from(node.childNodes || []).some(
-        child => child && child.nodeType === 1 && child.namespaceURI === NS_W && child.localName === 'instrText'
-    );
-}
-
 function removeProofErrNodes(paragraph) {
     for (const node of Array.from(paragraph?.getElementsByTagNameNS?.(NS_W, 'proofErr') || [])) {
         node.parentNode?.removeChild(node);
     }
 }
 
-function unlinkFieldsInParagraph(paragraph) {
-    const children = Array.from(paragraph?.childNodes || []);
-    let inField = false;
-    let seenSeparate = false;
-
-    for (const child of children) {
-        if (child.nodeType !== 1) continue;
-
-        const fieldType = directFieldCharType(child);
-        if (fieldType === 'begin') {
-            inField = true;
-            seenSeparate = false;
-            child.parentNode?.removeChild(child);
-            continue;
-        }
-
-        if (!inField) continue;
-
-        if (fieldType === 'separate') {
-            seenSeparate = true;
-            child.parentNode?.removeChild(child);
-            continue;
-        }
-
-        if (fieldType === 'end') {
-            inField = false;
-            seenSeparate = false;
-            child.parentNode?.removeChild(child);
-            continue;
-        }
-
-        if (!seenSeparate || hasInstrText(child)) {
-            child.parentNode?.removeChild(child);
-        }
-    }
-}
-
 function preprocessRedlineTargetParagraph(targetParagraph) {
     if (!targetParagraph) return;
     removeProofErrNodes(targetParagraph);
-    unlinkFieldsInParagraph(targetParagraph);
 }
 
 function getDirectWordChild(element, localName) {
@@ -841,7 +788,7 @@ async function applyToParagraphByExactText(documentXml, targetText, modifiedText
     const resolved = resolveTargetParagraph(xmlDoc, targetText, targetRef, 'redline', runtimeContext, { onInfo, onWarn });
     const targetParagraph = resolved.paragraph;
     preprocessRedlineTargetParagraph(targetParagraph);
-    const currentParagraphText = getParagraphText(targetParagraph).trim();
+    const currentParagraphText = getParagraphText(targetParagraph);
     const containingTable = findContainingWordElement(targetParagraph, 'tbl');
     const rawTableStructuralCandidate = !!containingTable
         && !targetEndRef

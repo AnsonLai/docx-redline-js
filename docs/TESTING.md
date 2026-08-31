@@ -72,10 +72,147 @@ To add a synthetic Word case:
 5. Run `node tests/word_task_catalog_tests.mjs`, then `npm run test:word` on a
    Windows machine with desktop Word installed.
 
-The minimal synthetic packager currently supports `word/document.xml` and
-optional numbering. Tests involving comments, headers, footers, footnotes,
-endnotes, or external hyperlinks first require the packager to emit the related
-parts, content-type entries, and relationships.
+### Related-part fixture schema
+
+The script-only packager supports optional numbering plus comments, footnotes,
+endnotes, headers, footers, and external hyperlinks. Add them to a catalogue
+case through `packageParts`:
+
+```js
+{
+  sourceDocumentXml,
+  packageParts: {
+    commentsXml,
+    footnotesXml,
+    endnotesXml,
+    headers: [{
+      partName: 'header1.xml',
+      relationshipId: 'rIdHeader1',
+      xml: headerXml
+    }],
+    footers: [{
+      partName: 'footer1.xml',
+      relationshipId: 'rIdFooter1',
+      xml: footerXml
+    }],
+    externalHyperlinks: [{
+      relationshipId: 'rIdPolicy',
+      target: 'https://example.com/policy'
+    }]
+  }
+}
+```
+
+`createCommentsPart`, `createNotesPart`, and `createHeaderFooterPart` in
+`tests/fixtures/word-package-parts.mjs` provide small escaped constructors for
+the common XML parts. Header/footer `partName` and `relationshipId` values have
+deterministic defaults, but explicit values make the corresponding
+`w:headerReference`, `w:footerReference`, or `w:hyperlink` easier to audit.
+
+Before ZIP emission, the packager rejects malformed XML, duplicate relationship
+IDs or part names, missing relationship targets, undefined comment/note IDs,
+and note parts without separator IDs `-1` and `0`. It generates the required
+content-type overrides and document relationships. Every supplied related part
+is compared byte-for-byte with the packaged entry, recorded as SHA-256 in the
+case sidecar, and rechecked by the Word differential before opening the DOCX.
+These helpers remain under `scripts/` and `tests/`; none are shipped through the
+runtime entry point.
+
+### What the automated Word differential proves
+
+The Word process is real desktop Microsoft Word, but it is driven invisibly
+through COM. For each fixture, the script:
+
+1. starts `Word.Application` with alerts and the window disabled;
+2. opens the generated package with `OpenNoRepairDialog`;
+3. fails if Word cannot open it or sees zero tracked revisions;
+4. accepts all revisions and reads `Document.Content.Text`;
+5. closes without saving, reopens the untouched fixture, rejects all revisions,
+   and reads the text again; and
+6. compares both results with expectations that were not calculated by this
+   library's own accept/reject implementation.
+
+Exact comparison is the default. The harness removes Word's terminal paragraph
+mark, normalizes CR/LF representation, and removes the characters Word exposes
+as table-cell and footnote/endnote reference boundaries; case-specific normalized comparison requires an
+explicit reason. Documents are never saved by the automated differential.
+
+For synthetic fixtures, expectations come directly from `original`, `modified`,
+and any explicit full-document expectations in the case. For SuperDoc fixtures,
+Word first reads the original pinned source document; the target must occur
+exactly once, and the accepted expectation is formed by replacing that unique
+target in Word's own source text. The corpus packager also hashes every package
+part other than the intentionally replaced `word/document.xml`.
+
+This proves that Word can consume the package, recognizes the revision markup,
+and resolves Accept All and Reject All to the intended text. It does **not**
+prove that the document looks right on the page. `Content.Text` cannot detect
+bad pagination, awkward revision balloons, shifted table widths, broken tab
+alignment, font substitution, changed list indentation, clipped headers,
+visually stale fields, or a comment/footnote marker that is technically present
+but poorly placed.
+
+### Human Word visual review
+
+Human visual review complements—not replaces—the automated differential. Use
+the checklist and report template in
+[`WORD-MANUAL-REVIEW.md`](./WORD-MANUAL-REVIEW.md).
+
+Review is required for:
+
+- every new or materially changed synthetic Word case;
+- the first case for a new structure, operation type, or related package part;
+- any engine change affecting reconstruction, formatting, lists, tables,
+  fields, tabs/breaks, comments, notes, headers/footers, or revision metadata;
+- any case that needs normalized rather than exact text comparison; and
+- any automated Word failure whose cause is not immediately textual.
+
+Before a release, review all new/changed cases plus a rotating sample of at
+least 20% of the unchanged synthetic catalogue. The sample must include legal
+and administrative content and at least one list, table, formatted-run, and
+structural-anchor case. Also review at least one legal and one administrative
+SuperDoc result. Rotate the sample so every retained synthetic case receives a
+human review over five release cycles. A major release or a change to package
+assembly requires a full visual sweep of affected structure families.
+
+The reviewer inspects three states in Word: tracked changes with **All Markup**,
+the result after **Accept All**, and a fresh copy after **Reject All**. Record
+the reviewer, date, Word version/build, cases selected, pass/fail result, and
+notes. A visual failure becomes a regression case or a documented harness gap;
+do not waive it merely because the COM text differential passed.
+
+### AI-assisted Word visual preflight
+
+An AI agent with Windows computer control may also open the generated fixtures
+in the installed desktop Word application, switch among All Markup, Accept All,
+and Reject All views, capture screenshots, and inspect them for visible
+regressions. This is a useful intermediate oracle because it exercises the same
+real UI a person sees rather than only `Document.Content.Text`.
+
+Run an AI visual preflight:
+
+- after a phase that changes reconstruction, formatting, list/table behavior,
+  package assembly, or revision display;
+- after every five to ten new Word fixtures;
+- for all newly introduced structure families;
+- when automated Word passes but the XML change is unusually broad; and
+- before asking a human to perform the release sample, so obvious failures are
+  found first.
+
+The AI should use the same selection rules and checklist as a human, inspect at
+least the changed cases plus representative legal and administrative samples,
+and save screenshots under ignored `tmp/word-manual-review/<date>/` storage.
+Its report must identify itself as **AI visual preflight**, record the Word
+version/build when available, list the exact cases and views inspected, and
+separate observed facts from uncertain visual judgments.
+
+AI visual review is advisory. It can catch missing or misplaced revisions,
+unexpected whole-paragraph markup, obvious pagination shifts, broken tables,
+lost indentation, clipped headers, and visibly misplaced anchors. It may miss
+subtle font metrics, accessibility issues, field behavior that requires domain
+knowledge, or a legally meaningful formatting distinction. An AI pass does not
+satisfy the human release sign-off, and sensitive/private documents must not be
+opened for AI review without explicit authorization.
 
 ## SuperDoc real-document Word tests
 

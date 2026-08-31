@@ -34,12 +34,29 @@ function getElementsByLocalName(node, localName) {
 }
 
 function toParagraphText(paragraph) {
-    const textNodes = getElementsByLocalName(paragraph, 't');
-    return textNodes.map(node => node.textContent || '').join('');
+    let text = '';
+
+    const visit = node => {
+        for (const child of toArray(node?.childNodes)) {
+            if (child?.nodeType !== 1) continue;
+            const localName = String(child.localName || child.nodeName || '').replace(/^.*:/, '');
+            if (localName === 't') {
+                text += child.textContent || '';
+            } else if (localName === 'tab') {
+                text += '\t';
+            } else {
+                visit(child);
+            }
+        }
+    };
+
+    visit(paragraph);
+    return text;
 }
 
 /**
- * Reads visible text from a paragraph by concatenating `w:t` nodes.
+ * Reads visible text from a paragraph by concatenating `w:t` nodes and mapping
+ * structural `w:tab` elements to a literal tab character.
  *
  * @param {Element|null|undefined} paragraph - OOXML paragraph node
  * @returns {string}
