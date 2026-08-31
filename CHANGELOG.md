@@ -62,3 +62,8 @@
   parts, relationship/content-type validation, reusable fixture constructors,
   and SHA-256 verification that supplied parts remain byte-identical. Runtime
   library code and dependencies are unchanged.
+- Added validated task, structure, oracle, and manual-review metadata across the
+  33 synthetic and 20 SuperDoc Word cases. `npm run report:word:coverage`
+  produces a deterministic coverage matrix with explicit high-priority gap
+  dispositions, while `npm run review:word:prepare` creates a pending rotating
+  human-review manifest without self-certifying visual results.

@@ -1,0 +1,43 @@
+{
+  "highPriorityCells": [
+    { "task": "replace", "structure": "plain-paragraph" },
+    { "task": "replace", "structure": "formatted-runs" },
+    { "task": "replace", "structure": "list" },
+    { "task": "replace", "structure": "table" },
+    { "task": "replace", "structure": "bookmark" },
+    { "task": "replace", "structure": "hyperlink" },
+    { "task": "replace", "structure": "content-control" },
+    { "task": "replace", "structure": "tab-break" },
+    { "task": "replace", "structure": "field" },
+    { "task": "replace", "structure": "comment" },
+    { "task": "replace", "structure": "note" },
+    { "task": "replace", "structure": "header-footer" },
+    { "task": "replace", "structure": "section-boundary" },
+    { "task": "replace", "structure": "prior-revisions" },
+    { "task": "insert", "structure": "plain-paragraph" },
+    { "task": "insert", "structure": "multi-paragraph" },
+    { "task": "insert", "structure": "list" },
+    { "task": "delete", "structure": "plain-paragraph" },
+    { "task": "delete", "structure": "multi-paragraph" },
+    { "task": "delete", "structure": "table" },
+    { "task": "format", "structure": "formatted-runs" },
+    { "task": "format", "structure": "list" },
+    { "task": "format", "structure": "table" },
+    { "task": "comment", "structure": "comment" },
+    { "task": "accept-reject", "structure": "prior-revisions" },
+    { "task": "list-change", "structure": "list" },
+    { "task": "table-reconciliation", "structure": "table" },
+    { "task": "mixed-batch", "structure": "prior-revisions" },
+    { "task": "mixed-batch", "structure": "table" }
+  ],
+  "emptyCellDispositions": [
+    { "task": "insert", "structure": "list", "status": "planned", "reason": "Add a native list insertion fixture after the Phase 3 list behavior matrix.", "dependency": "Phase 3 list coverage" },
+    { "task": "delete", "structure": "table", "status": "planned", "reason": "Add a table-cell deletion case with exact accept/reject text.", "dependency": "Phase 3 table decisions" },
+    { "task": "format", "structure": "list", "status": "planned", "reason": "Formatting a numbered item needs a stable minimal numbering fixture.", "dependency": "Phase 3 numbering coverage" },
+    { "task": "format", "structure": "table", "status": "planned", "reason": "Add format-only table-cell validation without conflating reconciliation.", "dependency": "Phase 3 table decisions" },
+    { "task": "comment", "structure": "comment", "status": "planned", "reason": "The current comment case preserves an anchor but does not create a comment.", "dependency": "Comment operation Word exporter" },
+    { "task": "list-change", "structure": "list", "status": "planned", "reason": "The Word catalogue does not yet package numbering output from a list-change operation.", "dependency": "Numbering artifact integration" },
+    { "task": "table-reconciliation", "structure": "table", "status": "planned", "reason": "The current table case replaces one cell and is not table reconciliation.", "dependency": "Table reconciliation Word exporter" },
+    { "task": "mixed-batch", "structure": "table", "status": "planned", "reason": "Add an atomic mixed batch spanning paragraph and table targets.", "dependency": "Phase 3 standalone runner matrix" }
+  ]
+}

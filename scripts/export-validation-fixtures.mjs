@@ -190,6 +190,7 @@ for (const testCase of cases) {
     name: testCase.name,
     category: testCase.category,
     task: testCase.task,
+    coverageMetadata: testCase.coverageMetadata,
     textFidelity: testCase.textFidelity || 'exact',
     expectedAcceptedText: testCase.expectedAcceptedText ?? preprocessMarkdown(testCase.modified).cleanText,
     expectedRejectedText: testCase.expectedRejectedText ?? testCase.original,

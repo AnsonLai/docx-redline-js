@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 
 import { applyOperationToDocumentXml } from '../services/standalone-operation-runner.js';
 import { unzipEntries } from './lib/zip-reader.mjs';
+import { loadCoverageCatalogue } from './lib/word-coverage-catalogue.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = dirname(scriptDir);
@@ -15,6 +16,9 @@ const catalogue = JSON.parse(readFileSync(join(repoRoot, 'tests', 'corpus', 'sup
 const inputDir = join(repoRoot, 'tmp', 'superdoc-corpus');
 const outputDir = join(repoRoot, 'tmp', 'superdoc-word-fixtures');
 const manifestById = new Map(manifest.documents.map(document => [document.id, document]));
+const normalizedCoverageById = new Map(loadCoverageCatalogue().cases
+    .filter(item => item.lane === 'superdoc')
+    .map(item => [item.identity.slice('superdoc:'.length), item.metadata]));
 
 mkdirSync(outputDir, { recursive: true });
 
@@ -64,9 +68,16 @@ for (const [index, scenario] of catalogue.scenarios.entries()) {
         originalTarget: scenario.operation.target,
         modifiedTarget: scenario.operation.modified,
         shape: scenario.shape,
-        coverage: scenario.coverage
+        coverage: scenario.coverage,
+        coverageMetadata: normalizedCoverageById.get(scenario.id)
     }, null, 2)}\n`);
-    suite.cases.push({ name: caseName, sourceId: scenario.id, type: source.type, shape: scenario.shape });
+    suite.cases.push({
+        name: caseName,
+        sourceId: scenario.id,
+        type: source.type,
+        shape: scenario.shape,
+        coverageMetadata: normalizedCoverageById.get(scenario.id)
+    });
     console.log(`Prepared ${caseName}`);
 }
 

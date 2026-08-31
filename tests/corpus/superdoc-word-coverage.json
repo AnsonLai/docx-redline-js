@@ -1,0 +1,29 @@
+{
+  "defaults": {
+    "task": "replace",
+    "oracles": ["real-document-word"],
+    "manualReview": { "status": "missing" }
+  },
+  "structuresByScenario": {
+    "0f582727deba41aebc5643adda1ac39970360ef3aa2ba6a18e85203b092ac534": ["plain-paragraph", "section-boundary"],
+    "6bc3b38986fc2163391dc0099a26640c566b801673c90e978d0edd5fb53a76eb": ["plain-paragraph", "list", "bookmark"],
+    "49e72bbe21f1cd201bac350075f7e1699e6d453c8e0a927dec907565ef86a223": ["plain-paragraph", "note", "header-footer"],
+    "8b77c5c08f8f60da23cb76005854e38aac104be29c8eb1f29c620db07fe2addb": ["list"],
+    "82325c95040adfb3dd9fc013594756da689547def47ab120b35f6be132084693": ["list", "table", "header-footer", "section-boundary"],
+    "ed3e87e82817245fc606260af21cf3ef009cafffff2cf1c7e45e3c3cb47db9c6": ["plain-paragraph", "field"],
+    "7561fb85f79c0304a4f79f9393739fb41a48bf32a6d7f99d010a048fd8151d74": ["plain-paragraph", "bookmark", "note", "header-footer"],
+    "daf32df8e3c8e300f1a568da7cef4aba133929e9ce7f83be0980bb69327cad33": ["plain-paragraph", "note", "header-footer"],
+    "d27fe5513ca474bcd6c02136d2e4b8179203f5855c4333af81bc964755c7abe4": ["list", "table", "note", "header-footer"],
+    "3290c8a96fe493248bf9e491655dae2df87dee7b81779739ce2bb347c41b0c34": ["plain-paragraph", "header-footer", "section-boundary"],
+    "5078747afec134839ca5009f296730a89e0c877e9d00085186a7c6c307ce784c": ["plain-paragraph", "bookmark", "tab-break"],
+    "bd56a6ff3e08992fc3331cfca61515507c00cf96f38e771fbfaa4c487af1039d": ["list", "table", "bookmark"],
+    "074e5b302e82cc7f5293314ca5bb463e08cf9ee06d5fab81a9843f8a27c21bd1": ["list", "table", "note", "header-footer"],
+    "1267649bf4eed47478921c55562fe8255575d10bb4cd45e534689d49556a0b64": ["list", "bookmark"],
+    "8b0f4f46292113aeb389445b035d62621f28a8075fe26b46d339a5658801d087": ["list", "section-boundary"],
+    "570572edcfec94b990c61b91e21e103699a39b800c3165ad436d0fd07c7cd80e": ["list", "table", "note", "header-footer"],
+    "a3b94b62e9505655d150eae21dc72bb99b37eda901bcb50516b7e9fded5ed33b": ["list", "table", "note", "header-footer"],
+    "16151cbd92f85ef11bf8121cc6f1ce541970fdc57432f95951a3a3440635afe4": ["table", "section-boundary"],
+    "fb0db04c803132968cc176f7cfb4927bc33c665e9671760ebf31cabd4c1a7766": ["table", "section-boundary"],
+    "77c33ab2ca57efd0d4afb87f08c45c88f3984256c3fd5fdf3e81f87a24644760": ["list", "section-boundary"]
+  }
+}

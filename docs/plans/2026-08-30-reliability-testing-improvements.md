@@ -1,6 +1,6 @@
 # Reliability and Testing Improvement Plan — Round 3
 
-**Status:** In progress — Phase 1 complete
+**Status:** In progress — Phases 1, 2, and 4 complete
 
 This plan follows the completed
 `completed/2026-08-02-reliability-improvements.md` plan. It selects four of the
@@ -321,7 +321,7 @@ easy to change unnoticed.
 
 ## Phase 4 — Explicit task/structure coverage matrix
 
-**Status:** Planned
+**Status:** Complete (2026-08-30)
 
 ### Problem
 
@@ -394,6 +394,34 @@ planned, intentionally excluded, or impossible in the current harness.
 - Release validation includes a recorded human sign-off with the reviewer,
   Word build, selected cases, and results for all three Word views.
 
+### Completion record
+
+- Added a shared, validated vocabulary covering nine tasks, fifteen structures,
+  eight independent oracles, and explicit missing/current/stale human-review
+  state. All 33 synthetic and 20 reviewed SuperDoc cases now resolve to declared
+  canonical metadata without removing their descriptive labels.
+- Added `npm run report:word:coverage`, which deterministically reports the live
+  53-case task/structure matrix, individual case identities in JSON mode,
+  missing/stale human review, and every uncovered high-priority cell.
+- Added machine-readable high-priority cells and eight explicit planned gaps,
+  each with a reason and dependency. Catalogue validation rejects unknown
+  labels, missing oracle/review metadata, duplicate identities, stale gap
+  dispositions, and structure/task claims unsupported by the fixture.
+- Added `npm run review:word:prepare -- --cycle=N`. It conservatively selects
+  changed catalogue families, a rotating 20% synthetic sample, and one legal
+  plus one administrative SuperDoc case. Every view and human-sign-off field is
+  emitted as `pending`; the helper cannot certify a review.
+- The matrix records eight synthetic AI visual preflights from Phases 1 and 2
+  separately from automated Word semantics. No human sign-off is fabricated:
+  the current report correctly lists all 53 cases as missing human review, and
+  the signed three-view review remains an operational release gate.
+- Added focused matrix tests and contributor/reviewer instructions in
+  `docs/TESTING.md` and `docs/WORD-MANUAL-REVIEW.md`.
+- Validation passed with 33/33 JavaScript suites, 33/33 synthetic Word cases,
+  20/20 real-document Word cases, isolation, declarations, lint, and build.
+  Coverage after the Phase 4 tooling tests is 80.60% statements/lines, 70.13%
+  branches, and 82.02% functions.
+
 ---
 
 ## Execution order
@@ -424,7 +452,7 @@ npm run test:coverage
 npm run coverage:gaps              # planned in Phase 3
 npm run test:word                 # Windows + desktop Microsoft Word
 npm run test:corpus:word          # pinned local corpus + Word
-npm run review:word:prepare       # planned human-review set preparation
+npm run review:word:prepare -- --cycle=0  # pending human-review set
 node scripts/export-validation-fixtures.mjs
 FUZZ_SEED=1 FUZZ_ITERATIONS=12000 node tests/roundtrip_fuzz_tests.mjs
 ```

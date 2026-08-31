@@ -17,6 +17,47 @@ fixtures rarely contain.
 | SuperDoc Word corpus | `npm run test:corpus:word` | The same Word differential on 20 reviewed, pinned real English legal/administrative documents while untouched package parts remain byte-identical | Every possible DOCX producer or document type |
 | XSD and LibreOffice | See `docs/VALIDATION.md` | Schema conformance and acceptance by a second consumer | Word-specific revision semantics |
 
+## Coverage matrix and test selection
+
+Run the deterministic task-by-structure report before choosing the next Word
+case:
+
+```powershell
+npm run report:word:coverage
+npm run report:word:coverage -- --json
+```
+
+The report combines all synthetic and reviewed SuperDoc scenarios. Synthetic
+metadata is declared in `tests/fixtures/word-task-coverage.mjs`; SuperDoc
+metadata is declared in `tests/corpus/superdoc-word-coverage.json`. Descriptive
+`task`, `shape`, and `coverage` labels remain on the original cases as review
+notes, while the matrix uses shared task, structure, and oracle vocabularies.
+
+Catalogue tests reject unknown vocabulary labels, missing oracle or manual-review
+metadata, duplicate identities, structural claims unsupported by fixture XML or
+reviewed corpus labels, and uncovered high-priority cells without a recorded
+plan or exclusion. The dispositions live in
+`tests/fixtures/coverage-matrix-priorities.json` and require both a reason and a
+dependency.
+
+Choose new cases from uncovered high-priority cells first, then prefer a new
+task/structure combination over another case in a dense cell. A higher count is
+not itself a reason to add a fixture. Adding a catalogue case automatically
+changes the report because it reads the live metadata.
+
+Prepare, but do not approve, a human review sample with:
+
+```powershell
+npm run review:word:prepare -- --cycle=0
+```
+
+The ignored `tmp/word-manual-review/review-manifest-cycle-0.json` selects all
+catalogue families changed in the worktree, a rotating 20% synthetic sample,
+and one legal plus one administrative SuperDoc case. Every All Markup, Accept
+All, Reject All, and human sign-off field starts as `pending`; the helper cannot
+turn them into passes. Increment `--cycle` between releases to rotate the
+unchanged sample.
+
 ## Automated JavaScript tests
 
 Files matching `tests/*.mjs` are discovered by `scripts/run-tests.mjs`. Tests

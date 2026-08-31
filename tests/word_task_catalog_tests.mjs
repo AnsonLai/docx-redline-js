@@ -1,6 +1,7 @@
 import assert from 'assert/strict';
 
 import { WORD_TASK_CASES } from './fixtures/word-task-cases.mjs';
+import { validateCoverageMetadata } from '../scripts/lib/word-coverage-metadata.mjs';
 
 assert.ok(WORD_TASK_CASES.length >= 33, 'Word task catalogue should cover at least thirty-three tasks');
 
@@ -16,6 +17,7 @@ for (const testCase of WORD_TASK_CASES) {
     assert.ok(['legal', 'administrative'].includes(testCase.category));
     categories.add(testCase.category);
     tasks.add(testCase.task);
+    validateCoverageMetadata(testCase.coverageMetadata, testCase.name);
     assert.equal(typeof testCase.original, 'string');
     assert.equal(typeof testCase.modified, 'string');
     if (testCase.expectNoOp) {

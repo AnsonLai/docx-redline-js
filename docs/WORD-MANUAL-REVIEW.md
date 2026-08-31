@@ -17,7 +17,15 @@ Run the automated lane first:
 ```powershell
 npm run test:word
 npm run test:corpus:word
+npm run report:word:coverage
+npm run review:word:prepare -- --cycle=0
 ```
+
+The last command writes a pending review manifest under ignored
+`tmp/word-manual-review/` containing changed catalogue families, the rotating
+20% synthetic release sample, and legal/administrative corpus representatives.
+It only prepares the selection: it never records a visual pass or human
+sign-off. Use a new cycle number for each release rotation.
 
 Synthetic documents are generated under `tmp/word-validation/`; reviewed
 SuperDoc results are under `tmp/superdoc-word-fixtures/`. Do not commit generated

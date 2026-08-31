@@ -315,6 +315,14 @@ OOXML elements before Word independently checks Accept All and Reject All. The
 published library remains clean, host-independent JavaScript; Word automation
 exists only in development scripts.
 
+Use `npm run report:word:coverage` to print the validated task-by-structure
+matrix across all 33 synthetic and 20 SuperDoc cases. Before a release,
+`npm run review:word:prepare -- --cycle=0` creates a pending human-review
+manifest with changed cases, a rotating 20% synthetic sample, and legal plus
+administrative corpus representatives. See [docs/TESTING.md](./docs/TESTING.md)
+and [docs/WORD-MANUAL-REVIEW.md](./docs/WORD-MANUAL-REVIEW.md); preparation and
+AI preflight never count as human sign-off.
+
 A nightly GitHub Actions workflow additionally validates generated fixtures
 against the ECMA-376 transitional schemas (`xmllint`), opens them with
 LibreOffice, and runs an extended fuzz sweep of the accept/reject round-trip

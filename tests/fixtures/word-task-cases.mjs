@@ -3,6 +3,7 @@
  * Keep expectations derived from edit intent rather than engine output.
  */
 import { createCommentsPart, createHeaderFooterPart, createNotesPart } from './word-package-parts.mjs';
+import { WORD_TASK_COVERAGE } from './word-task-coverage.mjs';
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const NS_R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
@@ -217,7 +218,7 @@ const EXTERNAL_HYPERLINK_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standa
   </w:body>
 </w:document>`;
 
-export const WORD_TASK_CASES = [
+const WORD_TASK_CASE_DEFINITIONS = [
     {
         name: 'simple-redline',
         category: 'legal',
@@ -528,3 +529,8 @@ export const WORD_TASK_CASES = [
         }
     }
 ];
+
+export const WORD_TASK_CASES = WORD_TASK_CASE_DEFINITIONS.map(testCase => ({
+    ...testCase,
+    coverageMetadata: WORD_TASK_COVERAGE[testCase.name]
+}));
