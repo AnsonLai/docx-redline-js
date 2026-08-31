@@ -65,6 +65,24 @@ use `assert/strict` and run as separate Node processes. Shared OOXML assertions
 belong in `tests/helpers/ooxml-assertions.mjs`; XML-provider setup belongs in
 `tests/setup-xml-provider.mjs`.
 
+For function-level gap work, run:
+
+```powershell
+npm run test:coverage
+npm run coverage:gaps
+npm run coverage:gaps -- --json
+```
+
+The coverage command emits both the text summary and detailed Istanbul JSON.
+The gap report includes only runtime production roots, lists each uncovered
+function with its file and declaration line, assigns the Phase 3 P0/P1/P2
+priority, and fails if a targeted file drops below the checked covered-function
+or covered-branch baseline in `tests/coverage-data/phase3-baseline.json`. Because V8
+discovers new branch sites when a formerly cold function first executes, review
+covered counts and behavior assertions alongside percentages. Do not add ignore
+annotations or call private code merely to improve a score; classify a retained
+gap with a reachability or environment reason.
+
 For an engine regression:
 
 1. Add the smallest fixed case that reproduces the bug and asserts the exact

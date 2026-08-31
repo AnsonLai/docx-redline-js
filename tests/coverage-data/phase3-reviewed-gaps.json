@@ -1,0 +1,20 @@
+{
+  "reviewedAt": "2026-08-30",
+  "scope": "Retained uncovered functions in Phase 3 P0/P1 target files",
+  "items": [
+    {
+      "file": "services/standalone-operation-runner.js",
+      "lines": [67, 68, 551, 659, 783, 1099, 1100, 1123, 1124],
+      "names": ["onInfo", "onWarn"],
+      "classification": "defensive/environment-specific",
+      "reason": "Default no-op callbacks contain no content-changing behavior. Real info/warning decisions are tested with injected callbacks; invoking the empty defaults solely for a hit would assert no observable contract."
+    },
+    {
+      "file": "services/standalone-operation-runner.js",
+      "lines": [440],
+      "names": ["buildFallbackInsertedPlainParagraph"],
+      "classification": "defensive/environment-specific",
+      "reason": "Last-resort content-preserving constructor used only if a valid internally-created paragraph template unexpectedly produces no paragraph. The supported API cannot induce this branch without dependency replacement; normal tracked and untracked paragraph insertions cover the primary constructor path."
+    }
+  ]
+}

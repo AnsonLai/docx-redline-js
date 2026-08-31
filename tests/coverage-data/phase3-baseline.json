@@ -1,0 +1,21 @@
+{
+  "capturedAt": "2026-08-30",
+  "production": {
+    "functionsCovered": 437,
+    "functionsTotal": 540,
+    "branchesCovered": 2333,
+    "branchesTotal": 3351
+  },
+  "targetFiles": [
+    { "file": "services/numbering-helpers.js", "priority": "P0", "functionsCovered": 0, "functionsTotal": 18, "branchesCovered": 1, "branchesTotal": 1 },
+    { "file": "orchestration/route-plan.js", "priority": "P0", "functionsCovered": 0, "functionsTotal": 6, "branchesCovered": 1, "branchesTotal": 1 },
+    { "file": "orchestration/list-markdown.js", "priority": "P0", "functionsCovered": 0, "functionsTotal": 6, "branchesCovered": 1, "branchesTotal": 1 },
+    { "file": "pipeline/patching.js", "priority": "P0", "functionsCovered": 6, "functionsTotal": 12, "branchesCovered": 36, "branchesTotal": 52 },
+    { "file": "engine/format-span-application.js", "priority": "P0", "functionsCovered": 2, "functionsTotal": 5, "branchesCovered": 10, "branchesTotal": 16 },
+    { "file": "orchestration/list-structural-fallback.js", "priority": "P1", "functionsCovered": 8, "functionsTotal": 17, "branchesCovered": 44, "branchesTotal": 80 },
+    { "file": "engine/table-mode.js", "priority": "P1", "functionsCovered": 2, "functionsTotal": 3, "branchesCovered": 6, "branchesTotal": 23 },
+    { "file": "core/table-targeting.js", "priority": "P1", "functionsCovered": 7, "functionsTotal": 11, "branchesCovered": 22, "branchesTotal": 48 },
+    { "file": "services/standalone-operation-runner.js", "priority": "P1", "functionsCovered": 41, "functionsTotal": 50, "branchesCovered": 255, "branchesTotal": 440 },
+    { "file": "pipeline/pipeline.js", "priority": "P1", "functionsCovered": 7, "functionsTotal": 12, "branchesCovered": 28, "branchesTotal": 50 }
+  ]
+}

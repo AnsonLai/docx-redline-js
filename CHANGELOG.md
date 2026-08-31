@@ -67,3 +67,10 @@
   produces a deterministic coverage matrix with explicit high-priority gap
   dispositions, while `npm run review:word:prepare` creates a pending rotating
   human-review manifest without self-certifying visual results.
+- Added detailed production-function coverage reporting and a checked per-file
+  regression baseline. Five behavior-focused Phase 3 suites exercise numbering
+  collisions/remapping, every reconciliation route, list construction and
+  fallback, patch/format boundaries, table decisions, pipeline modes, and
+  standalone rollback/highlight paths. Production function coverage moved from
+  437/540 to 496/542 and all reachable P0 functions are covered; no runtime
+  behavior or compatibility contract changed.

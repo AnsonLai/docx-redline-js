@@ -1,6 +1,6 @@
 # Reliability and Testing Improvement Plan — Round 3
 
-**Status:** In progress — Phases 1, 2, and 4 complete
+**Status:** Complete — Phases 1–4 complete
 
 This plan follows the completed
 `completed/2026-08-02-reliability-improvements.md` plan. It selects four of the
@@ -200,7 +200,7 @@ require additional package parts and relationships.
 
 ## Phase 3 — Behavior-focused coverage in thin production paths
 
-**Status:** Planned
+**Status:** Complete (2026-08-30)
 
 ### Targets
 
@@ -316,6 +316,33 @@ easy to change unnoticed.
 - `npm test`, isolation, types, lint, and deterministic fuzz checks pass.
 - Any production defect discovered by the new tests receives its own changelog
   and compatibility assessment before being fixed.
+
+### Completion record
+
+- Added detailed Istanbul JSON output plus `npm run coverage:gaps`. The report
+  inventories uncovered production functions by file/name/line and priority,
+  and fails when a target file loses covered functions or branches relative to
+  `tests/coverage-data/phase3-baseline.json`.
+- Added five behavior matrices for numbering/routing/list markdown,
+  patching/format spans, structural list fallback, table/pipeline decisions,
+  and standalone highlighting/rollback. They assert results, exact structural
+  properties, stable errors, no mutation, and package-artifact behavior.
+- Production function coverage increased from 437/540 to 496/542, exercising
+  at least 59 formerly cold functions. Production covered branches increased
+  from 2,333 to 2,919; the final c8 snapshot is 87.92% statements/lines, 73.90%
+  branches, and 91.80% functions.
+- Every function in the five P0 targets is covered. All functions are also
+  covered in list structural fallback, table mode/targeting, and pipeline. The
+  only retained P1 gaps are nine inert default logging callbacks and one
+  non-injectable last-resort paragraph constructor, reviewed in
+  `tests/coverage-data/phase3-reviewed-gaps.json`.
+- Existing and new tests cover mixed batch ordering, numbering/comment
+  artifacts, `continueOnError`, atomic/non-atomic outcomes, stale snapshots,
+  table ambiguity/nesting, list levels, formatting overlaps, and pipeline
+  parse/no-op/validation modes. No production defect or compatibility change
+  was found.
+- The full evidence and before/after table are recorded in
+  `docs/validation-reports/2026-08-30-phase-3-coverage.md`.
 
 ---
 
@@ -449,7 +476,7 @@ npm run test:isolation
 npm run check:types
 npm run lint
 npm run test:coverage
-npm run coverage:gaps              # planned in Phase 3
+npm run coverage:gaps              # detailed production function inventory
 npm run test:word                 # Windows + desktop Microsoft Word
 npm run test:corpus:word          # pinned local corpus + Word
 npm run review:word:prepare -- --cycle=0  # pending human-review set
