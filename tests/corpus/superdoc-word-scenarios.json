@@ -143,6 +143,164 @@
       "coverage": ["board-agenda", "numbered-list", "section-properties"],
       "review": "Published town board agenda; no unsuitable material observed.",
       "operation": { "type": "replace", "target": "APPROVAL OF CLERK'S MINUTES", "modified": "APPROVAL OF THE CLERK'S MINUTES" }
+    },
+    {
+      "key": "legal-multi-bullet-public-notice",
+      "sourceId": "8b77c5c08f8f60da23cb76005854e38aac104be29c8eb1f29c620db07fe2addb",
+      "shape": "list",
+      "coverage": ["public-notice", "numbered-list", "multiple-changes"],
+      "review": "Reuses the reviewed municipal public notice to exercise three independent replacements in genuine list paragraphs.",
+      "operations": [
+        { "type": "replace", "target": "Chapter 23- Utilities, Article II. Water Sec. 23-22. Sec. 23-23 and Sec. 23-24.", "modified": "Chapter 23 - Utilities, Article II, Water: Sec. 23-22, Sec. 23-23, and Sec. 23-24." },
+        { "type": "replace", "target": "Section 7-127. (b) Cause of blight or blighting factors.", "modified": "Section 7-127(b): causes of blight or blighting factors." },
+        { "type": "replace", "target": "Zoning Ordinance Amendment to Article 5; Section 5.19 - Fences.", "modified": "Zoning Ordinance amendment to Article 5, Section 5.19 - Fences." }
+      ]
+    },
+    {
+      "key": "administrative-multi-bullet-board-agenda",
+      "sourceId": "77c33ab2ca57efd0d4afb87f08c45c88f3984256c3fd5fdf3e81f87a24644760",
+      "shape": "list",
+      "coverage": ["board-agenda", "numbered-list", "multiple-changes", "section-properties"],
+      "review": "Reuses the reviewed public board agenda to exercise three tracked replacements across separate numbered agenda items.",
+      "operations": [
+        { "type": "replace", "target": "CALL MEETING TO ORDER", "modified": "CALL THE MEETING TO ORDER" },
+        { "type": "replace", "target": "APPROVAL OF MONTHLY FINANCIALS REPORT", "modified": "APPROVAL OF THE MONTHLY FINANCIAL REPORT" },
+        { "type": "replace", "target": "COMMENTS FROM THE FLOOR / CORRESPONDENCE FROM THE COMMUNITY", "modified": "COMMENTS FROM THE FLOOR AND COMMUNITY CORRESPONDENCE" }
+      ]
+    },
+    {
+      "key": "administrative-multi-table-council-minutes",
+      "sourceId": "570572edcfec94b990c61b91e21e103699a39b800c3165ad436d0fd07c7cd80e",
+      "shape": "table-form",
+      "coverage": ["council-minutes", "tables", "table-cell", "multiple-changes", "header", "footer", "footnotes-part"],
+      "review": "Reuses the reviewed council minutes to exercise three tracked replacements in separate cells while preserving page headers and related parts.",
+      "operations": [
+        { "type": "replace", "target": "Invoice date", "modified": "Invoice Date" },
+        { "type": "replace", "target": "Payroll April 2023-March 2024", "modified": "Payroll, April 2023-March 2024" },
+        { "type": "replace", "target": "HMRC tax jan-March2024", "modified": "HMRC tax, January-March 2024" }
+      ]
+    },
+    {
+      "key": "administrative-multi-table-ppg-actions",
+      "sourceId": "a3b94b62e9505655d150eae21dc72bb99b37eda901bcb50516b7e9fded5ed33b",
+      "shape": "table-form",
+      "coverage": ["meeting-minutes", "tables", "table-cell", "multiple-changes", "header", "footer", "footnotes-part"],
+      "review": "Reuses the reviewed patient participation minutes to exercise three edits across distinct action-table rows while retaining the real header.",
+      "operations": [
+        { "type": "replace", "target": "AJ will circulate weblink", "modified": "AJ will circulate the updated weblink" },
+        { "type": "replace", "target": "Clarification on planning for new surgery", "modified": "Clarification on planning for the new surgery" },
+        { "type": "replace", "target": "Weblink to be sent", "modified": "Updated weblink to be sent" }
+      ]
+    },
+    {
+      "key": "administrative-page-header-date-correction",
+      "sourceId": "570572edcfec94b990c61b91e21e103699a39b800c3165ad436d0fd07c7cd80e",
+      "part": "word/header1.xml",
+      "shape": "page-header",
+      "coverage": ["page-header", "header"],
+      "review": "Uses the reviewed council-minutes page header to verify a Word-native tracked correction outside the main document story.",
+      "formatExpectations": { "insertionsForbidRunProperties": ["vertAlign"] },
+      "operation": { "type": "replace", "target": "HELD ON :14th MAY 2024", "modified": "HELD ON: 14 MAY 2024" }
+    },
+    {
+      "key": "administrative-page-header-title-expansion",
+      "sourceId": "a3b94b62e9505655d150eae21dc72bb99b37eda901bcb50516b7e9fded5ed33b",
+      "part": "word/header1.xml",
+      "shape": "page-header",
+      "coverage": ["page-header", "header"],
+      "review": "Uses the reviewed patient-group header to verify tracked header text while leaving the body and all unrelated package parts untouched.",
+      "operation": { "type": "replace", "target": "St George’s Medical Practice – Patient Participation Group", "modified": "St George’s Medical Practice – Patient Participation Group (PPG)" }
+    },
+    {
+      "key": "legal-complex-zoning-list-table-batch",
+      "sourceId": "82325c95040adfb3dd9fc013594756da689547def47ab120b35f6be132084693",
+      "shape": "table-form",
+      "coverage": ["zoning-resolution", "numbered-list", "tables", "table-cell", "multiple-changes", "multi-section", "footer"],
+      "review": "Reuses the reviewed 8,238-word zoning resolution to exercise eight atomic edits across numbered definitions and multiple zoning tables spanning 25 sections.",
+      "structuralExpectations": { "minWords": 8000, "minTables": 5, "minListParagraphs": 90, "minSections": 20 },
+      "operations": [
+        { "type": "replace", "target": "An efficiency unit, as defined in Section 17958.1 of Health and Safety Code.", "modified": "An efficiency unit, as defined in Section 17958.1 of the California Health and Safety Code." },
+        { "type": "replace", "target": "A manufactured home, as defined in Section 18007 of the Health and Safety Code.", "modified": "A manufactured home, as defined in Section 18007 of the California Health and Safety Code." },
+        { "type": "replace", "target": "“Mast” means a vertical element consisting of a tube or rod which supports an antenna.", "modified": "“Mast” means a vertical tube or rod that supports an antenna." },
+        { "type": "replace", "target": "“Tower” means a vertical framework of cross elements which supports either an antenna, mast or both.", "modified": "“Tower” means a vertical framework of cross elements that supports an antenna, a mast, or both." },
+        { "type": "replace", "target": "Zoning Districts", "modified": "Zoning District Categories" },
+        { "type": "replace", "target": "Minimum Lot Area Square Feet", "modified": "Minimum Lot Area (Square Feet)" },
+        { "type": "replace", "target": "NO CHANGE ROWS #1 - #6b", "modified": "NO CHANGE TO ROWS #1-#6b" },
+        { "type": "replace", "target": "NO CHANGE ROWS #8 - #42", "modified": "NO CHANGE TO ROWS #8-#42" }
+      ]
+    },
+    {
+      "key": "legal-bylaws-nested-list-batch",
+      "sourceId": "d27fe5513ca474bcd6c02136d2e4b8179203f5855c4333af81bc964755c7abe4",
+      "shape": "list",
+      "coverage": ["county-bylaws", "numbered-list", "nested-list", "multiple-changes", "table", "footer", "footnotes-part"],
+      "review": "Reuses the reviewed 2,874-word county resolution and bylaws to exercise eight atomic edits across nested membership and officer list levels.",
+      "structuralExpectations": { "minWords": 2800, "minTables": 1, "minListParagraphs": 50, "minSections": 7 },
+      "operations": [
+        { "type": "replace", "target": "MEMBERS.  The Advisory Council shall be comprised of fifteen (15) individuals as follows:", "modified": "MEMBERS.  The Advisory Council shall be composed of fifteen (15) individuals as follows:" },
+        { "type": "replace", "target": "One (1) representative from the Board of Supervisors;", "modified": "One representative from the Board of Supervisors;" },
+        { "type": "replace", "target": "Five (5) representatives from the incorporated cities/town;", "modified": "Five representatives from the incorporated cities and town;" },
+        { "type": "replace", "target": "Six (6) representatives from agriculture, public health and nutrition, and education;", "modified": "Six representatives from agriculture, public health and nutrition, and education;" },
+        { "type": "replace", "target": "Three (3) representatives from the community at large.", "modified": "Three representatives from the community at large." },
+        { "type": "replace", "target": "Officers. The officers of the Advisory Council shall be the Chair, Vice-Chair and Secretary, chosen as follows:", "modified": "Officers. The officers of the Advisory Council shall be the Chair, Vice-Chair, and Secretary, chosen as follows:" },
+        { "type": "replace", "target": "Future agenda items.", "modified": "Future agenda items and follow-up." },
+        { "type": "replace", "target": "Correspondences and Council member reports", "modified": "Correspondence and Council member reports." }
+      ]
+    },
+    {
+      "key": "administrative-long-council-minutes-list-table-batch",
+      "sourceId": "4de85601cc26bfd8b7226e2c26586695140bdd3a3f29d6323c8e69b7220aec8c",
+      "shape": "table-form",
+      "coverage": ["council-minutes", "numbered-list", "tables", "table-cell", "multiple-changes", "multi-section", "header", "footer"],
+      "review": "Reviewed public council minutes with 6,813 words, four tables, 70 list paragraphs, two sections, and public-official names only; eight edits cross list items and table cells.",
+      "structuralExpectations": { "minWords": 6800, "minTables": 4, "minListParagraphs": 70, "minSections": 2, "minHeaders": 2, "minFooters": 2 },
+      "operations": [
+        { "type": "replace", "target": "The Chairman in relation to anything on the playing field & CCT", "modified": "The Chairman in relation to anything on the playing field and CCT" },
+        { "type": "replace", "target": "Cllr. Flavin whose husband was involved with the CCT", "modified": "Cllr. Flavin, whose husband was involved with the CCT" },
+        { "type": "replace", "target": "To receive the Clerk’s Report ", "modified": "Receive the Clerk’s Report" },
+        { "type": "replace", "target": "The joint training session at Lapford took place and 5 Chawleigh councillors attended.", "modified": "The joint training session at Lapford took place, and five Chawleigh councillors attended." },
+        { "type": "replace", "target": "Elise didn’t introduce herself to the audience before she started,", "modified": "Elise did not introduce herself to the audience before she started." },
+        { "type": "replace", "target": "The venue was too crowded and hot and just not big enough for 17 people.", "modified": "The venue was too crowded and hot, and it was not large enough for 17 people." },
+        { "type": "replace", "target": "On aproposal by Cllr. Flavin, seconded by Cllr. Cockram it was Resolved to approve the payment of the invoices on the schedule below for the period since the last meeting:", "modified": "On a proposal by Cllr. Flavin, seconded by Cllr. Cockram, it was Resolved to approve payment of the invoices in the schedule below for the period since the last meeting:" },
+        { "type": "replace", "target": "The 21st September 2023 Bank Reconciliation statement was Approved.", "modified": "The Bank Reconciliation statement dated 21st September 2023 was approved." }
+      ]
+    },
+    {
+      "key": "administrative-long-planning-minutes-list-table-batch",
+      "sourceId": "382303d9f33071278b3b13193f9c1af77a36068e404f214e6e5945345b360c9d",
+      "shape": "table-form",
+      "coverage": ["planning-minutes", "numbered-list", "tables", "table-cell", "multiple-changes", "header", "footer"],
+      "review": "Reviewed public parish minutes with 6,198 words, four tables, 69 list paragraphs, and public meeting information; eight edits stress list paragraphs nested inside table cells.",
+      "structuralExpectations": { "minWords": 6100, "minTables": 4, "minListParagraphs": 69, "minHeaders": 3, "minFooters": 3 },
+      "operations": [
+        { "type": "replace", "target": "4 members of public were present:", "modified": "Four members of the public were present:" },
+        { "type": "replace", "target": "No under 18s were present. ", "modified": "No persons under 18 were present." },
+        { "type": "replace", "target": "County Councillor Daren Pemberton’s Report – no apologies or report received", "modified": "County Councillor Daren Pemberton’s Report - no apologies or report were received" },
+        { "type": "replace", "target": "meeting to take place between Warwickshire County Council Highways and Infrastructure & Built Environment Working Group on 11th September to receive update on the traffic calming works. ", "modified": "A meeting will take place between Warwickshire County Council Highways and the Infrastructure and Built Environment Working Group on 11th September to receive an update on the traffic-calming works." },
+        { "type": "replace", "target": "All schools in Warwickshire (on adopted roads) are included in the School Keep Clear project. The lining outside Salford Priors CofE Academy will be refreshed and be reduced from 4 markings to 3. ", "modified": "All schools in Warwickshire on adopted roads are included in the School Keep Clear project. The lining outside Salford Priors CofE Academy will be refreshed and reduced from four markings to three." },
+        { "type": "replace", "target": "CALA accepted the responsibility to maintain a 0ne metre strip around the rear of the development their attention was drawn that currently the Management Company were not maintaining the land it was severely overgrown.", "modified": "CALA accepted responsibility for maintaining a one-metre strip around the rear of the development. Its attention was drawn to the severely overgrown land that the Management Company was not maintaining." },
+        { "type": "replace", "target": "It was resolved to purchase 3 x Christmas trees – junction of Evesham Rd/School Rd, Dunnington and Abbot’s Salford. ", "modified": "It was resolved to purchase three Christmas trees for the Evesham Road/School Road junction, Dunnington, and Abbot’s Salford." },
+        { "type": "replace", "target": "To note the change to the Parish Council November meeting – this will take place on Tuesday 12th November at Dunnington so the November Open Precept Consultation Evening can take place on Wednesday 13th November.", "modified": "The Parish Council noted that its November meeting will take place on Tuesday 12th November at Dunnington, allowing the Open Precept Consultation Evening to take place on Wednesday 13th November." }
+      ]
+    },
+    {
+      "key": "legal-prospectus-multi-table-batch",
+      "sourceId": "f8976ea3b528d4ed811665cf382c9434a84b31b95f66cf8998c9d1afa24b1162",
+      "shape": "table-form",
+      "coverage": ["prospectus", "tables", "table-cell", "multiple-changes", "long-document"],
+      "review": "Reviewed public 59,471-word securities prospectus with 180 tables; eight independent tracked corrections span contents, risk, performance, fee, and filing-reference table cells.",
+      "structuralExpectations": { "minWords": 59000, "minTables": 180 },
+      "formatExpectations": { "insertionsRequireRunPropertyValues": { "sz": "20", "szCs": "20" } },
+      "operations": [
+        { "type": "replace", "target": "Proposed Maximum Aggregate Offering Price Per Fund", "modified": "Proposed Maximum Aggregate Offering Price per Fund" },
+        { "type": "replace", "target": "Management fee(3)", "modified": "Management fee (3)" },
+        { "type": "replace", "target": "Creation Basket Fee (5)", "modified": "Creation basket fee (5)" },
+        { "type": "replace", "target": "Dynamic Shares Short Short Term Volatility Futures", "modified": "Dynamic Shares Short Short-Term Volatility Futures" },
+        { "type": "replace", "target": "Worst Monthly Drawdown(1):", "modified": "Worst Monthly Drawdown (1):" },
+        { "type": "replace", "target": "Worst Peak-to-Valley Drawdown(1):", "modified": "Worst Peak-to-Valley Drawdown (1):" },
+        { "type": "replace", "target": "Brokerage commissions and fees(4)", "modified": "Brokerage commissions and fees (4)" },
+        { "type": "replace", "target": "Current Reports on Form 8-K filed with the SEC on January 28, 2022, March 31, 2022, May 18, 2022, March 10,2023.", "modified": "Current Reports on Form 8-K filed with the SEC on January 28, 2022, March 31, 2022, May 18, 2022, and March 10, 2023." }
+      ]
     }
   ]
 }

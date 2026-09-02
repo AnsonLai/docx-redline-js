@@ -337,6 +337,71 @@ async function testNumberedParagraphEditPreservesFormattingAndRoundTrip() {
     assert.equal(normalizeText(ingestWordOoxmlToPlainText(rejected.oxml)), normalizeText(original));
 }
 
+async function testReplacementDoesNotInheritTrailingSuperscript() {
+    const xml = `
+        <w:hdr xmlns:w="${NS_W}">
+            <w:p>
+                <w:r><w:rPr><w:b/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">HELD ON </w:t></w:r>
+                <w:r><w:rPr><w:b/><w:u w:val="single"/></w:rPr><w:t>:</w:t></w:r>
+                <w:r><w:rPr><w:b/><w:u w:val="single"/></w:rPr><w:t>14</w:t></w:r>
+                <w:r><w:rPr><w:b/><w:u w:val="single"/><w:vertAlign w:val="superscript"/></w:rPr><w:t>th</w:t></w:r>
+                <w:r><w:rPr><w:b/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve"> MAY 2024</w:t></w:r>
+            </w:p>
+        </w:hdr>
+    `;
+    const original = 'HELD ON :14th MAY 2024';
+    const modified = 'HELD ON: 14 MAY 2024';
+    const result = await applyRedlineToOxml(xml, original, modified, {
+        author: 'HeaderTester',
+        generateRedlines: true
+    });
+
+    assert.equal(result.hasChanges, true);
+    const doc = parseXml(result.oxml);
+    const insertedRuns = elementsByLocalName(doc, 'ins').flatMap(ins => elementsByLocalName(ins, 'r'));
+    assert(insertedRuns.length > 0, 'Expected the corrected header date to include a tracked insertion');
+    insertedRuns.forEach(insertedRun => {
+        const insertedRPr = directChildByLocalName(insertedRun, 'rPr');
+        assert.equal(insertedRPr ? elementsByLocalName(insertedRPr, 'vertAlign').length : 0, 0,
+            'Replacement text must not inherit superscript from the trailing ordinal suffix');
+    });
+
+    const accepted = acceptTrackedChangesInOoxml(result.oxml, { author: 'HeaderTester' });
+    assert.equal(normalizeText(ingestWordOoxmlToPlainText(accepted.oxml)), normalizeText(modified));
+}
+
+async function testReplacementAcrossHyperlinkPreservesLeadingFontSize() {
+    const xml = `
+        <w:document xmlns:w="${NS_W}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+            <w:body><w:p>
+                <w:r><w:rPr><w:rFonts w:eastAsia="Times New Roman"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t xml:space="preserve">Filed on </w:t></w:r>
+                <w:hyperlink r:id="rId1"><w:r><w:rPr><w:rFonts w:eastAsia="Times New Roman"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t>March 10,2023</w:t></w:r></w:hyperlink>
+                <w:r><w:rPr><w:rFonts w:eastAsia="Times New Roman"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t>.</w:t></w:r>
+            </w:p></w:body>
+        </w:document>
+    `;
+    const original = 'Filed on March 10,2023.';
+    const modified = 'Filed on and March 10, 2023.';
+    const result = await applyRedlineToOxml(xml, original, modified, {
+        author: 'ProspectusTester',
+        generateRedlines: true
+    });
+
+    assert.equal(result.hasChanges, true);
+    const doc = parseXml(result.oxml);
+    const insertedRuns = elementsByLocalName(doc, 'ins').flatMap(ins => elementsByLocalName(ins, 'r'));
+    assert(insertedRuns.length > 0, 'Expected the filing-date replacement to include a tracked insertion');
+    insertedRuns.forEach(insertedRun => {
+        const insertedRPr = directChildByLocalName(insertedRun, 'rPr');
+        assert(insertedRPr, 'Replacement spanning a hyperlink must retain explicit run properties');
+        assert.equal(directChildByLocalName(insertedRPr, 'sz')?.getAttribute('w:val'), '20');
+        assert.equal(directChildByLocalName(insertedRPr, 'szCs')?.getAttribute('w:val'), '20');
+    });
+
+    const accepted = acceptTrackedChangesInOoxml(result.oxml, { author: 'ProspectusTester' });
+    assert.equal(normalizeText(ingestWordOoxmlToPlainText(accepted.oxml)), normalizeText(modified));
+}
+
 await testSurgicalInsertionSplitsRunAtCharacterOffset();
 await testSurgicalDeletionPreservesNeighboringRunChildren();
 await testEmptyDefaultNamespaceTableCellCanReceiveInsertion();
@@ -349,5 +414,7 @@ await testReconstructionPreservesUnchangedInlineFormatting();
 await testSurgicalModePreservesUnchangedInlineFormatting();
 await testDefaultNamespaceReconstructionRoundTrip();
 await testNumberedParagraphEditPreservesFormattingAndRoundTrip();
+await testReplacementDoesNotInheritTrailingSuperscript();
+await testReplacementAcrossHyperlinkPreservesLeadingFontSize();
 
 console.log('engine_reliability_tests.mjs ... PASS');

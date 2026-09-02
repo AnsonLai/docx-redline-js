@@ -14,9 +14,9 @@ const catalogue = JSON.parse(readFileSync(
 
 assert.equal(manifest.datasetLicense, 'ODC-By 1.0');
 assert.match(manifest.attribution, /SuperDoc/);
-assert.equal(manifest.documents.length, 20);
-assert.equal(manifest.documents.filter(document => document.type === 'legal').length, 10);
-assert.equal(manifest.documents.filter(document => document.type === 'administrative').length, 10);
+assert.equal(manifest.documents.length, 23);
+assert.equal(manifest.documents.filter(document => document.type === 'legal').length, 11);
+assert.equal(manifest.documents.filter(document => document.type === 'administrative').length, 12);
 
 const ids = new Set();
 for (const document of manifest.documents) {
@@ -30,23 +30,48 @@ for (const document of manifest.documents) {
     assert.equal(document.downloadUrl, `https://docxcorp.us/documents/${document.id}.docx`);
 }
 
-assert.equal(catalogue.scenarios.length, manifest.documents.length);
+assert.ok(catalogue.scenarios.length > manifest.documents.length);
 assert.deepEqual(
-    new Set(catalogue.scenarios.map(scenario => scenario.id)),
+    new Set(catalogue.scenarios.map(scenario => scenario.sourceId || scenario.id)),
     ids,
-    'Every pinned source must have exactly one reviewed deterministic scenario'
+    'Every pinned source must have at least one reviewed deterministic scenario'
 );
 assert.deepEqual(
     new Set(catalogue.scenarios.map(scenario => scenario.shape)),
-    new Set(['body-paragraph', 'legal-apparatus', 'list', 'table-form', 'administrative-layout'])
+    new Set(['body-paragraph', 'legal-apparatus', 'list', 'table-form', 'administrative-layout', 'page-header'])
 );
+const scenarioKeys = new Set();
 for (const scenario of catalogue.scenarios) {
-    assert.ok(scenario.review.length > 20, `${scenario.id}: review record is missing`);
-    assert.equal(scenario.operation.type, 'replace');
-    assert.ok(scenario.operation.target.length > 0);
-    assert.ok(scenario.operation.modified.length > 0);
-    assert.notEqual(scenario.operation.target, scenario.operation.modified);
+    const key = scenario.key || scenario.id;
+    assert.ok(!scenarioKeys.has(key), `Duplicate scenario key: ${key}`);
+    scenarioKeys.add(key);
+    assert.ok(scenario.review.length > 20, `${key}: review record is missing`);
+    const operations = scenario.operations || [scenario.operation];
+    assert.ok(operations.length > 0, `${key}: operations are missing`);
+    for (const operation of operations) {
+        assert.equal(operation.type, 'replace');
+        assert.ok(operation.target.length > 0);
+        assert.ok(operation.modified.length > 0);
+        assert.notEqual(operation.target, operation.modified);
+    }
+    if (scenario.part) assert.match(scenario.part, /^word\/header[1-9][0-9]*\.xml$/);
 }
+
+const multiChangeScenarios = catalogue.scenarios.filter(scenario => scenario.operations?.length > 1);
+assert.equal(multiChangeScenarios.length, 9);
+assert.equal(multiChangeScenarios.filter(scenario => scenario.shape === 'list').length, 3);
+assert.equal(multiChangeScenarios.filter(scenario => scenario.shape === 'table-form').length, 6);
+assert.equal(multiChangeScenarios.reduce((total, scenario) => total + scenario.operations.length, 0), 52);
+assert.ok(multiChangeScenarios.every(scenario => scenario.operations.length >= 3));
+const complexityGuardedScenarios = catalogue.scenarios.filter(scenario => scenario.structuralExpectations);
+assert.equal(complexityGuardedScenarios.length, 5);
+assert.ok(complexityGuardedScenarios.every(scenario => scenario.operations.length === 8));
+assert.ok(complexityGuardedScenarios.every(scenario =>
+    scenario.structuralExpectations.minTables > 0 || scenario.structuralExpectations.minListParagraphs > 0
+));
+const headerScenarios = catalogue.scenarios.filter(scenario => scenario.shape === 'page-header');
+assert.equal(headerScenarios.length, 2);
+assert.ok(headerScenarios.every(scenario => scenario.part === 'word/header1.xml'));
 
 const zipRoundTrip = unzipEntries(buildZip([
     { name: 'word/document.xml', data: '<document>compressible compressible compressible</document>' },
@@ -55,4 +80,4 @@ const zipRoundTrip = unzipEntries(buildZip([
 assert.equal(zipRoundTrip.get('word/document.xml').toString(), '<document>compressible compressible compressible</document>');
 assert.deepEqual(zipRoundTrip.get('word/media/raw.bin'), Buffer.from([0, 1, 2, 3]));
 
-console.log(`PASS: reviewed SuperDoc corpus (${manifest.documents.length} pinned scenarios)`);
+console.log(`PASS: reviewed SuperDoc corpus (${manifest.documents.length} pinned documents, ${catalogue.scenarios.length} scenarios)`);

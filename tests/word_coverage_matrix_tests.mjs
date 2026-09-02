@@ -12,9 +12,9 @@ import {
 import { validateCoverageMetadata } from '../scripts/lib/word-coverage-metadata.mjs';
 
 const { cases, priorities } = loadCoverageCatalogue();
-assert.equal(cases.length, 53);
+assert.equal(cases.length, 64);
 assert.equal(cases.filter(item => item.lane === 'synthetic').length, 33);
-assert.equal(cases.filter(item => item.lane === 'superdoc').length, 20);
+assert.equal(cases.filter(item => item.lane === 'superdoc').length, 31);
 
 const matrix = validateCoveragePriorities(cases, priorities);
 assert.equal(matrix.size, COVERAGE_TASKS.length * COVERAGE_STRUCTURES.length);
@@ -76,7 +76,7 @@ assert.equal(report.totals.cases, cases.length);
 assert.equal(report.totals.manualMissing, cases.length);
 assert.equal(report.totals.aiPreflight, 8);
 assert.equal(report.totals.syntheticWord, 33);
-assert.equal(report.totals.realDocumentWord, 20);
+assert.equal(report.totals.realDocumentWord, 31);
 
 execFileSync(process.execPath, ['scripts/prepare-word-review.mjs', '--cycle=2'], {
     cwd: repoRoot,

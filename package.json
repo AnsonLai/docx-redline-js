@@ -53,8 +53,10 @@
   "devDependencies": {
     "@xmldom/xmldom": "^0.9.0",
     "c8": "^12.0.0",
+    "docx-preview": "^0.4.0",
     "esbuild": "^0.28.1",
     "eslint": "^10.9.1",
+    "jszip": "^3.10.1",
     "typescript": "^7.0.2"
   },
   "scripts": {
@@ -66,9 +68,12 @@
     "smoke:word": "powershell -File scripts/word-com-smoke.ps1",
     "smoke:word:diff": "powershell -File scripts/word-com-differential.ps1",
     "test:word": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/word-com-suite.ps1",
+    "test:word:visual": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/word-com-visual-suite.ps1",
     "test:corpus:word": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/word-com-corpus-suite.ps1",
+    "test:corpus:word:visual": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/word-com-corpus-visual-suite.ps1",
     "corpus:fetch:superdoc": "node scripts/fetch-superdoc-corpus.mjs",
     "report:word:coverage": "node scripts/report-word-coverage.mjs",
+    "report:test:dashboard": "node scripts/build-test-dashboard.mjs",
     "review:word:prepare": "node scripts/prepare-word-review.mjs",
     "test": "node scripts/run-tests.mjs",
     "test:isolation": "node tests/no_word_api_index_check.mjs && node tests/core_dependency_graph_check.mjs",

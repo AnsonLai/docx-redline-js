@@ -113,6 +113,34 @@ function Open-FixtureDocument($word, [string]$path) {
     return $word.Documents.OpenNoRepairDialog($path)
 }
 
+function Get-ScopeText($document, [string]$scope, [string]$fidelity) {
+    if ($scope -ne 'headers') {
+        return Get-ComparableText $document.Content.Text $fidelity
+    }
+    $parts = @()
+    foreach ($section in @($document.Sections)) {
+        foreach ($headerType in 1..3) {
+            $header = $section.Headers.Item($headerType)
+            if ($header.Exists) {
+                $parts += Get-ComparableText $header.Range.Text $fidelity
+            }
+        }
+    }
+    return ($parts -join "`n")
+}
+
+function Get-ScopeRevisionCount($document, [string]$scope) {
+    if ($scope -ne 'headers') { return $document.Revisions.Count }
+    $count = 0
+    foreach ($section in @($document.Sections)) {
+        foreach ($headerType in 1..3) {
+            $header = $section.Headers.Item($headerType)
+            if ($header.Exists) { $count += $header.Range.Revisions.Count }
+        }
+    }
+    return $count
+}
+
 try {
     $word = New-Object -ComObject Word.Application
     $word.Visible = $false
@@ -131,6 +159,7 @@ try {
         $expected = Get-Content -LiteralPath $expectationFile.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
         $fidelity = if ($expected.textFidelity) { [string]$expected.textFidelity } else { 'exact' }
         $assertionMode = if ($expected.assertionMode) { [string]$expected.assertionMode } else { 'exact' }
+        $assertionScope = if ($expected.assertionScope) { [string]$expected.assertionScope } else { 'document' }
         if ($assertionMode -eq 'exact') {
             $expectedAccepted = Get-ComparableText $expected.expectedAcceptedText $fidelity
             $expectedRejected = Get-ComparableText $expected.expectedRejectedText $fidelity
@@ -141,16 +170,23 @@ try {
             $sourceDocument = $null
             try {
                 $sourceDocument = Open-FixtureDocument $word ([string]$sourcePath)
-                $expectedRejected = Get-ComparableText $sourceDocument.Content.Text $fidelity
+                $expectedRejected = Get-ScopeText $sourceDocument $assertionScope $fidelity
             }
             finally {
                 if ($null -ne $sourceDocument) { $sourceDocument.Close(0) | Out-Null }
             }
-            $targetCount = [regex]::Matches($expectedRejected, [regex]::Escape([string]$expected.originalTarget)).Count
-            if ($targetCount -ne 1) {
-                throw "${name}: expected target occurs $targetCount times in Word's source text"
+            $replacements = if ($expected.replacements) { @($expected.replacements) } else { @(@{
+                originalTarget = $expected.originalTarget
+                modifiedTarget = $expected.modifiedTarget
+            }) }
+            $expectedAccepted = $expectedRejected
+            foreach ($replacement in $replacements) {
+                $targetCount = [regex]::Matches($expectedAccepted, [regex]::Escape([string]$replacement.originalTarget)).Count
+                if ($targetCount -ne 1) {
+                    throw "${name}: expected target '$($replacement.originalTarget)' occurs $targetCount times in Word's source $assertionScope text"
+                }
+                $expectedAccepted = $expectedAccepted.Replace([string]$replacement.originalTarget, [string]$replacement.modifiedTarget)
             }
-            $expectedAccepted = $expectedRejected.Replace([string]$expected.originalTarget, [string]$expected.modifiedTarget)
         }
         $caseFailed = $false
         $document = $null
@@ -164,14 +200,14 @@ try {
         # Phase 1: open cleanly, revisions present, accept-all matches intent.
         try {
             $document = Open-FixtureDocument $word ([string]$docxPath)
-            $revisionCount = $document.Revisions.Count
+            $revisionCount = Get-ScopeRevisionCount $document $assertionScope
             if ($revisionCount -lt 1) {
                 Write-Output "FAIL ${name}: Word sees no tracked revisions"
                 $caseFailed = $true
             }
             else {
                 $document.AcceptAllRevisions()
-                $acceptedText = Get-ComparableText $document.Content.Text $fidelity
+                $acceptedText = Get-ScopeText $document $assertionScope $fidelity
                 if ($assertionMode -eq 'contains') {
                     if (-not (Test-ContainsAssertions $acceptedText $expected.expectedAcceptedContains $expected.expectedAcceptedAbsent 'accept-all' $name)) {
                         $caseFailed = $true
@@ -198,7 +234,7 @@ try {
             try {
                 $document = Open-FixtureDocument $word ([string]$docxPath)
                 $document.RejectAllRevisions()
-                $rejectedText = Get-ComparableText $document.Content.Text $fidelity
+                $rejectedText = Get-ScopeText $document $assertionScope $fidelity
                 if ($assertionMode -eq 'contains') {
                     if (-not (Test-ContainsAssertions $rejectedText $expected.expectedRejectedContains $expected.expectedRejectedAbsent 'reject-all' $name)) {
                         $caseFailed = $true

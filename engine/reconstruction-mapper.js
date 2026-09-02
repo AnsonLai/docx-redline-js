@@ -29,6 +29,21 @@ function createRangeCursorLookup(ranges) {
     let cursor = 0;
     return {
         at(index) {
+            // Reconstruction normally walks source offsets forwards, but a
+            // replacement insertion deliberately looks back to the beginning
+            // of its deleted range to inherit that run's formatting. If the
+            // deletion crossed a run/hyperlink boundary, the cursor has
+            // already advanced past that range and must be rewound.
+            if (cursor > 0 && (!ranges[cursor] || index < ranges[cursor].start)) {
+                let low = 0;
+                let high = cursor - 1;
+                while (low <= high) {
+                    const middle = Math.floor((low + high) / 2);
+                    if (ranges[middle].end <= index) low = middle + 1;
+                    else high = middle - 1;
+                }
+                cursor = low;
+            }
             while (cursor < ranges.length && ranges[cursor].end <= index) {
                 cursor++;
             }

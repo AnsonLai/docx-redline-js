@@ -6,6 +6,7 @@
   "licenseUrl": "https://opendatacommons.org/licenses/by/1-0/",
   "attribution": "docx-corpus, built by SuperDoc (https://superdoc.dev/)",
   "selectedAt": "2026-08-29",
+  "expandedAt": "2026-09-01",
   "selectionPolicy": {
     "language": "en",
     "types": ["legal", "administrative"],
@@ -32,6 +33,9 @@
     { "id": "a3b94b62e9505655d150eae21dc72bb99b37eda901bcb50516b7e9fded5ed33b", "downloadSha256": "b205b540ff5ccf8fb1b9e61396418c4e8cfaafef73e60a7aadab38afd10c6b84", "filename": "mf.ashx", "type": "administrative", "topic": "healthcare", "language": "en", "wordCount": 808, "confidence": 0.9879672, "downloadUrl": "https://docxcorp.us/documents/a3b94b62e9505655d150eae21dc72bb99b37eda901bcb50516b7e9fded5ed33b.docx" },
     { "id": "16151cbd92f85ef11bf8121cc6f1ce541970fdc57432f95951a3a3440635afe4", "downloadSha256": "3f87c758bd04fab59b9d9765d5b5d8c4b8c39879b5c4b6b590e4e6daaeae0d50", "filename": "mf.ashx", "type": "administrative", "topic": "healthcare", "language": "en", "wordCount": 404, "confidence": 0.9879386, "downloadUrl": "https://docxcorp.us/documents/16151cbd92f85ef11bf8121cc6f1ce541970fdc57432f95951a3a3440635afe4.docx" },
     { "id": "fb0db04c803132968cc176f7cfb4927bc33c665e9671760ebf31cabd4c1a7766", "downloadSha256": "91abb42d8e787770ad8517134261fe80bf76014701f76bd621ed8f85fb448cfa", "filename": "297846", "type": "administrative", "topic": "healthcare", "language": "en", "wordCount": 709, "confidence": 0.9879483, "downloadUrl": "https://docxcorp.us/documents/fb0db04c803132968cc176f7cfb4927bc33c665e9671760ebf31cabd4c1a7766.docx" },
-    { "id": "77c33ab2ca57efd0d4afb87f08c45c88f3984256c3fd5fdf3e81f87a24644760", "downloadSha256": "93603db61d612c48602692b4c831d690ad74317f4e0c942eb81344232209cfa6", "filename": "Agenda_-_2.10.25.docx", "type": "administrative", "topic": "government", "language": "en", "wordCount": 130, "confidence": 0.9879457, "downloadUrl": "https://docxcorp.us/documents/77c33ab2ca57efd0d4afb87f08c45c88f3984256c3fd5fdf3e81f87a24644760.docx" }
+    { "id": "77c33ab2ca57efd0d4afb87f08c45c88f3984256c3fd5fdf3e81f87a24644760", "downloadSha256": "93603db61d612c48602692b4c831d690ad74317f4e0c942eb81344232209cfa6", "filename": "Agenda_-_2.10.25.docx", "type": "administrative", "topic": "government", "language": "en", "wordCount": 130, "confidence": 0.9879457, "downloadUrl": "https://docxcorp.us/documents/77c33ab2ca57efd0d4afb87f08c45c88f3984256c3fd5fdf3e81f87a24644760.docx" },
+    { "id": "f8976ea3b528d4ed811665cf382c9434a84b31b95f66cf8998c9d1afa24b1162", "downloadSha256": "5232285981f77e6abe394f1f299a6756a8fad414fe65d9b75af5127c7a27bce7", "filename": "1-19-Dynamic-Shares-11012023-Prospectus.docx", "type": "legal", "topic": "finance", "language": "en", "wordCount": 59471, "confidence": 0.9857817, "downloadUrl": "https://docxcorp.us/documents/f8976ea3b528d4ed811665cf382c9434a84b31b95f66cf8998c9d1afa24b1162.docx" },
+    { "id": "4de85601cc26bfd8b7226e2c26586695140bdd3a3f29d6323c8e69b7220aec8c", "downloadSha256": "f4ec48b35c53a5b5bf58b826dc4a32bd992a94b9327d928c7a384f03476ab9aa", "filename": "Minutes-27th-September-2023.docx", "type": "administrative", "topic": "government", "language": "en", "wordCount": 6813, "confidence": 0.9873843, "downloadUrl": "https://docxcorp.us/documents/4de85601cc26bfd8b7226e2c26586695140bdd3a3f29d6323c8e69b7220aec8c.docx" },
+    { "id": "382303d9f33071278b3b13193f9c1af77a36068e404f214e6e5945345b360c9d", "downloadSha256": "ac10d58754321f65a070095614162ac139fbb6eb34c7217473e7e1e6706e48c3", "filename": "4.-Sep-Mins-4.9.24.docx", "type": "administrative", "topic": "government", "language": "en", "wordCount": 6198, "confidence": 0.98716474, "downloadUrl": "https://docxcorp.us/documents/382303d9f33071278b3b13193f9c1af77a36068e404f214e6e5945345b360c9d.docx" }
   ]
 }

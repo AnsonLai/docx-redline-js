@@ -316,7 +316,7 @@ published library remains clean, host-independent JavaScript; Word automation
 exists only in development scripts.
 
 Use `npm run report:word:coverage` to print the validated task-by-structure
-matrix across all 33 synthetic and 20 SuperDoc cases. Before a release,
+matrix across all 33 synthetic and 31 SuperDoc scenarios. Before a release,
 `npm run review:word:prepare -- --cycle=0` creates a pending human-review
 manifest with changed cases, a rotating 20% synthetic sample, and legal plus
 administrative corpus representatives. See [docs/TESTING.md](./docs/TESTING.md)
@@ -350,7 +350,7 @@ Only explicitly pinned English legal and administrative documents are eligible
 for the initial corpus lane. References and provenance live in
 `tests/corpus/superdoc-english-legal-administrative.json`; downloaded documents
 are hash-verified and kept in ignored `tmp/` storage rather than committed. On
-Windows with desktop Word installed, run the reviewed 20-document lane with:
+Windows with desktop Word installed, run the reviewed 31-scenario/23-document lane with:
 
 ```bash
 npm run test:corpus:word

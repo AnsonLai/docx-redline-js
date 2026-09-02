@@ -7,12 +7,12 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
-function Get-UntouchedPartHashes([string]$path) {
+function Get-UntouchedPartHashes([string]$path, [string]$changedPart) {
     $hashes = @{}
     $zip = [IO.Compression.ZipFile]::OpenRead($path)
     try {
         foreach ($entry in $zip.Entries) {
-            if ($entry.FullName -eq 'word/document.xml') { continue }
+            if ($entry.FullName -eq $changedPart) { continue }
             $stream = $entry.Open()
             $sha = [Security.Cryptography.SHA256]::Create()
             try {
@@ -36,15 +36,16 @@ foreach ($case in $suite.cases) {
     $sourcePath = Join-Path $resolvedSources "$($case.sourceId).docx"
     $outputPath = Join-Path $resolvedFixtures "$($case.name).docx"
     $xmlPath = Join-Path $resolvedFixtures "$($case.name).document.xml"
-    $before = Get-UntouchedPartHashes $sourcePath
+    $revisionPart = if ($case.revisionPart) { [string]$case.revisionPart } else { 'word/document.xml' }
+    $before = Get-UntouchedPartHashes $sourcePath $revisionPart
 
     Copy-Item -LiteralPath $sourcePath -Destination $outputPath -Force
     $zip = [IO.Compression.ZipFile]::Open($outputPath, [IO.Compression.ZipArchiveMode]::Update)
     try {
-        $oldEntry = $zip.GetEntry('word/document.xml')
-        if ($null -eq $oldEntry) { throw "Missing word/document.xml in $sourcePath" }
+        $oldEntry = $zip.GetEntry($revisionPart)
+        if ($null -eq $oldEntry) { throw "Missing $revisionPart in $sourcePath" }
         $oldEntry.Delete()
-        $newEntry = $zip.CreateEntry('word/document.xml', [IO.Compression.CompressionLevel]::Optimal)
+        $newEntry = $zip.CreateEntry($revisionPart, [IO.Compression.CompressionLevel]::Optimal)
         $stream = $newEntry.Open()
         try {
             $bytes = [Text.UTF8Encoding]::new($false).GetBytes((Get-Content -LiteralPath $xmlPath -Raw -Encoding UTF8))
@@ -54,7 +55,7 @@ foreach ($case in $suite.cases) {
     }
     finally { $zip.Dispose() }
 
-    $after = Get-UntouchedPartHashes $outputPath
+    $after = Get-UntouchedPartHashes $outputPath $revisionPart
     if ($before.Count -ne $after.Count) { throw "$($case.name): package part count changed" }
     foreach ($name in $before.Keys) {
         if ($after[$name] -ne $before[$name]) { throw "$($case.name): untouched package part changed: $name" }

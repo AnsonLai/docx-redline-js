@@ -11,6 +11,10 @@ import {
 } from '../services/standalone-operation-runner.js';
 import { buildMinimalDocx, buildMinimalDocxEntries } from './lib/minimal-zip.mjs';
 import { unzipEntries } from './lib/zip-reader.mjs';
+import {
+  acceptTrackedChangesInOoxml,
+  rejectTrackedChangesInOoxml
+} from '../services/revision-comment-management.js';
 import { WORD_TASK_CASES } from '../tests/fixtures/word-task-cases.mjs';
 
 const { DOMParser, XMLSerializer } = await import('@xmldom/xmldom');
@@ -183,6 +187,15 @@ for (const testCase of cases) {
   if (!docx) continue;
   writeFileSync(join(outputDir, `${testCase.name}.docx`), docx);
 
+  const sourceDocx = buildMinimalDocx(sourceDocumentXml, testCase.packageParts || {});
+  const acceptedXml = acceptTrackedChangesInOoxml(result.documentXml, { allAuthors: true }).oxml;
+  const rejectedXml = rejectTrackedChangesInOoxml(result.documentXml, { allAuthors: true }).oxml;
+  const acceptedDocx = buildMinimalDocx(acceptedXml, packageParts);
+  const rejectedDocx = buildMinimalDocx(rejectedXml, packageParts);
+  writeFileSync(join(outputDir, `${testCase.name}.source.docx`), sourceDocx);
+  writeFileSync(join(outputDir, `${testCase.name}.accepted.docx`), acceptedDocx);
+  writeFileSync(join(outputDir, `${testCase.name}.rejected.docx`), rejectedDocx);
+
   // Expected text is derived from edit *intent*, not from this library's
   // accept/reject transforms, so external consumers (Word COM, LibreOffice)
   // act as independent oracles.
@@ -194,11 +207,13 @@ for (const testCase of cases) {
     textFidelity: testCase.textFidelity || 'exact',
     expectedAcceptedText: testCase.expectedAcceptedText ?? preprocessMarkdown(testCase.modified).cleanText,
     expectedRejectedText: testCase.expectedRejectedText ?? testCase.original,
+    sourceText: testCase.sourceText || testCase.original,
+    modifiedText: preprocessMarkdown(testCase.modified).cleanText,
     untouchedPartSha256
   };
   writeFileSync(join(outputDir, `${testCase.name}.expected.json`), `${JSON.stringify(expected, null, 2)}\n`, 'utf8');
 
-  console.log(`wrote ${testCase.name}: .document.xml, .docx, .expected.json`);
+  console.log(`wrote ${testCase.name}: source, tracked, accepted, rejected, XML, and expectations`);
 }
 
 writeFileSync(join(outputDir, 'suite.json'), `${JSON.stringify({
@@ -216,6 +231,8 @@ Each case produces:
   XSD validation and manual inspection).
 - \`<name>.docx\` — a minimal package assembled by release tooling only (the
   published library still has no zip dependency).
+- \`<name>.source.docx\`, \`<name>.accepted.docx\`, and
+  \`<name>.rejected.docx\` — comparison states for the local HTML dashboard.
 - \`<name>.expected.json\` — the accept-all / reject-all plain-text outcomes
   derived from edit intent, used by external-consumer differential checks.
 

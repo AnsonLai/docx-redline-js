@@ -14,7 +14,9 @@ fixtures rarely contain.
 | Isolation, types, and lint | `npm run test:isolation`, `npm run check:types`, `npm run lint` | Runtime boundaries, declaration alignment, and static repository rules | Document correctness |
 | JavaScript coverage | `npm run test:coverage` | Which source lines, functions, and branches the automated suite executes | That an executed path is correct |
 | Synthetic Word differential | `npm run test:word` | Word opens generated packages, sees revisions, and produces the intended text after Accept All and Reject All | The diversity of real-world packages |
-| SuperDoc Word corpus | `npm run test:corpus:word` | The same Word differential on 20 reviewed, pinned real English legal/administrative documents while untouched package parts remain byte-identical | Every possible DOCX producer or document type |
+| Word visual evidence | `npm run test:word:visual` | Word renders layout-sensitive fixtures in All Markup, Accept All, and Reject All views and writes a pending review manifest | That the rendered pages are visually correct until a reviewer inspects them |
+| SuperDoc Word corpus | `npm run test:corpus:word` | The same Word differential on 31 scenarios drawn from 23 reviewed, pinned real English legal/administrative documents while untouched package parts remain byte-identical | Every possible DOCX producer or document type |
+| SuperDoc visual evidence | `npm run test:corpus:word:visual` | Word renders 11 focused multi-bullet, multi-table, long-document, and page-header scenarios in All Markup, Accept All, and Reject All views | Human visual sign-off |
 | XSD and LibreOffice | See `docs/VALIDATION.md` | Schema conformance and acceptance by a second consumer | Word-specific revision semantics |
 
 ## Coverage matrix and test selection
@@ -25,7 +27,21 @@ case:
 ```powershell
 npm run report:word:coverage
 npm run report:word:coverage -- --json
+npm run report:test:dashboard
 ```
+
+The dashboard command writes a self-contained interactive report to
+`docs/test-comparison-dashboard.html`. It compares task/structure cells,
+synthetic and real-document coverage, independent oracles, visual-render
+eligibility, and planned high-priority gaps from the live catalogues. It also
+embeds source, tracked, accepted, and rejected packages for every synthetic
+fixture and, when the pinned corpus is downloaded, all 31 reviewed real legal
+and administrative scenarios. Its `docx-preview` workbench supports arbitrary left/right states,
+comparison presets, synchronized scrolling, revision metadata, expected text,
+and local downloads; no fixture upload or file picker is required. Real cases
+are labeled in the document selector and selected by default when available.
+Without the local corpus, generation remains offline-safe and embeds only the
+synthetic previews.
 
 The report combines all synthetic and reviewed SuperDoc scenarios. Synthetic
 metadata is declared in `tests/fixtures/word-task-coverage.mjs`; SuperDoc
@@ -198,10 +214,12 @@ explicit reason. Documents are never saved by the automated differential.
 
 For synthetic fixtures, expectations come directly from `original`, `modified`,
 and any explicit full-document expectations in the case. For SuperDoc fixtures,
-Word first reads the original pinned source document; the target must occur
-exactly once, and the accepted expectation is formed by replacing that unique
-target in Word's own source text. The corpus packager also hashes every package
-part other than the intentionally replaced `word/document.xml`.
+Word first reads the declared story from the original pinned source document;
+every target in a single or multi-change scenario must occur exactly once, and
+the accepted expectation is formed by applying those replacements to Word's own
+source text. Header scenarios use Word's header stories rather than body text.
+The corpus packager hashes every package part other than the one intentionally
+replaced by the scenario.
 
 This proves that Word can consume the package, recognizes the revision markup,
 and resolves Accept All and Reject All to the intended text. It does **not**
@@ -242,6 +260,19 @@ do not waive it merely because the COM text differential passed.
 
 ### AI-assisted Word visual preflight
 
+Generate repeatable three-view PDF evidence for every layout-sensitive
+synthetic fixture with:
+
+```powershell
+npm run test:word:visual
+```
+
+The command writes PDFs and `manifest.json` under ignored
+`tmp/word-visual-review/rendered/` storage. It verifies that Word opened each
+fixture and produced a non-empty, paginated rendering, but leaves the manifest
+certification and every visual judgment pending. To render only named cases,
+invoke `scripts/word-com-visual-suite.ps1 -Case case-one,case-two` directly.
+
 An AI agent with Windows computer control may also open the generated fixtures
 in the installed desktop Word application, switch among All Markup, Accept All,
 and Reject All views, capture screenshots, and inspect them for visible
@@ -257,6 +288,26 @@ Run an AI visual preflight:
 - when automated Word passes but the XML change is unusually broad; and
 - before asking a human to perform the release sample, so obvious failures are
   found first.
+
+For the focused real-document additions, run:
+
+```powershell
+npm run test:corpus:word:visual
+```
+
+This first runs the exact Word differential, then writes 33 PDFs and a pending
+manifest under ignored `tmp/superdoc-word-visual-review/rendered/` storage: three
+views for three list-focused batches, six table-focused batches, and two
+page-header cases. The long-document set includes 6,000+ word council minutes,
+an 8,000+ word zoning resolution, and a 59,000+ word prospectus with 180 tables.
+Each invocation packages its fixtures in a process-specific directory so
+a Word process left behind by an RPC disconnect cannot lock the next run's
+inputs. The runner ignores `RPC_E_DISCONNECTED` during post-export cleanup and
+restarts Word once when a disconnect interrupts an actual render. After Word
+finishes, the command rebuilds `docs/test-comparison-dashboard.html` from that
+exact process-specific fixture directory. The `Verified cached ...` messages
+refer only to the pinned source-document downloads; edited comparison DOCX
+files are regenerated on every run.
 
 The AI should use the same selection rules and checklist as a human, inspect at
 least the changed cases plus representative legal and administrative samples,
@@ -279,7 +330,9 @@ The corpus lane references selected documents from SuperDoc's
 [docx-corpus](https://docxcorp.us/) under ODC-By 1.0. Source documents are never
 committed. `tests/corpus/superdoc-english-legal-administrative.json` pins each
 reviewed source and observed SHA-256; `tests/corpus/superdoc-word-scenarios.json`
-defines one deterministic edit and records the structural coverage it adds.
+defines named deterministic scenarios and records the structural coverage they
+add. A source may support multiple scenarios when each one adds a distinct
+behavioral claim.
 
 To add a corpus case:
 
@@ -293,13 +346,18 @@ To add a corpus case:
 4. Inspect the document in Word and choose a target that occurs exactly once in
    Word's source text.
 5. Add the deterministic operation, shape, coverage labels, and review note to
-   `superdoc-word-scenarios.json`.
+   `superdoc-word-scenarios.json`. Use `key` plus `sourceId` when adding another
+   scenario for an already pinned source. Use `operations` for a multi-change
+   atomic batch, or `part: "word/header<N>.xml"` for a page-header revision.
 6. Run `npm test` for manifest/catalogue checks and `npm run test:corpus:word`
    for package hashing plus the Word Accept All/Reject All differential.
 
-The corpus packager starts from the original `.docx`, replaces only
-`word/document.xml`, and verifies every untouched ZIP part byte-for-byte before
-Word opens the result.
+The corpus packager starts from the original `.docx`, replaces only the declared
+revision part (`word/document.xml` by default, or a named header part), and
+verifies every untouched ZIP part byte-for-byte before Word opens the result.
+The Word oracle derives multi-change expectations by applying each independently
+declared replacement to Word's source text and reads header-story text separately
+for header cases.
 
 ## Choosing where a new test belongs
 

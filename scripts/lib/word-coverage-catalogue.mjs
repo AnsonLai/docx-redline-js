@@ -103,6 +103,18 @@ function corpusStructures(scenario) {
     return [...structures];
 }
 
+function corpusScenarioKey(scenario) {
+    return scenario.key || scenario.id;
+}
+
+function corpusSourceId(scenario) {
+    return scenario.sourceId || scenario.id;
+}
+
+function corpusOperations(scenario) {
+    return scenario.operations || [scenario.operation];
+}
+
 export function loadCoverageCatalogue() {
     const synthetic = WORD_TASK_CASES.map(testCase => {
         const identity = `synthetic:${testCase.name}`;
@@ -115,21 +127,30 @@ export function loadCoverageCatalogue() {
     });
 
     const corpus = corpusCatalogue.scenarios.map(scenario => {
-        const identity = `superdoc:${scenario.id}`;
-        const source = manifestById.get(scenario.id);
+        const scenarioKey = corpusScenarioKey(scenario);
+        const sourceId = corpusSourceId(scenario);
+        const identity = `superdoc:${scenarioKey}`;
+        const source = manifestById.get(sourceId);
         if (!source) throw new Error(`${identity}: source is absent from the pinned corpus manifest`);
-        if (scenario.operation.type !== 'replace') {
-            throw new Error(`${identity}: normalized replace task is unsupported by ${scenario.operation.type}`);
+        const operations = corpusOperations(scenario);
+        if (operations.some(operation => operation?.type !== 'replace')) {
+            throw new Error(`${identity}: corpus scenarios currently support replace operations only`);
         }
-        const declaredStructures = corpusCoverage.structuresByScenario[scenario.id];
+        const declaredStructures = corpusCoverage.structuresByScenario[scenarioKey];
         const supportedStructures = corpusStructures(scenario).sort();
         if (!declaredStructures || JSON.stringify([...declaredStructures].sort()) !== JSON.stringify(supportedStructures)) {
             throw new Error(`${identity}: declared structures do not match reviewed fixture labels`);
         }
         const metadata = sortCoverageMetadata(validateCoverageMetadata({
             ...corpusCoverage.defaults,
+            task: corpusCoverage.tasksByScenario?.[scenarioKey]
+                || (operations.length > 1 ? 'mixed-batch' : 'replace'),
             structures: declaredStructures
         }, identity));
+        const expectedTask = operations.length > 1 ? 'mixed-batch' : 'replace';
+        if (metadata.task !== expectedTask) {
+            throw new Error(`${identity}: task ${metadata.task} does not match ${operations.length} operation(s)`);
+        }
         return { identity, lane: 'superdoc', category: source.type, detail: scenario.shape, metadata };
     });
     const cases = [...synthetic, ...corpus];

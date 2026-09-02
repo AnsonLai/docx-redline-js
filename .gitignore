@@ -6,3 +6,4 @@ tmp/
 *.tgz
 .DS_Store
 .anson/
+docs/plans/

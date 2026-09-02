@@ -37,7 +37,6 @@
     { "task": "format", "structure": "table", "status": "planned", "reason": "Add format-only table-cell validation without conflating reconciliation.", "dependency": "Phase 3 table decisions" },
     { "task": "comment", "structure": "comment", "status": "planned", "reason": "The current comment case preserves an anchor but does not create a comment.", "dependency": "Comment operation Word exporter" },
     { "task": "list-change", "structure": "list", "status": "planned", "reason": "The Word catalogue does not yet package numbering output from a list-change operation.", "dependency": "Numbering artifact integration" },
-    { "task": "table-reconciliation", "structure": "table", "status": "planned", "reason": "The current table case replaces one cell and is not table reconciliation.", "dependency": "Table reconciliation Word exporter" },
-    { "task": "mixed-batch", "structure": "table", "status": "planned", "reason": "Add an atomic mixed batch spanning paragraph and table targets.", "dependency": "Phase 3 standalone runner matrix" }
+    { "task": "table-reconciliation", "structure": "table", "status": "planned", "reason": "The current table case replaces one cell and is not table reconciliation.", "dependency": "Table reconciliation Word exporter" }
   ]
 }

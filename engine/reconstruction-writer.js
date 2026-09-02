@@ -55,11 +55,22 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
 
     let currentOriginalIndex = 0;
     let currentInsertOffset = 0;
+    // A replacement is represented as one or more deletions followed by an
+    // insertion. Remember where that deleted range began so replacement text
+    // inherits the formatting at the start of the range, rather than the last
+    // deleted character (which may be a superscript ordinal, footnote-style
+    // run, or another narrow formatting boundary).
+    let pendingReplacementStart = null;
     const emittedCommentMarkers = new WeakSet();
 
     for (const [op, text] of diffs) {
         if (op === 0 || op === -1) {
             const type = op === 0 ? 'equal' : 'delete';
+            if (op === 0) {
+                pendingReplacementStart = null;
+            } else if (pendingReplacementStart === null) {
+                pendingReplacementStart = currentOriginalIndex;
+            }
             let offset = 0;
 
             while (offset < text.length) {
@@ -101,9 +112,12 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
         }
 
         if (op === 1) {
-            const properties = currentOriginalIndex > 0 && !isParagraphStart(currentOriginalIndex)
-                ? getRunProperties(currentOriginalIndex - 1)
-                : getRunProperties(currentOriginalIndex);
+            const propertyIndex = pendingReplacementStart !== null
+                ? pendingReplacementStart
+                : (currentOriginalIndex > 0 && !isParagraphStart(currentOriginalIndex)
+                    ? currentOriginalIndex - 1
+                    : currentOriginalIndex);
+            const properties = getRunProperties(propertyIndex);
 
             const appendResult = appendTextToCurrent(
                 xmlDoc,
@@ -127,6 +141,7 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
             );
             currentParagraph = appendResult.currentParagraph;
             currentInsertOffset += text.length;
+            pendingReplacementStart = null;
         }
     }
 

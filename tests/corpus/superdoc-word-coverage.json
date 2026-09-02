@@ -4,6 +4,17 @@
     "oracles": ["real-document-word"],
     "manualReview": { "status": "missing" }
   },
+  "tasksByScenario": {
+    "legal-multi-bullet-public-notice": "mixed-batch",
+    "administrative-multi-bullet-board-agenda": "mixed-batch",
+    "administrative-multi-table-council-minutes": "mixed-batch",
+    "administrative-multi-table-ppg-actions": "mixed-batch",
+    "legal-complex-zoning-list-table-batch": "mixed-batch",
+    "legal-bylaws-nested-list-batch": "mixed-batch",
+    "administrative-long-council-minutes-list-table-batch": "mixed-batch",
+    "administrative-long-planning-minutes-list-table-batch": "mixed-batch",
+    "legal-prospectus-multi-table-batch": "mixed-batch"
+  },
   "structuresByScenario": {
     "0f582727deba41aebc5643adda1ac39970360ef3aa2ba6a18e85203b092ac534": ["plain-paragraph", "section-boundary"],
     "6bc3b38986fc2163391dc0099a26640c566b801673c90e978d0edd5fb53a76eb": ["plain-paragraph", "list", "bookmark"],
@@ -24,6 +35,17 @@
     "a3b94b62e9505655d150eae21dc72bb99b37eda901bcb50516b7e9fded5ed33b": ["list", "table", "note", "header-footer"],
     "16151cbd92f85ef11bf8121cc6f1ce541970fdc57432f95951a3a3440635afe4": ["table", "section-boundary"],
     "fb0db04c803132968cc176f7cfb4927bc33c665e9671760ebf31cabd4c1a7766": ["table", "section-boundary"],
-    "77c33ab2ca57efd0d4afb87f08c45c88f3984256c3fd5fdf3e81f87a24644760": ["list", "section-boundary"]
+    "77c33ab2ca57efd0d4afb87f08c45c88f3984256c3fd5fdf3e81f87a24644760": ["list", "section-boundary"],
+    "legal-multi-bullet-public-notice": ["list"],
+    "administrative-multi-bullet-board-agenda": ["list", "section-boundary"],
+    "administrative-multi-table-council-minutes": ["table", "note", "header-footer"],
+    "administrative-multi-table-ppg-actions": ["table", "note", "header-footer"],
+    "administrative-page-header-date-correction": ["header-footer"],
+    "administrative-page-header-title-expansion": ["header-footer"],
+    "legal-complex-zoning-list-table-batch": ["list", "table", "header-footer", "section-boundary"],
+    "legal-bylaws-nested-list-batch": ["list", "table", "note", "header-footer"],
+    "administrative-long-council-minutes-list-table-batch": ["list", "table", "header-footer", "section-boundary"],
+    "administrative-long-planning-minutes-list-table-batch": ["list", "table", "header-footer"],
+    "legal-prospectus-multi-table-batch": ["table"]
   }
 }
