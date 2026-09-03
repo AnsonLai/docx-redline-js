@@ -108,6 +108,120 @@ const TABLE_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
   </w:body>
 </w:document>`;
 
+const NUMBERED_LIST_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}">
+  <w:body>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="7"/></w:numPr></w:pPr><w:r><w:t>Approve the agenda.</w:t></w:r></w:p>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="7"/></w:numPr></w:pPr><w:r><w:t>Review the financial report.</w:t></w:r></w:p>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="7"/></w:numPr></w:pPr><w:r><w:t>Confirm the next meeting date.</w:t></w:r></w:p>
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+
+const NESTED_LIST_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}">
+  <w:body>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="11"/></w:numPr></w:pPr><w:r><w:t>Disclosure obligations.</w:t></w:r></w:p>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="11"/></w:numPr></w:pPr><w:r><w:t>Notify affected parties.</w:t></w:r></w:p>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="11"/></w:numPr></w:pPr><w:r><w:t>Preserve supporting records.</w:t></w:r></w:p>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="11"/></w:numPr></w:pPr><w:r><w:t>Remediation obligations.</w:t></w:r></w:p>
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+
+const MIXED_STYLE_NUMBERING_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering xmlns:w="${NS_W}" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml">
+  <w:abstractNum w:abstractNumId="0" w15:restartNumberingAfterBreak="0">
+    <w:nsid w:val="71A1B101"/><w:multiLevelType w:val="hybridMultilevel"/><w:tmpl w:val="71A1B101"/>
+    <w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="upperRoman"/><w:lvlText w:val="%1."/><w:lvlJc w:val="left"/><w:pPr><w:tabs><w:tab w:val="num" w:pos="720"/></w:tabs><w:ind w:left="720" w:hanging="360"/></w:pPr><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/></w:rPr></w:lvl>
+    <w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="lowerRoman"/><w:lvlText w:val="%2."/><w:lvlJc w:val="left"/><w:pPr><w:tabs><w:tab w:val="num" w:pos="1440"/></w:tabs><w:ind w:left="1440" w:hanging="360"/></w:pPr><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/></w:rPr></w:lvl>
+    <w:lvl w:ilvl="2"><w:start w:val="1"/><w:numFmt w:val="lowerLetter"/><w:lvlText w:val="(%3)"/><w:lvlJc w:val="left"/><w:pPr><w:tabs><w:tab w:val="num" w:pos="2160"/></w:tabs><w:ind w:left="2160" w:hanging="360"/></w:pPr><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/></w:rPr></w:lvl>
+    <w:lvl w:ilvl="3"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="2880" w:hanging="360"/></w:pPr></w:lvl>
+    <w:lvl w:ilvl="4"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="3600" w:hanging="360"/></w:pPr></w:lvl>
+    <w:lvl w:ilvl="5"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="4320" w:hanging="360"/></w:pPr></w:lvl>
+    <w:lvl w:ilvl="6"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="5040" w:hanging="360"/></w:pPr></w:lvl>
+    <w:lvl w:ilvl="7"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="5760" w:hanging="360"/></w:pPr></w:lvl>
+    <w:lvl w:ilvl="8"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="6480" w:hanging="360"/></w:pPr></w:lvl>
+  </w:abstractNum>
+  <w:abstractNum w:abstractNumId="1" w15:restartNumberingAfterBreak="0">
+    <w:nsid w:val="71A1B102"/><w:multiLevelType w:val="hybridMultilevel"/><w:tmpl w:val="71A1B102"/>
+    <w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="upperLetter"/><w:lvlText w:val="%1."/><w:lvlJc w:val="left"/><w:pPr><w:tabs><w:tab w:val="num" w:pos="720"/></w:tabs><w:ind w:left="720" w:hanging="360"/></w:pPr><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/></w:rPr></w:lvl>
+    <w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="-"/><w:lvlJc w:val="left"/><w:pPr><w:tabs><w:tab w:val="num" w:pos="1440"/></w:tabs><w:ind w:left="1440" w:hanging="360"/></w:pPr><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/></w:rPr></w:lvl>
+    <w:lvl w:ilvl="2"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="2160" w:hanging="360"/></w:pPr></w:lvl>
+    <w:lvl w:ilvl="3"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="2880" w:hanging="360"/></w:pPr></w:lvl>
+    <w:lvl w:ilvl="4"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="3600" w:hanging="360"/></w:pPr></w:lvl>
+    <w:lvl w:ilvl="5"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="4320" w:hanging="360"/></w:pPr></w:lvl>
+    <w:lvl w:ilvl="6"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="5040" w:hanging="360"/></w:pPr></w:lvl>
+    <w:lvl w:ilvl="7"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="5760" w:hanging="360"/></w:pPr></w:lvl>
+    <w:lvl w:ilvl="8"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="6480" w:hanging="360"/></w:pPr></w:lvl>
+  </w:abstractNum>
+  <w:abstractNum w:abstractNumId="2" w15:restartNumberingAfterBreak="0">
+    <w:nsid w:val="71A1B103"/><w:multiLevelType w:val="singleLevel"/><w:tmpl w:val="71A1B103"/>
+    <w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:tabs><w:tab w:val="num" w:pos="720"/></w:tabs><w:ind w:left="720" w:hanging="360"/></w:pPr><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/></w:rPr></w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="5"><w:abstractNumId w:val="0"/></w:num>
+  <w:num w:numId="6"><w:abstractNumId w:val="1"/></w:num>
+  <w:num w:numId="7"><w:abstractNumId w:val="2"/></w:num>
+</w:numbering>`;
+
+const ROMAN_HIERARCHY_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}">
+  <w:body>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="5"/></w:numPr></w:pPr><w:r><w:t>Policy foundations</w:t></w:r></w:p>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="5"/></w:numPr></w:pPr><w:r><w:t>Initial review</w:t></w:r></w:p>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="2"/><w:numId w:val="5"/></w:numPr></w:pPr><w:r><w:t>Submit written notice</w:t></w:r></w:p>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="5"/></w:numPr></w:pPr><w:r><w:t>Final review</w:t></w:r></w:p>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="5"/></w:numPr></w:pPr><w:r><w:t>Enforcement</w:t></w:r></w:p>
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+
+const ALPHA_DASH_LIST_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}">
+  <w:body>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="6"/></w:numPr></w:pPr><w:r><w:t>Opening business</w:t></w:r></w:p>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="6"/></w:numPr></w:pPr><w:r><w:t>Roll call</w:t></w:r></w:p>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="6"/></w:numPr></w:pPr><w:r><w:t>Approve prior minutes</w:t></w:r></w:p>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="6"/></w:numPr></w:pPr><w:r><w:t>Reports</w:t></w:r></w:p>
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+
+const SYMBOL_BULLET_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}">
+  <w:body>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="7"/></w:numPr></w:pPr><w:r><w:t>Verify identity</w:t></w:r></w:p>
+    <w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="7"/></w:numPr></w:pPr><w:r><w:t>Store the audit record</w:t></w:r></w:p>
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+
+const RECONCILIATION_TABLE_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}">
+  <w:body>
+    <w:tbl>
+      <w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr>
+      <w:tblGrid><w:gridCol w:w="2400"/><w:gridCol w:w="2400"/><w:gridCol w:w="1800"/></w:tblGrid>
+      <w:tr>
+        <w:tc><w:p><w:r><w:t>Item</w:t></w:r></w:p></w:tc>
+        <w:tc><w:p><w:r><w:t>Owner</w:t></w:r></w:p></w:tc>
+        <w:tc><w:p><w:r><w:t>Status</w:t></w:r></w:p></w:tc>
+      </w:tr>
+      <w:tr>
+        <w:tc><w:p><w:r><w:t>Budget review</w:t></w:r></w:p></w:tc>
+        <w:tc><w:p><w:r><w:t>Finance</w:t></w:r></w:p></w:tc>
+        <w:tc><w:p><w:r><w:t>Pending</w:t></w:r></w:p></w:tc>
+      </w:tr>
+      <w:tr>
+        <w:tc><w:p><w:r><w:t>Policy update</w:t></w:r></w:p></w:tc>
+        <w:tc><w:p><w:r><w:t>Legal</w:t></w:r></w:p></w:tc>
+        <w:tc><w:p><w:r><w:t>Draft</w:t></w:r></w:p></w:tc>
+      </w:tr>
+    </w:tbl>
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+
 const TAB_ALIGNED_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="${NS_W}">
   <w:body>
@@ -440,6 +554,260 @@ const WORD_TASK_CASE_DEFINITIONS = [
         expectedAcceptedText: 'Agency\nStatus\n\nFinance\nApproved',
         expectedRejectedText: 'Agency\nStatus\n\nFinance\nPending',
         requiredElements: { tbl: 1, tr: 2, tc: 4 }
+    },
+    {
+        name: 'administrative-list-change-append-item',
+        category: 'administrative',
+        task: 'append-numbered-list-item',
+        sourceDocumentXml: NUMBERED_LIST_DOCUMENT,
+        original: 'Approve the agenda.',
+        modified: '1. Approve the agenda.\n2. Record declarations of interest.',
+        operation: {
+            type: 'list-change',
+            target: 'Approve the agenda.',
+            modified: '1. Approve the agenda.\n2. Record declarations of interest.'
+        },
+        assertionMode: 'contains',
+        expectedAcceptedContains: ['Approve the agenda.', 'Record declarations of interest.', 'Review the financial report.'],
+        expectedAcceptedAbsent: [],
+        expectedRejectedContains: ['Approve the agenda.', 'Review the financial report.'],
+        expectedRejectedAbsent: ['Record declarations of interest.'],
+        requiredElements: { numPr: 4 }
+    },
+    {
+        name: 'legal-list-change-append-multiple-items',
+        category: 'legal',
+        task: 'append-multiple-numbered-list-items',
+        sourceDocumentXml: NUMBERED_LIST_DOCUMENT,
+        original: 'Review the financial report.',
+        modified: '1. Review the financial report.\n2. Confirm delegated authority.\n3. Record the approval threshold.',
+        operation: {
+            type: 'list-change',
+            target: 'Review the financial report.',
+            modified: '1. Review the financial report.\n2. Confirm delegated authority.\n3. Record the approval threshold.'
+        },
+        assertionMode: 'contains',
+        expectedAcceptedContains: ['Review the financial report.', 'Confirm delegated authority.', 'Record the approval threshold.'],
+        expectedAcceptedAbsent: [],
+        expectedRejectedContains: ['Review the financial report.', 'Confirm the next meeting date.'],
+        expectedRejectedAbsent: ['Confirm delegated authority.', 'Record the approval threshold.'],
+        requiredElements: { numPr: 5 }
+    },
+    {
+        name: 'administrative-list-change-nested-child',
+        category: 'administrative',
+        task: 'insert-nested-list-child',
+        sourceDocumentXml: NESTED_LIST_DOCUMENT,
+        original: 'Disclosure obligations.',
+        modified: '1. Disclosure obligations.\n  - Escalate unresolved notifications.',
+        operation: {
+            type: 'list-change',
+            target: 'Disclosure obligations.',
+            modified: '1. Disclosure obligations.\n  - Escalate unresolved notifications.'
+        },
+        assertionMode: 'contains',
+        expectedAcceptedContains: ['Disclosure obligations.', 'Escalate unresolved notifications.', 'Notify affected parties.'],
+        expectedAcceptedAbsent: [],
+        expectedRejectedContains: ['Disclosure obligations.', 'Notify affected parties.'],
+        expectedRejectedAbsent: ['Escalate unresolved notifications.'],
+        requiredElements: { numPr: 5 }
+    },
+    {
+        name: 'legal-list-change-middle-range-insertion',
+        category: 'legal',
+        task: 'insert-between-existing-list-items',
+        sourceDocumentXml: NESTED_LIST_DOCUMENT,
+        original: 'Notify affected parties.\nPreserve supporting records.',
+        modified: '- Notify affected parties.\n- Document the notification date.\n- Preserve supporting records.',
+        operation: {
+            type: 'list-change',
+            target: 'Notify affected parties.\nPreserve supporting records.',
+            modified: '- Notify affected parties.\n- Document the notification date.\n- Preserve supporting records.'
+        },
+        assertionMode: 'contains',
+        expectedAcceptedContains: ['Notify affected parties.', 'Document the notification date.', 'Preserve supporting records.'],
+        expectedAcceptedAbsent: [],
+        expectedRejectedContains: ['Notify affected parties.', 'Preserve supporting records.'],
+        expectedRejectedAbsent: ['Document the notification date.'],
+        requiredElements: { numPr: 5 }
+    },
+    {
+        name: 'legal-list-change-upper-roman-section',
+        category: 'legal',
+        task: 'append-upper-roman-section',
+        sourceDocumentXml: ROMAN_HIERARCHY_DOCUMENT,
+        original: 'Policy foundations',
+        modified: 'I. Policy foundations\nII. Definitions and scope',
+        operation: { type: 'list-change', target: 'Policy foundations', modified: 'I. Policy foundations\nII. Definitions and scope' },
+        assertionMode: 'contains',
+        expectedAcceptedContains: ['Policy foundations', 'Definitions and scope', 'Enforcement'],
+        expectedAcceptedAbsent: [],
+        expectedRejectedContains: ['Policy foundations', 'Enforcement'],
+        expectedRejectedAbsent: ['Definitions and scope'],
+        packageParts: { numberingXml: MIXED_STYLE_NUMBERING_XML },
+        requiredNumberingFormats: ['upperRoman'],
+        requiredElements: { numPr: 6 }
+    },
+    {
+        name: 'legal-list-change-lower-roman-subclause',
+        category: 'legal',
+        task: 'append-lower-roman-subclause',
+        sourceDocumentXml: ROMAN_HIERARCHY_DOCUMENT,
+        original: 'Initial review',
+        modified: 'i. Initial review\nii. Record the reviewer decision',
+        operation: { type: 'list-change', target: 'Initial review', modified: 'i. Initial review\nii. Record the reviewer decision' },
+        assertionMode: 'contains',
+        expectedAcceptedContains: ['Initial review', 'Record the reviewer decision', 'Final review'],
+        expectedAcceptedAbsent: [],
+        expectedRejectedContains: ['Initial review', 'Final review'],
+        expectedRejectedAbsent: ['Record the reviewer decision'],
+        packageParts: { numberingXml: MIXED_STYLE_NUMBERING_XML },
+        requiredNumberingFormats: ['lowerRoman'],
+        requiredElements: { numPr: 6 }
+    },
+    {
+        name: 'legal-list-change-parenthesized-lower-letter',
+        category: 'legal',
+        task: 'append-parenthesized-lower-letter-item',
+        sourceDocumentXml: ROMAN_HIERARCHY_DOCUMENT,
+        original: 'Submit written notice',
+        modified: '(a) Submit written notice\n(b) Preserve proof of delivery',
+        operation: { type: 'list-change', target: 'Submit written notice', modified: '(a) Submit written notice\n(b) Preserve proof of delivery' },
+        assertionMode: 'contains',
+        expectedAcceptedContains: ['Submit written notice', 'Preserve proof of delivery', 'Final review'],
+        expectedAcceptedAbsent: [],
+        expectedRejectedContains: ['Submit written notice', 'Final review'],
+        expectedRejectedAbsent: ['Preserve proof of delivery'],
+        packageParts: { numberingXml: MIXED_STYLE_NUMBERING_XML },
+        requiredNumberingFormats: ['lowerLetter'],
+        requiredElements: { numPr: 6 }
+    },
+    {
+        name: 'administrative-list-change-upper-letter-agenda',
+        category: 'administrative',
+        task: 'append-upper-letter-agenda-section',
+        sourceDocumentXml: ALPHA_DASH_LIST_DOCUMENT,
+        original: 'Opening business',
+        modified: 'A. Opening business\nB. Public comment',
+        operation: { type: 'list-change', target: 'Opening business', modified: 'A. Opening business\nB. Public comment' },
+        assertionMode: 'contains',
+        expectedAcceptedContains: ['Opening business', 'Public comment', 'Reports'],
+        expectedAcceptedAbsent: [],
+        expectedRejectedContains: ['Opening business', 'Reports'],
+        expectedRejectedAbsent: ['Public comment'],
+        packageParts: { numberingXml: MIXED_STYLE_NUMBERING_XML },
+        requiredNumberingFormats: ['upperLetter'],
+        requiredElements: { numPr: 5 }
+    },
+    {
+        name: 'administrative-list-change-dash-bullet',
+        category: 'administrative',
+        task: 'append-dash-bullet',
+        sourceDocumentXml: ALPHA_DASH_LIST_DOCUMENT,
+        original: 'Roll call',
+        modified: '- Roll call\n- Confirm quorum',
+        operation: { type: 'list-change', target: 'Roll call', modified: '- Roll call\n- Confirm quorum' },
+        assertionMode: 'contains',
+        expectedAcceptedContains: ['Roll call', 'Confirm quorum', 'Approve prior minutes'],
+        expectedAcceptedAbsent: [],
+        expectedRejectedContains: ['Roll call', 'Approve prior minutes'],
+        expectedRejectedAbsent: ['Confirm quorum'],
+        packageParts: { numberingXml: MIXED_STYLE_NUMBERING_XML },
+        requiredNumberingFormats: ['bullet'],
+        requiredElements: { numPr: 5 }
+    },
+    {
+        name: 'legal-list-change-symbol-bullet-multiple',
+        category: 'legal',
+        task: 'append-multiple-symbol-bullets',
+        sourceDocumentXml: SYMBOL_BULLET_DOCUMENT,
+        original: 'Verify identity',
+        modified: '- Verify identity\n- Confirm authority\n- Capture the verification date',
+        operation: { type: 'list-change', target: 'Verify identity', modified: '- Verify identity\n- Confirm authority\n- Capture the verification date' },
+        assertionMode: 'contains',
+        expectedAcceptedContains: ['Verify identity', 'Confirm authority', 'Capture the verification date', 'Store the audit record'],
+        expectedAcceptedAbsent: [],
+        expectedRejectedContains: ['Verify identity', 'Store the audit record'],
+        expectedRejectedAbsent: ['Confirm authority', 'Capture the verification date'],
+        packageParts: { numberingXml: MIXED_STYLE_NUMBERING_XML },
+        requiredNumberingFormats: ['bullet'],
+        requiredElements: { numPr: 4 }
+    },
+    {
+        name: 'administrative-table-reconciliation-cell-update',
+        category: 'administrative',
+        task: 'reconcile-table-cell-update',
+        sourceDocumentXml: RECONCILIATION_TABLE_DOCUMENT,
+        original: 'Budget review',
+        modified: '| Item | Owner | Status |\n| --- | --- | --- |\n| Budget review | Finance | Approved |\n| Policy update | Legal | Draft |',
+        operation: {
+            type: 'table-reconciliation',
+            target: 'Budget review',
+            modified: '| Item | Owner | Status |\n| --- | --- | --- |\n| Budget review | Finance | Approved |\n| Policy update | Legal | Draft |'
+        },
+        assertionMode: 'contains',
+        expectedAcceptedContains: ['Budget review', 'Approved', 'Policy update'],
+        expectedAcceptedAbsent: ['Pending'],
+        expectedRejectedContains: ['Budget review', 'Pending', 'Policy update'],
+        expectedRejectedAbsent: ['Approved'],
+        requiredElements: { tbl: 1, tr: 3, tc: 9 }
+    },
+    {
+        name: 'legal-table-reconciliation-row-insertion',
+        category: 'legal',
+        task: 'reconcile-table-row-insertion',
+        sourceDocumentXml: RECONCILIATION_TABLE_DOCUMENT,
+        original: 'Budget review',
+        modified: '| Item | Owner | Status |\n| --- | --- | --- |\n| Budget review | Finance | Pending |\n| Compliance filing | Legal | Scheduled |\n| Policy update | Legal | Draft |',
+        operation: {
+            type: 'table-reconciliation',
+            target: 'Budget review',
+            modified: '| Item | Owner | Status |\n| --- | --- | --- |\n| Budget review | Finance | Pending |\n| Compliance filing | Legal | Scheduled |\n| Policy update | Legal | Draft |'
+        },
+        assertionMode: 'contains',
+        expectedAcceptedContains: ['Budget review', 'Compliance filing', 'Scheduled', 'Policy update'],
+        expectedAcceptedAbsent: [],
+        expectedRejectedContains: ['Budget review', 'Policy update'],
+        expectedRejectedAbsent: ['Compliance filing', 'Scheduled'],
+        requiredElements: { tbl: 1, tr: 4, tc: 12 }
+    },
+    {
+        name: 'administrative-table-reconciliation-row-deletion',
+        category: 'administrative',
+        task: 'reconcile-table-row-deletion',
+        sourceDocumentXml: RECONCILIATION_TABLE_DOCUMENT,
+        original: 'Budget review',
+        modified: '| Item | Owner | Status |\n| --- | --- | --- |\n| Budget review | Finance | Pending |',
+        operation: {
+            type: 'table-reconciliation',
+            target: 'Budget review',
+            modified: '| Item | Owner | Status |\n| --- | --- | --- |\n| Budget review | Finance | Pending |'
+        },
+        assertionMode: 'contains',
+        expectedAcceptedContains: ['Budget review', 'Finance', 'Pending'],
+        expectedAcceptedAbsent: ['Policy update', 'Draft'],
+        expectedRejectedContains: ['Budget review', 'Policy update', 'Draft'],
+        expectedRejectedAbsent: [],
+        requiredElements: { tbl: 1, tr: 3, tc: 9 }
+    },
+    {
+        name: 'legal-table-reconciliation-multi-cell-update',
+        category: 'legal',
+        task: 'reconcile-multiple-table-cells',
+        sourceDocumentXml: RECONCILIATION_TABLE_DOCUMENT,
+        original: 'Budget review',
+        modified: '| Item | Owner | Status |\n| --- | --- | --- |\n| Budget review | Treasury | Complete |\n| Policy update | Compliance | Approved |',
+        operation: {
+            type: 'table-reconciliation',
+            target: 'Budget review',
+            modified: '| Item | Owner | Status |\n| --- | --- | --- |\n| Budget review | Treasury | Complete |\n| Policy update | Compliance | Approved |'
+        },
+        assertionMode: 'contains',
+        expectedAcceptedContains: ['Treasury', 'Complete', 'Compliance', 'Approved'],
+        expectedAcceptedAbsent: ['Finance', 'Pending', 'Draft'],
+        expectedRejectedContains: ['Finance', 'Pending', 'Legal', 'Draft'],
+        expectedRejectedAbsent: ['Treasury', 'Complete', 'Compliance', 'Approved'],
+        requiredElements: { tbl: 1, tr: 3, tc: 9 }
     },
     {
         name: 'administrative-tab-aligned-status',

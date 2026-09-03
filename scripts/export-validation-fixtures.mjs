@@ -61,7 +61,7 @@ for (const testCase of cases) {
     )
     : await applyOperationToDocumentXml(
       sourceDocumentXml,
-      { type: 'redline', target: testCase.original, modified: testCase.modified },
+      testCase.operation || { type: 'redline', target: testCase.original, modified: testCase.modified },
       'Validation',
       null,
       operationOptions
@@ -115,6 +115,17 @@ for (const testCase of cases) {
       }
     }
     if (missingRequiredElement) continue;
+  }
+
+  if (testCase.requiredNumberingFormats) {
+    const numberingXml = testCase.packageParts?.numberingXml || result.numberingXml || '';
+    for (const format of testCase.requiredNumberingFormats) {
+      if (!numberingXml.includes(`<w:numFmt w:val="${format}"`)) {
+        console.error(`FAIL ${testCase.name}: required numbering format ${format} is missing`);
+        failures++;
+        continue;
+      }
+    }
   }
 
   if (testCase.requiredElementParents || testCase.requiredElementText) {
@@ -205,10 +216,18 @@ for (const testCase of cases) {
     task: testCase.task,
     coverageMetadata: testCase.coverageMetadata,
     textFidelity: testCase.textFidelity || 'exact',
+    assertionMode: testCase.assertionMode || 'exact',
     expectedAcceptedText: testCase.expectedAcceptedText ?? preprocessMarkdown(testCase.modified).cleanText,
     expectedRejectedText: testCase.expectedRejectedText ?? testCase.original,
+    ...(testCase.assertionMode === 'contains' ? {
+      expectedAcceptedContains: testCase.expectedAcceptedContains || [],
+      expectedAcceptedAbsent: testCase.expectedAcceptedAbsent || [],
+      expectedRejectedContains: testCase.expectedRejectedContains || [],
+      expectedRejectedAbsent: testCase.expectedRejectedAbsent || []
+    } : {}),
     sourceText: testCase.sourceText || testCase.original,
     modifiedText: preprocessMarkdown(testCase.modified).cleanText,
+    requiredNumberingFormats: testCase.requiredNumberingFormats || [],
     untouchedPartSha256
   };
   writeFileSync(join(outputDir, `${testCase.name}.expected.json`), `${JSON.stringify(expected, null, 2)}\n`, 'utf8');

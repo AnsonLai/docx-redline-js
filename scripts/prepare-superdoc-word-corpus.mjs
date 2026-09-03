@@ -82,6 +82,66 @@ function countMatches(text, pattern) {
     return Array.from(text.matchAll(pattern)).length;
 }
 
+function directWordChild(node, localName) {
+    return Array.from(node?.childNodes || []).find(child =>
+        child.nodeType === 1 && child.localName === localName
+    ) || null;
+}
+
+function wordAttribute(node, localName) {
+    return node?.getAttribute(`w:${localName}`) || node?.getAttribute(localName) || '';
+}
+
+function normalizedNodeText(node) {
+    return Array.from(node?.getElementsByTagName('*') || [])
+        .filter(child => child.localName === 't')
+        .map(child => child.textContent || '')
+        .join('')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function assertSourceListStyle(scenario, sourceEntries, documentXml) {
+    const expected = scenario.listStyleExpectation;
+    if (!expected) return;
+
+    const numberingXml = sourceEntries.get('word/numbering.xml')?.toString('utf8');
+    assert.ok(numberingXml, `${scenario.key}: source has no word/numbering.xml`);
+
+    const target = String((scenario.operations || [scenario.operation])[0].target)
+        .replace(/\s+/g, ' ')
+        .trim();
+    const document = new DOMParser().parseFromString(documentXml, 'application/xml');
+    const matchingParagraphs = Array.from(document.getElementsByTagName('*'))
+        .filter(node => node.localName === 'p' && normalizedNodeText(node) === target);
+    assert.equal(matchingParagraphs.length, 1,
+        `${scenario.key}: expected one exact source list paragraph, found ${matchingParagraphs.length}`);
+
+    const pPr = directWordChild(matchingParagraphs[0], 'pPr');
+    const numPr = directWordChild(pPr, 'numPr');
+    const numId = wordAttribute(directWordChild(numPr, 'numId'), 'val');
+    const level = Number.parseInt(wordAttribute(directWordChild(numPr, 'ilvl'), 'val') || '0', 10);
+    assert.ok(numId, `${scenario.key}: target paragraph has no direct numbering binding`);
+    assert.equal(level, expected.level, `${scenario.key}: unexpected target list level`);
+
+    const numbering = new DOMParser().parseFromString(numberingXml, 'application/xml');
+    const num = Array.from(numbering.getElementsByTagName('*'))
+        .find(node => node.localName === 'num' && wordAttribute(node, 'numId') === numId);
+    const abstractNumId = wordAttribute(directWordChild(num, 'abstractNumId'), 'val');
+    const abstractNum = Array.from(numbering.getElementsByTagName('*'))
+        .find(node => node.localName === 'abstractNum'
+            && wordAttribute(node, 'abstractNumId') === abstractNumId);
+    const levelNode = Array.from(abstractNum?.childNodes || [])
+        .find(node => node.nodeType === 1 && node.localName === 'lvl'
+            && Number.parseInt(wordAttribute(node, 'ilvl') || '0', 10) === level);
+    const format = wordAttribute(directWordChild(levelNode, 'numFmt'), 'val');
+    const levelText = wordAttribute(directWordChild(levelNode, 'lvlText'), 'val');
+    assert.equal(format, expected.format, `${scenario.key}: unexpected source numbering format`);
+    if (expected.levelText !== undefined) {
+        assert.equal(levelText, expected.levelText, `${scenario.key}: unexpected source list marker text`);
+    }
+}
+
 function assertSourceComplexity(scenario, source, sourceEntries, documentXml) {
     const expected = scenario.structuralExpectations;
     if (!expected) return;
@@ -132,6 +192,7 @@ for (const [index, scenario] of catalogue.scenarios.entries()) {
     const documentXml = sourceEntries.get('word/document.xml')?.toString('utf8');
     assert.ok(documentXml, `${scenarioKey} has no word/document.xml`);
     assertSourceComplexity(scenario, source, sourceEntries, documentXml);
+    assertSourceListStyle(scenario, sourceEntries, documentXml);
 
     let trackedXml;
     if (revisionPart === 'word/document.xml') {
@@ -159,7 +220,8 @@ for (const [index, scenario] of catalogue.scenarios.entries()) {
     }
 
     assert.ok(
-        trackedXml.includes('<w:ins') || trackedXml.includes('<w:del'),
+        trackedXml.includes('<w:ins') || trackedXml.includes('<w:del')
+        || trackedXml.includes('<w:rPrChange') || trackedXml.includes('<w:pPrChange'),
         `${scenarioKey}: tracked revision markup missing`
     );
     assertInsertionFormatting(scenario, trackedXml);
@@ -184,15 +246,23 @@ for (const [index, scenario] of catalogue.scenarios.entries()) {
         sourceId,
         revisionPart,
         assertionScope: revisionPart.startsWith('word/header') ? 'headers' : 'document',
-        assertionMode: 'word-source-exact',
+        assertionMode: scenario.assertions ? 'contains' : 'word-source-exact',
+        ...(scenario.assertions ? {
+            expectedAcceptedContains: scenario.assertions.acceptedContains,
+            expectedAcceptedAbsent: scenario.assertions.acceptedAbsent,
+            expectedRejectedContains: scenario.assertions.rejectedContains,
+            expectedRejectedAbsent: scenario.assertions.rejectedAbsent
+        } : {}),
         replacements: operations.map(operation => ({
             originalTarget: operation.target,
-            modifiedTarget: operation.modified
+            modifiedTarget: operation.type === 'format' ? operation.target : operation.modified
         })),
         originalTarget: operations[0].target,
-        modifiedTarget: operations[0].modified,
+        modifiedTarget: operations[0].type === 'format' ? operations[0].target : operations[0].modified,
         sourceText: operations.map(operation => operation.target).join('\n'),
-        expectedAcceptedText: operations.map(operation => operation.modified).join('\n'),
+        expectedAcceptedText: operations.map(operation =>
+            operation.type === 'format' ? operation.target : operation.modified
+        ).join('\n'),
         expectedRejectedText: operations.map(operation => operation.target).join('\n'),
         shape: scenario.shape,
         coverage: scenario.coverage,

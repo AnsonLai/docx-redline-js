@@ -121,6 +121,9 @@ function shouldPromoteBulletInsertionsToChildDepth(parsedItems, normalizedTarget
     }
 
     if (firstItem?.kind === 'list' && firstItem.markerType === 'numbered') {
+        const firstLevel = firstItem.level || 0;
+        const alreadyIndented = trailingListItems.some(item => (item.level || 0) > firstLevel);
+        if (alreadyIndented) return false;
         return isNormalizedTextEqual(firstItem.text, normalizedTargetText);
     }
 

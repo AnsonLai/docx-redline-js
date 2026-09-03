@@ -70,6 +70,8 @@ function assertSyntheticClaim(testCase, structure) {
 }
 
 function syntheticTask(testCase) {
+    if (testCase.operation?.type === 'list-change') return 'list-change';
+    if (testCase.operation?.type === 'table-reconciliation') return 'table-reconciliation';
     if (testCase.expectAtomicRollback) return 'mixed-batch';
     if (testCase.expectNoOp) return 'accept-reject';
     if (testCase.task.startsWith('apply-')) return 'format';
@@ -95,7 +97,8 @@ function corpusStructures(scenario) {
         [['footnotes-part'], 'note'],
         [['tabs'], 'tab-break'],
         [['field-adjacency'], 'field'],
-        [['multi-section', 'section-properties'], 'section-boundary']
+        [['multi-section', 'section-properties'], 'section-boundary'],
+        [['format-only', 'formatting', 'formatted-runs'], 'formatted-runs']
     ];
     for (const [sourceLabels, structure] of mappings) {
         if (sourceLabels.some(label => labels.has(label))) structures.add(structure);
@@ -133,23 +136,27 @@ export function loadCoverageCatalogue() {
         const source = manifestById.get(sourceId);
         if (!source) throw new Error(`${identity}: source is absent from the pinned corpus manifest`);
         const operations = corpusOperations(scenario);
-        if (operations.some(operation => operation?.type !== 'replace')) {
-            throw new Error(`${identity}: corpus scenarios currently support replace operations only`);
+        const supportedOperationTypes = new Set(['replace', 'format', 'list-change', 'table-reconciliation', 'insert', 'delete']);
+        for (const operation of operations) {
+            if (!supportedOperationTypes.has(operation?.type)) {
+                throw new Error(`${identity}: unsupported corpus operation type ${operation?.type}`);
+            }
         }
         const declaredStructures = corpusCoverage.structuresByScenario[scenarioKey];
         const supportedStructures = corpusStructures(scenario).sort();
         if (!declaredStructures || JSON.stringify([...declaredStructures].sort()) !== JSON.stringify(supportedStructures)) {
             throw new Error(`${identity}: declared structures do not match reviewed fixture labels`);
         }
+        const declaredTask = corpusCoverage.tasksByScenario?.[scenarioKey]
+            || (operations.length > 1 ? 'mixed-batch' : (operations[0]?.type || 'replace'));
         const metadata = sortCoverageMetadata(validateCoverageMetadata({
             ...corpusCoverage.defaults,
-            task: corpusCoverage.tasksByScenario?.[scenarioKey]
-                || (operations.length > 1 ? 'mixed-batch' : 'replace'),
+            task: declaredTask,
             structures: declaredStructures
         }, identity));
-        const expectedTask = operations.length > 1 ? 'mixed-batch' : 'replace';
+        const expectedTask = operations.length > 1 ? 'mixed-batch' : (operations[0]?.type || 'replace');
         if (metadata.task !== expectedTask) {
-            throw new Error(`${identity}: task ${metadata.task} does not match ${operations.length} operation(s)`);
+            throw new Error(`${identity}: task ${metadata.task} does not match operation type ${expectedTask}`);
         }
         return { identity, lane: 'superdoc', category: source.type, detail: scenario.shape, metadata };
     });

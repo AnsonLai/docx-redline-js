@@ -161,17 +161,21 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
         }
     });
 
+    let hasDocumentTarget = false;
+    let serializedDocumentOutput = '';
+
     containerFragments.forEach((fragment, container) => {
         const replacement = replacementContainers.get(container);
         const target = replacement || container;
 
         if (target.nodeType === 9) {
-            const firstChild = fragment.firstChild;
-            if (firstChild) {
-                target.appendChild(firstChild);
-                while (fragment.firstChild) {
-                    target.documentElement.appendChild(fragment.firstChild);
-                }
+            hasDocumentTarget = true;
+            if (fragment.childNodes.length === 1) {
+                target.appendChild(fragment.firstChild);
+            } else {
+                serializedDocumentOutput = Array.from(fragment.childNodes)
+                    .map(node => serializer.serializeToString(node))
+                    .join('');
             }
             return;
         }
@@ -184,7 +188,11 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
         }
     });
 
-    return { oxml: serializer.serializeToString(xmlDoc), hasChanges: true };
+    const oxml = (hasDocumentTarget && serializedDocumentOutput)
+        ? serializedDocumentOutput
+        : serializer.serializeToString(xmlDoc);
+
+    return { oxml, hasChanges: true };
 }
 
 function appendTextToCurrent(

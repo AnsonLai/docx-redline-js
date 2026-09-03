@@ -32,7 +32,7 @@ for (const structure of VISUAL_STRUCTURES) {
 const historicallyReviewed = WORD_TASK_CASES.filter(testCase =>
     testCase.coverageMetadata.oracles.includes('ai-word-visual-preflight')
 );
-assert.ok(historicallyReviewed.length >= 8);
+assert.ok(historicallyReviewed.length >= 22);
 assert.ok(historicallyReviewed.every(testCase => selected.includes(testCase)));
 
 const manifest = buildVisualReviewManifest();
@@ -69,14 +69,15 @@ assert.equal(written.cases[0].name, 'administrative-tab-aligned-status');
 assert.equal(written.certification.status, 'pending');
 
 const corpusSelected = selectCorpusVisualReviewCases();
-assert.equal(corpusSelected.length, 11);
-assert.equal(corpusSelected.filter(item => item.shape === 'list').length, 3);
-assert.equal(corpusSelected.filter(item => item.shape === 'table-form').length, 6);
+assert.equal(corpusSelected.length, 40);
+assert.equal(corpusSelected.filter(item => item.shape === 'list').length, 22);
+assert.equal(corpusSelected.filter(item => item.shape === 'table-form').length, 16);
 assert.equal(corpusSelected.filter(item => item.shape === 'page-header').length, 2);
+assert.equal(corpusSelected.filter(item => item.operationCount === 1).length, 31);
 assert.equal(corpusSelected.filter(item => item.operationCount === 3).length, 4);
 assert.equal(corpusSelected.filter(item => item.operationCount === 8).length, 5);
 const corpusManifest = buildCorpusVisualReviewManifest();
-assert.equal(corpusManifest.cases.length, 11);
+assert.equal(corpusManifest.cases.length, 40);
 assert.ok(corpusManifest.cases.every(item => item.identity.startsWith('superdoc:')));
 assert.ok(corpusManifest.cases.every(item => item.renderStatus === 'pending'));
 assert.throws(() => selectCorpusVisualReviewCases(['not-a-real-case']), /Unknown corpus visual-review case/);

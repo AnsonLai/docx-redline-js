@@ -8,6 +8,8 @@ Each case produces:
   XSD validation and manual inspection).
 - `<name>.docx` — a minimal package assembled by release tooling only (the
   published library still has no zip dependency).
+- `<name>.source.docx`, `<name>.accepted.docx`, and
+  `<name>.rejected.docx` — comparison states for the local HTML dashboard.
 - `<name>.expected.json` — the accept-all / reject-all plain-text outcomes
   derived from edit intent, used by external-consumer differential checks.
 

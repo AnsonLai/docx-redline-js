@@ -160,13 +160,43 @@
       "key": "administrative-multi-bullet-board-agenda",
       "sourceId": "77c33ab2ca57efd0d4afb87f08c45c88f3984256c3fd5fdf3e81f87a24644760",
       "shape": "list",
-      "coverage": ["board-agenda", "numbered-list", "multiple-changes", "section-properties"],
-      "review": "Reuses the reviewed public board agenda to exercise three tracked replacements across separate numbered agenda items.",
+      "coverage": ["board-agenda", "numbered-list", "nested-list", "multiple-changes", "multiple-list-insertions", "section-properties"],
+      "review": "Reuses the reviewed public board agenda to exercise a rich mix of bullet modifications: intra-bullet title modifications, multi-level nested sub-bullet insertions across two levels, and surgical run edits inside reports.",
       "operations": [
-        { "type": "replace", "target": "CALL MEETING TO ORDER", "modified": "CALL THE MEETING TO ORDER" },
-        { "type": "replace", "target": "APPROVAL OF MONTHLY FINANCIALS REPORT", "modified": "APPROVAL OF THE MONTHLY FINANCIAL REPORT" },
-        { "type": "replace", "target": "COMMENTS FROM THE FLOOR / CORRESPONDENCE FROM THE COMMUNITY", "modified": "COMMENTS FROM THE FLOOR AND COMMUNITY CORRESPONDENCE" }
-      ]
+        { "type": "replace", "target": "CALL MEETING TO ORDER", "modified": "CALL REGULAR TOWN BOARD MEETING TO ORDER" },
+        {
+          "type": "list-change",
+          "target": "Water District Report",
+          "modified": "2. Water District Report\n  - Infrastructure assessment and leak detection\n    - Acoustic pipe survey for Water District 1\n    - Main valve replacement schedule\n  - Meter replacement and telemetry upgrades\n    - Deploy one hundred twenty smart radio meters\n    - Master pump station telemetry calibration"
+        },
+        { "type": "replace", "target": "WWTP Report", "modified": "WWTP Quarterly Effluent Compliance and Flow Report" }
+      ],
+      "assertions": {
+        "acceptedContains": [
+          "CALL REGULAR TOWN BOARD MEETING TO ORDER",
+          "Infrastructure assessment and leak detection",
+          "Acoustic pipe survey for Water District 1",
+          "Main valve replacement schedule",
+          "Meter replacement and telemetry upgrades",
+          "Deploy one hundred twenty smart radio meters",
+          "Master pump station telemetry calibration",
+          "WWTP Quarterly Effluent Compliance and Flow Report"
+        ],
+        "acceptedAbsent": [
+          "CALL MEETING TO ORDER"
+        ],
+        "rejectedContains": [
+          "CALL MEETING TO ORDER",
+          "Water District Report",
+          "WWTP Report"
+        ],
+        "rejectedAbsent": [
+          "CALL REGULAR TOWN BOARD MEETING TO ORDER",
+          "Infrastructure assessment and leak detection",
+          "Acoustic pipe survey for Water District 1",
+          "WWTP Quarterly Effluent Compliance and Flow Report"
+        ]
+      }
     },
     {
       "key": "administrative-multi-table-council-minutes",
@@ -300,6 +330,680 @@
         { "type": "replace", "target": "Worst Peak-to-Valley Drawdown(1):", "modified": "Worst Peak-to-Valley Drawdown (1):" },
         { "type": "replace", "target": "Brokerage commissions and fees(4)", "modified": "Brokerage commissions and fees (4)" },
         { "type": "replace", "target": "Current Reports on Form 8-K filed with the SEC on January 28, 2022, March 31, 2022, May 18, 2022, March 10,2023.", "modified": "Current Reports on Form 8-K filed with the SEC on January 28, 2022, March 31, 2022, May 18, 2022, and March 10, 2023." }
+      ]
+    },
+    {
+      "key": "administrative-list-item-format",
+      "sourceId": "77c33ab2ca57efd0d4afb87f08c45c88f3984256c3fd5fdf3e81f87a24644760",
+      "shape": "list",
+      "coverage": ["board-agenda", "numbered-list", "format-only", "section-properties"],
+      "review": "Reviewed public town board agenda list fixture; formats a keyword in a numbered list item as bold with native tracked changes.",
+      "operations": [
+        {
+          "type": "format",
+          "target": "CALL MEETING TO ORDER",
+          "modified": "CALL **MEETING** TO ORDER"
+        }
+      ]
+    },
+    {
+      "key": "administrative-table-cell-format",
+      "sourceId": "570572edcfec94b990c61b91e21e103699a39b800c3165ad436d0fd07c7cd80e",
+      "shape": "table-form",
+      "coverage": ["council-minutes", "table-cell", "format-only", "header", "footer", "footnotes-part"],
+      "review": "Reviewed public parish council minutes table fixture; formats an invoice table header cell with italic styling in tracked changes.",
+      "operations": [
+        {
+          "type": "format",
+          "target": "Invoice date",
+          "modified": "*Invoice date*"
+        }
+      ]
+    },
+    {
+      "key": "administrative-table-reconciliation",
+      "sourceId": "a3b94b62e9505655d150eae21dc72bb99b37eda901bcb50516b7e9fded5ed33b",
+      "shape": "table-form",
+      "coverage": ["meeting-minutes", "tables", "header", "footer", "footnotes-part"],
+      "review": "Reviewed public patient participation group table fixture; exercises surgical table reconciliation against a markdown table representation.",
+      "operations": [
+        {
+          "type": "table-reconciliation",
+          "target": "Info on testing to be circulated",
+          "modified": "| Number | Description | Action | Owner | Status |\n| --- | --- | --- | --- | --- |\n| 1 | Updated testing info to be circulated | AJ will circulate weblink | AJ | Complete |\n| 2 | Clarification on planning for new surgery | LS to circulate email | LS | Complete |\n| 3 | Flu clinic dates | LS will forward proposed dates | LS | Complete |"
+        }
+      ],
+      "assertions": {
+        "acceptedContains": ["Updated testing info to be circulated", "Clarification on planning for new surgery", "Flu clinic dates"],
+        "acceptedAbsent": ["Info on testing to be circulated", "National GP Survey"],
+        "rejectedContains": ["Info on testing to be circulated", "National GP Survey"],
+        "rejectedAbsent": ["Updated testing info to be circulated"]
+      }
+    },
+    {
+      "key": "legal-list-change-item-addition",
+      "sourceId": "8b77c5c08f8f60da23cb76005854e38aac104be29c8eb1f29c620db07fe2addb",
+      "shape": "list",
+      "coverage": ["public-notice", "numbered-list"],
+      "review": "Reviewed public city ordinance notice list fixture; expands list structure with an added numbered ordinance section paragraph.",
+      "operations": [
+        {
+          "type": "list-change",
+          "target": "Parking or storing commercial vehicles, construction equipment, trailers, busses or boats (Sec. 22-24).",
+          "modified": "Parking or storing commercial vehicles, construction equipment, trailers, busses or boats (Sec. 22-24).\nParking on unpaved surfaces (Sec. 22-25)."
+        }
+      ]
+    },
+    {
+      "key": "legal-list-change-multiple-ordinance-additions",
+      "sourceId": "8b77c5c08f8f60da23cb76005854e38aac104be29c8eb1f29c620db07fe2addb",
+      "shape": "list",
+      "coverage": ["public-notice", "numbered-list", "multiple-list-insertions"],
+      "review": "Reviewed public city ordinance notice list fixture; inserts two consecutive ordinance entries while retaining the following native list items.",
+      "operations": [
+        {
+          "type": "list-change",
+          "target": "Parking or storing commercial vehicles, construction equipment, trailers, busses or boats (Sec. 22-24).",
+          "modified": "1. Parking or storing commercial vehicles, construction equipment, trailers, busses or boats (Sec. 22-24).\n2. Parking on unpaved surfaces (Sec. 22-25).\n3. Blocking public sidewalks with stored materials (Sec. 22-26)."
+        }
+      ],
+      "assertions": {
+        "acceptedContains": ["Parking on unpaved surfaces (Sec. 22-25).", "Blocking public sidewalks with stored materials (Sec. 22-26)."],
+        "acceptedAbsent": [],
+        "rejectedContains": ["Parking or storing commercial vehicles, construction equipment, trailers, busses or boats (Sec. 22-24)."],
+        "rejectedAbsent": ["Parking on unpaved surfaces (Sec. 22-25).", "Blocking public sidewalks with stored materials (Sec. 22-26)."]
+      }
+    },
+    {
+      "key": "administrative-list-change-board-agenda-child",
+      "sourceId": "77c33ab2ca57efd0d4afb87f08c45c88f3984256c3fd5fdf3e81f87a24644760",
+      "shape": "list",
+      "coverage": ["board-agenda", "nested-list", "multi-level-list", "native-numbering", "section-properties"],
+      "review": "Reviewed public town board agenda fixture; synthetically creates multi-level sub-bullets and sub-sub-bullets under item 3 with distinct numbering styles.",
+      "operations": [
+        {
+          "type": "list-change",
+          "target": "Greene County EMS Contract",
+          "modified": "3. Greene County EMS Contract\n  a. Service coverage and dispatch standards\n    i. Priority 1 response time benchmark\n    ii. Advanced life support staffing minimums\n  b. Municipal subsidy and quarterly cost allocation\n    i. Base annual contribution schedule\n    ii. Fuel surcharge adjustment formula\n  c. Equipment maintenance and vehicle readiness\n    i. Defibrillator telemetry calibration\n    ii. Winter tire and chain certification\n  d. Quality assurance and performance reporting\n    i. Monthly clinical run reviews\n    ii. Patient transport outcome metrics\n  e. Mutual aid and emergency surge protocol\n    i. Backup ambulance dispatch routing\n    ii. Mass casualty incident coordination\n  f. Inter-municipal legal compliance\n    i. County attorney indemnification clause\n    ii. Board resolution adoption timeline"
+        }
+      ],
+      "listStyleExpectation": { "format": "decimal", "level": 0, "levelText": "%1." },
+      "assertions": {
+        "acceptedContains": [
+          "Greene County EMS Contract",
+          "Service coverage and dispatch standards",
+          "Priority 1 response time benchmark",
+          "Advanced life support staffing minimums",
+          "Municipal subsidy and quarterly cost allocation",
+          "Base annual contribution schedule",
+          "Fuel surcharge adjustment formula",
+          "Equipment maintenance and vehicle readiness",
+          "Defibrillator telemetry calibration",
+          "Winter tire and chain certification",
+          "Quality assurance and performance reporting",
+          "Monthly clinical run reviews",
+          "Patient transport outcome metrics",
+          "Mutual aid and emergency surge protocol",
+          "Backup ambulance dispatch routing",
+          "Mass casualty incident coordination",
+          "Inter-municipal legal compliance",
+          "County attorney indemnification clause",
+          "Board resolution adoption timeline"
+        ],
+        "acceptedAbsent": [],
+        "rejectedContains": [
+          "Greene County EMS Contract"
+        ],
+        "rejectedAbsent": [
+          "Service coverage and dispatch standards",
+          "Priority 1 response time benchmark",
+          "Advanced life support staffing minimums",
+          "Municipal subsidy and quarterly cost allocation",
+          "Base annual contribution schedule",
+          "Fuel surcharge adjustment formula",
+          "Equipment maintenance and vehicle readiness",
+          "Defibrillator telemetry calibration",
+          "Winter tire and chain certification",
+          "Quality assurance and performance reporting",
+          "Monthly clinical run reviews",
+          "Patient transport outcome metrics",
+          "Mutual aid and emergency surge protocol",
+          "Backup ambulance dispatch routing",
+          "Mass casualty incident coordination",
+          "Inter-municipal legal compliance",
+          "County attorney indemnification clause",
+          "Board resolution adoption timeline"
+        ]
+      }
+    },
+    {
+      "key": "administrative-list-change-board-agenda-multiple-children",
+      "sourceId": "77c33ab2ca57efd0d4afb87f08c45c88f3984256c3fd5fdf3e81f87a24644760",
+      "shape": "list",
+      "coverage": ["board-agenda", "numbered-list", "nested-list", "multiple-list-insertions", "section-properties"],
+      "review": "Reviewed public town board agenda fixture; inserts two nested Water District discussion points in one structural list change.",
+      "operations": [
+        {
+          "type": "list-change",
+          "target": "Water District Report",
+          "modified": "1. Water District Report\n  - Review meter replacement progress.\n  - Confirm hydrant inspection dates."
+        }
+      ],
+      "assertions": {
+        "acceptedContains": ["Water District Report", "Review meter replacement progress.", "Confirm hydrant inspection dates."],
+        "acceptedAbsent": [],
+        "rejectedContains": ["Water District Report"],
+        "rejectedAbsent": ["Review meter replacement progress.", "Confirm hydrant inspection dates."]
+      }
+    },
+    {
+      "key": "legal-list-change-zoning-definition-addition",
+      "sourceId": "82325c95040adfb3dd9fc013594756da689547def47ab120b35f6be132084693",
+      "shape": "list",
+      "coverage": ["zoning-ordinance", "numbered-list", "long-document", "tables", "header", "section-properties"],
+      "review": "Reviewed long public zoning ordinance fixture; adds a new housing definition beside existing native numbered definitions.",
+      "structuralExpectations": { "minWords": 8000, "minListParagraphs": 10, "minTables": 3 },
+      "operations": [
+        {
+          "type": "list-change",
+          "target": "An efficiency unit, as defined in Section 17958.1 of Health and Safety Code.",
+          "modified": "1. An efficiency unit, as defined in Section 17958.1 of Health and Safety Code.\n2. A junior accessory dwelling unit, as defined by applicable state law."
+        }
+      ],
+      "assertions": {
+        "acceptedContains": ["An efficiency unit, as defined in Section 17958.1 of Health and Safety Code.", "A junior accessory dwelling unit, as defined by applicable state law."],
+        "acceptedAbsent": [],
+        "rejectedContains": ["An efficiency unit, as defined in Section 17958.1 of Health and Safety Code."],
+        "rejectedAbsent": ["A junior accessory dwelling unit, as defined by applicable state law."]
+      }
+    },
+    {
+      "key": "administrative-list-change-ppg-agenda-addition",
+      "sourceId": "a3b94b62e9505655d150eae21dc72bb99b37eda901bcb50516b7e9fded5ed33b",
+      "shape": "list",
+      "coverage": ["meeting-minutes", "nested-list", "multi-level-list", "tables", "header", "footer", "footnotes-part"],
+      "review": "Reviewed public patient participation group minutes fixture; synthetically creates multi-level sub-bullets and sub-sub-bullets under item 3 with distinct numbering styles.",
+      "operations": [
+        {
+          "type": "list-change",
+          "target": "Staff changes – Liz",
+          "modified": "3. Staff changes – Liz\n  a. General practitioner clinical staffing\n    i. Dr Adisa recruitment and onboarding\n    ii. Dr Oxley return from maternity leave\n  b. Advanced nursing and allied health roles\n    i. Nurse Practitioner appointment schedule\n    ii. Clinical pharmacist consultation hours\n  c. Reception and patient support team\n    i. Telephone triage training curriculum\n    ii. Front desk customer service standards\n  d. Phlebotomy and diagnostic services\n    i. Morning blood clinic capacity expansion\n    ii. Specimen courier collection schedule\n  e. Locum coverage and leave management\n    i. Holiday season locum booking protocol\n    ii. Emergency sickness cover rota\n  f. Patient communication and directory updates\n    i. Website clinician profile revisions\n    ii. Practice leaflet reprint distribution"
+        }
+      ],
+      "listStyleExpectation": { "format": "decimal", "level": 0, "levelText": "%1." },
+      "assertions": {
+        "acceptedContains": [
+          "Staff changes – Liz",
+          "General practitioner clinical staffing",
+          "Dr Adisa recruitment and onboarding",
+          "Dr Oxley return from maternity leave",
+          "Advanced nursing and allied health roles",
+          "Nurse Practitioner appointment schedule",
+          "Clinical pharmacist consultation hours",
+          "Reception and patient support team",
+          "Telephone triage training curriculum",
+          "Front desk customer service standards",
+          "Phlebotomy and diagnostic services",
+          "Morning blood clinic capacity expansion",
+          "Specimen courier collection schedule",
+          "Locum coverage and leave management",
+          "Holiday season locum booking protocol",
+          "Emergency sickness cover rota",
+          "Patient communication and directory updates",
+          "Website clinician profile revisions",
+          "Practice leaflet reprint distribution"
+        ],
+        "acceptedAbsent": [],
+        "rejectedContains": [
+          "Staff changes – Liz"
+        ],
+        "rejectedAbsent": [
+          "General practitioner clinical staffing",
+          "Dr Adisa recruitment and onboarding",
+          "Dr Oxley return from maternity leave",
+          "Advanced nursing and allied health roles",
+          "Nurse Practitioner appointment schedule",
+          "Clinical pharmacist consultation hours",
+          "Reception and patient support team",
+          "Telephone triage training curriculum",
+          "Front desk customer service standards",
+          "Phlebotomy and diagnostic services",
+          "Morning blood clinic capacity expansion",
+          "Specimen courier collection schedule",
+          "Locum coverage and leave management",
+          "Holiday season locum booking protocol",
+          "Emergency sickness cover rota",
+          "Patient communication and directory updates",
+          "Website clinician profile revisions",
+          "Practice leaflet reprint distribution"
+        ]
+      }
+    },
+    {
+      "key": "administrative-list-change-ppg-staff-actions",
+      "sourceId": "a3b94b62e9505655d150eae21dc72bb99b37eda901bcb50516b7e9fded5ed33b",
+      "shape": "list",
+      "coverage": ["meeting-minutes", "numbered-list", "multiple-list-insertions", "tables", "header", "footer", "footnotes-part"],
+      "review": "Reviewed public patient participation group minutes fixture; adds two staff follow-up entries after an existing staffing list item.",
+      "operations": [
+        {
+          "type": "list-change",
+          "target": "Dr Ramos has left the practice and has been replaced by Dr Adisa.",
+          "modified": "1. Dr Ramos has left the practice and has been replaced by Dr Adisa.\n2. Update the public clinician directory.\n3. Confirm induction materials for new starters."
+        }
+      ],
+      "assertions": {
+        "acceptedContains": ["Update the public clinician directory.", "Confirm induction materials for new starters."],
+        "acceptedAbsent": [],
+        "rejectedContains": ["Dr Ramos has left the practice and has been replaced by Dr Adisa."],
+        "rejectedAbsent": ["Update the public clinician directory.", "Confirm induction materials for new starters."]
+      }
+    },
+    {
+      "key": "legal-list-change-upper-roman-section",
+      "sourceId": "d27fe5513ca474bcd6c02136d2e4b8179203f5855c4333af81bc964755c7abe4",
+      "shape": "list",
+      "coverage": ["bylaws", "upper-roman-list", "native-numbering", "table", "footer", "footnotes-part"],
+      "review": "Reviewed public advisory-council bylaws fixture; inserts a new top-level section into a native upper-Roman list.",
+      "operations": [
+        {
+          "type": "list-change",
+          "target": "MEETINGS",
+          "modified": "I. MEETINGS\nII. RECORDS AND PUBLIC ACCESS"
+        }
+      ],
+      "listStyleExpectation": { "format": "upperRoman", "level": 0, "levelText": "%1." },
+      "assertions": {
+        "acceptedContains": ["MEETINGS", "RECORDS AND PUBLIC ACCESS"],
+        "acceptedAbsent": [],
+        "rejectedContains": ["MEETINGS"],
+        "rejectedAbsent": ["RECORDS AND PUBLIC ACCESS"]
+      }
+    },
+    {
+      "key": "legal-list-change-native-membership-bullet",
+      "sourceId": "d27fe5513ca474bcd6c02136d2e4b8179203f5855c4333af81bc964755c7abe4",
+      "shape": "list",
+      "coverage": ["bylaws", "symbol-bullet", "nested-list", "native-numbering", "table", "footer", "footnotes-part"],
+      "review": "Reviewed public advisory-council bylaws fixture; appends a native nested membership bullet beneath an upper-Roman section.",
+      "operations": [
+        {
+          "type": "list-change",
+          "target": "Three (3) representatives from the community at large.",
+          "modified": "- Three (3) representatives from the community at large.\n- One (1) non-voting youth agriculture advisor."
+        }
+      ],
+      "listStyleExpectation": { "format": "bullet", "level": 1 },
+      "assertions": {
+        "acceptedContains": ["Three (3) representatives from the community at large.", "One (1) non-voting youth agriculture advisor."],
+        "acceptedAbsent": [],
+        "rejectedContains": ["Three (3) representatives from the community at large."],
+        "rejectedAbsent": ["One (1) non-voting youth agriculture advisor."]
+      }
+    },
+    {
+      "key": "legal-list-change-lower-roman-subclause",
+      "sourceId": "d27fe5513ca474bcd6c02136d2e4b8179203f5855c4333af81bc964755c7abe4",
+      "shape": "list",
+      "coverage": ["bylaws", "lower-roman-list", "nested-list", "native-numbering", "table", "footer", "footnotes-part"],
+      "review": "Reviewed public advisory-council bylaws fixture; inserts a lower-Roman sibling under an upper-letter governance clause.",
+      "operations": [
+        {
+          "type": "list-change",
+          "target": "Service. Members appointed to the Advisory Council by the County Board of Supervisors shall serve at the will and pleasure of the County Board of Supervisors.",
+          "modified": "i. Service. Members appointed to the Advisory Council by the County Board of Supervisors shall serve at the will and pleasure of the County Board of Supervisors.\nii. Attendance Review. The Secretary shall review attendance quarterly."
+        }
+      ],
+      "listStyleExpectation": { "format": "lowerRoman", "level": 1, "levelText": "%2." },
+      "assertions": {
+        "acceptedContains": ["Attendance Review. The Secretary shall review attendance quarterly."],
+        "acceptedAbsent": [],
+        "rejectedContains": ["Service. Members appointed to the Advisory Council"],
+        "rejectedAbsent": ["Attendance Review. The Secretary shall review attendance quarterly."]
+      }
+    },
+    {
+      "key": "legal-list-change-parenthesized-lower-letter-ground",
+      "sourceId": "d27fe5513ca474bcd6c02136d2e4b8179203f5855c4333af81bc964755c7abe4",
+      "shape": "list",
+      "coverage": ["bylaws", "parenthesized-lower-letter-list", "three-level-list", "native-numbering", "table", "footer", "footnotes-part"],
+      "review": "Reviewed public advisory-council bylaws fixture; adds a third-level parenthesized lower-letter termination ground.",
+      "operations": [
+        {
+          "type": "list-change",
+          "target": "The member’s resignation is submitted to the Chair.",
+          "modified": "(a) The member’s resignation is submitted to the Chair.\n(b) The member fails to file the annual conflict disclosure."
+        }
+      ],
+      "listStyleExpectation": { "format": "lowerLetter", "level": 2, "levelText": "(%3)" },
+      "assertions": {
+        "acceptedContains": ["The member’s resignation is submitted to the Chair.", "The member fails to file the annual conflict disclosure."],
+        "acceptedAbsent": [],
+        "rejectedContains": ["The member’s resignation is submitted to the Chair."],
+        "rejectedAbsent": ["The member fails to file the annual conflict disclosure."]
+      }
+    },
+    {
+      "key": "administrative-list-change-lower-letter-minute",
+      "sourceId": "382303d9f33071278b3b13193f9c1af77a36068e404f214e6e5945345b360c9d",
+      "shape": "list",
+      "coverage": ["council-minutes", "lower-letter-list", "native-numbering", "long-document", "tables", "header", "footer"],
+      "review": "Reviewed long public planning-minutes fixture; appends a native lower-letter procedural minute item.",
+      "structuralExpectations": { "minWords": 6000, "minListParagraphs": 60, "minTables": 4 },
+      "operations": [
+        {
+          "type": "list-change",
+          "target": "No under 18s were present.",
+          "modified": "a. No under 18s were present.\nb. No declarations of interest were received."
+        }
+      ],
+      "listStyleExpectation": { "format": "lowerLetter", "level": 0, "levelText": "%1)" },
+      "assertions": {
+        "acceptedContains": ["No under 18s were present.", "No declarations of interest were received."],
+        "acceptedAbsent": [],
+        "rejectedContains": ["No under 18s were present."],
+        "rejectedAbsent": ["No declarations of interest were received."]
+      }
+    },
+    {
+      "key": "administrative-list-change-symbol-bullet-rota",
+      "sourceId": "074e5b302e82cc7f5293314ca5bb463e08cf9ee06d5fab81a9843f8a27c21bd1",
+      "shape": "list",
+      "coverage": ["meeting-minutes", "symbol-bullet", "native-numbering", "tables", "header", "footer", "footnotes-part"],
+      "review": "Reviewed public healthcare meeting-minutes fixture; appends a native Symbol-font staffing bullet.",
+      "operations": [
+        {
+          "type": "list-change",
+          "target": "Dr Singh will continue to work 1 day a week at the surgery (Monday’s).",
+          "modified": "- Dr Singh will continue to work 1 day a week at the surgery (Monday’s).\n- The practice will publish the revised GP rota."
+        }
+      ],
+      "listStyleExpectation": { "format": "bullet", "level": 0 },
+      "assertions": {
+        "acceptedContains": ["Dr Singh will continue to work 1 day a week at the surgery (Monday’s).", "The practice will publish the revised GP rota."],
+        "acceptedAbsent": [],
+        "rejectedContains": ["Dr Singh will continue to work 1 day a week at the surgery (Monday’s)."],
+        "rejectedAbsent": ["The practice will publish the revised GP rota."]
+      }
+    },
+    {
+      "key": "administrative-list-change-dash-agenda-child",
+      "sourceId": "8b0f4f46292113aeb389445b035d62621f28a8075fe26b46d339a5658801d087",
+      "shape": "list",
+      "coverage": ["board-agenda", "nested-list", "multi-level-list", "native-numbering", "section-properties"],
+      "review": "Reviewed public town-board agenda fixture; synthetically creates multi-level sub-bullets and sub-sub-bullets under item 3 with distinct numbering styles.",
+      "operations": [
+        {
+          "type": "list-change",
+          "target": "Knotweed",
+          "modified": "3. Knotweed\n  a. Survey and containment\n    i. Spring boundary mapping\n    ii. Growth rate assessment\n  b. Eradication treatment protocols\n    i. Targeted herbicide application\n    ii. Manual root excavation\n  c. Grant funding and budget\n    i. Laura Jane Musser grant\n    ii. Municipal matching appropriation\n  d. Community notification\n    i. Landowner outreach letters\n    ii. Public informational workshop\n  e. Disposal and monitoring\n    i. Controlled transport protocol\n    ii. Post-treatment site monitoring\n  f. Inter-agency coordination\n    i. County soil and water district\n    ii. State conservation review"
+        }
+      ],
+      "listStyleExpectation": { "format": "decimal", "level": 0, "levelText": "%1." },
+      "assertions": {
+        "acceptedContains": [
+          "Knotweed",
+          "Survey and containment",
+          "Spring boundary mapping",
+          "Growth rate assessment",
+          "Eradication treatment protocols",
+          "Targeted herbicide application",
+          "Manual root excavation",
+          "Grant funding and budget",
+          "Laura Jane Musser grant",
+          "Municipal matching appropriation",
+          "Community notification",
+          "Landowner outreach letters",
+          "Public informational workshop",
+          "Disposal and monitoring",
+          "Controlled transport protocol",
+          "Post-treatment site monitoring",
+          "Inter-agency coordination",
+          "County soil and water district",
+          "State conservation review"
+        ],
+        "acceptedAbsent": [],
+        "rejectedContains": [
+          "Knotweed"
+        ],
+        "rejectedAbsent": [
+          "Survey and containment",
+          "Spring boundary mapping",
+          "Growth rate assessment",
+          "Eradication treatment protocols",
+          "Targeted herbicide application",
+          "Manual root excavation",
+          "Grant funding and budget",
+          "Laura Jane Musser grant",
+          "Municipal matching appropriation",
+          "Community notification",
+          "Landowner outreach letters",
+          "Public informational workshop",
+          "Disposal and monitoring",
+          "Controlled transport protocol",
+          "Post-treatment site monitoring",
+          "Inter-agency coordination",
+          "County soil and water district",
+          "State conservation review"
+        ]
+      }
+    },
+    {
+      "key": "administrative-list-change-upper-letter-hearing",
+      "sourceId": "8b0f4f46292113aeb389445b035d62621f28a8075fe26b46d339a5658801d087",
+      "shape": "list",
+      "coverage": ["board-agenda", "upper-letter-list", "native-numbering", "section-properties"],
+      "review": "Reviewed public town-board agenda fixture; inserts a new native upper-letter public-hearing section.",
+      "operations": [
+        {
+          "type": "list-change",
+          "target": "COMMENTS FROM THE FLOOR / CORRESPONDENCE FROM THE COMMUNITY",
+          "modified": "A. COMMENTS FROM THE FLOOR / CORRESPONDENCE FROM THE COMMUNITY\nB. PUBLIC HEARING ON THE PROPOSED LOCAL LAW"
+        }
+      ],
+      "listStyleExpectation": { "format": "upperLetter", "level": 0, "levelText": "%1." },
+      "assertions": {
+        "acceptedContains": ["COMMENTS FROM THE FLOOR / CORRESPONDENCE FROM THE COMMUNITY", "PUBLIC HEARING ON THE PROPOSED LOCAL LAW"],
+        "acceptedAbsent": [],
+        "rejectedContains": ["COMMENTS FROM THE FLOOR / CORRESPONDENCE FROM THE COMMUNITY"],
+        "rejectedAbsent": ["PUBLIC HEARING ON THE PROPOSED LOCAL LAW"]
+      }
+    },
+    {
+      "key": "administrative-list-change-symbol-bullet-grant",
+      "sourceId": "570572edcfec94b990c61b91e21e103699a39b800c3165ad436d0fd07c7cd80e",
+      "shape": "list",
+      "coverage": ["council-minutes", "symbol-bullet", "native-numbering", "tables", "header", "footer", "footnotes-part"],
+      "review": "Reviewed public parish-council minutes fixture; appends a native bullet to a grant-action list.",
+      "operations": [
+        {
+          "type": "list-change",
+          "target": "Councillor I Grundy will be verifying the groundwork for the Grant applications.",
+          "modified": "- Councillor I Grundy will be verifying the groundwork for the Grant applications.\n- The Clerk will record the supporting evidence deadline."
+        }
+      ],
+      "listStyleExpectation": { "format": "bullet", "level": 0 },
+      "assertions": {
+        "acceptedContains": ["Councillor I Grundy will be verifying the groundwork for the Grant applications.", "The Clerk will record the supporting evidence deadline."],
+        "acceptedAbsent": [],
+        "rejectedContains": ["Councillor I Grundy will be verifying the groundwork for the Grant applications."],
+        "rejectedAbsent": ["The Clerk will record the supporting evidence deadline."]
+      }
+    },
+    {
+      "key": "administrative-table-reconciliation-status-update",
+      "sourceId": "a3b94b62e9505655d150eae21dc72bb99b37eda901bcb50516b7e9fded5ed33b",
+      "shape": "table-form",
+      "coverage": ["meeting-minutes", "tables", "numbered-list", "single-cell-update", "header", "footer", "footnotes-part"],
+      "review": "Reviewed public patient participation group action table; reconciles one status cell while preserving all rows and columns.",
+      "operations": [
+        {
+          "type": "table-reconciliation",
+          "target": "Info on testing to be circulated",
+          "modified": "| Number | Description | Action | Owner | Status |\n| --- | --- | --- | --- | --- |\n| 1 | Info on testing to be circulated | AJ will circulate weblink | AJ | In progress |\n| 2 | Clarification on planning for new surgery | LS to circulate email | LS | Complete |\n| 3 | Flu clinic dates | LS will forward proposed dates | LS | Complete |\n| 4 | National GP Survey | Weblink to be sent | LS | Complete |"
+        }
+      ],
+      "assertions": {
+        "acceptedContains": ["Info on testing to be circulated", "In progress", "National GP Survey"],
+        "acceptedAbsent": [],
+        "rejectedContains": ["Info on testing to be circulated", "Complete", "National GP Survey"],
+        "rejectedAbsent": ["In progress"]
+      }
+    },
+    {
+      "key": "administrative-table-reconciliation-row-insertion",
+      "sourceId": "a3b94b62e9505655d150eae21dc72bb99b37eda901bcb50516b7e9fded5ed33b",
+      "shape": "table-form",
+      "coverage": ["meeting-minutes", "tables", "numbered-list", "row-insertion", "header", "footer", "footnotes-part"],
+      "review": "Reviewed public patient participation group action table; inserts a complete fifth action row with native table-cell revisions.",
+      "operations": [
+        {
+          "type": "table-reconciliation",
+          "target": "Info on testing to be circulated",
+          "modified": "| Number | Description | Action | Owner | Status |\n| --- | --- | --- | --- | --- |\n| 1 | Info on testing to be circulated | AJ will circulate weblink | AJ | Complete |\n| 2 | Clarification on planning for new surgery | LS to circulate email | LS | Complete |\n| 3 | Flu clinic dates | LS will forward proposed dates | LS | Complete |\n| 4 | National GP Survey | Weblink to be sent | LS | Complete |\n| 5 | Patient newsletter | Draft update for review | AJ | Open |"
+        }
+      ],
+      "assertions": {
+        "acceptedContains": ["Patient newsletter", "Draft update for review", "Open"],
+        "acceptedAbsent": [],
+        "rejectedContains": ["National GP Survey"],
+        "rejectedAbsent": ["Patient newsletter", "Draft update for review"]
+      }
+    },
+    {
+      "key": "administrative-table-reconciliation-row-deletion",
+      "sourceId": "a3b94b62e9505655d150eae21dc72bb99b37eda901bcb50516b7e9fded5ed33b",
+      "shape": "table-form",
+      "coverage": ["meeting-minutes", "tables", "numbered-list", "row-deletion", "header", "footer", "footnotes-part"],
+      "review": "Reviewed public patient participation group action table; removes the completed flu-clinic action row through table reconciliation.",
+      "operations": [
+        {
+          "type": "table-reconciliation",
+          "target": "Info on testing to be circulated",
+          "modified": "| Number | Description | Action | Owner | Status |\n| --- | --- | --- | --- | --- |\n| 1 | Info on testing to be circulated | AJ will circulate weblink | AJ | Complete |\n| 2 | Clarification on planning for new surgery | LS to circulate email | LS | Complete |\n| 4 | National GP Survey | Weblink to be sent | LS | Complete |"
+        }
+      ],
+      "assertions": {
+        "acceptedContains": ["Info on testing to be circulated", "National GP Survey"],
+        "acceptedAbsent": ["Flu clinic dates", "LS will forward proposed dates"],
+        "rejectedContains": ["Flu clinic dates", "LS will forward proposed dates", "National GP Survey"],
+        "rejectedAbsent": []
+      }
+    },
+    {
+      "key": "administrative-table-reconciliation-multi-cell-update",
+      "sourceId": "a3b94b62e9505655d150eae21dc72bb99b37eda901bcb50516b7e9fded5ed33b",
+      "shape": "table-form",
+      "coverage": ["meeting-minutes", "tables", "numbered-list", "multiple-cell-updates", "header", "footer", "footnotes-part"],
+      "review": "Reviewed public patient participation group action table; updates description, action, owner, and status values in one reconciliation.",
+      "operations": [
+        {
+          "type": "table-reconciliation",
+          "target": "Info on testing to be circulated",
+          "modified": "| Number | Description | Action | Owner | Status |\n| --- | --- | --- | --- | --- |\n| 1 | Updated testing guidance | Publish revised weblink | AJ | Complete |\n| 2 | New surgery planning clarification | Circulate planning note | PM | In progress |\n| 3 | Flu clinic dates | LS will forward proposed dates | LS | Complete |\n| 4 | National GP Survey | Weblink to be sent | LS | Closed |"
+        }
+      ],
+      "assertions": {
+        "acceptedContains": ["Updated testing guidance", "Publish revised weblink", "New surgery planning clarification", "Circulate planning note", "PM", "In progress", "Closed"],
+        "acceptedAbsent": ["Info on testing to be circulated", "Clarification on planning for new surgery"],
+        "rejectedContains": ["Info on testing to be circulated", "Clarification on planning for new surgery", "National GP Survey"],
+        "rejectedAbsent": ["Updated testing guidance", "Publish revised weblink", "New surgery planning clarification", "In progress", "Closed"]
+      }
+    },
+    {
+      "key": "administrative-table-reconciliation-invoice-update",
+      "sourceId": "570572edcfec94b990c61b91e21e103699a39b800c3165ad436d0fd07c7cd80e",
+      "shape": "table-form",
+      "coverage": ["council-minutes", "tables", "numbered-list", "single-cell-update", "header", "footer", "footnotes-part"],
+      "review": "Reviewed public parish council invoice table; changes one payment amount while preserving the seven-row payment schedule.",
+      "operations": [
+        {
+          "type": "table-reconciliation",
+          "target": "T P Jones & Co LLP",
+          "modified": "| Invoice date | Account name | Amount | Reason for payment |\n| --- | --- | --- | --- |\n| 21/03/2024 | T P Jones & Co LLP | 85.00 | Payroll April 2023-March 2024 |\n| 31/03/2024 | D Foulkes | 302.63 | Jan-March Pay for Clerk |\n| 31/03/2024 | HMRC Cumbernauld | 68.8 | HMRC tax jan-March2024 |\n| 31/03/2024 | AVOW | 27.58 | Payroll Charges Jan-March 2024 |\n| 01/04/2024 | Coderra | 360 | WordPress website hosting |\n| 06/04/2024 | Zurich Town & Parish, Insurer Trust Account | 294.54 | Insurance cover 2024 |\n| 14/05/2024 | Cheshire Association of Local Councils | 90.06 | Affiliation Fee 2024-25 |"
+        }
+      ],
+      "assertions": {
+        "acceptedContains": ["T P Jones & Co LLP", "85.00", "Cheshire Association of Local Councils"],
+        "acceptedAbsent": ["79.2"],
+        "rejectedContains": ["T P Jones & Co LLP", "79.2", "Cheshire Association of Local Councils"],
+        "rejectedAbsent": ["85.00"]
+      }
+    },
+    {
+      "key": "administrative-table-reconciliation-invoice-row-insertion",
+      "sourceId": "570572edcfec94b990c61b91e21e103699a39b800c3165ad436d0fd07c7cd80e",
+      "shape": "table-form",
+      "coverage": ["council-minutes", "tables", "numbered-list", "row-insertion", "header", "footer", "footnotes-part"],
+      "review": "Reviewed public parish council invoice table; inserts a new audit-fee payment row into a real seven-row schedule.",
+      "operations": [
+        {
+          "type": "table-reconciliation",
+          "target": "T P Jones & Co LLP",
+          "modified": "| Invoice date | Account name | Amount | Reason for payment |\n| --- | --- | --- | --- |\n| 21/03/2024 | T P Jones & Co LLP | 79.2 | Payroll April 2023-March 2024 |\n| 31/03/2024 | D Foulkes | 302.63 | Jan-March Pay for Clerk |\n| 31/03/2024 | HMRC Cumbernauld | 68.8 | HMRC tax jan-March2024 |\n| 31/03/2024 | AVOW | 27.58 | Payroll Charges Jan-March 2024 |\n| 01/04/2024 | Coderra | 360 | WordPress website hosting |\n| 06/04/2024 | Zurich Town & Parish, Insurer Trust Account | 294.54 | Insurance cover 2024 |\n| 14/05/2024 | Cheshire Association of Local Councils | 90.06 | Affiliation Fee 2024-25 |\n| 15/05/2024 | North Wales Audit | 210 | External audit fee |"
+        }
+      ],
+      "assertions": {
+        "acceptedContains": ["North Wales Audit", "210", "External audit fee"],
+        "acceptedAbsent": [],
+        "rejectedContains": ["Cheshire Association of Local Councils"],
+        "rejectedAbsent": ["North Wales Audit", "External audit fee"]
+      }
+    },
+    {
+      "key": "legal-list-item-inline-insertion",
+      "sourceId": "82325c95040adfb3dd9fc013594756da689547def47ab120b35f6be132084693",
+      "shape": "list",
+      "coverage": ["zoning-ordinance", "numbered-list"],
+      "review": "Reviewed public zoning ordinance list fixture; inserts words inside an existing numbered list item with tracked insertions.",
+      "operations": [
+        {
+          "type": "insert",
+          "target": "An efficiency unit, as defined in Section 17958.1 of Health and Safety Code.",
+          "modified": "An efficiency unit, as specifically defined in Section 17958.1 of Health and Safety Code."
+        }
+      ]
+    },
+    {
+      "key": "administrative-table-cell-deletion",
+      "sourceId": "382303d9f33071278b3b13193f9c1af77a36068e404f214e6e5945345b360c9d",
+      "shape": "table-form",
+      "coverage": ["council-minutes", "table-cell", "header", "footer"],
+      "review": "Reviewed public parish council minutes table fixture; deletes phrase text inside a table cell with tracked deletion markup.",
+      "operations": [
+        {
+          "type": "delete",
+          "target": "Cllrs Maude, Stanley & Price – all accepted",
+          "modified": "Cllrs Maude, Stanley & Price"
+        }
+      ]
+    },
+    {
+      "key": "administrative-table-cell-insertion",
+      "sourceId": "a3b94b62e9505655d150eae21dc72bb99b37eda901bcb50516b7e9fded5ed33b",
+      "shape": "table-form",
+      "coverage": ["meeting-minutes", "table-cell", "header", "footer", "footnotes-part"],
+      "review": "Reviewed public patient participation group table fixture; inserts words inside an action items table cell.",
+      "operations": [
+        {
+          "type": "insert",
+          "target": "Clarification on planning for new surgery",
+          "modified": "Clarification on planning permission for new surgery"
+        }
+      ]
+    },
+    {
+      "key": "administrative-list-item-deletion",
+      "sourceId": "074e5b302e82cc7f5293314ca5bb463e08cf9ee06d5fab81a9843f8a27c21bd1",
+      "shape": "list",
+      "coverage": ["meeting-minutes", "numbered-list"],
+      "review": "Reviewed public practice meeting minutes list fixture; deletes phrase text inside a numbered list item.",
+      "operations": [
+        {
+          "type": "delete",
+          "target": "Review minutes & any matters from previous meeting  – All",
+          "modified": "Review minutes from previous meeting  – All"
+        }
       ]
     }
   ]

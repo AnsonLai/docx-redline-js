@@ -14,6 +14,7 @@ import {
     setRevisionIdAllocatorForDocument
 } from '../core/types.js';
 import { createWordElement } from '../core/word-xml.js';
+import { markParagraphMarkInserted } from '../engine/run-builders.js';
 import {
     applyRedlineToOxml,
     reconcileMarkdownTableOoxml,
@@ -163,6 +164,14 @@ function buildInsertedListParagraph(xmlDoc, anchorParagraph, entry, revisionMeta
         paragraph.appendChild(anchorPPr.cloneNode(true));
     }
     ensureListProperties(xmlDoc, paragraph, entry.ilvl, entry.numId);
+
+    // A new list item is a whole inserted paragraph, not merely inserted text.
+    // Tracking its paragraph mark lets Word (and our accept/reject helpers)
+    // remove the list paragraph itself on Reject All instead of leaving an
+    // empty bullet or number behind.
+    if (generateRedlines) {
+        markParagraphMarkInserted(xmlDoc, paragraph, author);
+    }
 
     const run = createWordElement(xmlDoc, 'w:r');
     const anchorFirstRun = Array.from(anchorParagraph.getElementsByTagNameNS(NS_W, 'r'))[0] || null;

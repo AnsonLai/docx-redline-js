@@ -49,10 +49,29 @@ for (const scenario of catalogue.scenarios) {
     const operations = scenario.operations || [scenario.operation];
     assert.ok(operations.length > 0, `${key}: operations are missing`);
     for (const operation of operations) {
-        assert.equal(operation.type, 'replace');
+        assert.ok(
+            ['replace', 'format', 'list-change', 'table-reconciliation', 'insert', 'delete'].includes(operation.type),
+            `${key}: unexpected operation type ${operation.type}`
+        );
         assert.ok(operation.target.length > 0);
         assert.ok(operation.modified.length > 0);
         assert.notEqual(operation.target, operation.modified);
+    }
+    if (scenario.assertions) {
+        for (const field of ['acceptedContains', 'acceptedAbsent', 'rejectedContains', 'rejectedAbsent']) {
+            assert.ok(Array.isArray(scenario.assertions[field]), `${key}: assertions.${field} must be an array`);
+            assert.ok(scenario.assertions[field].every(value => typeof value === 'string' && value.length > 0));
+        }
+    }
+    if (scenario.listStyleExpectation) {
+        assert.ok(['bullet', 'decimal', 'upperLetter', 'lowerLetter', 'upperRoman', 'lowerRoman']
+            .includes(scenario.listStyleExpectation.format), `${key}: unsupported list style expectation`);
+        assert.ok(Number.isInteger(scenario.listStyleExpectation.level));
+        assert.ok(scenario.listStyleExpectation.level >= 0 && scenario.listStyleExpectation.level <= 8);
+        if (scenario.listStyleExpectation.levelText !== undefined) {
+            assert.equal(typeof scenario.listStyleExpectation.levelText, 'string');
+            assert.ok(scenario.listStyleExpectation.levelText.length > 0);
+        }
     }
     if (scenario.part) assert.match(scenario.part, /^word\/header[1-9][0-9]*\.xml$/);
 }
@@ -64,8 +83,8 @@ assert.equal(multiChangeScenarios.filter(scenario => scenario.shape === 'table-f
 assert.equal(multiChangeScenarios.reduce((total, scenario) => total + scenario.operations.length, 0), 52);
 assert.ok(multiChangeScenarios.every(scenario => scenario.operations.length >= 3));
 const complexityGuardedScenarios = catalogue.scenarios.filter(scenario => scenario.structuralExpectations);
-assert.equal(complexityGuardedScenarios.length, 5);
-assert.ok(complexityGuardedScenarios.every(scenario => scenario.operations.length === 8));
+assert.equal(complexityGuardedScenarios.length, 7);
+assert.equal(complexityGuardedScenarios.filter(scenario => scenario.operations.length === 8).length, 5);
 assert.ok(complexityGuardedScenarios.every(scenario =>
     scenario.structuralExpectations.minTables > 0 || scenario.structuralExpectations.minListParagraphs > 0
 ));

@@ -37,6 +37,34 @@ for (const testCase of WORD_TASK_CASES) {
             assert.ok(/^[\x00-\x7F]*$/.test(operation.modified));
         }
     }
+    if (testCase.operation) {
+        assert.ok(['list-change', 'table-reconciliation'].includes(testCase.operation.type));
+        assert.equal(testCase.operation.target, testCase.original);
+        assert.equal(testCase.operation.modified, testCase.modified);
+    }
+    if (testCase.requiredNumberingFormats) {
+        assert.ok(testCase.requiredNumberingFormats.length > 0);
+        assert.ok(testCase.requiredNumberingFormats.every(format =>
+            ['bullet', 'decimal', 'upperLetter', 'lowerLetter', 'upperRoman', 'lowerRoman'].includes(format)
+        ));
+        assert.equal(typeof testCase.packageParts?.numberingXml, 'string');
+        const numberingXml = testCase.packageParts.numberingXml;
+        assert.ok(
+            numberingXml.indexOf('<w:num ') > numberingXml.lastIndexOf('</w:abstractNum>'),
+            `${testCase.name} must declare every w:abstractNum before the first w:num`
+        );
+    }
+    if (testCase.assertionMode === 'contains') {
+        for (const field of [
+            'expectedAcceptedContains',
+            'expectedAcceptedAbsent',
+            'expectedRejectedContains',
+            'expectedRejectedAbsent'
+        ]) {
+            assert.ok(Array.isArray(testCase[field]), `${testCase.name} ${field} must be an array`);
+            for (const value of testCase[field]) assert.equal(typeof value, 'string');
+        }
+    }
     if (testCase.requiredElements) {
         assert.equal(typeof testCase.sourceDocumentXml, 'string');
         for (const [localName, minimumCount] of Object.entries(testCase.requiredElements)) {

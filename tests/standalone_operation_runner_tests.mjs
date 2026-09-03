@@ -188,6 +188,9 @@ async function testRangeListRedlineDoesNotDuplicateExistingItems() {
     const paragraphs = Array.from(resultDoc.getElementsByTagNameNS(NS_W, 'p'));
     const revisionDeletes = resultDoc.getElementsByTagNameNS(NS_W, 'del').length;
     const revisionInserts = resultDoc.getElementsByTagNameNS(NS_W, 'ins').length;
+    const paragraphMarkInserts = Array.from(resultDoc.getElementsByTagNameNS(NS_W, 'ins'))
+        .filter(node => node.parentNode?.localName === 'rPr'
+            && node.parentNode?.parentNode?.localName === 'pPr').length;
     const paragraphTexts = paragraphs.map(paragraph => getParagraphText(paragraph)).filter(Boolean);
     assert.strictEqual(
         paragraphTexts.length,
@@ -211,9 +214,11 @@ async function testRangeListRedlineDoesNotDuplicateExistingItems() {
     );
     assert.strictEqual(
         revisionInserts,
-        1,
-        'surgical insertion should emit exactly one inserted revision for the new list item'
+        2,
+        'surgical insertion should track both inserted text and its paragraph mark'
     );
+    assert.strictEqual(paragraphMarkInserts, 1,
+        'range list insertion should track its paragraph mark so rejection removes the marker');
 
     const listNumIds = paragraphs.map(paragraph => {
         const numPr = paragraph.getElementsByTagNameNS(NS_W, 'numPr')[0];
@@ -225,6 +230,14 @@ async function testRangeListRedlineDoesNotDuplicateExistingItems() {
         5,
         'surgical insertion should preserve original list numId across all items'
     );
+
+    const rejected = rejectTrackedChangesInOoxml(result.documentXml, { author: 'StandaloneRunnerTest' });
+    const rejectedDoc = parseXmlStrict(rejected.oxml, 'rejected range list insertion');
+    const rejectedParagraphs = Array.from(rejectedDoc.getElementsByTagNameNS(NS_W, 'p'));
+    assert.strictEqual(rejectedParagraphs.length, 4,
+        'rejecting a range list insertion should remove its entire paragraph');
+    assert.deepStrictEqual(rejectedParagraphs.map(getParagraphText), existingItems,
+        'rejecting a range list insertion should restore the original list exactly');
 }
 
 async function testSingleParagraphListConcatenationUsesSurgicalInsertion() {
@@ -265,6 +278,9 @@ async function testSingleParagraphListConcatenationUsesSurgicalInsertion() {
     const paragraphs = Array.from(resultDoc.getElementsByTagNameNS(NS_W, 'p'));
     const revisionDeletes = resultDoc.getElementsByTagNameNS(NS_W, 'del').length;
     const revisionInserts = resultDoc.getElementsByTagNameNS(NS_W, 'ins').length;
+    const paragraphMarkInserts = Array.from(resultDoc.getElementsByTagNameNS(NS_W, 'ins'))
+        .filter(node => node.parentNode?.localName === 'rPr'
+            && node.parentNode?.parentNode?.localName === 'pPr').length;
     const paragraphTexts = paragraphs.map(paragraph => getParagraphText(paragraph)).filter(Boolean);
 
     assert.strictEqual(paragraphTexts.length, 5, 'single-paragraph concatenation should become one inserted list item');
@@ -275,7 +291,18 @@ async function testSingleParagraphListConcatenationUsesSurgicalInsertion() {
         'original target item should remain a single untouched list item'
     );
     assert.strictEqual(revisionDeletes, 0, 'adjacency insertion should not emit delete revisions');
-    assert.strictEqual(revisionInserts, 1, 'adjacency insertion should emit exactly one inserted revision');
+    assert.strictEqual(revisionInserts, 2,
+        'adjacency insertion should track both inserted text and its paragraph mark');
+    assert.strictEqual(paragraphMarkInserts, 1,
+        'inserted list item should track its paragraph mark so rejection removes the marker');
+
+    const rejected = rejectTrackedChangesInOoxml(result.documentXml, { author: 'StandaloneRunnerTest' });
+    const rejectedDoc = parseXmlStrict(rejected.oxml, 'rejected single paragraph list insertion');
+    const rejectedParagraphs = Array.from(rejectedDoc.getElementsByTagNameNS(NS_W, 'p'));
+    assert.strictEqual(rejectedParagraphs.length, 4,
+        'rejecting a list insertion should remove its entire paragraph without a ghost list marker');
+    assert.deepStrictEqual(rejectedParagraphs.map(getParagraphText), existingItems,
+        'rejecting a list insertion should restore the original list exactly');
 }
 
 async function testSingleParagraphListConcatenationWithInlineMarkersDoesNotInsertExtraItem() {

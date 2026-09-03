@@ -7,11 +7,11 @@ import { fileURLToPath } from 'url';
 import { buildDashboardData, renderDashboardHtml } from '../scripts/generate-test-dashboard.mjs';
 
 const data = buildDashboardData();
-assert.equal(data.cases.length, 64);
-assert.equal(data.cases.filter(item => item.lane === 'synthetic').length, 33);
-assert.equal(data.cases.filter(item => item.lane === 'superdoc').length, 31);
-assert.equal(data.cases.filter(item => item.visualEligible).length, 47);
-assert.equal(data.priorities.emptyCellDispositions.length, 7);
+assert.equal(data.cases.length, 107);
+assert.equal(data.cases.filter(item => item.lane === 'synthetic').length, 47);
+assert.equal(data.cases.filter(item => item.lane === 'superdoc').length, 60);
+assert.equal(data.cases.filter(item => item.visualEligible).length, 90);
+assert.equal(data.priorities.emptyCellDispositions.length, 1);
 
 const embeddedFixtureUrl = new URL('../tmp/dashboard-report-test/simple-redline.docx', import.meta.url);
 mkdirSync(dirname(fileURLToPath(embeddedFixtureUrl)), { recursive: true });
@@ -78,6 +78,10 @@ assert.match(html, /Source ↔ tracked/);
 assert.match(html, /Accepted ↔ rejected/);
 assert.match(html, /downloadView/);
 assert.match(html, /sync-scroll/);
+assert.match(html, /id="sidebar-toggle"/);
+assert.match(html, /aria-controls="dashboard-sidebar"/);
+assert.match(html, /sidebar-hidden \.shell\{max-width:none\}/);
+assert.match(html, /docx-dashboard-sidebar-hidden/);
 assert.match(html, /reviewed real legal\/administrative documents/);
 assert.match(html, /Reviewed real documents/);
 assert.match(html, /synthetic:simple-redline/);

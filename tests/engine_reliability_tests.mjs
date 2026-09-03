@@ -402,6 +402,28 @@ async function testReplacementAcrossHyperlinkPreservesLeadingFontSize() {
     assert.equal(normalizeText(ingestWordOoxmlToPlainText(accepted.oxml)), normalizeText(modified));
 }
 
+async function testReconstructionMultiParagraphFragmentDoesNotNestParagraphs() {
+    const singlePXml = `
+        <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+            <w:r><w:t>First item.</w:t></w:r>
+        </w:p>
+    `;
+    const original = 'First item.';
+    const modified = 'First item.\nSecond item.';
+    const result = await applyRedlineToOxml(singlePXml, original, modified, {
+        author: 'Tester',
+        generateRedlines: true
+    });
+
+    assert.equal(result.hasChanges, true);
+    const doc = parseXml(`<root xmlns:w="${NS_W}">${result.oxml}</root>`);
+    const paragraphs = elementsByLocalName(doc, 'p');
+    assert.equal(paragraphs.length, 2, 'Expected 2 sibling paragraphs');
+    paragraphs.forEach(p => {
+        assert.notEqual(p.parentNode.localName, 'p', 'Paragraphs must not be nested inside other paragraphs');
+    });
+}
+
 await testSurgicalInsertionSplitsRunAtCharacterOffset();
 await testSurgicalDeletionPreservesNeighboringRunChildren();
 await testEmptyDefaultNamespaceTableCellCanReceiveInsertion();
@@ -416,5 +438,6 @@ await testDefaultNamespaceReconstructionRoundTrip();
 await testNumberedParagraphEditPreservesFormattingAndRoundTrip();
 await testReplacementDoesNotInheritTrailingSuperscript();
 await testReplacementAcrossHyperlinkPreservesLeadingFontSize();
+await testReconstructionMultiParagraphFragmentDoesNotNestParagraphs();
 
 console.log('engine_reliability_tests.mjs ... PASS');
