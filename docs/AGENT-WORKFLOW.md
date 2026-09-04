@@ -28,9 +28,10 @@ targets. Never normalize or reconstruct `exactText`. Operation files follow
 - `delete-comments` removes matching definitions and document anchors together.
 - `validate` checks revision markup and DOCX package wiring.
 
-Inspection filters are `--range 10:30`, `--indexes 2,5,8`, `--search text`,
-`--revised`, `--table`, `--body`, `--non-empty`, and
-`--view accepted|rejected|current`.
+Paragraph indexes are 1-based. Inspection filters are `--index 12`,
+`--range 10:30`, `--indexes 2,5,8`, `--search text`, `--revised`, `--table`,
+`--body`, `--non-empty`, and `--view accepted|rejected|current`. A malformed
+filter or unknown option is an error rather than an unfiltered fallback.
 
 Mutating commands require `--author`, authors on every operation, or
 `--all-authors` where applicable. Without `--output`, a sibling such as

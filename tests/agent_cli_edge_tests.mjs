@@ -29,8 +29,38 @@ try {
     assert.deepEqual((await executeCli(['inspect', input, '--body', '--non-empty'])).paragraphs.map(item => item.text), ['Body', 'Revised']);
     assert.deepEqual((await executeCli(['extract', input, '--search', 'needle'])).paragraphs.map(item => item.exactText), ['Table Needle']);
     assert.deepEqual((await executeCli(['inspect', input, '--revised'])).paragraphs.map(item => item.text), ['Revised']);
+    const singleIndex = await executeCli(['extract', input, '--index', '3']);
+    assert.equal(singleIndex.indexBase, 1);
+    assert.deepEqual(singleIndex.paragraphs.map(item => [item.index, item.ref]), [[3, 'P3']]);
     assert.deepEqual((await executeCli(['extract', input, '--indexes=1,3'])).paragraphs.map(item => item.index), [1,3]);
     assert.deepEqual((await executeCli(['extract', input, '--range=2:3'])).paragraphs.map(item => item.index), [2,3]);
+    assert.deepEqual((await executeCli(['extract', input, '--range=2-3'])).paragraphs.map(item => item.index), [2,3]);
+    assert.deepEqual((await executeCli(['extract', input, '--range=2,3'])).paragraphs.map(item => item.index), [2,3]);
+    assert.deepEqual((await executeCli(['extract', input, '--range=3:3'])).paragraphs.map(item => item.index), [3]);
+    assert.deepEqual((await executeCli(['extract', input, '--range=20:21'])).paragraphs, []);
+
+    for (const args of [
+        ['--index', '0'],
+        ['--index', '-1'],
+        ['--index'],
+        ['--indexes', '1,nope'],
+        ['--range', '0:2'],
+        ['--range', '3:2'],
+        ['--range', '2:'],
+        ['--range', '1.5:2'],
+        ['--index', '1', '--range', '1:2'],
+        ['--view', 'future']
+    ]) {
+        const invalidFilter = await executeCli(['extract', input, ...args]);
+        assert.equal(invalidFilter.status, 'error', `expected ${args.join(' ')} to fail`);
+        assert.equal(invalidFilter.error.code, 'INVALID_FILTER');
+    }
+    const unknownOption = await executeCli(['extract', input, '--indxe', '2']);
+    assert.equal(unknownOption.error.code, 'UNKNOWN_OPTION');
+    const wrongCommandOption = await executeCli(['extract', input, '--output', path.join(directory, 'wrong.docx')]);
+    assert.equal(wrongCommandOption.error.code, 'UNKNOWN_OPTION');
+    const extraArgument = await executeCli(['extract', input, 'unexpected']);
+    assert.equal(extraArgument.error.code, 'UNEXPECTED_ARGUMENT');
 
     const invalidTarget = path.join(directory, 'invalid-target.json');
     await writeFile(invalidTarget, JSON.stringify({ operations:[{ type:'replace', target:{ exactText:'Absent' }, modified:'No', author:'Editor' }] }));
@@ -58,6 +88,10 @@ try {
     const badZip = path.join(directory, 'bad.docx'); await writeFile(badZip, 'bad');
     const validationExit = await runCli(['validate', badZip], { stdout:{ write:value => { validationJson += value; } } });
     assert.equal(validationExit, 2); assert.doesNotThrow(() => JSON.parse(validationJson));
+    let filterJson = '';
+    const filterExit = await runCli(['extract', input, '--range', 'bad'], { stdout:{ write:value => { filterJson += value; } } });
+    assert.notEqual(filterExit, 0);
+    assert.equal(JSON.parse(filterJson).error.code, 'INVALID_FILTER');
 } finally {
     await rm(directory, { recursive:true, force:true });
 }

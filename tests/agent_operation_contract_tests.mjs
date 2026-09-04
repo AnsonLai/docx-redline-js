@@ -86,6 +86,26 @@ async function testRuntimeOperationValidation() {
     );
     assert.equal(wholeParagraphComment.hasChanges, true);
     assert.match(wholeParagraphComment.commentsXml, /Whole-paragraph comment\./);
+
+    const nonBreakingInput = documentXml([{
+        id: 'BBB00002',
+        text: 'during the\u00a0Subscription Term\u00a0only'
+    }]);
+    const normalizedTargetComment = await applyOperationToDocumentXml(
+        nonBreakingInput,
+        {
+            type: 'comment',
+            target: {
+                paragraphId: 'BBB00002',
+                exactText: 'during the Subscription Term only'
+            },
+            commentContent: 'Comment the resolved paragraph text.'
+        },
+        'Commenter'
+    );
+    assert.equal(normalizedTargetComment.hasChanges, true,
+        'an omitted comment anchor must use exact text from the resolved paragraph');
+    assert.match(normalizedTargetComment.commentsXml, /Comment the resolved paragraph text\./);
 }
 
 async function testStrictAmbiguityAndDescriptors() {

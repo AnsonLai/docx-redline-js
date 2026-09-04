@@ -7,6 +7,16 @@ import { validateRedlineOoxml } from '../core/redline-validation.js';
 import { configureLogger } from '../adapters/logger.js';
 
 const suffixes = { apply: 'redlined', accept: 'accepted', reject: 'rejected', 'delete-comments': 'comments-removed' };
+const commandOptions = {
+    inspect: new Set(['help', 'search', 'revised', 'table', 'body', 'nonEmpty', 'index', 'indexes', 'range', 'view']),
+    extract: new Set(['help', 'search', 'revised', 'table', 'body', 'nonEmpty', 'index', 'indexes', 'range', 'view']),
+    preflight: new Set(['help', 'operations', 'author', 'strictTargets']),
+    apply: new Set(['help', 'operations', 'author', 'output', 'inPlace', 'force']),
+    accept: new Set(['help', 'author', 'allAuthors', 'output', 'inPlace', 'force']),
+    reject: new Set(['help', 'author', 'allAuthors', 'output', 'inPlace', 'force']),
+    'delete-comments': new Set(['help', 'author', 'allAuthors', 'output', 'inPlace', 'force']),
+    validate: new Set(['help'])
+};
 
 function cliError(code, message, exitCode = 2, details) { return { status: 'error', error: { code, message, ...(details ? { details } : {}) }, exitCode }; }
 function parseArgs(argv) {
@@ -19,7 +29,40 @@ function parseArgs(argv) {
         else if (argv[index + 1] && !argv[index + 1].startsWith('--')) flags[key] = argv[++index];
         else flags[key] = true;
     }
-    return { command: positionals[0], input: positionals[1], flags };
+    return { command: positionals[0], input: positionals[1], extraPositionals: positionals.slice(2), flags };
+}
+function positiveInteger(value) {
+    const text = String(value).trim();
+    const parsed = /^\d+$/.test(text) ? Number(text) : null;
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+function invalidFilter(message) {
+    const error = new Error(message);
+    error.code = 'INVALID_FILTER';
+    return error;
+}
+function parseIndexes(value) {
+    const tokens = String(value).split(',');
+    if (!tokens.length || tokens.some(token => positiveInteger(token) == null)) {
+        throw invalidFilter('--indexes must be a comma-separated list of positive 1-based integers.');
+    }
+    return tokens.map(positiveInteger);
+}
+function parseRange(value) {
+    const match = String(value).match(/^\s*(\d+)\s*([:,\-])\s*(\d+)\s*$/);
+    if (!match) throw invalidFilter('--range must use START:END with positive 1-based integers.');
+    const start = positiveInteger(match[1]);
+    const end = positiveInteger(match[3]);
+    if (start == null || end == null || end < start) {
+        throw invalidFilter('--range must have positive 1-based endpoints with END greater than or equal to START.');
+    }
+    return { start, end };
+}
+function validateCommandOptions(command, flags, extraPositionals) {
+    if (extraPositionals.length > 0) return cliError('UNEXPECTED_ARGUMENT', `Unexpected argument: ${extraPositionals[0]}`);
+    const allowed = commandOptions[command];
+    const unknown = Object.keys(flags).find(option => !allowed.has(option));
+    return unknown ? cliError('UNKNOWN_OPTION', `Unknown option for ${command}: --${unknown.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`)}`) : null;
 }
 function inspectionOptions(flags) {
     const options = {};
@@ -28,9 +71,21 @@ function inspectionOptions(flags) {
     if (flags.table) options.inTable = true;
     if (flags.body) options.inTable = false;
     if (flags.nonEmpty) options.skipEmpty = true;
-    if (flags.indexes) options.indexes = String(flags.indexes).split(',').map(Number).filter(Number.isInteger);
-    if (flags.range) { const [start, end] = String(flags.range).split(':').map(Number); if (Number.isInteger(start) && Number.isInteger(end) && end >= start) options.indexes = Array.from({ length: end - start + 1 }, (_, i) => start + i); }
-    if (flags.view) options.revisionView = flags.view;
+    const selectors = ['index', 'indexes', 'range'].filter(name => flags[name] !== undefined);
+    if (selectors.length > 1) throw invalidFilter('Use only one of --index, --indexes, or --range.');
+    if (flags.index !== undefined) {
+        const index = positiveInteger(flags.index);
+        if (index == null) throw invalidFilter('--index must be a positive 1-based integer.');
+        options.indexes = [index];
+    }
+    if (flags.indexes !== undefined) options.indexes = parseIndexes(flags.indexes);
+    if (flags.range !== undefined) options.range = parseRange(flags.range);
+    if (flags.view) {
+        if (!['accepted', 'rejected', 'current'].includes(String(flags.view))) {
+            throw invalidFilter('--view must be accepted, rejected, or current.');
+        }
+        options.revisionView = flags.view;
+    }
     return options;
 }
 async function readOperations(file) {
@@ -58,19 +113,26 @@ function serializable(value) {
 }
 
 export async function executeCli(argv) {
-    const { command, input: rawInput, flags } = parseArgs(argv);
+    const { command, input: rawInput, extraPositionals, flags } = parseArgs(argv);
     if (command === 'help' || flags.help) return { status: 'ok', command: 'help', usage: 'docx-redline <inspect|extract|preflight|apply|accept|reject|delete-comments|validate> <file.docx> [options]' };
     if (!command) return cliError('COMMAND_REQUIRED', 'A command is required.');
     if (!['inspect','extract','preflight','apply','accept','reject','delete-comments','validate'].includes(command)) return cliError('UNKNOWN_COMMAND', `Unknown command: ${command}`);
     if (!rawInput) return cliError('INPUT_REQUIRED', 'An input .docx path is required.');
+    const optionError = validateCommandOptions(command, flags, extraPositionals);
+    if (optionError) return optionError;
+    let inspectOptions = null;
+    if (command === 'inspect' || command === 'extract') {
+        try { inspectOptions = inspectionOptions(flags); }
+        catch (error) { return cliError(error.code || 'INVALID_FILTER', error.message); }
+    }
     const input = path.resolve(rawInput);
     let buffer; try { buffer = await readFile(input); } catch (error) { return cliError('INPUT_READ_FAILED', error.message); }
     try {
         const document = openDocx(buffer);
-        if (command === 'inspect') return { ...document.inspect(inspectionOptions(flags)), command, input };
+        if (command === 'inspect') return { ...document.inspect(inspectOptions), command, input, indexBase: 1 };
         if (command === 'extract') {
-            const inspected = document.inspect(inspectionOptions(flags));
-            return { status: inspected.status, command, input, paragraphs: inspected.paragraphs.map(({ index, ref, paragraphId, fingerprint, exactText, inTable, list, nearestHeading }) => ({ index, ref, paragraphId, fingerprint, exactText, inTable, list, nearestHeading })), warnings: inspected.warnings };
+            const inspected = document.inspect(inspectOptions);
+            return { status: inspected.status, command, input, indexBase: 1, paragraphs: inspected.paragraphs.map(({ index, ref, paragraphId, fingerprint, exactText, inTable, list, nearestHeading }) => ({ index, ref, paragraphId, fingerprint, exactText, inTable, list, nearestHeading })), warnings: inspected.warnings };
         }
         if (command === 'validate') {
             const entries = unzipDocx(buffer); const documentXml = entries.get('word/document.xml')?.toString('utf8') || '';

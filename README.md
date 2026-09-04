@@ -137,6 +137,11 @@ docx-redline apply contract.docx --operations operations.json --author "Editor" 
 docx-redline validate reviewed.docx
 ```
 
+Paragraph indexes are 1-based. Use `--index 12` for one paragraph,
+`--indexes 2,5,8` for a set, or `--range 10:30` for an inclusive range.
+Malformed filters and unknown options return an error instead of silently
+falling back to an unfiltered extraction.
+
 All commands emit JSON. Mutations require explicit authors and preserve the
 input unless `--in-place` is supplied. Existing output paths are refused unless
 `--force` is supplied. See [the agent workflow](docs/AGENT-WORKFLOW.md) and the

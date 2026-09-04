@@ -74,10 +74,7 @@ export function normalizeDocumentOperation(operation) {
         target: targetDescriptor.text,
         targetRef: targetDescriptor.index,
         targetEndRef: targetEndDescriptor?.index ?? source.targetEndRef ?? null,
-        ...(source.type === 'delete' && source.modified == null ? { modified: '' } : {}),
-        ...(kind === 'comment' && !nonEmptyString(source.textToComment) && nonEmptyString(targetDescriptor.text)
-            ? { textToComment: targetDescriptor.text }
-            : {})
+        ...(source.type === 'delete' && source.modified == null ? { modified: '' } : {})
     };
 }
 
