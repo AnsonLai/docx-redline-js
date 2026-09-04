@@ -69,6 +69,19 @@ try {
     assert.equal(failed.status, 'error'); assert.equal(failed.written, false);
     await assert.rejects(access(failedOutput)); assert.deepEqual(await readFile(input), fixture);
 
+    const invalidAnchor = path.join(directory, 'invalid-anchor.json');
+    await writeFile(invalidAnchor, JSON.stringify({ operations:[
+        { type:'replace', target:{ exactText:'Body' }, modified:'Changed', author:'Editor', generateRedlines:false },
+        { type:'comment', target:{ exactText:'Body' }, textToComment:'missing anchor', commentContent:'Nope', author:'Reviewer' }
+    ] }));
+    const failedAnchorOutput = path.join(directory, 'anchor-must-not-exist.docx');
+    const failedAnchor = await executeCli(['apply', input, '--operations', invalidAnchor, '--output', failedAnchorOutput]);
+    assert.equal(failedAnchor.status, 'error');
+    assert.equal(failedAnchor.written, false);
+    assert.equal(failedAnchor.results[1].error.code, 'ANCHOR_NOT_FOUND');
+    await assert.rejects(access(failedAnchorOutput));
+    assert.deepEqual(await readFile(input), fixture);
+
     const validOps = path.join(directory, 'valid.json');
     await writeFile(validOps, JSON.stringify({ operations:[{ type:'replace', target:{ exactText:'Body' }, modified:'Changed', author:'Editor', generateRedlines:false }] }));
     const defaultResult = await executeCli(['apply', input, '--operations', validOps]);

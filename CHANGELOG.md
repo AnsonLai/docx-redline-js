@@ -39,6 +39,13 @@ default only on the newly added Node facade and CLI.
 
 ### Behavior and reliability
 
+- Comment preflight and application now share one anchor resolver. Exact
+  matches take priority, unique ordinary-space/NBSP differences preserve raw
+  offsets, and missing or repeated anchors return structured
+  `ANCHOR_NOT_FOUND` or `AMBIGUOUS_ANCHOR` errors.
+- Comment operations that place no comment can no longer be reported as
+  successful `no_change` items. They fail the operation, roll back atomic
+  batches, and allocate no comment ID when anchor resolution fails.
 - Full-document operation batches now share one live DOM and revision-ID
   allocator, reducing complete-document parsing and serialization from once per
   operation to once per changed batch. Scoped reconciliation engines and their

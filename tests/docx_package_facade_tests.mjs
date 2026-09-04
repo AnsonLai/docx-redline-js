@@ -28,6 +28,17 @@ assert.equal(failed.written, false);
 assert.equal(failed.rolledBack, true);
 assert.deepEqual(failed.toBuffer(), input);
 
+const failedAnchorDoc = openDocx(input);
+const failedAnchor = await failedAnchorDoc.applyOperations([
+    { type:'replace', target:{ exactText:'Hello world' }, modified:'Changed', generateRedlines:false },
+    { type:'comment', target:{ exactText:'Hello world' }, textToComment:'missing anchor', commentContent:'Nope' }
+], { author:'Agent', atomic:true });
+assert.equal(failedAnchor.status, 'error');
+assert.equal(failedAnchor.written, false);
+assert.equal(failedAnchor.rolledBack, true);
+assert.equal(failedAnchor.results[1].error.code, 'ANCHOR_NOT_FOUND');
+assert.deepEqual(failedAnchor.toBuffer(), input);
+
 const invalidPackage = buildZip([{name:'word/document.xml',data:documentXml},{name:'word/_rels/document.xml.rels',data:rels}]);
 const invalidDoc = openDocx(invalidPackage);
 const validationFailure = await invalidDoc.applyOperations([{ type:'replace', target:{ exactText:'Hello world' }, modified:'Changed' }], { author:'Agent', atomic:true });

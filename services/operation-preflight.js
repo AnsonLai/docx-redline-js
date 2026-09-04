@@ -14,6 +14,7 @@ import {
     normalizeWhitespaceForTargeting,
     resolveTargetParagraph
 } from '../core/paragraph-targeting.js';
+import { createParagraphTextIndex, resolveTextInParagraphIndex } from './comment-locator.js';
 import {
     normalizeDocumentOperation,
     resolveDocumentOperationAuthor,
@@ -121,7 +122,11 @@ export function preflightOperations(documentXml, operations, author, options = {
             const anchor = operation.operationKind === 'comment'
                 ? (operation.textToComment || paragraphText)
                 : (operation.operationKind === 'highlight' ? operation.textToHighlight : null);
-            const anchorFound = anchor == null || paragraphText.includes(anchor);
+            const anchorResolution = operation.operationKind === 'comment' && anchor != null
+                ? resolveTextInParagraphIndex(createParagraphTextIndex(paragraph), anchor)
+                : null;
+            const anchorFound = anchor == null
+                || (anchorResolution ? anchorResolution.found : paragraphText.includes(anchor));
             const hasRevisions = containsTrackedChanges(paragraph);
             const existingPolicy = operation.existingRevisions
                 || options.existingRevisions
@@ -129,7 +134,7 @@ export function preflightOperations(documentXml, operations, author, options = {
 
             let error = null;
             if (!anchorFound) {
-                error = {
+                error = anchorResolution?.error || {
                     code: 'ANCHOR_NOT_FOUND',
                     message: `Anchor text was not found in target paragraph: "${anchor}".`
                 };
@@ -151,7 +156,18 @@ export function preflightOperations(documentXml, operations, author, options = {
                 status: error ? 'error' : 'ready',
                 authorUsed,
                 ...metadata,
-                anchor: anchor == null ? null : { text: anchor, found: anchorFound },
+                anchor: anchor == null ? null : {
+                    text: anchor,
+                    found: anchorFound,
+                    ...(anchorResolution?.found ? {
+                        resolvedBy: anchorResolution.resolvedBy,
+                        start: anchorResolution.start,
+                        end: anchorResolution.end
+                    } : {}),
+                    ...(!anchorResolution?.found && Array.isArray(anchorResolution?.error?.candidates)
+                        ? { candidates: anchorResolution.error.candidates }
+                        : {})
+                },
                 hasRevisions,
                 existingRevisions: existingPolicy,
                 ...(error ? { error } : {})

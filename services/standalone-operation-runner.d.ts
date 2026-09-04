@@ -58,6 +58,15 @@ export interface ResolvedDocumentTarget {
   inTable?: boolean;
 }
 
+export interface ResolvedCommentAnchor {
+  requestIndex: number;
+  paragraphIndex: number;
+  text: string;
+  resolvedBy: 'exact_anchor' | 'space_equivalent_anchor';
+  start: number;
+  end: number;
+}
+
 export interface StandaloneRunnerOptions {
   atomic?: boolean;
   continueOnError?: boolean;
@@ -81,6 +90,7 @@ export interface DocumentOperationResult {
   authorUsed: string;
   resolvedBy?: string;
   resolvedTarget?: ResolvedDocumentTarget;
+  resolvedAnchor?: ResolvedCommentAnchor;
 }
 
 export interface BatchOperationItemResult {
@@ -91,6 +101,7 @@ export interface BatchOperationItemResult {
   authorUsed: string;
   resolvedBy?: string;
   resolvedTarget?: ResolvedDocumentTarget;
+  resolvedAnchor?: ResolvedCommentAnchor;
   warnings?: string[];
   error?: RedlineError;
 }
@@ -124,7 +135,14 @@ export interface OperationPreflightItemResult {
     suppliedText: string;
     actualText: string;
   };
-  anchor?: { text: string; found: boolean } | null;
+  anchor?: {
+    text: string;
+    found: boolean;
+    resolvedBy?: 'exact_anchor' | 'space_equivalent_anchor';
+    start?: number;
+    end?: number;
+    candidates?: Array<{ start: number; end: number }>;
+  } | null;
   hasRevisions?: boolean;
   existingRevisions?: ExistingRevisionsPolicy;
   error?: RedlineError & { candidates?: ResolvedDocumentTarget[] };

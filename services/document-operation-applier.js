@@ -102,6 +102,21 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                 operationOptions
             );
         }
+        if (
+            operation.operationKind === 'comment'
+            && result?.hasChanges !== true
+            && result?.status !== 'error'
+            && !result?.error
+        ) {
+            result = {
+                ...result,
+                status: 'error',
+                error: {
+                    code: 'COMMENT_NOT_APPLIED',
+                    message: 'The comment operation completed without placing a comment.'
+                }
+            };
+        }
         const isError = result?.status === 'error' || !!result?.error;
         if (isError || result?.hasChanges !== true) {
             session.restoreSavepoint(savepoint);

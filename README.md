@@ -248,6 +248,12 @@ batch so `results` describes what would have applied. Callers that intentionally
 consume partial results must pass `{ atomic: false }`; use
 `{ continueOnError: false }` to stop after the first error.
 
+Comment anchors use exact matching first, then a unique ASCII-space/NBSP
+equivalent match that preserves source offsets and text. Missing anchors return
+`ANCHOR_NOT_FOUND`; repeated matches return `AMBIGUOUS_ANCHOR`. Both are
+operation errors and therefore roll back atomic batches. When `textToComment`
+is omitted, the exact text of the resolved paragraph is used.
+
 Operations may override the batch author and may use a strict target descriptor:
 
 ```js

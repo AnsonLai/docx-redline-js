@@ -40,3 +40,6 @@ Mutating commands require `--author`, authors on every operation, or
 
 Treat a nonzero exit code or JSON `status: "error"` as failure. A failed atomic
 operation reports `written: false` and does not write an output file.
+Missing or repeated comment anchors are errors rather than no-ops. Explicit
+anchors match exact text first and then a unique ordinary-space/NBSP equivalent;
+omit `textToComment` to comment the entire resolved paragraph.

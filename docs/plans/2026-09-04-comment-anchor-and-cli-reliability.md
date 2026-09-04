@@ -1,6 +1,6 @@
 # Comment Anchor and CLI Reliability Plan
 
-**Status:** In progress — Phases 1 and 2 complete  
+**Status:** In progress — Phases 1-4 complete
 **Date:** 2026-09-04  
 
 ## Implementation progress
@@ -12,9 +12,14 @@
 - **Phase 2 complete (2026-09-04):** Operation normalization no longer derives
   `textToComment` from paragraph target text. An omitted anchor now uses exact
   canonical text from the resolved paragraph.
-- **Phases 3-5 pending:** Shared explicit-anchor resolution, structured anchor
-  failures and atomic propagation, and migration of the external plugin
-  wrappers remain to be implemented.
+- **Phase 3 complete (2026-09-04):** Preflight and application now share a
+  non-mutating resolver with exact-match priority, unique ASCII-space/NBSP
+  matching, ambiguity detection, raw run offsets, and resolution diagnostics.
+- **Phase 4 complete (2026-09-04):** Missing and ambiguous anchors now produce
+  structured errors, failed resolution does not allocate comment IDs, and
+  atomic package/CLI operations roll back without writing partial output.
+- **Phase 5 pending:** Migration of the external plugin wrappers remains to be
+  implemented in the repository that owns them.
 
 ## Summary
 

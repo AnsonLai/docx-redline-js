@@ -159,6 +159,8 @@ runTest('injectCommentsIntoOoxml - text not found', () => {
     assert(result.commentsApplied === 0, 'No comments applied');
     assert(result.warnings.length === 1, 'Has warning');
     assert(result.warnings[0].includes('Could not find'), 'Warning mentions not found');
+    assert(result.status === 'error', 'Missing anchor is an error');
+    assert(result.error.code === 'ANCHOR_NOT_FOUND', 'Has structured anchor error');
 });
 
 runTest('injectCommentsIntoOoxml - paragraph out of range', () => {
@@ -171,6 +173,8 @@ runTest('injectCommentsIntoOoxml - paragraph out of range', () => {
     assert(result.commentsApplied === 0, 'No comments applied');
     assert(result.warnings.length === 1, 'Has warning');
     assert(result.warnings[0].includes('out of range'), 'Warning mentions out of range');
+    assert(result.status === 'error', 'Out-of-range paragraph is an error');
+    assert(result.error.code === 'TARGET_NOT_FOUND', 'Has structured target error');
 });
 
 runTest('injectCommentsIntoOoxml - text spanning multiple runs', () => {

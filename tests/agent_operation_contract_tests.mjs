@@ -212,9 +212,101 @@ function testPreflightDiagnosticsAndConflicts() {
     assert.equal(result.results[3].resolvedTarget.fingerprint.startsWith('fnv1a32:'), true);
 }
 
+async function testCommentAnchorParityAndAtomicFailure() {
+    const input = documentXml([
+        { id: 'EEE00001', text: 'Replace this paragraph.' },
+        { id: 'EEE00002', text: 'during the\u00a0Subscription Term\u00a0only' },
+        { id: 'EEE00003', text: 'term and term' }
+    ]);
+    const equivalentOperation = {
+        type: 'comment',
+        target: { paragraphId: 'EEE00002' },
+        textToComment: 'during the Subscription Term only',
+        commentContent: 'Review the term.'
+    };
+    const equivalentPreflight = preflightOperations(input, [equivalentOperation], 'Reviewer');
+    assert.equal(equivalentPreflight.valid, true);
+    assert.equal(equivalentPreflight.results[0].anchor.resolvedBy, 'space_equivalent_anchor');
+    assert.deepEqual(
+        [equivalentPreflight.results[0].anchor.start, equivalentPreflight.results[0].anchor.end],
+        [0, 'during the\u00a0Subscription Term\u00a0only'.length]
+    );
+    const equivalentApply = await applyOperationToDocumentXml(input, equivalentOperation, 'Reviewer');
+    assert.equal(equivalentApply.hasChanges, true);
+    assert.equal(equivalentApply.resolvedAnchor.resolvedBy, equivalentPreflight.results[0].anchor.resolvedBy);
+    assert.deepEqual(
+        [equivalentApply.resolvedAnchor.start, equivalentApply.resolvedAnchor.end],
+        [equivalentPreflight.results[0].anchor.start, equivalentPreflight.results[0].anchor.end]
+    );
+
+    for (const { operation, code } of [
+        {
+            operation: {
+                type: 'comment', target: { paragraphId: 'EEE00002' },
+                textToComment: 'absent anchor', commentContent: 'Must fail.'
+            },
+            code: 'ANCHOR_NOT_FOUND'
+        },
+        {
+            operation: {
+                type: 'comment', target: { paragraphId: 'EEE00003' },
+                textToComment: 'term', commentContent: 'Must be unambiguous.'
+            },
+            code: 'AMBIGUOUS_ANCHOR'
+        }
+    ]) {
+        const preflight = preflightOperations(input, [operation], 'Reviewer');
+        const applied = await applyOperationToDocumentXml(input, operation, 'Reviewer');
+        assert.equal(preflight.results[0].status, 'error');
+        assert.equal(preflight.results[0].error.code, code);
+        assert.equal(applied.status, 'error');
+        assert.equal(applied.error.code, code);
+        assert.equal(applied.documentXml, input);
+    }
+
+    const batchOperations = [
+        {
+            type: 'replace', target: { paragraphId: 'EEE00001' },
+            modified: 'Replacement applied.', generateRedlines: false
+        },
+        {
+            type: 'comment', target: { paragraphId: 'EEE00002' },
+            textToComment: 'absent anchor', commentContent: 'Must fail.'
+        }
+    ];
+    let allocatedIds = 0;
+    const atomic = await applyOperationsToDocumentXml(input, batchOperations, 'Reviewer', null, {
+        atomic: true,
+        commentIdAllocator: () => { allocatedIds += 1; return 500; }
+    });
+    assert.equal(atomic.rolledBack, true);
+    assert.equal(atomic.error.code, 'BATCH_OPERATION_FAILED');
+    assert.equal(atomic.documentXml, input);
+    assert.equal(atomic.hasChanges, false);
+    assert.equal(atomic.commentsXml, null);
+    assert.deepEqual(atomic.authorsUsed, []);
+    assert.deepEqual(atomic.results.map(result => result.status), ['applied', 'error']);
+    assert.equal(atomic.results[1].error.code, 'ANCHOR_NOT_FOUND');
+    assert.equal(allocatedIds, 0, 'unresolved anchors must not allocate comment IDs');
+
+    const partial = await applyOperationsToDocumentXml(input, batchOperations, 'Reviewer', null, {
+        atomic: false,
+        generateRedlines: false
+    });
+    assert.equal(partial.rolledBack, undefined);
+    assert.equal(partial.hasChanges, true);
+    assert.deepEqual(partial.results.map(result => result.status), ['applied', 'error']);
+    assert.deepEqual(paragraphTexts(partial.documentXml), [
+        'Replacement applied.',
+        'during the\u00a0Subscription Term\u00a0only',
+        'term and term'
+    ]);
+}
+
 await testPerOperationAuthorsAndMetadata();
 await testRuntimeOperationValidation();
 await testStrictAmbiguityAndDescriptors();
 testPreflightDiagnosticsAndConflicts();
+await testCommentAnchorParityAndAtomicFailure();
 
 console.log('agent_operation_contract_tests.mjs ... PASS');

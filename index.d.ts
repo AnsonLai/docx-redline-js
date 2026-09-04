@@ -14,6 +14,7 @@ export type {
   OperationPreflightResult,
   ParagraphTargetDescriptor,
   RedlineDocumentOperation,
+  ResolvedCommentAnchor,
   ResolvedDocumentTarget,
   StandaloneRunnerOptions
 } from './services/standalone-operation-runner.js';

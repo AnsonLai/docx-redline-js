@@ -1075,7 +1075,19 @@ export async function applyCommentToParagraphByExactText(documentXml, targetText
         textToFind: commentAnchor,
         commentContent
     }], { author, commentIdAllocator: options.commentIdAllocator });
-    if (!commentResult.commentsApplied) return { documentXml, hasChanges: false, commentsXml: null, warnings: commentResult.warnings || [] };
+    if (commentResult.status === 'error' || commentResult.error || !commentResult.commentsApplied) {
+        return {
+            documentXml,
+            hasChanges: false,
+            commentsXml: null,
+            status: 'error',
+            error: commentResult.error || {
+                code: 'ANCHOR_INSERTION_FAILED',
+                message: 'The comment anchor was not applied to the resolved paragraph.'
+            },
+            warnings: commentResult.warnings || []
+        };
+    }
     const { replacementNodes } = extractReplacementNodes(commentResult.oxml);
     const parent = targetParagraph.parentNode;
     for (const node of replacementNodes) parent.insertBefore(xmlDoc.importNode(node, true), targetParagraph);
@@ -1085,6 +1097,7 @@ export async function applyCommentToParagraphByExactText(documentXml, targetText
         documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
         hasChanges: true,
         commentsXml: commentResult.commentsXml || null,
-        warnings: commentResult.warnings || []
+        warnings: commentResult.warnings || [],
+        resolvedAnchor: commentResult.resolvedAnchors?.[0] || null
     };
 }

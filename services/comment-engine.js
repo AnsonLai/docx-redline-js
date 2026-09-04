@@ -16,7 +16,7 @@ import { log, error as logError } from '../adapters/logger.js';
 import { getElementsByTag, getFirstElementByTag, getXmlParseError } from '../core/xml-query.js';
 import { buildCommentElement, buildCommentsPartXml, buildCommentMarkers } from './comment-builders.js';
 import { getDefaultAuthor } from '../adapters/config.js';
-import { createParagraphTextIndex, injectMarkersIntoParagraph } from './comment-locator.js';
+import { createParagraphTextIndex, injectMarkersIntoParagraph, resolveTextInParagraphIndex } from './comment-locator.js';
 import {
     injectCommentsIntoPackage as injectCommentsIntoExistingPackage,
     wrapParagraphWithComments,
@@ -70,6 +70,8 @@ export function injectCommentsIntoOoxml(oxml, comments, options = {}) {
     const date = getRevisionTimestamp();
     const warnings = [];
     const placedComments = [];
+    const resolvedAnchors = [];
+    const errors = [];
 
     if (!comments || comments.length === 0) {
         return {
@@ -109,7 +111,9 @@ export function injectCommentsIntoOoxml(oxml, comments, options = {}) {
     for (const request of comments) {
         const paragraphIndex = request.paragraphIndex - 1;
         if (paragraphIndex < 0 || paragraphIndex >= paragraphs.length) {
-            warnings.push(`Paragraph ${request.paragraphIndex} out of range (1-${paragraphs.length})`);
+            const message = `Paragraph ${request.paragraphIndex} out of range (1-${paragraphs.length})`;
+            warnings.push(message);
+            errors.push({ code: 'TARGET_NOT_FOUND', message, paragraphIndex: request.paragraphIndex });
             continue;
         }
         remainingRequestsByParagraph.set(paragraphIndex, (remainingRequestsByParagraph.get(paragraphIndex) || 0) + 1);
@@ -118,7 +122,7 @@ export function injectCommentsIntoOoxml(oxml, comments, options = {}) {
     /** @type {Map<number, { fullText: string, runOffsets: Array<{run: Element, start: number, end: number}> }>} */
     const paragraphIndexes = new Map();
 
-    for (const request of comments) {
+    for (const [requestIndex, request] of comments.entries()) {
         const paragraphIndex = request.paragraphIndex - 1;
         if (paragraphIndex < 0 || paragraphIndex >= paragraphs.length) {
             continue;
@@ -131,23 +135,44 @@ export function injectCommentsIntoOoxml(oxml, comments, options = {}) {
             paragraphIndexes.set(paragraphIndex, textIndex);
         }
 
+        const anchorText = String(request.textToFind ?? '');
+        const resolution = resolveTextInParagraphIndex(textIndex, anchorText);
+        const remaining = (remainingRequestsByParagraph.get(paragraphIndex) || 1) - 1;
+        remainingRequestsByParagraph.set(paragraphIndex, remaining);
+        if (!resolution.found) {
+            const error = {
+                ...resolution.error,
+                requestIndex: requestIndex + 1,
+                paragraphIndex: request.paragraphIndex
+            };
+            errors.push(error);
+            warnings.push(error.message);
+            if (remaining === 0) paragraphIndexes.delete(paragraphIndex);
+            continue;
+        }
+
         const commentId = typeof options.commentIdAllocator === 'function'
             ? options.commentIdAllocator()
             : getNextRevisionId();
         const success = injectMarkersIntoParagraph(
             xmlDoc,
             targetParagraph,
-            request.textToFind,
+            anchorText,
             commentId,
             textIndex,
-            revisionIdAllocator
+            revisionIdAllocator,
+            resolution
         );
 
-        const remaining = (remainingRequestsByParagraph.get(paragraphIndex) || 1) - 1;
-        remainingRequestsByParagraph.set(paragraphIndex, remaining);
-
         if (!success) {
-            warnings.push(`Could not find "${request.textToFind.substring(0, 30)}..." in paragraph ${request.paragraphIndex}`);
+            const error = {
+                code: 'ANCHOR_INSERTION_FAILED',
+                message: `Resolved comment anchor could not be inserted in paragraph ${request.paragraphIndex}.`,
+                requestIndex: requestIndex + 1,
+                paragraphIndex: request.paragraphIndex
+            };
+            errors.push(error);
+            warnings.push(error.message);
             if (remaining === 0) {
                 paragraphIndexes.delete(paragraphIndex);
             }
@@ -159,6 +184,14 @@ export function injectCommentsIntoOoxml(oxml, comments, options = {}) {
             content: request.commentContent,
             author,
             date
+        });
+        resolvedAnchors.push({
+            requestIndex: requestIndex + 1,
+            paragraphIndex: request.paragraphIndex,
+            text: anchorText,
+            resolvedBy: resolution.resolvedBy,
+            start: resolution.start,
+            end: resolution.end
         });
 
         if (remaining > 0) {
@@ -174,7 +207,9 @@ export function injectCommentsIntoOoxml(oxml, comments, options = {}) {
             oxml,
             hasChanges: false,
             commentsApplied: 0,
-            warnings
+            warnings,
+            resolvedAnchors,
+            ...(errors.length > 0 ? { status: 'error', error: errors[0], errors } : {})
         };
     }
 
@@ -183,7 +218,9 @@ export function injectCommentsIntoOoxml(oxml, comments, options = {}) {
         hasChanges: true,
         commentsXml: buildCommentsPartXml(placedComments),
         commentsApplied: placedComments.length,
-        warnings
+        warnings,
+        resolvedAnchors,
+        ...(errors.length > 0 ? { status: 'error', error: errors[0], errors } : {})
     };
 }
 
@@ -200,7 +237,6 @@ export function injectCommentsIntoOoxml(oxml, comments, options = {}) {
 export function injectCommentIntoParagraphOoxml(paragraphOoxml, textToFind, commentContent, options = {}) {
     const { author = 'AI Assistant' } = options;
     const date = getRevisionTimestamp();
-    const commentId = getNextRevisionId();
 
     const serializer = createSerializer();
     const parseResult = parseDocumentOxml(
@@ -221,13 +257,19 @@ export function injectCommentIntoParagraphOoxml(paragraphOoxml, textToFind, comm
 
     const paragraph = paragraphs[0];
     const paragraphIndex = createParagraphTextIndex(paragraph);
+    const resolution = resolveTextInParagraphIndex(paragraphIndex, textToFind);
+    if (!resolution.found) {
+        return { success: false, warning: resolution.error.message, error: resolution.error };
+    }
+    const commentId = getNextRevisionId();
     const success = injectMarkersIntoParagraph(
         xmlDoc,
         paragraph,
         textToFind,
         commentId,
         paragraphIndex,
-        revisionIdAllocator
+        revisionIdAllocator,
+        resolution
     );
     if (!success) {
         return { success: false, warning: `Could not find "${textToFind.substring(0, 30)}..." in paragraph` };

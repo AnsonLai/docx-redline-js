@@ -184,9 +184,10 @@ do not remove this isolation merely for speed. Redline accuracy, accepted and
 rejected text, and exact rollback take precedence over throughput.
 
 Always inspect `status` and `error`, not only `hasChanges`. A failed transform
-can return `{ hasChanges: false, status: 'error', error: ... }`. A `no_change`
-batch item can also mean an anchor was not found; inspect its warnings before
-treating it as a successful no-op.
+can return `{ hasChanges: false, status: 'error', error: ... }`. Missing or
+ambiguous comment anchors are structured errors and roll back atomic batches;
+`no_change` is reserved for genuine no-ops. Continue to inspect warnings for
+non-fatal diagnostics.
 
 ### Detect existing tracked changes
 

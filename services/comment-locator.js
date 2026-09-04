@@ -29,6 +29,87 @@ export function createParagraphTextIndex(paragraph) {
     return { fullText, runOffsets };
 }
 
+function candidateOffsets(haystack, needle) {
+    if (!needle) return [];
+    const candidates = [];
+    let offset = haystack.indexOf(needle);
+    while (offset !== -1) {
+        candidates.push({ start: offset, end: offset + needle.length });
+        offset = haystack.indexOf(needle, offset + 1);
+    }
+    return candidates;
+}
+
+function spaceEquivalentText(value) {
+    return String(value).replace(/[ \u00a0]/g, ' ');
+}
+
+function anchorError(code, message, candidates = []) {
+    return {
+        code,
+        message,
+        ...(candidates.length > 0 ? { candidates } : {})
+    };
+}
+
+function attachRunOffsets(paragraphIndex, candidate, resolvedBy) {
+    let startRun = null;
+    let endRun = null;
+    let startOffset = 0;
+    let endOffset = 0;
+    for (const { run, start, end } of paragraphIndex.runOffsets) {
+        if (candidate.start >= start && candidate.start < end) {
+            startRun = run;
+            startOffset = candidate.start - start;
+        }
+        if (candidate.end > start && candidate.end <= end) {
+            endRun = run;
+            endOffset = candidate.end - start;
+        }
+    }
+    if (!startRun || !endRun) return null;
+    return { found: true, resolvedBy, ...candidate, startRun, startOffset, endRun, endOffset };
+}
+
+/**
+ * Resolves a unique comment anchor without mutating the paragraph DOM.
+ * Exact matching wins. A one-to-one ASCII-space/NBSP comparison is used only
+ * when no exact match exists, so raw offsets remain stable.
+ */
+export function resolveTextInParagraphIndex(paragraphIndex, searchText) {
+    const needle = String(searchText ?? '');
+    const exactCandidates = candidateOffsets(paragraphIndex.fullText, needle);
+    if (exactCandidates.length > 1) {
+        return {
+            found: false,
+            error: anchorError('AMBIGUOUS_ANCHOR', `Anchor text matched ${exactCandidates.length} locations in the target paragraph.`, exactCandidates)
+        };
+    }
+    if (exactCandidates.length === 1) {
+        const resolved = attachRunOffsets(paragraphIndex, exactCandidates[0], 'exact_anchor');
+        if (resolved) return resolved;
+    }
+
+    const normalizedNeedle = spaceEquivalentText(needle);
+    const normalizedParagraph = spaceEquivalentText(paragraphIndex.fullText);
+    const equivalentCandidates = candidateOffsets(normalizedParagraph, normalizedNeedle);
+    if (equivalentCandidates.length > 1) {
+        return {
+            found: false,
+            error: anchorError('AMBIGUOUS_ANCHOR', `Space-equivalent anchor text matched ${equivalentCandidates.length} locations in the target paragraph.`, equivalentCandidates)
+        };
+    }
+    if (equivalentCandidates.length === 1) {
+        const resolved = attachRunOffsets(paragraphIndex, equivalentCandidates[0], 'space_equivalent_anchor');
+        if (resolved) return resolved;
+    }
+
+    return {
+        found: false,
+        error: anchorError('ANCHOR_NOT_FOUND', `Could not find anchor text in the target paragraph: "${needle}".`)
+    };
+}
+
 /**
  * Finds text within a prebuilt paragraph text index.
  *
@@ -37,35 +118,7 @@ export function createParagraphTextIndex(paragraph) {
  * @returns {{ found: boolean, startRun?: Element, startOffset?: number, endRun?: Element, endOffset?: number }}
  */
 export function findTextInParagraphIndex(paragraphIndex, searchText) {
-    const searchIndex = paragraphIndex.fullText.indexOf(searchText);
-    if (searchIndex === -1) {
-        return { found: false };
-    }
-
-    const searchEnd = searchIndex + searchText.length;
-    let startRun = null;
-    let endRun = null;
-    let startOffset = 0;
-    let endOffset = 0;
-
-    for (const { run, start, end } of paragraphIndex.runOffsets) {
-        if (searchIndex >= start && searchIndex < end) {
-            startRun = run;
-            startOffset = searchIndex - start;
-        }
-        if (searchEnd > start && searchEnd <= end) {
-            endRun = run;
-            endOffset = searchEnd - start;
-        }
-    }
-
-    return {
-        found: true,
-        startRun,
-        startOffset,
-        endRun,
-        endOffset
-    };
+    return resolveTextInParagraphIndex(paragraphIndex, searchText);
 }
 
 function cloneRunWithText(xmlDoc, rPr, newText, revisionIdAllocator, preserveRevisionIds = false) {
@@ -96,9 +149,9 @@ function cloneRunWithText(xmlDoc, rPr, newText, revisionIdAllocator, preserveRev
  * @param {import('../core/types.js').RevisionIdAllocator|null} [revisionIdAllocator=null] - Document-scoped revision ID allocator
  * @returns {boolean}
  */
-export function injectMarkersIntoParagraph(xmlDoc, paragraph, textToFind, commentId, paragraphIndex = null, revisionIdAllocator = null) {
+export function injectMarkersIntoParagraph(xmlDoc, paragraph, textToFind, commentId, paragraphIndex = null, revisionIdAllocator = null, resolvedLocation = null) {
     const activeIndex = paragraphIndex || createParagraphTextIndex(paragraph);
-    const location = findTextInParagraphIndex(activeIndex, textToFind);
+    const location = resolvedLocation || resolveTextInParagraphIndex(activeIndex, textToFind);
     if (!location.found || !location.startRun) {
         return false;
     }

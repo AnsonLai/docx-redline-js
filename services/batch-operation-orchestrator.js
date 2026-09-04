@@ -117,6 +117,7 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
                 authorUsed: result.authorUsed,
                 ...(result.resolvedBy ? { resolvedBy: result.resolvedBy } : {}),
                 ...(result.resolvedTarget ? { resolvedTarget: result.resolvedTarget } : {}),
+                ...(result.resolvedAnchor ? { resolvedAnchor: result.resolvedAnchor } : {}),
                 ...(Array.isArray(result.warnings) && result.warnings.length > 0 ? { warnings: result.warnings } : {}),
                 ...(result.error ? { error: result.error } : {})
             });
