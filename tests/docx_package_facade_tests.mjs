@@ -4,7 +4,7 @@ import { unzipEntries } from '../scripts/lib/zip-reader.mjs';
 import { openDocx } from '../node/index.js';
 
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
-const documentXml = `<w:document xmlns:w="${W}"><w:body><w:p><w:r><w:t>Hello world</w:t></w:r></w:p><w:sectPr/></w:body></w:document>`;
+const documentXml = `<w:document xmlns:w="${W}"><w:body><w:p><w:r><w:t>Hello world</w:t></w:r></w:p><w:p><w:commentRangeStart w:id="5000"/><w:r><w:t>Prior anchor</w:t></w:r><w:commentRangeEnd w:id="5000"/><w:r><w:commentReference w:id="5000"/></w:r></w:p><w:sectPr/></w:body></w:document>`;
 const contentTypes = `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/></Types>`;
 const rels = `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/></Relationships>`;
 const comments = `<w:comments xmlns:w="${W}"><w:comment w:id="5000" w:author="Prior"><w:p><w:r><w:t>Old</w:t></w:r></w:p></w:comment></w:comments>`;

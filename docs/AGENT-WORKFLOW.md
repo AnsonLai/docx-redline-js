@@ -26,6 +26,9 @@ targets. Never normalize or reconstruct `exactText`. Operation files follow
 - `apply` applies an operation file transactionally.
 - `accept` and `reject` resolve revisions selected by `--author` or `--all-authors`.
 - `delete-comments` removes matching definitions and document anchors together.
+- A whole-paragraph delete stops with `COMMENTED_CONTENT_DELETE` when the
+  paragraph has an existing comment. Surface the returned reviewer and comment
+  text for human follow-up; do not silently convert this into comment removal.
 - `validate` checks revision markup and DOCX package wiring.
 
 Paragraph indexes are 1-based. Inspection filters are `--index 12`,

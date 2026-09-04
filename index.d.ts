@@ -22,6 +22,8 @@ export type {
 export interface RedlineError {
   code: 'PARSE_ERROR' | 'TARGET_NOT_FOUND' | 'EXISTING_REVISIONS' | 'DIFF_TOKEN_LIMIT' | string;
   message: string;
+  commentIds?: string[];
+  comments?: Array<{ id: string; author: string; text: string }>;
 }
 
 export interface RedlineOptions {

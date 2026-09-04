@@ -29,6 +29,21 @@ const commentDocXml = `<w:document xmlns:w="${W}"><w:body><w:p><w:commentRangeSt
 const commentTypes = contentTypes.replace('</Types>', '<Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/></Types>');
 const commentRels = `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/></Relationships>`;
 const commentInput = buildZip([{name:'[Content_Types].xml',data:commentTypes},{name:'word/document.xml',data:commentDocXml},{name:'word/_rels/document.xml.rels',data:commentRels},{name:'word/comments.xml',data:commentsXml}]);
+
+const protectedDoc = openDocx(commentInput);
+const protectedPreflight = protectedDoc.preflight([{ type:'delete', target:{ exactText:'A' } }], 'Editor');
+assert.equal(protectedPreflight.valid, false);
+assert.equal(protectedPreflight.results[0].error.code, 'COMMENTED_CONTENT_DELETE');
+assert.deepEqual(protectedPreflight.results[0].error.commentIds, ['1']);
+assert.equal(protectedPreflight.results[0].error.comments[0].author, 'Alice');
+assert.equal(protectedPreflight.results[0].error.comments[0].text, 'A');
+const protectedDelete = await protectedDoc.applyOperations([{ type:'delete', target:{ exactText:'A' } }], { author:'Editor' });
+assert.equal(protectedDelete.written, false);
+assert.equal(protectedDelete.rolledBack, true);
+assert.equal(protectedDelete.results[0].error.code, 'COMMENTED_CONTENT_DELETE');
+assert.equal(protectedDelete.results[0].error.comments[0].author, 'Alice');
+assert.deepEqual(protectedDelete.toBuffer(), commentInput);
+
 const selective = openDocx(commentInput);
 const deletedAlice = await selective.deleteComments({ author:'Alice' });
 assert.equal(deletedAlice.status, 'ok', JSON.stringify(deletedAlice));
@@ -50,10 +65,12 @@ const rejectedBob = await revisions.resolveRevisions('reject', { author:'Bob' })
 assert.equal(rejectedBob.rejectedCount, 1); assert.equal(revisions.inspect().paragraphs[0].text, 'A');
 
 const anchoredHighXml = `<w:document xmlns:w="${W}"><w:body><w:p><w:commentRangeStart w:id="9000"/><w:r><w:t>High anchor</w:t></w:r><w:commentRangeEnd w:id="9000"/><w:r><w:commentReference w:id="9000"/></w:r></w:p><w:sectPr/></w:body></w:document>`;
-const highDoc = openDocx(packageBuffer(anchoredHighXml));
+const highCommentsXml = `<w:comments xmlns:w="${W}"><w:comment w:id="9000" w:author="Existing"><w:p><w:r><w:t>Existing comment</w:t></w:r></w:p></w:comment></w:comments>`;
+const highInput = buildZip([{name:'[Content_Types].xml',data:commentTypes},{name:'word/document.xml',data:anchoredHighXml},{name:'word/_rels/document.xml.rels',data:commentRels},{name:'word/comments.xml',data:highCommentsXml}]);
+const highDoc = openDocx(highInput);
 const highResult = await highDoc.applyOperations([{ type:'comment', target:{ exactText:'High anchor' }, commentContent:'New' }], { author:'Agent' });
 assert.equal(highResult.written, true);
 assert.match(unzipEntries(highResult.toBuffer()).get('word/comments.xml').toString(), /w:id="9001"/);
-assert.ok(highResult.artifactsChanged.includes('[Content_Types].xml'));
-assert.ok(highResult.artifactsChanged.includes('word/_rels/document.xml.rels'));
+assert.ok(highResult.artifactsChanged.includes('word/document.xml'));
+assert.ok(highResult.artifactsChanged.includes('word/comments.xml'));
 console.log('docx package transaction edge tests passed');

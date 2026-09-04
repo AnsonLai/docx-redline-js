@@ -136,6 +136,11 @@ async function testArtifactsAndValidation() {
     await ensureNumberingArtifactsInZip(zip, numberingXml);
     await ensureCommentsArtifactsInZip(zip, commentsXml1);
     await ensureCommentsArtifactsInZip(zip, commentsXml2);
+    zip.file('word/document.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}"><w:body>
+  <w:p><w:commentRangeStart w:id="1"/><w:r><w:t>Hello</w:t></w:r><w:commentRangeEnd w:id="1"/><w:r><w:commentReference w:id="1"/></w:r></w:p>
+  <w:p><w:r><w:commentReference w:id="2"/></w:r></w:p><w:sectPr/>
+</w:body></w:document>`);
     await validateDocxPackage(zip);
 
     const mergedComments = await zip.file('word/comments.xml')?.async('string');
@@ -144,10 +149,46 @@ async function testArtifactsAndValidation() {
     assert.ok(rels && rels.includes('relationships/comments') && rels.includes('relationships/numbering'), 'document relationships should include comments and numbering');
 }
 
+async function testCommentIntegrityValidation() {
+    const makeCommentZip = async (documentXml, commentsXml) => {
+        const zip = await createBaseZip();
+        zip.file('word/document.xml', documentXml);
+        await ensureCommentsArtifactsInZip(zip, commentsXml);
+        return zip;
+    };
+    const comments = `<w:comments xmlns:w="${NS_W}"><w:comment w:id="7"><w:p><w:r><w:t>Review</w:t></w:r></w:p></w:comment></w:comments>`;
+    const document = content => `<w:document xmlns:w="${NS_W}"><w:body><w:p>${content}</w:p><w:sectPr/></w:body></w:document>`;
+
+    await validateDocxPackage(await makeCommentZip(
+        document('<w:r><w:t>Point</w:t></w:r><w:r><w:commentReference w:id="7"/></w:r>'),
+        comments
+    ));
+
+    await assert.rejects(
+        validateDocxPackage(await makeCommentZip(
+            document('<w:commentRangeStart w:id="7"/><w:r><w:t>Dangling</w:t></w:r>'),
+            comments
+        )),
+        /unbalanced comment range marker.*start without end: 7/
+    );
+    await assert.rejects(
+        validateDocxPackage(await makeCommentZip(document('<w:r><w:t>No reference</w:t></w:r>'), comments)),
+        /comment definition has no document reference.*7/
+    );
+    await assert.rejects(
+        validateDocxPackage(await makeCommentZip(
+            document('<w:r><w:commentReference w:id="8"/></w:r>'),
+            comments
+        )),
+        /comment usage has no definition.*8/
+    );
+}
+
 async function run() {
     await testExtractReplacementNodes();
     testNormalizeAndSanitize();
     await testArtifactsAndValidation();
+    await testCommentIntegrityValidation();
     console.log('PASS: standalone docx plumbing tests');
 }
 

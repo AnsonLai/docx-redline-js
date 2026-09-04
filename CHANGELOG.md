@@ -43,6 +43,14 @@ default only on the newly added Node facade and CLI.
 
 ### Behavior and reliability
 
+- Whole-paragraph deletions now fail with `COMMENTED_CONTENT_DELETE` when the
+  target contains an existing comment. Package callers receive the affected
+  comment IDs and, when `word/comments.xml` is available, the comment author
+  and text so reviewer feedback cannot disappear silently. Atomic application
+  preserves the original DOCX bytes.
+- DOCX package validation now cross-checks comment range starts, range ends,
+  references, and definitions, rejecting unbalanced ranges, dangling usages,
+  orphan definitions, and duplicate definition IDs.
 - Comment preflight and application now share one anchor resolver. Exact
   matches take priority, unique ordinary-space/NBSP differences preserve raw
   offsets, and missing or repeated anchors return structured

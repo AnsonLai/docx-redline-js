@@ -59,6 +59,22 @@ import {
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
+function getCommentIdsInElement(element) {
+    const ids = new Set();
+    for (const localName of ['commentRangeStart', 'commentRangeEnd', 'commentReference']) {
+        for (const node of Array.from(element?.getElementsByTagNameNS?.(NS_W, localName) || [])) {
+            const id = node.getAttribute('w:id') || node.getAttribute('id');
+            if (id !== '') ids.add(id);
+        }
+    }
+    return Array.from(ids).sort((a, b) => Number(a) - Number(b) || a.localeCompare(b));
+}
+
+function commentDetailsForIds(ids, detailsById) {
+    if (!detailsById || typeof detailsById !== 'object') return [];
+    return ids.map(id => detailsById[id]).filter(Boolean);
+}
+
 function resolveMutationDocument(documentXml, options = {}) {
     const operationSession = options?._documentOperationSession || null;
     if (operationSession?.valid && operationSession.document) {
@@ -693,6 +709,24 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
     const targetParagraph = resolved.paragraph;
     preprocessRedlineTargetParagraph(targetParagraph);
     const currentParagraphText = getParagraphText(targetParagraph);
+    if (modifiedText === '') {
+        const commentIds = getCommentIdsInElement(targetParagraph);
+        if (commentIds.length > 0) {
+            const comments = commentDetailsForIds(commentIds, options._existingCommentDetails);
+            return {
+                documentXml,
+                hasChanges: false,
+                numberingXml: null,
+                status: 'error',
+                error: {
+                    code: 'COMMENTED_CONTENT_DELETE',
+                    message: 'Refusing to delete a paragraph with existing comments. Resolve or explicitly remove the comments before deleting the paragraph.',
+                    commentIds,
+                    ...(comments.length > 0 ? { comments } : {})
+                }
+            };
+        }
+    }
     const containingTable = findContainingWordElement(targetParagraph, 'tbl');
     const rawTableStructuralCandidate = !!containingTable
         && !targetEndRef

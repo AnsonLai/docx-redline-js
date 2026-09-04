@@ -19,10 +19,28 @@ function nextCommentId(entries) {
     return () => next++;
 }
 
+function existingCommentDetails(entries) {
+    const commentsXml = text(entries, 'word/comments.xml');
+    if (!commentsXml) return {};
+    const parsed = parseOoxmlSafe(commentsXml, 'application/xml');
+    if (!parsed.doc || parsed.error) return {};
+    const details = {};
+    for (const comment of Array.from(parsed.doc.getElementsByTagNameNS('*', 'comment'))) {
+        const id = comment.getAttribute('w:id') || comment.getAttribute('id');
+        if (id === '') continue;
+        details[id] = {
+            id,
+            author: comment.getAttribute('w:author') || comment.getAttribute('author') || '',
+            text: String(comment.textContent || '').trim()
+        };
+    }
+    return details;
+}
+
 export class DocxDocument {
     constructor(buffer) { this.originalBuffer = Buffer.from(buffer); this.entries = unzipDocx(this.originalBuffer); }
     inspect(options = {}) { return inspectDocumentParts({ documentXml: text(this.entries, 'word/document.xml'), commentsXml: text(this.entries, 'word/comments.xml'), numberingXml: text(this.entries, 'word/numbering.xml'), stylesXml: text(this.entries, 'word/styles.xml') }, options); }
-    preflight(operations, author, options = {}) { return preflightOperations(text(this.entries, 'word/document.xml'), operations, author, options); }
+    preflight(operations, author, options = {}) { return preflightOperations(text(this.entries, 'word/document.xml'), operations, author, { ...options, _existingCommentDetails: existingCommentDetails(this.entries) }); }
     toBuffer() { return zipDocx(this.entries); }
     async applyOperations(operations, options = {}) {
         const originalEntries = this.entries; const working = cloneEntries(originalEntries); const zip = new MemoryZip(working);
@@ -37,6 +55,7 @@ export class DocxDocument {
             const context = { numberingIdState: createDynamicNumberingIdState(text(working, 'word/numbering.xml') || undefined) };
             const result = await applyOperationsToDocumentXml(documentXml, operations, options.author, context, {
                 ...options, atomic: options.atomic !== false, strictTargets: options.strictTargets !== false,
+                _existingCommentDetails: existingCommentDetails(working),
                 commentIdAllocator: nextCommentId(working)
             });
             if (result.rolledBack || result.status === 'error') return { ...result, written: false, artifactsChanged: [], validation: { originalIssues, generatedIssues: [] }, buffer: this.originalBuffer, toBuffer: () => Buffer.from(this.originalBuffer) };

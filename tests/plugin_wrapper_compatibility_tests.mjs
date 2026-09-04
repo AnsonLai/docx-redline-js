@@ -22,6 +22,16 @@ const fixture = buildZip([
     { name: 'word/document.xml', data: documentXml },
     { name: 'word/_rels/document.xml.rels', data: rels }
 ]);
+const commentContentTypes = contentTypes.replace('</Types>', '<Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/></Types>');
+const commentRels = '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/></Relationships>';
+const commentedDocumentXml = `<w:document xmlns:w="${W}"><w:body><w:p><w:commentRangeStart w:id="8"/><w:r><w:t>Delete me.</w:t></w:r><w:commentRangeEnd w:id="8"/><w:r><w:commentReference w:id="8"/></w:r></w:p><w:sectPr/></w:body></w:document>`;
+const commentsXml = `<w:comments xmlns:w="${W}"><w:comment w:id="8" w:author="Emma Plasteras"><w:p><w:r><w:t>Keep this concern visible.</w:t></w:r></w:p></w:comment></w:comments>`;
+const commentedFixture = buildZip([
+    { name: '[Content_Types].xml', data: commentContentTypes },
+    { name: 'word/document.xml', data: commentedDocumentXml },
+    { name: 'word/_rels/document.xml.rels', data: commentRels },
+    { name: 'word/comments.xml', data: commentsXml }
+]);
 
 function invoke(script, args) {
     const result = spawnSync(process.execPath, [script, ...args], {
@@ -95,6 +105,21 @@ try {
     const failedExisting = invoke(applyWrapper, [input, failingOperations, existingOutput, '--force']);
     assert.notEqual(failedExisting.status, 0);
     assert.deepEqual(await readFile(existingOutput), sentinel);
+
+    const commentedInput = path.join(directory, 'commented.docx');
+    const deleteOperations = path.join(directory, 'delete-commented.json');
+    const deleteOutput = path.join(directory, 'delete-commented-output.docx');
+    await writeFile(commentedInput, commentedFixture);
+    await writeFile(deleteOperations, JSON.stringify({ changes: [{ type:'delete', target:'Delete me.' }] }));
+    const protectedDelete = invoke(applyWrapper, [commentedInput, deleteOperations, deleteOutput]);
+    assert.notEqual(protectedDelete.status, 0);
+    assert.equal(protectedDelete.json.written, false);
+    assert.equal(protectedDelete.json.rolledBack, true);
+    assert.equal(protectedDelete.json.results[0].error.code, 'COMMENTED_CONTENT_DELETE');
+    assert.equal(protectedDelete.json.results[0].error.comments[0].author, 'Emma Plasteras');
+    assert.equal(protectedDelete.json.results[0].error.comments[0].text, 'Keep this concern visible.');
+    await assert.rejects(access(deleteOutput));
+    assert.deepEqual(await readFile(commentedInput), commentedFixture);
 } finally {
     await rm(directory, { recursive: true, force: true });
 }

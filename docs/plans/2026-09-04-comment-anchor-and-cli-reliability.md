@@ -26,6 +26,14 @@
   marketplace entry is installed in this environment, so rollout into the
   reported `/mnt/skills/plugins/docx-redline` installation remains a release
   deployment step rather than an additional implementation.
+- **Previous-release deletion regression closed (2026-09-04):** A
+  whole-paragraph delete now stops with `COMMENTED_CONTENT_DELETE` when the
+  target carries an existing comment, returning comment IDs and package-level
+  author/text metadata for follow-up. The transaction remains byte-identical,
+  and package validation independently rejects partial ranges, dangling
+  usages, orphan definitions, and duplicate definitions. Regression coverage
+  includes preflight diagnostics, atomic rollback, metadata preservation,
+  point-comment validity, and each malformed comment-linkage shape.
 
 ## Summary
 

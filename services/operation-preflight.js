@@ -61,6 +61,17 @@ function buildConflict(code, message, operationIndexes, target) {
     return { code, message, operationIndexes, target };
 }
 
+function getCommentIdsInParagraph(paragraph) {
+    const ids = new Set();
+    for (const localName of ['commentRangeStart', 'commentRangeEnd', 'commentReference']) {
+        for (const node of Array.from(paragraph?.getElementsByTagNameNS?.('*', localName) || [])) {
+            const id = node.getAttribute('w:id') || node.getAttribute('id');
+            if (id !== '') ids.add(id);
+        }
+    }
+    return Array.from(ids).sort((a, b) => Number(a) - Number(b) || a.localeCompare(b));
+}
+
 export function preflightOperations(documentXml, operations, author, options = {}) {
     const parsed = parseOoxmlSafe(documentXml, 'application/xml');
     if (parsed.error || !parsed.doc) {
@@ -131,12 +142,24 @@ export function preflightOperations(documentXml, operations, author, options = {
             const existingPolicy = operation.existingRevisions
                 || options.existingRevisions
                 || 'reject-input';
+            const deletingWholeParagraph = operation.operationKind === 'redline' && operation.modified === '';
+            const commentIds = deletingWholeParagraph ? getCommentIdsInParagraph(paragraph) : [];
 
             let error = null;
             if (!anchorFound) {
                 error = anchorResolution?.error || {
                     code: 'ANCHOR_NOT_FOUND',
                     message: `Anchor text was not found in target paragraph: "${anchor}".`
+                };
+            } else if (commentIds.length > 0) {
+                const comments = commentIds
+                    .map(id => options._existingCommentDetails?.[id])
+                    .filter(Boolean);
+                error = {
+                    code: 'COMMENTED_CONTENT_DELETE',
+                    message: 'Refusing to delete a paragraph with existing comments. Resolve or explicitly remove the comments before deleting the paragraph.',
+                    commentIds,
+                    ...(comments.length > 0 ? { comments } : {})
                 };
             } else if (
                 operation.operationKind === 'redline'

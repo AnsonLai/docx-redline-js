@@ -408,7 +408,42 @@ export async function validateDocxPackage(zip) {
     }
 
     if (commentsXml) {
-        parseXmlStrictStandalone(commentsXml, COMMENTS_PATH);
+        const commentsDoc = parseXmlStrictStandalone(commentsXml, COMMENTS_PATH);
+        const idsFor = (doc, localName) => Array.from(doc.getElementsByTagNameNS(NS_W, localName))
+            .map(node => node.getAttribute('w:id') || node.getAttribute('id'))
+            .filter(id => id !== '');
+        const starts = new Set(idsFor(documentDoc, 'commentRangeStart'));
+        const ends = new Set(idsFor(documentDoc, 'commentRangeEnd'));
+        const references = new Set(idsFor(documentDoc, 'commentReference'));
+        const definitionIds = idsFor(commentsDoc, 'comment');
+        const definitions = new Set(definitionIds);
+        const sorted = ids => Array.from(ids).sort((a, b) => Number(a) - Number(b) || a.localeCompare(b));
+        const difference = (left, right) => sorted(new Set(Array.from(left).filter(id => !right.has(id))));
+
+        const duplicateDefinitions = sorted(new Set(definitionIds.filter((id, index) => definitionIds.indexOf(id) !== index)));
+        if (duplicateDefinitions.length > 0) {
+            throw new Error(`Validation failed: duplicate comment definitions for id(s): ${duplicateDefinitions.join(', ')}`);
+        }
+        const startsWithoutEnds = difference(starts, ends);
+        const endsWithoutStarts = difference(ends, starts);
+        if (startsWithoutEnds.length > 0 || endsWithoutStarts.length > 0) {
+            const parts = [];
+            if (startsWithoutEnds.length > 0) parts.push(`start without end: ${startsWithoutEnds.join(', ')}`);
+            if (endsWithoutStarts.length > 0) parts.push(`end without start: ${endsWithoutStarts.join(', ')}`);
+            throw new Error(`Validation failed: unbalanced comment range marker(s) (${parts.join('; ')})`);
+        }
+        const rangesWithoutReferences = difference(new Set([...starts, ...ends]), references);
+        if (rangesWithoutReferences.length > 0) {
+            throw new Error(`Validation failed: comment range has no reference for id(s): ${rangesWithoutReferences.join(', ')}`);
+        }
+        const usagesWithoutDefinitions = difference(new Set([...starts, ...ends, ...references]), definitions);
+        if (usagesWithoutDefinitions.length > 0) {
+            throw new Error(`Validation failed: comment usage has no definition for id(s): ${usagesWithoutDefinitions.join(', ')}`);
+        }
+        const definitionsWithoutReferences = difference(definitions, references);
+        if (definitionsWithoutReferences.length > 0) {
+            throw new Error(`Validation failed: comment definition has no document reference for id(s): ${definitionsWithoutReferences.join(', ')}`);
+        }
     } else if (hasCommentUsage) {
         throw new Error('Validation failed: comments used but part missing');
     }
