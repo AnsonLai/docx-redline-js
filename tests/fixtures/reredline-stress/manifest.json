@@ -1,0 +1,81 @@
+{
+  "generatedBy": "scripts/export-reredline-stress-fixtures.mjs",
+  "scenarios": [
+    {
+      "name": "mixed-policy-review",
+      "stages": {
+        "source": {
+          "docx": "mixed-policy-review-source.docx",
+          "documentXml": "mixed-policy-review-source.document.xml",
+          "revisions": {
+            "ins": 0,
+            "del": 0,
+            "rPrChange": 0,
+            "pPrChange": 0
+          },
+          "visibleText": "Mixed Policy Review Stress Fixture\n\nClean source document\n\nParagraph revisions\n\nThe review board meets every month to assess open actions.\n\nAll submissions require a manager signature.\n\nThe legacy exception remains available during the pilot period.\n\nCritical controls must be documented before launch.\n\nThe coordinator records decisions in the central register.\n\nBullet and numbered-list revisions\n\nConfirm the meeting agenda.\n\nCollect stakeholder comments.\n\nEscalate unresolved risks.\n\nArchive the superseded draft.\n\nRecord the decision owner.\n\nPublish the implementation notice.\n\nTable revisions\n\nWorkstream\n\nOwner\n\nStatus\n\nBudget\n\nFinance\n\nPending\n\nPolicy\n\nLegal\n\nDraft\n\nTraining\n\nPeople\n\nPlanned\n\n\n\nRisk\n\nRating\n\nResponse\n\nAccess\n\nMedium\n\nMonitor\n\nContinuity\n\nLow\n\nReview\n\n\n\nMilestone\n\nDate\n\nLead\n\nDesign\n\nApril 10\n\nAvery\n\nPilot\n\nMay 15\n\nBlair\n\nLaunch\n\nJune 20\n\nCasey"
+        },
+        "round1": {
+          "docx": "mixed-policy-review-round1.docx",
+          "documentXml": "mixed-policy-review-round1.document.xml",
+          "revisions": {
+            "ins": 43,
+            "del": 5,
+            "rPrChange": 2,
+            "pPrChange": 0
+          },
+          "visibleText": "Mixed Policy Review Stress Fixture\n\nFirst review round - several paragraph, list, formatting, and table changes\n\nParagraph revisions\n\nThe review board meets every quarter to assess open actions.\n\nAll submissions require a manager signature and a dated approval note.\n\nThe legacy exception remains available.\n\nCritical controls must be documented before launch.\n\nThe coordinator records final decisions in the central register within two business days.\n\nBullet and numbered-list revisions\n\nConfirm the revised meeting agenda.\n\nCollect written stakeholder comments.\n\nEscalate unresolved operational risks.\n\nArchive the superseded working draft.\n\nRecord the decision owner.\n\nPublish the implementation notice within five days.\n\nTable revisions\n\nWorkstream\n\nOwner\n\nStatus\n\nBudget\n\nTreasury\n\nApproved\n\nPolicy\n\nLegal\n\nIn review\n\nTraining\n\nPeople\n\nPlanned\n\n\n\nRisk\n\nRating\n\nResponse\n\nAccess\n\nHigh\n\nMitigate\n\nPrivacy\n\nMedium\n\nAssess\n\nContinuity\n\nLow\n\nReview\n\n\n\nMilestone\n\nDate\n\nLead\n\nDesign\n\nApril 17\n\nAvery\n\nLaunch\n\nJune 27\n\nCasey"
+        },
+        "rerelined": {
+          "docx": "mixed-policy-review-rerelined.docx",
+          "documentXml": "mixed-policy-review-rerelined.document.xml",
+          "revisions": {
+            "ins": 52,
+            "del": 13,
+            "rPrChange": 3,
+            "pPrChange": 0
+          },
+          "visibleText": "Mixed Policy Review Stress Fixture\n\nSecond review round - prior revisions accepted per block, then re-redlined\n\nParagraph revisions\n\nThe oversight committee meets every quarter to assess unresolved actions.\n\nAll submissions require a director signature and a dated approval note.\n\nThe temporary exception remains available through year-end.\n\nCritical safeguards must be documented before production launch.\n\nThe governance lead records final decisions in the central register within one business day.\n\nBullet and numbered-list revisions\n\nConfirm the final meeting agenda.\n\nCollect written stakeholder approvals.\n\nEscalate unresolved operational and legal risks.\n\nArchive the superseded approved draft.\n\nRecord the accountable decision owner.\n\nPublish the implementation notice within three days.\n\nTable revisions\n\nWorkstream\n\nOwner\n\nStatus\n\nBudget\n\nTreasury\n\nComplete\n\nPolicy\n\nCompliance\n\nApproved\n\nTraining\n\nPeople\n\nScheduled\n\n\n\nRisk\n\nRating\n\nResponse\n\nAccess\n\nMedium\n\nMitigate\n\nPrivacy\n\nLow\n\nMonitor\n\nContinuity\n\nLow\n\nClose\n\n\n\nMilestone\n\nDate\n\nLead\n\nDesign\n\nApril 17\n\nAvery\n\nReadiness\n\nJune 10\n\nBlair\n\nLaunch\n\nJuly 4\n\nCasey"
+        }
+      }
+    },
+    {
+      "name": "mixed-contract-operations",
+      "stages": {
+        "source": {
+          "docx": "mixed-contract-operations-source.docx",
+          "documentXml": "mixed-contract-operations-source.document.xml",
+          "revisions": {
+            "ins": 0,
+            "del": 0,
+            "rPrChange": 0,
+            "pPrChange": 0
+          },
+          "visibleText": "Mixed Contract Operations Stress Fixture\n\nClean source document\n\nParagraph revisions\n\nThe supplier will retain audit records for three years.\n\nNotices may be delivered by ordinary mail.\n\nThe annual renewal is automatic unless cancelled.\n\nService credits are calculated monthly.\n\nThe customer may request one compliance report.\n\nBullet and numbered-list revisions\n\nVerify insurance certificates.\n\nReview subcontractor access.\n\nLog all security incidents.\n\nPreserve delivery receipts.\n\nConfirm the remediation owner.\n\nClose completed obligations.\n\nTable revisions\n\nClause\n\nPosition\n\nOwner\n\nLiability\n\nOpen\n\nLegal\n\nSecurity\n\nDraft\n\nRisk\n\nPrivacy\n\nOpen\n\nPrivacy\n\n\n\nDeliverable\n\nDue\n\nState\n\nReport\n\nDay 10\n\nPlanned\n\nCertificate\n\nDay 20\n\nPlanned\n\n\n\nRegion\n\nThreshold\n\nReviewer\n\nCanada\n\n$50,000\n\nMorgan\n\nUnited States\n\n$75,000\n\nRiley\n\nEurope\n\nEUR 60,000\n\nTaylor"
+        },
+        "round1": {
+          "docx": "mixed-contract-operations-round1.docx",
+          "documentXml": "mixed-contract-operations-round1.document.xml",
+          "revisions": {
+            "ins": 43,
+            "del": 6,
+            "rPrChange": 2,
+            "pPrChange": 0
+          },
+          "visibleText": "Mixed Contract Operations Stress Fixture\n\nFirst review round - several paragraph, list, formatting, and table changes\n\nParagraph revisions\n\nThe supplier will retain audit records for five years.\n\nNotices may be delivered by registered mail or secure email.\n\nThe annual renewal requires written confirmation.\n\nService credits are calculated monthly.\n\nThe customer may request two compliance reports each year.\n\nBullet and numbered-list revisions\n\nVerify current insurance certificates.\n\nReview approved subcontractor access.\n\nLog all material security incidents.\n\nPreserve signed delivery receipts.\n\nConfirm the remediation owner.\n\nClose completed obligations after evidence review.\n\nTable revisions\n\nClause\n\nPosition\n\nOwner\n\nLiability\n\nCapped\n\nLegal\n\nSecurity\n\nApproved\n\nRisk\n\nPrivacy\n\nOpen\n\nPrivacy\n\n\n\nDeliverable\n\nDue\n\nState\n\nReport\n\nDay 7\n\nIn progress\n\nEvidence pack\n\nDay 14\n\nPlanned\n\nCertificate\n\nDay 20\n\nPlanned\n\n\n\nRegion\n\nThreshold\n\nReviewer\n\nCanada\n\n$60,000\n\nMorgan\n\nEurope\n\nEUR 70,000\n\nTaylor"
+        },
+        "rerelined": {
+          "docx": "mixed-contract-operations-rerelined.docx",
+          "documentXml": "mixed-contract-operations-rerelined.document.xml",
+          "revisions": {
+            "ins": 53,
+            "del": 12,
+            "rPrChange": 3,
+            "pPrChange": 0
+          },
+          "visibleText": "Mixed Contract Operations Stress Fixture\n\nSecond review round - prior revisions accepted per block, then re-redlined\n\nParagraph revisions\n\nThe contractor will retain complete audit records for seven years.\n\nNotices must be delivered by secure email with receipt confirmation.\n\nEach renewal requires written confirmation from both parties.\n\nService adjustments are calculated quarterly.\n\nThe customer may request quarterly compliance reports.\n\nBullet and numbered-list revisions\n\nVerify current insurance certificates and endorsements.\n\nReview and recertify approved subcontractor access.\n\nLog all material security incidents within four hours.\n\nPreserve signed electronic delivery receipts.\n\nConfirm the executive remediation owner.\n\nClose completed obligations after independent evidence review.\n\nTable revisions\n\nClause\n\nPosition\n\nOwner\n\nLiability\n\nRevised cap\n\nLegal\n\nSecurity\n\nApproved\n\nSecurity\n\nPrivacy\n\nApproved\n\nPrivacy\n\n\n\nDeliverable\n\nDue\n\nState\n\nReport\n\nDay 5\n\nComplete\n\nEvidence pack\n\nDay 12\n\nIn progress\n\nCertificate\n\nDay 18\n\nPlanned\n\n\n\nRegion\n\nThreshold\n\nReviewer\n\nCanada\n\n$65,000\n\nMorgan\n\nUnited Kingdom\n\nGBP 55,000\n\nJordan\n\nEurope\n\nEUR 70,000\n\nTaylor"
+        }
+      }
+    }
+  ]
+}

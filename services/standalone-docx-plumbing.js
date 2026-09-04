@@ -3,6 +3,7 @@
  */
 
 import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
+import { warn as logWarning } from '../adapters/logger.js';
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const NS_CT = 'http://schemas.openxmlformats.org/package/2006/content-types';
@@ -249,10 +250,14 @@ export async function ensureNumberingArtifactsInZip(zip, numberingXmlList, optio
     const mergeNumberingXml = typeof options?.mergeNumberingXml === 'function'
         ? options.mergeNumberingXml
         : null;
+    const onWarn = typeof options?.onWarn === 'function' ? options.onWarn : logWarning;
     const incomingPayloads = (Array.isArray(numberingXmlList) ? numberingXmlList : [numberingXmlList]).filter(Boolean);
     if (incomingPayloads.length === 0) return;
 
     const existing = await readZipText(zip, NUMBERING_PATH);
+    if (existing && !mergeNumberingXml) {
+        onWarn('[Deprecation] Replacing an existing numbering.xml without mergeNumberingXml is deprecated and will throw in the next major version.');
+    }
     let mergedNumberingXml = existing || null;
     for (const incomingNumberingXml of incomingPayloads) {
         if (!mergedNumberingXml) {

@@ -4,7 +4,13 @@
  * Provides pure OOXML-based comment insertion without Word JS API calls.
  */
 
-import { NS_W, getNextRevisionId, getRevisionTimestamp, resetRevisionIdCounter } from '../core/types.js';
+import {
+    NS_W,
+    createRevisionIdAllocator,
+    getNextRevisionId,
+    getRevisionTimestamp,
+    resetRevisionIdCounter
+} from '../core/types.js';
 import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { log, error as logError } from '../adapters/logger.js';
 import { getElementsByTag, getFirstElementByTag, getXmlParseError } from '../core/xml-query.js';
@@ -94,6 +100,7 @@ export function injectCommentsIntoOoxml(oxml, comments, options = {}) {
     }
 
     const xmlDoc = parseResult.xmlDoc;
+    const revisionIdAllocator = createRevisionIdAllocator(xmlDoc);
     const paragraphs = getElementsByTag(xmlDoc, 'w:p');
     log(`[CommentEngine] Found ${paragraphs.length} paragraphs, processing ${comments.length} comment requests`);
 
@@ -124,13 +131,16 @@ export function injectCommentsIntoOoxml(oxml, comments, options = {}) {
             paragraphIndexes.set(paragraphIndex, textIndex);
         }
 
-        const commentId = getNextRevisionId();
+        const commentId = typeof options.commentIdAllocator === 'function'
+            ? options.commentIdAllocator()
+            : getNextRevisionId();
         const success = injectMarkersIntoParagraph(
             xmlDoc,
             targetParagraph,
             request.textToFind,
             commentId,
-            textIndex
+            textIndex,
+            revisionIdAllocator
         );
 
         const remaining = (remainingRequestsByParagraph.get(paragraphIndex) || 1) - 1;
@@ -203,6 +213,7 @@ export function injectCommentIntoParagraphOoxml(paragraphOoxml, textToFind, comm
     }
 
     const xmlDoc = parseResult.xmlDoc;
+    const revisionIdAllocator = createRevisionIdAllocator(xmlDoc);
     const paragraphs = getElementsByTag(xmlDoc, 'w:p');
     if (paragraphs.length === 0) {
         return { success: false, warning: 'No paragraph found in OOXML' };
@@ -210,7 +221,14 @@ export function injectCommentIntoParagraphOoxml(paragraphOoxml, textToFind, comm
 
     const paragraph = paragraphs[0];
     const paragraphIndex = createParagraphTextIndex(paragraph);
-    const success = injectMarkersIntoParagraph(xmlDoc, paragraph, textToFind, commentId, paragraphIndex);
+    const success = injectMarkersIntoParagraph(
+        xmlDoc,
+        paragraph,
+        textToFind,
+        commentId,
+        paragraphIndex,
+        revisionIdAllocator
+    );
     if (!success) {
         return { success: false, warning: `Could not find "${textToFind.substring(0, 30)}..." in paragraph` };
     }

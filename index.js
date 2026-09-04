@@ -237,6 +237,8 @@ export {
     ingestWordOoxmlToPlainTextResult,
     ingestWordOoxmlToMarkdownResult
 } from './pipeline/ingestion-export.js';
+export { extractCanonicalParagraphText, readCanonicalRunText, isNodeVisibleInRevisionView } from './core/paragraph-text.js';
+export { inspectDocumentParts } from './services/document-inspection.js';
 export { preprocessMarkdown } from './pipeline/markdown-processor.js';
 export { serializeToOoxml, wrapInDocumentFragment } from './pipeline/serialization.js';
 
@@ -293,6 +295,8 @@ export { extractParagraphIdFromOoxml } from './core/ooxml-identifiers.js';
 export {
     WORD_MAIN_NS,
     getParagraphText,
+    getParagraphId,
+    createParagraphFingerprint,
     getDocumentParagraphNodes,
     normalizeWhitespaceForTargeting,
     isMarkdownTableText,
@@ -303,6 +307,7 @@ export {
     findParagraphByReference,
     findParagraphByStrictText,
     findParagraphByBestTextMatch,
+    findStrictTargetCandidates,
     resolveTargetParagraph,
     buildTargetReferenceSnapshot,
     resolveTargetParagraphWithSnapshot

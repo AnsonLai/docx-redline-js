@@ -21,6 +21,19 @@ fixtures rarely contain.
 | Visual failure regressions | `node tests/visual_failure_regression_tests.mjs` | Semantic OOXML guards against visual failures (formatting leaks, font resets, ghost bullets, table cell destruction) | Visual rendering proof in Word |
 | Multimodal LLM visual spot check | On-demand / sampled | Evaluates rendered real-document pages with vision models for layout, table alignment, and typography regressions | Full-corpus automated coverage (intentionally decoupled and sampled due to cost/time) |
 | XSD and LibreOffice | See `docs/VALIDATION.md` | Schema conformance and acceptance by a second consumer | Word-specific revision semantics |
+| Agent inspection and package facade | `node tests/document_inspection_tests.mjs`, `node tests/docx_package_facade_tests.mjs` | Canonical text, comment/list resolution, package-scoped IDs, untouched-part preservation, and atomic rollback | Desktop Word rendering |
+| Agent CLI | `node tests/agent_cli_tests.mjs` | JSON contracts, exact-text extraction, author requirements, safe output behavior, all command families, and operation-schema readability | Cross-platform CI beyond the current runner |
+
+The package-facade regression opens a real ZIP buffer, adds a comment beside an
+existing high ID, validates OPC wiring, and checks an unrelated binary part is
+unchanged after extraction. Its failure case requires byte-exact rollback. The
+inspection regression covers revisions, structural characters, heading
+context, comment joining, and a numbering start override.
+
+The CLI regression executes the recommended extract → preflight → apply →
+validate flow and also covers accept, reject, comment deletion, output collision
+refusal, and source-byte preservation. CLI stdout is captured and parsed as one
+JSON value so diagnostic logging cannot corrupt agent output.
 
 ## Coverage matrix and test selection
 

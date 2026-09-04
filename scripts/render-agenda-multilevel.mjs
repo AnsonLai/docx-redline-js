@@ -1,4 +1,3 @@
-import fs from 'fs';
 import { spawnSync } from 'child_process';
 
 const baseName = '48-administrative-administrative-list-change-dash-agenda-child';
@@ -8,10 +7,6 @@ const visualDir = 'tmp/multilevel-bullet-visual';
 const docxPath = `${fixtureDir}/${baseName}.docx`;
 const acceptedDocx = `${fixtureDir}/${baseName}.accepted.docx`;
 const rejectedDocx = `${fixtureDir}/${baseName}.rejected.docx`;
-
-const allMarkupPdf = `${visualDir}/${baseName}--allMarkup.pdf`;
-const acceptAllPdf = `${visualDir}/${baseName}--acceptAll.pdf`;
-const rejectAllPdf = `${visualDir}/${baseName}--rejectAll.pdf`;
 
 console.log('Rendering Word COM for', baseName);
 

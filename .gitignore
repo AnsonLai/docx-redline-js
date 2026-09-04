@@ -6,4 +6,5 @@ tmp/
 *.tgz
 .DS_Store
 .anson/
-docs/plans/
+docs/plans/*
+!docs/plans/2026-09-03-agent-friendly-document-workflows.md

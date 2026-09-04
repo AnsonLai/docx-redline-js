@@ -1,6 +1,5 @@
 import fs from 'fs';
 import { spawnSync } from 'child_process';
-import { resolve } from 'path';
 
 const cases = [
     '37-administrative-administrative-list-change-board-agenda-child',

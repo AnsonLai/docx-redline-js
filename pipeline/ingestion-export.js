@@ -11,6 +11,7 @@
 import { parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { NS_W } from '../core/types.js';
 import { getXmlParseError } from '../core/xml-query.js';
+import { isNodeVisibleInRevisionView, readCanonicalRunText } from '../core/paragraph-text.js';
 
 function hasParserError(doc) {
     if (!doc || !doc.documentElement) return true;
@@ -54,34 +55,6 @@ function getWordAttribute(element, names) {
     return '';
 }
 
-function hasWordAncestorWithin(node, localName, boundary) {
-    let cursor = node?.parentNode || null;
-    while (cursor && cursor !== boundary) {
-        if (cursor.nodeType === 1 && cursor.namespaceURI === NS_W && cursor.localName === localName) {
-            return true;
-        }
-        cursor = cursor.parentNode;
-    }
-    return false;
-}
-
-function readRunText(run) {
-    let text = '';
-    for (const child of Array.from(run?.childNodes || [])) {
-        if (!child || child.nodeType !== 1 || child.namespaceURI !== NS_W) continue;
-        if (child.localName === 't') {
-            text += child.textContent || '';
-        } else if (child.localName === 'tab') {
-            text += '\t';
-        } else if (child.localName === 'br' || child.localName === 'cr') {
-            text += '\n';
-        } else if (child.localName === 'noBreakHyphen') {
-            text += '\u2011';
-        }
-    }
-    return text;
-}
-
 function getRunFormatting(run) {
     const rPr = getDirectWordChild(run, 'rPr');
     if (!rPr) return { bold: false, italic: false };
@@ -99,9 +72,8 @@ function collectParagraphSegments(paragraph) {
     const segments = [];
     const runs = Array.from(paragraph?.getElementsByTagNameNS?.(NS_W, 'r') || []);
     for (const run of runs) {
-        if (hasWordAncestorWithin(run, 'del', paragraph)) continue;
-        if (hasWordAncestorWithin(run, 'moveFrom', paragraph)) continue;
-        const text = readRunText(run);
+        if (!isNodeVisibleInRevisionView(run, paragraph, 'accepted')) continue;
+        const text = readCanonicalRunText(run, { boundary: paragraph, revisionView: 'accepted' });
         if (!text) continue;
         segments.push({
             text,

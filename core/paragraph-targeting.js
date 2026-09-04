@@ -15,6 +15,13 @@ function createTargetNotFoundError(message) {
     return error;
 }
 
+function createTargetError(code, message, candidates = null) {
+    const error = new Error(message);
+    error.code = code;
+    if (Array.isArray(candidates)) error.candidates = candidates;
+    return error;
+}
+
 export const WORD_MAIN_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
 function getElementsByLocalName(node, localName) {
@@ -33,26 +40,7 @@ function getElementsByLocalName(node, localName) {
     return toArray(node.getElementsByTagName(localName));
 }
 
-function toParagraphText(paragraph) {
-    let text = '';
-
-    const visit = node => {
-        for (const child of toArray(node?.childNodes)) {
-            if (child?.nodeType !== 1) continue;
-            const localName = String(child.localName || child.nodeName || '').replace(/^.*:/, '');
-            if (localName === 't') {
-                text += child.textContent || '';
-            } else if (localName === 'tab') {
-                text += '\t';
-            } else {
-                visit(child);
-            }
-        }
-    };
-
-    visit(paragraph);
-    return text;
-}
+import { extractCanonicalParagraphText } from './paragraph-text.js';
 
 /**
  * Reads visible text from a paragraph by concatenating `w:t` nodes and mapping
@@ -63,7 +51,7 @@ function toParagraphText(paragraph) {
  */
 export function getParagraphText(paragraph) {
     if (!paragraph) return '';
-    return toParagraphText(paragraph);
+    return extractCanonicalParagraphText(paragraph);
 }
 
 /**
@@ -77,6 +65,28 @@ export function getDocumentParagraphNodes(xmlDoc) {
     const bodies = getElementsByLocalName(xmlDoc, 'body');
     const searchRoot = bodies.length > 0 ? bodies[0] : xmlDoc;
     return getElementsByLocalName(searchRoot, 'p');
+}
+
+export function getParagraphId(paragraph) {
+    if (!paragraph) return null;
+    const attribute = toArray(paragraph.attributes).find(candidate =>
+        String(candidate?.localName || candidate?.name || '').replace(/^.*:/, '') === 'paraId'
+    );
+    return attribute?.value || null;
+}
+
+export function createParagraphFingerprint(paragraph) {
+    if (!paragraph) return null;
+    const text = getParagraphText(paragraph);
+    const documentRoot = paragraph.ownerDocument || paragraph;
+    const documentIndex = getDocumentParagraphNodes(documentRoot).indexOf(paragraph) + 1;
+    const identity = `${getParagraphId(paragraph) || ''}\u001f${documentIndex}\u001f${isParagraphInTable(paragraph) ? 'table' : 'body'}\u001f${text}`;
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < identity.length; i++) {
+        hash ^= identity.charCodeAt(i);
+        hash = Math.imul(hash, 0x01000193) >>> 0;
+    }
+    return `fnv1a32:${hash.toString(16).padStart(8, '0')}`;
 }
 
 /**
@@ -291,8 +301,117 @@ export function resolveTargetParagraph(xmlDoc, options = {}) {
     const onInfo = typeof options.onInfo === 'function' ? options.onInfo : () => {};
     const onWarn = typeof options.onWarn === 'function' ? options.onWarn : () => {};
     const opType = options.opType || 'operation';
-    const cleanTargetText = String(options.targetText || '').trim();
-    const parsedRef = parseParagraphReference(options.targetRef);
+    const descriptor = options.targetDescriptor && typeof options.targetDescriptor === 'object'
+        ? options.targetDescriptor
+        : null;
+    const cleanTargetText = String(descriptor?.text ?? options.targetText ?? '').trim();
+    const parsedRef = parseParagraphReference(descriptor?.index ?? options.targetRef);
+    const strictAmbiguity = options.strictAmbiguity === true;
+
+    if (descriptor?.paragraphId) {
+        const byId = findParagraphById(xmlDoc, descriptor.paragraphId);
+        if (!byId) {
+            throw createTargetError(
+                'TARGET_NOT_FOUND',
+                `Target paragraphId not found: "${descriptor.paragraphId}".`
+            );
+        }
+        const actualFingerprint = createParagraphFingerprint(byId);
+        if (descriptor.fingerprint && descriptor.fingerprint !== actualFingerprint) {
+            throw createTargetError(
+                'TARGET_FINGERPRINT_MISMATCH',
+                `Target paragraphId "${descriptor.paragraphId}" no longer matches its source fingerprint.`
+            );
+        }
+        if (typeof descriptor.inTable === 'boolean' && descriptor.inTable !== isParagraphInTable(byId)) {
+            throw createTargetError(
+                'TARGET_CONTEXT_MISMATCH',
+                `Target paragraphId "${descriptor.paragraphId}" does not match the requested table context.`
+            );
+        }
+        if (cleanTargetText) {
+            const actualText = normalizeWhitespaceForTargeting(getParagraphText(byId));
+            if (actualText !== normalizeWhitespaceForTargeting(cleanTargetText)) {
+                throw createTargetError(
+                    'TARGET_TEXT_MISMATCH',
+                    `Target paragraphId "${descriptor.paragraphId}" no longer matches the supplied text.`
+                );
+            }
+        }
+        return { paragraph: byId, resolvedBy: 'paragraph_id' };
+    }
+
+    if (cleanTargetText) {
+        const unfilteredCandidates = findStrictTargetCandidates(xmlDoc, cleanTargetText);
+        const candidates = filterTargetCandidates(unfilteredCandidates, descriptor);
+
+        if (descriptor?.fingerprint && unfilteredCandidates.length > 0 && candidates.length === 0) {
+            throw createTargetError(
+                'TARGET_FINGERPRINT_MISMATCH',
+                'Target text matched, but no paragraph matched the supplied source fingerprint.',
+                unfilteredCandidates.map(serializeTargetCandidate)
+            );
+        }
+
+        if (
+            typeof descriptor?.inTable === 'boolean'
+            && unfilteredCandidates.length > 0
+            && candidates.length === 0
+        ) {
+            throw createTargetError(
+                'TARGET_CONTEXT_MISMATCH',
+                'Target text matched, but no paragraph matched the requested table context.',
+                unfilteredCandidates.map(serializeTargetCandidate)
+            );
+        }
+
+        if (descriptor?.occurrence) {
+            const occurrenceMatch = candidates[descriptor.occurrence - 1] || null;
+            if (!occurrenceMatch) {
+                throw createTargetError(
+                    'TARGET_NOT_FOUND',
+                    `Target occurrence ${descriptor.occurrence} was not found.`,
+                    candidates.map(serializeTargetCandidate)
+                );
+            }
+            return { paragraph: occurrenceMatch.paragraph, resolvedBy: 'occurrence' };
+        }
+
+        if (strictAmbiguity) {
+            if (parsedRef) {
+                const byReference = candidates.find(candidate => candidate.index === parsedRef) || null;
+                if (byReference) return { paragraph: byReference.paragraph, resolvedBy: 'ref' };
+                if (descriptor?.fingerprint && candidates.length > 0) {
+                    throw createTargetError(
+                        'TARGET_FINGERPRINT_MISMATCH',
+                        `Target fingerprint does not match paragraph reference [P${parsedRef}].`,
+                        candidates.map(serializeTargetCandidate)
+                    );
+                }
+                if (candidates.length === 1) {
+                    return { paragraph: candidates[0].paragraph, resolvedBy: 'strict_text_after_ref_drift' };
+                }
+            }
+            if (candidates.length > 1) {
+                throw createTargetError(
+                    'AMBIGUOUS_TARGET',
+                    `Target text matched ${candidates.length} paragraphs; provide paragraphId, index, occurrence, or fingerprint.`,
+                    candidates.map(serializeTargetCandidate)
+                );
+            }
+            if (candidates.length === 0) {
+                throw createTargetNotFoundError(`Target paragraph not found: "${cleanTargetText}"`);
+            }
+        }
+
+        if (!parsedRef && candidates.length === 1) {
+            const candidate = candidates[0];
+            return {
+                paragraph: candidate.paragraph,
+                resolvedBy: descriptor?.fingerprint ? 'fingerprint' : 'strict_text'
+            };
+        }
+    }
 
     if (parsedRef) {
         const byRef = findParagraphByReference(xmlDoc, parsedRef);
@@ -328,7 +447,7 @@ export function resolveTargetParagraph(xmlDoc, options = {}) {
         onWarn(`[WARN] Target reference [P${parsedRef}] not found; falling back to text matching for ${opType}.`);
     }
 
-    if (cleanTargetText) {
+    if (cleanTargetText && !strictAmbiguity) {
         const strictMatch = findParagraphByStrictText(xmlDoc, cleanTargetText);
         if (strictMatch) return { paragraph: strictMatch, resolvedBy: 'strict_text' };
 
@@ -345,7 +464,7 @@ function isParagraphInTable(paragraph) {
     return !!findContainingWordElement(paragraph, 'tbl');
 }
 
-function findStrictTargetCandidates(xmlDoc, targetText) {
+export function findStrictTargetCandidates(xmlDoc, targetText) {
     const normalizedTarget = normalizeWhitespaceForTargeting(targetText);
     if (!normalizedTarget) return [];
 
@@ -359,10 +478,39 @@ function findStrictTargetCandidates(xmlDoc, targetText) {
         candidates.push({
             paragraph,
             index: i + 1,
-            inTable: isParagraphInTable(paragraph)
+            inTable: isParagraphInTable(paragraph),
+            paragraphId: getParagraphId(paragraph),
+            fingerprint: createParagraphFingerprint(paragraph),
+            text: getParagraphText(paragraph)
         });
     }
     return candidates;
+}
+
+function serializeTargetCandidate(candidate) {
+    return {
+        index: candidate.index,
+        paragraphId: candidate.paragraphId || null,
+        text: candidate.text,
+        inTable: candidate.inTable,
+        fingerprint: candidate.fingerprint
+    };
+}
+
+function filterTargetCandidates(candidates, descriptor) {
+    let scoped = candidates.slice();
+    if (typeof descriptor?.inTable === 'boolean') {
+        scoped = scoped.filter(candidate => candidate.inTable === descriptor.inTable);
+    }
+    if (descriptor?.fingerprint) {
+        scoped = scoped.filter(candidate => candidate.fingerprint === descriptor.fingerprint);
+    }
+    return scoped;
+}
+
+function findParagraphById(xmlDoc, paragraphId) {
+    if (!paragraphId) return null;
+    return getDocumentParagraphNodes(xmlDoc).find(paragraph => getParagraphId(paragraph) === paragraphId) || null;
 }
 
 function selectBestTargetCandidate(candidates, parsedRef, expectedInTable = null) {

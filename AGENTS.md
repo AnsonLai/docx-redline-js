@@ -79,9 +79,16 @@ const markdown = ingestWordOoxmlToMarkdown(documentXml);
 ```js
 import { injectCommentsIntoOoxml } from '@ansonlai/docx-redline-js';
 const result = injectCommentsIntoOoxml(paragraphOoxml, [
-  { text: 'Review this clause', targetText: 'force majeure', author: 'Agent' }
-]);
+  {
+    paragraphIndex: 1,
+    textToFind: 'force majeure',
+    commentContent: 'Review this clause'
+  }
+], { author: 'Agent' });
 ```
+
+`paragraphIndex` is 1-based within the supplied OOXML payload. The comment
+author belongs in the options object and applies to the injected comments.
 
 ### Accept tracked changes from one user (or all users)
 
@@ -116,10 +123,49 @@ const removedAll = deleteCommentsByAuthorInOoxml(packageOrDocumentOoxml, { allAu
 import {
   applyOperationToDocumentXml,
   applyOperationsToDocumentXml
-} from '@ansonlai/docx-redline-js/services/standalone-operation-runner.js';
+} from '@ansonlai/docx-redline-js/standalone-runner';
 
 const result = await applyOperationsToDocumentXml(documentXml, operations, 'Agent', runtimeContext, options);
 ```
+
+The operation runner uses these field names:
+
+```js
+const operations = [
+  { type: 'redline', target: 'Old paragraph text', modified: 'New paragraph text', targetRef: 12 },
+  { type: 'comment', target: 'Paragraph text', textToComment: 'anchor text', commentContent: 'Comment body', targetRef: 18 },
+  { type: 'highlight', target: 'Paragraph text', textToHighlight: 'anchor text', color: 'yellow', targetRef: 24 }
+];
+```
+
+`targetRef` is an optional 1-based paragraph reference used to disambiguate
+duplicate text. An operation-level `author` overrides the batch author; batch
+results report both `authorUsed` per item and the aggregate `authorsUsed` list.
+
+For safer targeting, `target` may be a descriptor:
+
+```js
+{
+  type: 'replace',
+  target: {
+    exactText: 'Repeated paragraph text',
+    paragraphId: '1A2B3C4D', // when present in the source OOXML
+    index: 12,
+    occurrence: 2,
+    inTable: false,
+    fingerprint: 'fnv1a32:...'
+  },
+  modified: 'Replacement text',
+  author: 'Editor'
+}
+```
+
+Call `preflightOperations(documentXml, operations, author)` before applying an
+agent-generated batch. Preflight is read-only and strict by default: duplicate
+exact text returns `AMBIGUOUS_TARGET`, approximate text is not selected, and
+the result reports candidate targets, missing anchors, existing revisions,
+authors, required artifacts, and same-paragraph conflicts. Application keeps
+legacy permissive targeting unless `{ strictTargets: true }` is passed.
 
 Use `result.documentXml` from these APIs when replacing full `word/document.xml`.
 For mixed batches, prefer `applyOperationsToDocumentXml(...)`; it applies comments
@@ -132,12 +178,57 @@ original `documentXml`, `hasChanges: false`, no comment/numbering artifacts, and
 partially applied document is intentional. Pass `{ continueOnError: false }` to
 stop attempting operations after the first error.
 
+Always inspect `status` and `error`, not only `hasChanges`. A failed transform
+can return `{ hasChanges: false, status: 'error', error: ... }`. A `no_change`
+batch item can also mean an anchor was not found; inspect its warnings before
+treating it as a successful no-op.
+
 ### Detect existing tracked changes
 
 ```js
 import { containsTrackedChanges } from '@ansonlai/docx-redline-js';
 const hasTrackedChanges = containsTrackedChanges(xmlDoc);
 ```
+
+### Inspect document parts before editing
+
+```js
+import { inspectDocumentParts } from '@ansonlai/docx-redline-js';
+const inspection = inspectDocumentParts({ documentXml, commentsXml, numberingXml });
+```
+
+Reuse `exactText` plus `paragraphId` or `fingerprint` in an operation. Computed
+list labels and excerpts are for display, not replacements for exact targets.
+
+### Safely edit a complete DOCX in Node
+
+```js
+import { openDocx } from '@ansonlai/docx-redline-js/node';
+const document = openDocx(inputBuffer);
+const result = await document.applyOperations(operations, {
+  author: 'Agent', atomic: true, validate: true
+});
+if (!result.written) throw new Error(result.error?.message || 'No output written');
+const outputBuffer = result.toBuffer();
+```
+
+This facade defaults to strict targets, allocates package-safe comment IDs,
+merges numbering, updates relationships/content types, and rolls back to the
+original buffer when an atomic transaction fails.
+
+### Preferred command-line workflow
+
+```bash
+docx-redline extract input.docx --non-empty
+docx-redline preflight input.docx --operations operations.json --author "Agent"
+docx-redline apply input.docx --operations operations.json --author "Agent" --output output.docx
+docx-redline validate output.docx
+```
+
+The CLI prints JSON and never overwrites the input unless `--in-place` is
+explicit. Use `exactText`, `paragraphId`, and `fingerprint` from `extract` as
+targets. See `docs/AGENT-WORKFLOW.md`; operation files follow
+`docs/schemas/document-operations.schema.json`.
 
 ### Convert paragraph text into a Word list
 
@@ -164,6 +255,7 @@ adapters/
   logger.js
 core/
   types.js
+  paragraph-text.js
   word-xml.js
   paragraph-targeting.js
   list-targeting.js
@@ -190,12 +282,19 @@ pipeline/
   list-generation.js
 services/
   standalone-operation-runner.js
+  standalone-operation-runner.d.ts
+  document-operation-contract.js
+  operation-preflight.js
   standalone-docx-plumbing.js
   numbering-helpers.js
   comment-engine.js
   revision-comment-management.js
   table-reconciliation.js
   package-builder.js
+  document-inspection.js
+node/
+  docx-document.js
+  zip-archive.js
 orchestration/
   route-plan.js
   list-markdown.js
@@ -238,6 +337,23 @@ use `ingestWordOoxmlToPlainTextResult` or
 `ingestWordOoxmlToMarkdownResult`. The legacy ingestion helpers intentionally
 retain their string-only return type and return `''` for parse failures.
 
+### Target text versus replacement text
+
+Target resolution may normalize surrounding or repeated whitespace while
+matching a paragraph. Replacement text is not normalized: tabs, line breaks,
+non-breaking spaces, repeated spaces, and leading/trailing whitespace become
+part of the requested edit. When editing extracted document text, copy the
+exact paragraph text and modify it in place rather than round-tripping it
+through a formatter that may change whitespace.
+
+For ordinary insertions and deletions, target the visible accepted view:
+inserted `w:t` text is visible and deleted `w:delText` is not. Move revisions
+and other complex structures require additional care until targeting and
+ingestion share one canonical text extractor. Prefer a `targetRef` plus the full
+paragraph text when duplicate paragraphs are possible. Current text-only
+matching can select the first matching paragraph, so callers that cannot
+disambiguate safely should stop instead of guessing.
+
 ### OOXML wrapping for Word insertOoxml scenarios
 
 ```js
@@ -260,9 +376,10 @@ directly into `word/document.xml`.
 1. Call `configureXmlProvider` first in Node.js.
 2. `applyRedlineToOxml` is async.
 3. Paragraph APIs expect paragraph-level OOXML, not full `word/document.xml` in all cases.
-4. List operations may return `numberingXml` that must be merged into package parts.
+4. List operations may return `numberingXml` that must be merged into package parts. When `word/numbering.xml` already exists, pass `mergeNumberingXmlBySchemaOrder` to `ensureNumberingArtifactsInZip`; without a merge callback the helper replaces the prior payload.
+   That replacement behavior is deprecated and will become an error in the next major version.
 5. `useNativeApi: true` means standalone mode cannot fully handle that operation path.
-6. `deleteCommentsByAuthorInOoxml` removes matching `comments.xml` entries and linked comment anchors/references in the document.
+6. `deleteCommentsByAuthorInOoxml` removes definitions and linked anchors only when they are present in the same OOXML payload. In a real `.docx`, `word/comments.xml` and `word/document.xml` are separate parts and must both be updated by the package integration layer.
 7. If output begins with `<pkg:package`, treat it as package-level OOXML and normalize it before writing anything back to `word/document.xml`.
 8. Existing revisions are rejected by default; `accept-all-first` preserves the original OOXML on no-op, while `accept-all-first-keep-normalized` explicitly returns normalization as a change.
 9. Caller content is not sanitized by default. Pass `sanitizeInput: true` only for raw assistant output; literal dollar delimiters and `\\n` sequences are never rewritten.
@@ -271,6 +388,11 @@ directly into `word/document.xml`.
 12. Revision IDs are document-scoped in public operation paths. Thread the
     internal allocator through new string-serialization paths; generated
     `w:id` values are not stable across documents.
+13. Splitting or cloning a run can duplicate nested `w:rPrChange` metadata.
+    Preserve the original ID on at most one resulting run and allocate fresh
+    IDs for every additional clone through the document-scoped allocator.
+14. Run `validateRedlineOoxml` on generated markup before packaging it, then
+    run `validateDocxPackage` after merging comments and numbering artifacts.
 
 ## Validation Commands
 

@@ -2,6 +2,22 @@ export type OoxmlSourceType = 'package' | 'document' | 'fragment';
 export type RedlineStatus = 'ok' | 'no-op' | 'error';
 export type ExistingRevisionsPolicy = 'reject-input' | 'accept-all-first' | 'accept-all-first-keep-normalized';
 
+export type {
+  BatchOperationItemResult,
+  CommentDocumentOperation,
+  DeleteDocumentOperation,
+  DocumentOperation,
+  DocumentOperationBatchResult,
+  HighlightDocumentOperation,
+  OperationConflict,
+  OperationPreflightItemResult,
+  OperationPreflightResult,
+  ParagraphTargetDescriptor,
+  RedlineDocumentOperation,
+  ResolvedDocumentTarget,
+  StandaloneRunnerOptions
+} from './services/standalone-operation-runner.js';
+
 export interface RedlineError {
   code: 'PARSE_ERROR' | 'TARGET_NOT_FOUND' | 'EXISTING_REVISIONS' | 'DIFF_TOKEN_LIMIT' | string;
   message: string;
@@ -78,6 +94,28 @@ export interface IngestionTextResult {
   warnings?: string[];
 }
 
+export interface ParagraphTargetCandidate {
+  paragraph: Element;
+  index: number;
+  inTable: boolean;
+  paragraphId: string | null;
+  fingerprint: string | null;
+  text: string;
+}
+
+export interface ParagraphTargetResolution {
+  paragraph: Element;
+  resolvedBy:
+    | 'ref'
+    | 'paragraph_id'
+    | 'occurrence'
+    | 'fingerprint'
+    | 'strict_text'
+    | 'fuzzy_text'
+    | 'strict_text_after_ref_drift'
+    | 'fuzzy_text_after_ref_drift';
+}
+
 export interface XmlProvider {
   DOMParser: typeof DOMParser;
   XMLSerializer: typeof XMLSerializer;
@@ -132,6 +170,28 @@ export function ingestWordOoxmlToPlainText(oxml: string): string;
 export function ingestWordOoxmlToMarkdown(oxml: string): string;
 export function ingestWordOoxmlToPlainTextResult(oxml: unknown): IngestionTextResult;
 export function ingestWordOoxmlToMarkdownResult(oxml: unknown): IngestionTextResult;
+export function extractCanonicalParagraphText(paragraph: Element | null | undefined, options?: { revisionView?: 'accepted' | 'rejected' }): string;
+export function readCanonicalRunText(run: Element, options?: { revisionView?: 'accepted' | 'rejected'; boundary?: Element | null }): string;
+export function isNodeVisibleInRevisionView(node: Node, boundary?: Node | null, revisionView?: 'accepted' | 'rejected'): boolean;
+
+export interface InspectedParagraph {
+  index: number; ref: string; paragraphId: string | null; fingerprint: string | null;
+  text: string; exactText: string; excerpt: string; inTable: boolean;
+  humanReference: string; styleId: string | null;
+  table: { tableIndex: number; rowIndex: number; cellIndex: number } | null;
+  structuralReferences: Array<{ type: 'footnote' | 'endnote' | 'comment'; id: string | null }>;
+  headingLevel: number | null; nearestHeading: { level: number; text: string } | null;
+  list: { numId: string; level: number; label: string | null; format: string | null } | null;
+  hasRevisions: boolean; revisionAuthors: string[]; commentIds: string[];
+}
+export interface InspectedComment { id: string; author: string | null; date: string | null; text: string; paragraphIndex?: number; targetRef?: string; anchoredText?: string; }
+export interface DocumentInspectionOptions { revisionView?: 'accepted' | 'rejected'; excerptLength?: number; revisedOnly?: boolean; inTable?: boolean; skipEmpty?: boolean; search?: string; indexes?: number[]; range?: { start: number; end: number } | [number, number]; }
+export interface DocumentInspectionResult {
+  status: 'ok' | 'error'; paragraphs: InspectedParagraph[]; comments: InspectedComment[];
+  revisionAuthors?: string[]; commentAuthors?: string[]; counts?: { paragraphs: number; comments: number; revisedParagraphs: number };
+  warnings: string[]; error?: RedlineError;
+}
+export function inspectDocumentParts(parts: { documentXml: string; commentsXml?: string | null; numberingXml?: string | null; stylesXml?: string | null }, options?: DocumentInspectionOptions): DocumentInspectionResult;
 export function ingestOoxml(oxml: string): unknown;
 export function preprocessMarkdown(text: string): { cleanText: string; formatHints: unknown[] };
 export function serializeToOoxml(runModel: unknown[], pPrXml?: string | null, formatHints?: unknown[], options?: Record<string, unknown>): string;
@@ -231,6 +291,8 @@ export function enforceListBindingOnParagraphNodes(nodes: Node[], options?: Reco
 export function stripSingleLineListMarkerPrefix(text: string): string;
 
 export function getParagraphText(paragraph: Element | null | undefined): string;
+export function getParagraphId(paragraph: Element | null | undefined): string | null;
+export function createParagraphFingerprint(paragraph: Element | null | undefined): string | null;
 export function getDocumentParagraphNodes(xmlDoc: Document | Element | null | undefined): Element[];
 export function normalizeWhitespaceForTargeting(text: string): string;
 export function isMarkdownTableText(text: string): boolean;
@@ -241,10 +303,23 @@ export function findContainingWordElement(node: Node | null, localName: string):
 export function findParagraphByReference(xmlDoc: Document | Element, reference: unknown): Element | null;
 export function findParagraphByStrictText(xmlDoc: Document | Element, text: string): Element | null;
 export function findParagraphByBestTextMatch(xmlDoc: Document | Element, text: string): Element | null;
-export function resolveTargetParagraph(xmlDoc: Document | Element, options?: Record<string, unknown>): Element | null;
-export function buildTargetReferenceSnapshot(paragraph: Element, options?: Record<string, unknown>): Record<string, unknown>;
-export function resolveTargetParagraphWithSnapshot(xmlDoc: Document | Element, snapshot: unknown): Element | null;
-export function resolveParagraphRangeByRefs(xmlDoc: Document | Element, references: unknown[]): Element[];
+export function findStrictTargetCandidates(xmlDoc: Document | Element, text: string): ParagraphTargetCandidate[];
+export function resolveTargetParagraph(xmlDoc: Document | Element, options?: Record<string, unknown>): ParagraphTargetResolution;
+export function buildTargetReferenceSnapshot(xmlDoc: Document | Element): Map<number, {
+  text: string;
+  normalizedText: string;
+  inTable: boolean;
+}>;
+export function resolveTargetParagraphWithSnapshot(
+  xmlDoc: Document | Element,
+  options?: Record<string, unknown>
+): ParagraphTargetResolution;
+export function resolveParagraphRangeByRefs(
+  xmlDoc: Document | Element,
+  startRef: string | number | null,
+  endRef: string | number | null,
+  options?: Record<string, unknown>
+): Element[] | null;
 export function extractParagraphIdFromOoxml(oxml: string): string | null;
 
 export function getParagraphListInfo(paragraph: Element): Record<string, unknown> | null;

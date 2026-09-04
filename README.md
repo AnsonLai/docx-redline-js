@@ -97,6 +97,50 @@ const result = await applyRedlineToOxml(oxml, original, modified, {
 
 ## API Reference
 
+### Agent-friendly inspection and complete DOCX editing
+
+```js
+import { inspectDocumentParts } from '@ansonlai/docx-redline-js';
+const inventory = inspectDocumentParts({ documentXml, commentsXml, numberingXml });
+```
+
+Inspection returns exact paragraph text, target IDs/fingerprints, headings,
+table/list context, revision authors, and joined comment anchors. Filters such
+as `search`, `indexes`, `revisedOnly`, `inTable`, and `skipEmpty` limit output.
+
+For complete `.docx` buffers in Node:
+
+```js
+import { openDocx } from '@ansonlai/docx-redline-js/node';
+const document = openDocx(inputBuffer);
+const result = await document.applyOperations(operations, {
+  author: 'Editor', atomic: true, validate: true
+});
+const outputBuffer = result.toBuffer();
+```
+
+The Node facade performs edits, artifact merges, package wiring, validation,
+and commit as one transaction. It defaults to strict targets and returns the
+untouched input with `written: false` on atomic failure. It is isolated from
+the root/browser dependency graph.
+
+Install `@xmldom/xmldom` alongside the package when using the Node facade or
+CLI; it remains an optional peer so browser consumers do not install a DOM shim.
+
+### Agent CLI
+
+```bash
+docx-redline extract contract.docx --range 10:30
+docx-redline preflight contract.docx --operations operations.json --author "Editor"
+docx-redline apply contract.docx --operations operations.json --author "Editor" --output reviewed.docx
+docx-redline validate reviewed.docx
+```
+
+All commands emit JSON. Mutations require explicit authors and preserve the
+input unless `--in-place` is supplied. Existing output paths are refused unless
+`--force` is supplied. See [the agent workflow](docs/AGENT-WORKFLOW.md) and the
+[operation JSON Schema](docs/schemas/document-operations.schema.json).
+
 ### Configuration (call once at startup)
 
 | Function | Purpose |
@@ -157,10 +201,10 @@ silent text loss.
 | `injectCommentsIntoOoxml(oxml, comments, options)` | Add comments anchored to text ranges. |
 | `acceptTrackedChangesInOoxml(oxml, { author?, allAuthors? })` | Accept `w:ins` / `w:del` / `w:moveFrom` / `w:moveTo` / `*PrChange` revisions for one author or all authors. |
 | `rejectTrackedChangesInOoxml(oxml, { author?, allAuthors? })` | Reject `w:ins` / `w:del` / `w:moveFrom` / `w:moveTo` / `*PrChange` revisions for one author or all authors. |
-| `deleteCommentsByAuthorInOoxml(oxml, { author?, allAuthors? })` | Delete comments and matching anchors/references for one author or all authors. |
+| `deleteCommentsByAuthorInOoxml(oxml, { author?, allAuthors? })` | Delete matching comment definitions and anchors present in the supplied OOXML payload. Real `.docx` packages require updating both `word/comments.xml` and `word/document.xml`. |
 | `generateTableOoxml(headers, rows, options)` | Generate a `w:tbl` from tabular data. |
 | `createDynamicNumberingIdState(numberingXml)` | Allocate numbering IDs without collisions. |
-| `ensureNumberingArtifactsInZip(zip, numberingXml)` | Merge numbering artifacts into a `.docx` package. |
+| `ensureNumberingArtifactsInZip(zip, numberingXml, options)` | Add numbering artifacts to a `.docx` package. Replacement of existing numbering without `mergeNumberingXmlBySchemaOrder` is deprecated and will throw in the next major version. |
 | `ensureCommentsArtifactsInZip(zip, commentsXml)` | Merge comments artifacts into a `.docx` package. |
 | `validateDocxPackage(zip)` | Validate `.docx` structural consistency. |
 
@@ -178,8 +222,9 @@ For advanced usage, import specific submodules:
 import {
   applyOperationToDocumentXml,
   applyOperationsToDocumentXml,
+  preflightOperations,
   orderOperationsForStableTargets
-} from '@ansonlai/docx-redline-js/services/standalone-operation-runner.js';
+} from '@ansonlai/docx-redline-js/standalone-runner';
 import { getParagraphText } from '@ansonlai/docx-redline-js/core/paragraph-targeting.js';
 ```
 
@@ -191,6 +236,43 @@ Batches are atomic by default: any operation error returns the original
 batch so `results` describes what would have applied. Callers that intentionally
 consume partial results must pass `{ atomic: false }`; use
 `{ continueOnError: false }` to stop after the first error.
+
+Operations may override the batch author and may use a strict target descriptor:
+
+```js
+const operations = [{
+  type: 'replace',
+  author: 'Contract Editor',
+  target: {
+    exactText: 'Either party may terminate on notice.',
+    paragraphId: '1A2B3C4D',
+    index: 12,
+    fingerprint: 'fnv1a32:...'
+  },
+  modified: 'Either party may terminate on 30 days written notice.'
+}];
+
+const preflight = preflightOperations(documentXml, operations, 'Fallback Author');
+if (!preflight.valid) {
+  // Resolve missing/ambiguous targets, anchors, revision policies, or conflicts.
+}
+
+const result = await applyOperationsToDocumentXml(
+  documentXml,
+  operations,
+  'Fallback Author',
+  null,
+  { strictTargets: true }
+);
+```
+
+Preflight is read-only and uses strict targeting by default. It reports
+`AMBIGUOUS_TARGET` with candidates instead of selecting the first duplicate,
+does not use fuzzy fallback, checks comment/highlight anchors and existing
+revision policy, identifies same-paragraph operation conflicts, and reports
+authors plus required comments/numbering artifacts. Application remains
+permissive by default for compatibility; pass `strictTargets: true` for the same
+strict target behavior.
 
 ### Output Shape Matrix
 
@@ -212,7 +294,7 @@ Different APIs return different OOXML shapes. Use this as a packaging safety che
 - Redline application strips proofing markers (`w:proofErr`) from the matched target paragraph before diffing, while preserving complex-field scaffolding (`w:fldChar`, `w:instrText`) and its cached visible result as inert structure. Adjacent edits do not revise or move an unchanged field result.
 - Hyperlinks, bookmarks, comment range markers, tabs/breaks, and footnote/endnote references are treated as structural OOXML that should survive adjacent redline edits instead of being orphaned or wrapped in deletions.
 - Do use `extractReplacementNodesFromOoxml(...)` when you are consuming `result.oxml` from paragraph/range/table APIs.
-- Do merge numbering/comments artifacts with `ensureNumberingArtifactsInZip(...)` and `ensureCommentsArtifactsInZip(...)` when those parts are present.
+- Do merge numbering/comments artifacts with `ensureNumberingArtifactsInZip(...)` and `ensureCommentsArtifactsInZip(...)` when those parts are present. Supply `mergeNumberingXmlBySchemaOrder` when numbering already exists.
 - Don't write payloads that start with `<pkg:package` directly into `word/document.xml`.
 - Don't assume every `result.oxml` payload is a raw paragraph fragment.
 
@@ -234,9 +316,10 @@ import {
   applyRedlineToOxml,
   extractReplacementNodesFromOoxml,
   ensureNumberingArtifactsInZip,
+  mergeNumberingXmlBySchemaOrder,
   validateDocxPackage
 } from '@ansonlai/docx-redline-js';
-import { applyOperationToDocumentXml } from '@ansonlai/docx-redline-js/services/standalone-operation-runner.js';
+import { applyOperationToDocumentXml } from '@ansonlai/docx-redline-js/standalone-runner';
 
 const zip = await JSZip.loadAsync(docxBuffer);
 const documentXml = await zip.file('word/document.xml').async('string');
@@ -261,7 +344,9 @@ const normalized = extractReplacementNodesFromOoxml(fragmentResult.oxml);
 // If sourceType === 'package', merge extracted content/artifacts instead of
 // writing the raw pkg:package payload into word/document.xml.
 if (normalized.numberingXml) {
-  await ensureNumberingArtifactsInZip(zip, normalized.numberingXml);
+  await ensureNumberingArtifactsInZip(zip, normalized.numberingXml, {
+    mergeNumberingXml: mergeNumberingXmlBySchemaOrder
+  });
 }
 
 await validateDocxPackage(zip);

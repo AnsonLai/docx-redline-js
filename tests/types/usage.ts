@@ -8,6 +8,12 @@ import {
   type RedlineOptions,
   type RedlineResult
 } from '../../index.js';
+import {
+  applyOperationsToDocumentXml,
+  preflightOperations,
+  type DocumentOperation
+} from '@ansonlai/docx-redline-js/standalone-runner';
+import { openDocx } from '@ansonlai/docx-redline-js/node';
 
 configureXmlProvider({ DOMParser, XMLSerializer });
 
@@ -36,3 +42,23 @@ async function exercisePublicTypes(oxml: string): Promise<RedlineResult> {
 }
 
 void exercisePublicTypes('<w:p/>');
+
+const operations: DocumentOperation[] = [
+  {
+    type: 'replace',
+    target: { exactText: 'Old text', index: 1 },
+    modified: 'New text',
+    author: 'Editor'
+  },
+  {
+    type: 'comment',
+    target: 'New text',
+    commentContent: 'Review this paragraph',
+    author: 'Reviewer'
+  }
+];
+
+void applyOperationsToDocumentXml('<w:document/>', operations, 'Fallback Author');
+void preflightOperations('<w:document/>', operations, 'Fallback Author');
+const docx = openDocx(new Uint8Array());
+void docx.inspect({ skipEmpty: true });

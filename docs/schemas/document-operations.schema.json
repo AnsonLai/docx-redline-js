@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AnsonLai/docx-redline-js/docs/schemas/document-operations.schema.json",
+  "title": "docx-redline document operations",
+  "oneOf": [
+    { "$ref": "#/$defs/operationArray" },
+    {
+      "type": "object",
+      "required": ["operations"],
+      "properties": { "operations": { "$ref": "#/$defs/operationArray" } },
+      "additionalProperties": false
+    }
+  ],
+  "$defs": {
+    "operationArray": { "type": "array", "items": { "$ref": "#/$defs/operation" } },
+    "target": {
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        {
+          "type": "object",
+          "properties": {
+            "exactText": { "type": "string" }, "text": { "type": "string" },
+            "index": { "type": ["integer", "string"] }, "paragraphIndex": { "type": ["integer", "string"] },
+            "paragraphId": { "type": "string" }, "occurrence": { "type": "integer", "minimum": 1 },
+            "inTable": { "type": "boolean" }, "fingerprint": { "type": "string" }, "sourceFingerprint": { "type": "string" }
+          },
+          "additionalProperties": false,
+          "anyOf": [ { "required": ["exactText"] }, { "required": ["text"] }, { "required": ["index"] }, { "required": ["paragraphIndex"] }, { "required": ["paragraphId"] }, { "required": ["fingerprint"] }, { "required": ["sourceFingerprint"] } ]
+        }
+      ]
+    },
+    "base": {
+      "type": "object",
+      "required": ["type", "target"],
+      "properties": {
+        "target": { "$ref": "#/$defs/target" }, "targetRef": { "type": ["integer", "string", "null"] },
+        "author": { "type": "string", "minLength": 1 }, "generateRedlines": { "type": "boolean" },
+        "existingRevisions": { "enum": ["reject-input", "accept-all-first", "accept-all-first-keep-normalized"] }
+      }
+    },
+    "operation": {
+      "oneOf": [
+        {
+          "allOf": [ { "$ref": "#/$defs/base" }, { "type": "object", "required": ["modified"], "properties": { "type": { "enum": ["redline", "replace", "format", "list-change", "table-reconciliation", "insert"] }, "modified": { "type": "string" }, "targetEnd": { "$ref": "#/$defs/target" }, "targetEndRef": { "type": ["integer", "string", "null"] } } } ]
+        },
+        {
+          "allOf": [ { "$ref": "#/$defs/base" }, { "type": "object", "properties": { "type": { "const": "delete" }, "modified": { "const": "" } } } ]
+        },
+        {
+          "allOf": [ { "$ref": "#/$defs/base" }, { "type": "object", "required": ["commentContent"], "properties": { "type": { "const": "comment" }, "textToComment": { "type": "string" }, "commentContent": { "type": "string", "minLength": 1 } } } ]
+        },
+        {
+          "allOf": [ { "$ref": "#/$defs/base" }, { "type": "object", "required": ["textToHighlight"], "properties": { "type": { "const": "highlight" }, "textToHighlight": { "type": "string", "minLength": 1 }, "color": { "type": "string" } } } ]
+        }
+      ]
+    }
+  }
+}

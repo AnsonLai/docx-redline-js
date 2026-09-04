@@ -12,6 +12,7 @@ This repository contains only the publishable package surface:
 - `pipeline/`
 - `services/`
 - `orchestration/`
+- `node/` (separate Node-only package facade)
 - `index.js`
 - `index.d.ts`
 - `dist/`
@@ -35,6 +36,7 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 │   ├── logger.js
 │   └── xml-adapter.js
 ├── core/
+│   ├── paragraph-text.js
 │   └── word-xml.js
 ├── engine/
 │   ├── oxml-engine.js
@@ -48,8 +50,14 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 │   ├── comment-engine.js
 │   ├── numbering-helpers.js
 │   ├── revision-comment-management.js
+│   ├── document-inspection.js
 │   ├── standalone-docx-plumbing.js
 │   └── standalone-operation-runner.js
+├── node/
+│   ├── docx-document.js
+│   ├── cli.js
+│   ├── zip-archive.js
+│   └── index.js
 ├── index.js
 └── index.d.ts
 ```
@@ -72,6 +80,8 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
   - Namespace-safe Word element creation, tracked-change detection, and OOXML payload source-shape helpers.
 - `core/types.js`
   - Shared model enums/types plus revision metadata generation and document-aware revision ID seeding.
+- `core/paragraph-text.js`
+  - Canonical accepted/rejected-view text shared by targeting, ingestion, and inspection.
 - `core/redline-validation.js`
   - Runtime structural validation (`validateRedlineOoxml`) mirroring the test-suite invariants: no nested revisions, `w:delText` inside `w:del`, complete revision metadata, unique revision ids, preserved boundary whitespace.
 - `engine/oxml-engine.js`
@@ -94,6 +104,22 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
   - OOXML transforms for accepting/rejecting insertion, deletion, move, paragraph-mark, and property-change revisions by author/all-authors, plus deleting comments by author/all-authors.
 - `services/standalone-operation-runner.js`
   - Host-agnostic operation bridge for full-document `redline`, `highlight`, and `comment` workflows.
+- `services/document-operation-contract.js`
+  - Compatibility normalization, canonical operation kinds, author precedence,
+    and stable runtime validation for document operations.
+- `services/operation-preflight.js`
+  - Read-only strict target and anchor resolution, revision-policy diagnostics,
+    artifact prediction, and same-paragraph conflict reporting.
+- `services/document-inspection.js`
+  - Read-only paragraphs/comments inventory with target identity, headings,
+    revision authors, table context, and advisory visible numbering.
+- `node/docx-document.js`
+  - Transactional whole-DOCX editing, artifact wiring, validation, and rollback.
+    This surface is excluded from the browser/root dependency graph.
+- `node/cli.js` and `bin/docx-redline.js`
+  - Cross-platform, JSON-only agent command boundary. Read commands never
+    mutate; write commands require attribution, use package transactions, and
+    only overwrite source files under explicit `--in-place` authorization.
 - `orchestration/*`
   - Route planning and list fallback orchestration utilities.
 
@@ -111,6 +137,8 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 
 - Primary: `index.js`
 - Types: `index.d.ts`
+- Stable XML operation runner: `@ansonlai/docx-redline-js/standalone-runner`
+- Node-only DOCX facade: `@ansonlai/docx-redline-js/node`
 
 Keep public exports centralized through `index.js`; deep imports are supported by
 the package `exports` map for advanced consumers, but new public APIs should
@@ -125,6 +153,10 @@ still be re-exported from `index.js`.
   `w:id`, `w:author`, and `w:date` stay consistent and document-unique.
 - Seed revision IDs from parsed input with `seedRevisionIdsFromDocument(xmlDoc)`
   before emitting new tracked changes.
+- Treat revision metadata inside cloned content as identity-bearing state, not
+  ordinary formatting. When a run containing `w:rPrChange` is split or cloned,
+  preserve an existing revision ID on at most one output run and allocate a
+  fresh document-scoped ID for every additional copy.
 - Use `containsTrackedChanges(xmlDoc)` before redlining existing revisions unless
   the caller explicitly chooses the `existingRevisions: 'accept-all-first'` policy.
 - Do not write unknown `result.oxml` payloads directly into `word/document.xml`;
@@ -132,6 +164,55 @@ still be re-exported from `index.js`.
   `applyOperationToDocumentXml(...).documentXml` for full-document replacement.
 - Run `validateRedlineOoxml(oxml)` on generated output before packaging it;
   it reports structural invariant violations as `{ valid, issues }`.
+
+## Integration Contracts
+
+### Targeting and text fidelity
+
+- Paragraph targeting and replacement have different contracts. Targeting may
+  use normalized text and fallback heuristics; replacement content is literal
+  and must preserve tabs, line breaks, non-breaking spaces, repeated spaces,
+  and boundary whitespace.
+- Text extraction used for targeting represents the visible accepted view of
+  tracked content: insertions are visible and deletions are excluded.
+- Paragraph indexes are transient integration references, not user-facing
+  document identifiers. Prefer paragraph IDs plus exact text where available.
+- Ambiguous matches are unsafe for document mutation. New targeting surfaces
+  should report candidate matches or `AMBIGUOUS_TARGET` rather than silently
+  choosing the first paragraph.
+
+### Package artifacts and transactions
+
+- A real `.docx` stores document markup, comments, numbering, relationships,
+  and content types in separate parts. APIs operating on one XML string cannot
+  claim to update artifacts held in another part.
+- Comment IDs must be allocated against both document anchors and the existing
+  `word/comments.xml` part. Revision IDs must be allocated against the complete
+  document revision scope.
+- Numbering payloads must be merged with `mergeNumberingXmlBySchemaOrder` when
+  a package already contains numbering definitions; replacement is not a merge.
+- Safe package mutation is transactional: retain the original package, apply
+  operations, merge all artifacts, validate redline markup and package wiring,
+  and commit only if every required check succeeds.
+- `openDocx(buffer)` implements this transaction for Node without adding a ZIP
+  dependency to browser or XML-only consumers. Unmodified part contents remain
+  byte-identical after extraction, although the ZIP container is reserialized.
+
+### Operation results
+
+- `hasChanges: false` does not imply success. Callers must check `status`,
+  `error`, and warnings to distinguish errors, missing anchors, and true no-ops.
+- Batch results must preserve the caller's original operation indexes even when
+  execution is reordered for stable anchors.
+- Author attribution is externally visible document data. Agent-facing APIs
+  should require an explicit author and report the author used for every
+  operation rather than relying silently on a configured fallback.
+- Operation-level authors override the batch author. Runtime results expose
+  `authorUsed`, `authorsUsed`, `operationType`, `resolvedBy`, and resolved target
+  metadata so integrations can audit what the engine actually selected.
+- `preflightOperations` is the read-only safety boundary for agent-generated
+  batches. It uses strict targeting by default; mutation APIs retain permissive
+  legacy targeting unless `strictTargets: true` is requested.
 
 
 ## Build Output

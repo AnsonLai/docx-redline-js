@@ -14,6 +14,7 @@ import {
     seedRevisionIdsFromDocument
 } from '../core/types.js';
 import { createWordElement } from '../core/word-xml.js';
+import { refreshRunPropertyChangeIds } from '../core/revision-cloning.js';
 
 function removeNode(node) {
     if (node?.parentNode) {
@@ -236,10 +237,12 @@ export function applyHighlightToOoxml(ooxmlString, targetText, color = 'yellow',
 
     const doc = parseOoxml(ooxmlString);
     if (!doc) return ooxmlString;
+    let revisionIdAllocator;
     if (options?._revisionIdAllocator instanceof RevisionIdAllocator) {
-        seedRevisionIdsFromDocument(doc, options._revisionIdAllocator);
+        revisionIdAllocator = options._revisionIdAllocator;
+        seedRevisionIdsFromDocument(doc, revisionIdAllocator);
     } else {
-        createRevisionIdAllocator(doc);
+        revisionIdAllocator = createRevisionIdAllocator(doc);
     }
     const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
@@ -252,8 +255,14 @@ export function applyHighlightToOoxml(ooxmlString, targetText, color = 'yellow',
     // Find all runs recursively (this already includes runs inside w:ins)
     const allRuns = Array.from(doc.getElementsByTagNameNS(NS_W, 'r'));
 
+    const sourceRunsWithClaimedRevisionIds = new WeakSet();
     const cloneRunWithText = (sourceRun, text, shouldHighlight) => {
         const clonedRun = sourceRun.cloneNode(true);
+        if (sourceRunsWithClaimedRevisionIds.has(sourceRun)) {
+            refreshRunPropertyChangeIds(clonedRun, revisionIdAllocator);
+        } else {
+            sourceRunsWithClaimedRevisionIds.add(sourceRun);
+        }
         const textNodes = clonedRun.getElementsByTagNameNS(NS_W, 't');
         Array.from(textNodes).forEach(removeNode);
 

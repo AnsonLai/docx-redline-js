@@ -8,7 +8,7 @@ const integrationDir = path.join(reconciliationDir, 'integration');
 const standalonePath = path.join(reconciliationDir, 'index.js');
 const indexPath = path.join(reconciliationDir, 'index.js');
 const wordAddinEntryPath = path.join(reconciliationDir, 'word-addin-entry.js');
-const allowedExternalImports = new Set(['diff-match-patch']);
+const allowedExternalImports = new Set(['diff-match-patch', '@xmldom/xmldom', 'node:zlib', 'node:fs/promises', 'node:path']);
 
 const forbiddenPatterns = [
     /Office\./,
@@ -141,4 +141,3 @@ run().catch(err => {
     console.error('FAIL:', err.message);
     process.exit(1);
 });
-

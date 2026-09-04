@@ -6,6 +6,7 @@
  */
 
 import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
+import { getDefaultAuthor } from '../adapters/config.js';
 import { findReconstructionParagraphRange } from '../engine/reconstruction-mapper.js';
 import {
     RevisionIdAllocator,
@@ -14,6 +15,12 @@ import {
     setRevisionIdAllocatorForDocument
 } from '../core/types.js';
 import { createWordElement } from '../core/word-xml.js';
+import {
+    normalizeDocumentOperation,
+    resolveDocumentOperationAuthor,
+    validateDocumentOperation
+} from './document-operation-contract.js';
+export { preflightOperations } from './operation-preflight.js';
 import { markParagraphMarkInserted } from '../engine/run-builders.js';
 import {
     applyRedlineToOxml,
@@ -21,6 +28,8 @@ import {
     applyHighlightToOoxml,
     injectCommentsIntoOoxml,
     getParagraphText as getParagraphTextFromOxml,
+    getParagraphId,
+    createParagraphFingerprint,
     isMarkdownTableText,
     findContainingWordElement,
     buildTargetReferenceSnapshot,
@@ -67,14 +76,31 @@ function getParagraphText(paragraph) {
 function resolveTargetParagraph(xmlDoc, targetText, targetRef, opType, runtimeContext = null, options = {}) {
     const onInfo = typeof options?.onInfo === 'function' ? options.onInfo : () => { };
     const onWarn = typeof options?.onWarn === 'function' ? options.onWarn : () => { };
-    return resolveTargetParagraphWithSnapshotShared(xmlDoc, {
+    const resolved = resolveTargetParagraphWithSnapshotShared(xmlDoc, {
         targetText,
         targetRef,
         opType,
         targetRefSnapshot: runtimeContext?.targetRefSnapshot || null,
+        targetDescriptor: options?.targetDescriptor || null,
+        strictAmbiguity: options?.strictTargets === true,
         onInfo,
         onWarn
     });
+    if (options?._resolutionCapture && resolved?.paragraph) {
+        const paragraphs = Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'));
+        const paragraph = resolved.paragraph;
+        Object.assign(options._resolutionCapture, {
+            resolvedBy: resolved.resolvedBy,
+            resolvedTarget: {
+                index: paragraphs.indexOf(paragraph) + 1,
+                paragraphId: getParagraphId(paragraph),
+                text: getParagraphText(paragraph),
+                fingerprint: createParagraphFingerprint(paragraph),
+                inTable: !!findContainingWordElement(paragraph, 'tbl')
+            }
+        });
+    }
+    return resolved;
 }
 
 function extractReplacementNodes(outputOxml) {
@@ -794,7 +820,11 @@ async function applyToParagraphByExactText(documentXml, targetText, modifiedText
     const xmlDoc = parseOoxmlSafe(documentXml, 'application/xml').doc;
     if (!xmlDoc) return { documentXml, hasChanges: false, status: 'error', error: { code: 'PARSE_ERROR', message: 'Could not parse document OOXML.' } };
     const revisionIdAllocator = prepareRevisionAllocator(xmlDoc, options);
-    const resolved = resolveTargetParagraph(xmlDoc, targetText, targetRef, 'redline', runtimeContext, { onInfo, onWarn });
+    const resolved = resolveTargetParagraph(xmlDoc, targetText, targetRef, 'redline', runtimeContext, {
+        ...options,
+        onInfo,
+        onWarn
+    });
     const targetParagraph = resolved.paragraph;
     preprocessRedlineTargetParagraph(targetParagraph);
     const currentParagraphText = getParagraphText(targetParagraph);
@@ -1111,7 +1141,11 @@ async function applyHighlightToParagraphByExactText(documentXml, targetText, tex
     const xmlDoc = parseOoxmlSafe(documentXml, 'application/xml').doc;
     if (!xmlDoc) return { documentXml, hasChanges: false, status: 'error', error: { code: 'PARSE_ERROR', message: 'Could not parse document OOXML.' } };
     const revisionIdAllocator = prepareRevisionAllocator(xmlDoc, options);
-    const resolved = resolveTargetParagraph(xmlDoc, targetText, targetRef, 'highlight', runtimeContext, { onInfo, onWarn });
+    const resolved = resolveTargetParagraph(xmlDoc, targetText, targetRef, 'highlight', runtimeContext, {
+        ...options,
+        onInfo,
+        onWarn
+    });
     const targetParagraph = resolved.paragraph;
     const paragraphXml = serializer.serializeToString(targetParagraph);
     const highlightedXml = applyHighlightToOoxml(paragraphXml, textToHighlight, color, {
@@ -1135,10 +1169,21 @@ async function applyCommentToParagraphByExactText(documentXml, targetText, textT
     const xmlDoc = parseOoxmlSafe(documentXml, 'application/xml').doc;
     if (!xmlDoc) return { documentXml, hasChanges: false, commentsXml: null, status: 'error', error: { code: 'PARSE_ERROR', message: 'Could not parse document OOXML.' } };
     prepareRevisionAllocator(xmlDoc, options);
-    const resolved = resolveTargetParagraph(xmlDoc, targetText, targetRef, 'comment', runtimeContext, { onInfo, onWarn });
+    const resolved = resolveTargetParagraph(xmlDoc, targetText, targetRef, 'comment', runtimeContext, {
+        ...options,
+        onInfo,
+        onWarn
+    });
     const targetParagraph = resolved.paragraph;
     const paragraphXml = serializer.serializeToString(targetParagraph);
-    const commentResult = injectCommentsIntoOoxml(paragraphXml, [{ paragraphIndex: 1, textToFind: textToComment, commentContent }], { author });
+    const commentAnchor = typeof textToComment === 'string' && textToComment.length > 0
+        ? textToComment
+        : getParagraphText(targetParagraph);
+    const commentResult = injectCommentsIntoOoxml(paragraphXml, [{
+        paragraphIndex: 1,
+        textToFind: commentAnchor,
+        commentContent
+    }], { author, commentIdAllocator: options.commentIdAllocator });
     if (!commentResult.commentsApplied) return { documentXml, hasChanges: false, commentsXml: null, warnings: commentResult.warnings || [] };
     const { replacementNodes } = extractReplacementNodes(commentResult.oxml);
     const parent = targetParagraph.parentNode;
@@ -1265,7 +1310,8 @@ function commitBatchRuntimeContext(runtimeContext, context) {
 function normalizeOperationError(error) {
     return {
         code: typeof error?.code === 'string' && error.code ? error.code : 'OPERATION_ERROR',
-        message: error?.message || String(error)
+        message: error?.message || String(error),
+        ...(Array.isArray(error?.candidates) ? { candidates: error.candidates } : {})
     };
 }
 
@@ -1285,48 +1331,96 @@ function normalizeOperationError(error) {
  * @returns {Promise<{ documentXml: string, hasChanges: boolean, numberingXml?: string|null, commentsXml?: string|null, warnings?: string[] }>}
  */
 export async function applyOperationToDocumentXml(documentXml, op, author, runtimeContext = null, options = {}) {
+    const validation = validateDocumentOperation(op);
+    if (!validation.valid) {
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: validation.error,
+            operationType: normalizeDocumentOperation(op).operationKind,
+            authorUsed: resolveDocumentOperationAuthor(op, author, getDefaultAuthor())
+        };
+    }
+
+    const operation = validation.operation || normalizeDocumentOperation(op);
+    const authorUsed = resolveDocumentOperationAuthor(operation, author, getDefaultAuthor());
     const parsed = parseOoxmlSafe(documentXml, 'application/xml');
     if (parsed.error || !parsed.doc) {
-        return { documentXml, hasChanges: false, status: 'error', error: parsed.error, warnings: parsed.warnings };
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: parsed.error,
+            warnings: parsed.warnings,
+            operationType: operation.operationKind,
+            authorUsed
+        };
     }
+    const resolutionCapture = {};
     const operationOptions = {
         ...options,
+        ...(typeof operation.generateRedlines === 'boolean' ? { generateRedlines: operation.generateRedlines } : {}),
+        ...(operation.existingRevisions ? { existingRevisions: operation.existingRevisions } : {}),
+        targetDescriptor: operation.targetDescriptor,
+        _resolutionCapture: resolutionCapture,
         _revisionIdAllocator: prepareRevisionAllocator(parsed.doc, options)
     };
-    if (op?.type === 'highlight') {
-        return applyHighlightToParagraphByExactText(
+    try {
+        let result;
+        if (operation.operationKind === 'highlight') {
+            result = await applyHighlightToParagraphByExactText(
+                documentXml,
+                operation.target,
+                operation.textToHighlight,
+                operation.color,
+                authorUsed,
+                operation.targetRef,
+                runtimeContext,
+                operationOptions
+            );
+        } else if (operation.operationKind === 'comment') {
+            result = await applyCommentToParagraphByExactText(
+                documentXml,
+                operation.target,
+                operation.textToComment,
+                operation.commentContent,
+                authorUsed,
+                operation.targetRef,
+                runtimeContext,
+                operationOptions
+            );
+        } else {
+            result = await applyToParagraphByExactText(
+                documentXml,
+                operation.target,
+                operation.modified,
+                authorUsed,
+                operation.targetRef,
+                operation.targetEndRef,
+                runtimeContext,
+                operationOptions
+            );
+        }
+        return {
+            ...result,
+            operationType: operation.operationKind,
+            authorUsed,
+            ...resolutionCapture
+        };
+    } catch (error) {
+        const normalizedError = normalizeOperationError(error);
+        return {
             documentXml,
-            op.target,
-            op.textToHighlight,
-            op.color,
-            author,
-            op.targetRef,
-            runtimeContext,
-            operationOptions
-        );
+            hasChanges: false,
+            status: 'error',
+            error: normalizedError,
+            warnings: [normalizedError.message],
+            operationType: operation.operationKind,
+            authorUsed,
+            ...resolutionCapture
+        };
     }
-    if (op?.type === 'comment') {
-        return applyCommentToParagraphByExactText(
-            documentXml,
-            op.target,
-            op.textToComment,
-            op.commentContent,
-            author,
-            op.targetRef,
-            runtimeContext,
-            operationOptions
-        );
-    }
-    return applyToParagraphByExactText(
-        documentXml,
-        op?.target,
-        op?.modified,
-        author,
-        op?.targetRef,
-        op?.targetEndRef,
-        runtimeContext,
-        operationOptions
-    );
 }
 
 /**
@@ -1372,6 +1466,7 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
             numberingXmlParts: [],
             results: [],
             executionOrder: [],
+            authorsUsed: [],
             status: 'error',
             error: parsed.error,
             warnings: parsed.warnings
@@ -1395,6 +1490,7 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
     const numberingXmlParts = [];
     const results = [];
     const executionOrder = [];
+    const authorsUsed = new Set();
     let operationFailed = false;
 
     for (const entry of scheduled) {
@@ -1414,10 +1510,15 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
             if (result.numberingXml) numberingXmlParts.push(result.numberingXml);
             const isError = result.status === 'error' || !!result.error;
             operationFailed = operationFailed || isError;
+            if (!isError && result.hasChanges && result.authorUsed) authorsUsed.add(result.authorUsed);
             results.push({
                 index: index + 1,
                 type: operation?.type || 'redline',
                 status: isError ? 'error' : (result.hasChanges ? 'applied' : 'no_change'),
+                operationType: result.operationType || 'redline',
+                authorUsed: result.authorUsed,
+                ...(result.resolvedBy ? { resolvedBy: result.resolvedBy } : {}),
+                ...(result.resolvedTarget ? { resolvedTarget: result.resolvedTarget } : {}),
                 ...(Array.isArray(result.warnings) && result.warnings.length > 0 ? { warnings: result.warnings } : {}),
                 ...(result.error ? { error: result.error } : {})
             });
@@ -1425,10 +1526,13 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
         } catch (error) {
             const normalizedError = normalizeOperationError(error);
             operationFailed = true;
+            const authorUsed = resolveDocumentOperationAuthor(operation, author, getDefaultAuthor());
             results.push({
                 index: index + 1,
                 type: operation?.type || 'redline',
                 status: 'error',
+                operationType: normalizeDocumentOperation(operation).operationKind,
+                authorUsed,
                 warnings: [normalizedError.message],
                 error: normalizedError
             });
@@ -1447,6 +1551,7 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
         numberingXmlParts: rolledBack ? [] : numberingXmlParts,
         results,
         executionOrder,
+        authorsUsed: rolledBack ? [] : Array.from(authorsUsed),
         ...(rolledBack ? {
             rolledBack: true,
             status: 'error',

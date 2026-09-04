@@ -7,13 +7,25 @@
   "main": "./index.js",
   "module": "./index.js",
   "types": "./index.d.ts",
+  "bin": {
+    "docx-redline": "./bin/docx-redline.js"
+  },
   "exports": {
     ".": {
       "types": "./index.d.ts",
       "import": "./index.js",
       "default": "./index.js"
     },
-    "./standalone-runner": "./services/standalone-operation-runner.js",
+    "./standalone-runner": {
+      "types": "./services/standalone-operation-runner.d.ts",
+      "import": "./services/standalone-operation-runner.js",
+      "default": "./services/standalone-operation-runner.js"
+    },
+    "./node": {
+      "types": "./node/index.d.ts",
+      "import": "./node/index.js",
+      "default": "./node/index.js"
+    },
     "./redline-operation-converter": "./orchestration/redline-operation-converter.js",
     "./adapters/*": "./adapters/*",
     "./core/*": "./core/*",
@@ -28,6 +40,8 @@
     "engine/",
     "pipeline/",
     "services/",
+    "node/",
+    "bin/",
     "orchestration/",
     "scripts/",
     "docs/",
@@ -36,6 +50,7 @@
     "dist/",
     "ARCHITECTURE.md",
     "AGENTS.md",
+    "CHANGELOG.md",
     "README.md",
     "LICENSE"
   ],
@@ -73,10 +88,12 @@
     "test:corpus:word:visual": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/word-com-corpus-visual-suite.ps1",
     "test:visual:inspect": "node scripts/inspect-visual-evidence.mjs",
     "test:visual:sample": "node scripts/sample-multimodal-visual-check.mjs",
+    "fixtures:reredline": "node scripts/export-reredline-stress-fixtures.mjs",
     "corpus:fetch:superdoc": "node scripts/fetch-superdoc-corpus.mjs",
     "report:word:coverage": "node scripts/report-word-coverage.mjs",
     "report:test:dashboard": "node scripts/build-test-dashboard.mjs",
     "review:word:prepare": "node scripts/prepare-word-review.mjs",
+    "docx-redline": "node bin/docx-redline.js",
     "test": "node scripts/run-tests.mjs",
     "test:isolation": "node tests/no_word_api_index_check.mjs && node tests/core_dependency_graph_check.mjs",
     "prepublishOnly": "npm run test:isolation && npm run build"

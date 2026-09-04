@@ -4,6 +4,7 @@
 
 import { createWordElement } from '../core/word-xml.js';
 import { getElementsByTag, getFirstElementByTag } from '../core/xml-query.js';
+import { refreshRunPropertyChangeIds } from '../core/revision-cloning.js';
 
 /**
  * Builds a paragraph text index in a single pass for repeated lookups.
@@ -67,10 +68,14 @@ export function findTextInParagraphIndex(paragraphIndex, searchText) {
     };
 }
 
-function cloneRunWithText(xmlDoc, rPr, newText) {
+function cloneRunWithText(xmlDoc, rPr, newText, revisionIdAllocator, preserveRevisionIds = false) {
     const newRun = createWordElement(xmlDoc, 'w:r');
     if (rPr) {
-        newRun.appendChild(rPr.cloneNode(true));
+        const clonedRPr = rPr.cloneNode(true);
+        if (!preserveRevisionIds) {
+            refreshRunPropertyChangeIds(clonedRPr, revisionIdAllocator);
+        }
+        newRun.appendChild(clonedRPr);
     }
 
     const newTextNode = createWordElement(xmlDoc, 'w:t');
@@ -88,9 +93,10 @@ function cloneRunWithText(xmlDoc, rPr, newText) {
  * @param {string} textToFind - Target text
  * @param {number} commentId - Comment id
  * @param {{ fullText: string, runOffsets: Array<{run: Element, start: number, end: number}> }|null} [paragraphIndex=null] - Optional prebuilt index
+ * @param {import('../core/types.js').RevisionIdAllocator|null} [revisionIdAllocator=null] - Document-scoped revision ID allocator
  * @returns {boolean}
  */
-export function injectMarkersIntoParagraph(xmlDoc, paragraph, textToFind, commentId, paragraphIndex = null) {
+export function injectMarkersIntoParagraph(xmlDoc, paragraph, textToFind, commentId, paragraphIndex = null, revisionIdAllocator = null) {
     const activeIndex = paragraphIndex || createParagraphTextIndex(paragraph);
     const location = findTextInParagraphIndex(activeIndex, textToFind);
     if (!location.found || !location.startRun) {
@@ -131,7 +137,8 @@ export function injectMarkersIntoParagraph(xmlDoc, paragraph, textToFind, commen
         const parent = run.parentNode;
 
         if (beforeText) {
-            parent.insertBefore(cloneRunWithText(xmlDoc, rPr, beforeText), run);
+            parent.insertBefore(cloneRunWithText(xmlDoc, rPr, beforeText, revisionIdAllocator, true), run);
+            refreshRunPropertyChangeIds(rPr, revisionIdAllocator);
         }
 
         parent.insertBefore(startMarker, run);
@@ -145,7 +152,7 @@ export function injectMarkersIntoParagraph(xmlDoc, paragraph, textToFind, commen
         parent.insertBefore(referenceRun, endMarker.nextSibling || null);
 
         if (afterText) {
-            parent.insertBefore(cloneRunWithText(xmlDoc, rPr, afterText), referenceRun.nextSibling || null);
+            parent.insertBefore(cloneRunWithText(xmlDoc, rPr, afterText, revisionIdAllocator), referenceRun.nextSibling || null);
         }
 
         return true;
@@ -159,7 +166,11 @@ export function injectMarkersIntoParagraph(xmlDoc, paragraph, textToFind, commen
 
         if (beforeText) {
             const rPr = getFirstElementByTag(location.startRun, 'w:rPr');
-            location.startRun.parentNode.insertBefore(cloneRunWithText(xmlDoc, rPr, beforeText), location.startRun);
+            location.startRun.parentNode.insertBefore(
+                cloneRunWithText(xmlDoc, rPr, beforeText, revisionIdAllocator, true),
+                location.startRun
+            );
+            refreshRunPropertyChangeIds(rPr, revisionIdAllocator);
         }
         startTextNode.textContent = highlightedStart;
     }
@@ -178,9 +189,12 @@ export function injectMarkersIntoParagraph(xmlDoc, paragraph, textToFind, commen
         if (afterText) {
             const rPr = getFirstElementByTag(endRun, 'w:rPr');
             if (endRun.nextSibling) {
-                endRun.parentNode.insertBefore(cloneRunWithText(xmlDoc, rPr, afterText), endRun.nextSibling);
+                endRun.parentNode.insertBefore(
+                    cloneRunWithText(xmlDoc, rPr, afterText, revisionIdAllocator),
+                    endRun.nextSibling
+                );
             } else {
-                endRun.parentNode.appendChild(cloneRunWithText(xmlDoc, rPr, afterText));
+                endRun.parentNode.appendChild(cloneRunWithText(xmlDoc, rPr, afterText, revisionIdAllocator));
             }
         }
     }

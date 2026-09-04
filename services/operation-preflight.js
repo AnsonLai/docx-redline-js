@@ -1,0 +1,214 @@
+/**
+ * Read-only preflight for document operation batches.
+ */
+
+import { parseOoxmlSafe } from '../adapters/xml-adapter.js';
+import { getDefaultAuthor } from '../adapters/config.js';
+import { containsTrackedChanges } from '../core/word-xml.js';
+import {
+    createParagraphFingerprint,
+    findContainingWordElement,
+    getDocumentParagraphNodes,
+    getParagraphId,
+    getParagraphText,
+    normalizeWhitespaceForTargeting,
+    resolveTargetParagraph
+} from '../core/paragraph-targeting.js';
+import {
+    normalizeDocumentOperation,
+    resolveDocumentOperationAuthor,
+    validateDocumentOperation
+} from './document-operation-contract.js';
+
+function normalizedError(error) {
+    return {
+        code: typeof error?.code === 'string' && error.code ? error.code : 'OPERATION_ERROR',
+        message: error?.message || String(error),
+        ...(Array.isArray(error?.candidates) ? { candidates: error.candidates } : {})
+    };
+}
+
+function operationNeedsNumbering(operation) {
+    if (operation.operationKind !== 'redline' || typeof operation.modified !== 'string') return false;
+    return operation.modified.split(/\r?\n/).some(line => /^\s*(?:[-+*]|\d+[.)])\s+/.test(line));
+}
+
+function targetMetadata(xmlDoc, paragraph, resolvedBy, suppliedText) {
+    const paragraphs = getDocumentParagraphNodes(xmlDoc);
+    const actualText = getParagraphText(paragraph);
+    const normalizedSupplied = normalizeWhitespaceForTargeting(suppliedText || '');
+    const normalizedActual = normalizeWhitespaceForTargeting(actualText);
+    return {
+        resolvedBy,
+        resolvedTarget: {
+            index: paragraphs.indexOf(paragraph) + 1,
+            paragraphId: getParagraphId(paragraph),
+            text: actualText,
+            fingerprint: createParagraphFingerprint(paragraph),
+            inTable: !!findContainingWordElement(paragraph, 'tbl')
+        },
+        matchDiagnostics: {
+            exactTextMatch: typeof suppliedText === 'string' && suppliedText === actualText,
+            normalizedTextMatch: !!normalizedSupplied && normalizedSupplied === normalizedActual,
+            suppliedText: suppliedText || '',
+            actualText
+        }
+    };
+}
+
+function buildConflict(code, message, operationIndexes, target) {
+    return { code, message, operationIndexes, target };
+}
+
+export function preflightOperations(documentXml, operations, author, options = {}) {
+    const parsed = parseOoxmlSafe(documentXml, 'application/xml');
+    if (parsed.error || !parsed.doc) {
+        return {
+            valid: false,
+            status: 'error',
+            error: parsed.error,
+            results: [],
+            conflicts: [],
+            authorsUsed: [],
+            requiredArtifacts: { comments: false, numbering: false }
+        };
+    }
+
+    const xmlDoc = parsed.doc;
+    const sourceOperations = Array.isArray(operations) ? operations : [];
+    const strictTargets = options.strictTargets !== false;
+    const results = [];
+    const authorsUsed = new Set();
+    let commentsRequired = false;
+    let numberingRequired = false;
+
+    for (let index = 0; index < sourceOperations.length; index++) {
+        const sourceOperation = sourceOperations[index];
+        const validation = validateDocumentOperation(sourceOperation);
+        const fallbackOperation = normalizeDocumentOperation(sourceOperation);
+        const operation = validation.operation || fallbackOperation;
+        const authorUsed = resolveDocumentOperationAuthor(operation, author, getDefaultAuthor());
+        authorsUsed.add(authorUsed);
+
+        if (!validation.valid) {
+            results.push({
+                index: index + 1,
+                type: sourceOperation?.type || 'redline',
+                operationType: operation.operationKind,
+                status: 'error',
+                authorUsed,
+                error: validation.error
+            });
+            continue;
+        }
+
+        commentsRequired = commentsRequired || operation.operationKind === 'comment';
+        numberingRequired = numberingRequired || operationNeedsNumbering(operation);
+
+        try {
+            const resolved = resolveTargetParagraph(xmlDoc, {
+                targetText: operation.target,
+                targetRef: operation.targetRef,
+                targetDescriptor: operation.targetDescriptor,
+                opType: operation.operationKind,
+                strictAmbiguity: strictTargets,
+                onInfo: options.onInfo,
+                onWarn: options.onWarn
+            });
+            const paragraph = resolved.paragraph;
+            const metadata = targetMetadata(xmlDoc, paragraph, resolved.resolvedBy, operation.target);
+            const paragraphText = metadata.resolvedTarget.text;
+            const anchor = operation.operationKind === 'comment'
+                ? (operation.textToComment || paragraphText)
+                : (operation.operationKind === 'highlight' ? operation.textToHighlight : null);
+            const anchorFound = anchor == null || paragraphText.includes(anchor);
+            const hasRevisions = containsTrackedChanges(paragraph);
+            const existingPolicy = operation.existingRevisions
+                || options.existingRevisions
+                || 'reject-input';
+
+            let error = null;
+            if (!anchorFound) {
+                error = {
+                    code: 'ANCHOR_NOT_FOUND',
+                    message: `Anchor text was not found in target paragraph: "${anchor}".`
+                };
+            } else if (
+                operation.operationKind === 'redline'
+                && hasRevisions
+                && existingPolicy === 'reject-input'
+            ) {
+                error = {
+                    code: 'EXISTING_REVISIONS',
+                    message: 'Target paragraph contains tracked changes and existingRevisions is "reject-input".'
+                };
+            }
+
+            results.push({
+                index: index + 1,
+                type: sourceOperation?.type || 'redline',
+                operationType: operation.operationKind,
+                status: error ? 'error' : 'ready',
+                authorUsed,
+                ...metadata,
+                anchor: anchor == null ? null : { text: anchor, found: anchorFound },
+                hasRevisions,
+                existingRevisions: existingPolicy,
+                ...(error ? { error } : {})
+            });
+        } catch (error) {
+            results.push({
+                index: index + 1,
+                type: sourceOperation?.type || 'redline',
+                operationType: operation.operationKind,
+                status: 'error',
+                authorUsed,
+                error: normalizedError(error)
+            });
+        }
+    }
+
+    const conflicts = [];
+    const byTarget = new Map();
+    for (const result of results) {
+        const targetIndex = result.resolvedTarget?.index;
+        if (!targetIndex) continue;
+        if (!byTarget.has(targetIndex)) byTarget.set(targetIndex, []);
+        byTarget.get(targetIndex).push(result);
+    }
+
+    for (const [targetIndex, targetResults] of byTarget) {
+        const redlines = targetResults.filter(result => result.operationType === 'redline');
+        const highlights = targetResults.filter(result => result.operationType === 'highlight');
+        const target = targetResults[0].resolvedTarget;
+        if (redlines.length > 1) {
+            conflicts.push(buildConflict(
+                'OVERLAPPING_TEXT_EDITS',
+                `Multiple text edits target paragraph ${targetIndex}; later operations may use a stale anchor.`,
+                redlines.map(result => result.index),
+                target
+            ));
+        }
+        if (redlines.length > 0 && highlights.length > 0) {
+            conflicts.push(buildConflict(
+                'REVISION_ORDER_CONFLICT',
+                `A text edit and highlight target paragraph ${targetIndex}; operation order can invalidate the target or existing-revision policy.`,
+                [...redlines, ...highlights].map(result => result.index).sort((a, b) => a - b),
+                target
+            ));
+        }
+    }
+
+    const hasErrors = results.some(result => result.status === 'error');
+    return {
+        valid: !hasErrors && conflicts.length === 0,
+        status: !hasErrors && conflicts.length === 0 ? 'ok' : 'error',
+        results,
+        conflicts,
+        authorsUsed: Array.from(authorsUsed),
+        requiredArtifacts: {
+            comments: commentsRequired,
+            numbering: numberingRequired
+        }
+    };
+}

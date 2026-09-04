@@ -1,5 +1,53 @@
 # Changelog
 
+## Unreleased
+
+### Breaking changes
+
+- `getParagraphText(...)` now returns canonical accepted-view text instead of
+  the earlier simplified `w:t`/`w:tab` concatenation. For affected OOXML it now
+  excludes deleted and `w:moveFrom` content and includes structural breaks,
+  soft hyphens, and non-breaking hyphens. Callers that compare, cache, or store
+  its output may observe different strings. Use the new
+  `extractCanonicalParagraphText(...)` explicitly when accepted/rejected-view
+  semantics are intended; callers that require the former raw traversal must
+  preserve that behavior in their integration before upgrading.
+- Paragraph fingerprints include canonical paragraph text. Previously stored
+  fingerprints can therefore become stale for paragraphs containing revisions,
+  moves, breaks, soft hyphens, or non-breaking hyphens. Regenerate fingerprints
+  from the upgraded library rather than persisting them across the upgrade.
+- Malformed or field-incompatible document-operation objects now return a
+  structured `INVALID_OPERATION` error at the runner boundary. Integrations
+  that treated invalid operations as later failures or no-ops must handle this
+  explicit error result.
+
+No public export or valid existing function signature was removed. Strict
+targeting also remains opt-in on existing low-level mutation APIs; it is the
+default only on the newly added Node facade and CLI.
+
+### Added
+
+- Added typed operations, per-operation authors, strict target descriptors,
+  deterministic preflight diagnostics, and auditable resolution metadata.
+- Added `inspectDocumentParts(...)`, a structured document inventory using the
+  same canonical text extractor as targeting and ingestion.
+- Added `@ansonlai/docx-redline-js/node`. `openDocx(...)` applies batches to
+  complete DOCX buffers transactionally and validates before commit.
+- Added the cross-platform `docx-redline` CLI with JSON `inspect`, `extract`,
+  `preflight`, `apply`, `accept`, `reject`, `delete-comments`, and `validate`
+  commands, plus a published operation-file JSON Schema.
+
+### Behavior and reliability
+
+- Package comment IDs are seeded from existing anchors and definitions, and
+  the Node facade merges numbering without discarding prior definitions.
+- Canonical paragraph text consistently handles revisions, moves, tabs,
+  breaks, soft hyphens, and non-breaking hyphens; see the breaking-change note
+  above for `getParagraphText(...)` and fingerprint compatibility.
+- Replacing an existing numbering part without a merge callback now emits a
+  deprecation warning. The Node facade and CLI already merge safely by default;
+  the low-level replacement behavior will become an error in the next major version.
+
 ## 0.3.0
 
 ### Breaking changes
