@@ -91,8 +91,8 @@ function inspectionOptions(flags) {
 async function readOperations(file) {
     if (!file) throw Object.assign(new Error('Use --operations <file.json>.'), { code: 'OPERATIONS_REQUIRED' });
     let parsed; try { parsed = JSON.parse(await readFile(file, 'utf8')); } catch (error) { throw Object.assign(new Error(`Could not read operations JSON: ${error.message}`), { code: 'INVALID_OPERATIONS_FILE' }); }
-    const operations = Array.isArray(parsed) ? parsed : parsed?.operations;
-    if (!Array.isArray(operations)) throw Object.assign(new Error('Operations JSON must be an array or an object with an operations array.'), { code: 'INVALID_OPERATIONS_FILE' });
+    const operations = Array.isArray(parsed) ? parsed : (parsed?.operations || parsed?.changes);
+    if (!Array.isArray(operations)) throw Object.assign(new Error('Operations JSON must be an array or an object with an operations or changes array.'), { code: 'INVALID_OPERATIONS_FILE' });
     return operations;
 }
 function outputPath(command, input, flags) {

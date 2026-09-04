@@ -142,6 +142,20 @@ Paragraph indexes are 1-based. Use `--index 12` for one paragraph,
 Malformed filters and unknown options return an error instead of silently
 falling back to an unfiltered extraction.
 
+Legacy skill installations can migrate without retaining their own document
+logic by invoking the published compatibility entrypoints:
+
+```bash
+node scripts/extract_text.mjs contract.docx --index 12
+node scripts/apply_changes.mjs contract.docx changes.json reviewed.docx --author "Editor"
+```
+
+The apply wrapper accepts an array, `{ "operations": [...] }`, or the legacy
+`{ "changes": [...] }` shape and delegates to the strict, atomic, validated
+CLI. It uses `DOCX_REDLINE_AUTHOR` or `Agent` only as a compatibility fallback
+when `--author` and operation-level authors are absent. Failed transactions
+return nonzero and do not create or overwrite output files.
+
 All commands emit JSON. Mutations require explicit authors and preserve the
 input unless `--in-place` is supplied. Existing output paths are refused unless
 `--force` is supplied. See [the agent workflow](docs/AGENT-WORKFLOW.md) and the

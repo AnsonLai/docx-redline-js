@@ -27,6 +27,10 @@ default only on the newly added Node facade and CLI.
 
 ### Added
 
+- Added `scripts/extract_text.mjs` and `scripts/apply_changes.mjs` as thin
+  compatibility entrypoints for legacy skill installations. They delegate to
+  the supported CLI, retain strict atomic validated writes, and accept legacy
+  operation files with a top-level `changes` array.
 - Added typed operations, per-operation authors, strict target descriptors,
   deterministic preflight diagnostics, and auditable resolution metadata.
 - Added `inspectDocumentParts(...)`, a structured document inventory using the
@@ -74,6 +78,9 @@ default only on the newly added Node facade and CLI.
 
 ### Testing and development
 
+- Added subprocess coverage for legacy wrapper selection, operation-file
+  compatibility, successful output, atomic anchor failure, source-byte
+  preservation, and protection of pre-existing output files.
 - Added a live-session accuracy and instrumentation suite covering accepted and
   rejected text, structural validity, sequential equivalence, comments, lists,
   tables, highlights, one-parse/one-serialize execution, exact no-ops, and

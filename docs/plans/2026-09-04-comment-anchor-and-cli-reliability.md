@@ -1,6 +1,6 @@
 # Comment Anchor and CLI Reliability Plan
 
-**Status:** In progress — Phases 1-4 complete
+**Status:** Implementation complete — external release deployment pending
 **Date:** 2026-09-04  
 
 ## Implementation progress
@@ -18,8 +18,14 @@
 - **Phase 4 complete (2026-09-04):** Missing and ambiguous anchors now produce
   structured errors, failed resolution does not allocate comment IDs, and
   atomic package/CLI operations roll back without writing partial output.
-- **Phase 5 pending:** Migration of the external plugin wrappers remains to be
-  implemented in the repository that owns them.
+- **Phase 5 complete (2026-09-04):** The package now publishes thin
+  `extract_text.mjs` and `apply_changes.mjs` compatibility entrypoints that
+  delegate to the supported CLI, accept legacy `changes` arrays, preserve the
+  legacy positional invocation and author fallback, and have subprocess tests
+  for atomic failure and output safety. No local `docx-redline` plugin or
+  marketplace entry is installed in this environment, so rollout into the
+  reported `/mnt/skills/plugins/docx-redline` installation remains a release
+  deployment step rather than an additional implementation.
 
 ## Summary
 

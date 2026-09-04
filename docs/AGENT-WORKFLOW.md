@@ -43,3 +43,21 @@ operation reports `written: false` and does not write an output file.
 Missing or repeated comment anchors are errors rather than no-ops. Explicit
 anchors match exact text first and then a unique ordinary-space/NBSP equivalent;
 omit `textToComment` to comment the entire resolved paragraph.
+
+## Legacy skill wrapper migration
+
+Older skills that invoke `scripts/extract_text.mjs` and
+`scripts/apply_changes.mjs` should use the compatibility entrypoints published
+with this package rather than carrying copied targeting or ZIP logic. The
+legacy positional apply form remains supported:
+
+```bash
+node scripts/apply_changes.mjs input.docx changes.json output.docx --author "Editor"
+```
+
+Operation files may contain an array, an `operations` array, or a legacy
+`changes` array. The wrapper delegates to the same strict, atomic, validated
+CLI described above. If `--author` and operation authors are absent, its
+compatibility fallback is `DOCX_REDLINE_AUTHOR` and then `Agent`. Consumers
+must use the JSON status and process exit code; failed atomic work has
+`written: false`, `outputPath: null`, and does not modify the output path.
