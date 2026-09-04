@@ -23,6 +23,7 @@ fixtures rarely contain.
 | XSD and LibreOffice | See `docs/VALIDATION.md` | Schema conformance and acceptance by a second consumer | Word-specific revision semantics |
 | Agent inspection and package facade | `node tests/document_inspection_tests.mjs`, `node tests/docx_package_facade_tests.mjs` | Canonical text, comment/list resolution, package-scoped IDs, untouched-part preservation, and atomic rollback | Desktop Word rendering |
 | Agent CLI | `node tests/agent_cli_tests.mjs` | JSON contracts, exact-text extraction, author requirements, safe output behavior, all command families, and operation-schema readability | Cross-platform CI beyond the current runner |
+| Agent edge cases | `node tests/canonical_paragraph_text_tests.mjs`, `node tests/document_inspection_edge_tests.mjs`, `node tests/docx_package_transaction_edge_tests.mjs`, `node tests/node_zip_archive_tests.mjs`, `node tests/agent_cli_edge_tests.mjs` | Revision-view semantics, cross-paragraph anchors, nested numbering, transaction reuse, multi-author cleanup, malformed ZIP handling, and destructive CLI safeguards | Desktop Word rendering and non-Windows CI |
 
 The package-facade regression opens a real ZIP buffer, adds a comment beside an
 existing high ID, validates OPC wiring, and checks an unrelated binary part is
@@ -34,6 +35,18 @@ The CLI regression executes the recommended extract → preflight → apply →
 validate flow and also covers accept, reject, comment deletion, output collision
 refusal, and source-byte preservation. CLI stdout is captured and parsed as one
 JSON value so diagnostic logging cannot corrupt agent output.
+
+The edge suites deliberately use structures omitted from the basic happy-path
+fixtures: `w:moveFrom`/`w:moveTo`, deleted text, structural breaks and hyphens,
+comments crossing paragraph boundaries, orphan definitions, outline headings,
+footnote/endnote references, nested Roman/alphabetic numbering, sequential
+commit-then-rollback calls, selective comment authors, existing high anchor
+IDs, encrypted/unsupported ZIP entries, `--force`, and `--in-place`.
+
+The 2026-09-04 coverage run reports 89.05% statements/lines, 77.04% branches,
+and 92.63% functions repository-wide. The new Node surface reports 99.61%
+statements/lines; `document-inspection.js` reports 97.64% statements/lines and
+100% functions; `paragraph-text.js` reports 100% statements/lines/functions.
 
 ## Coverage matrix and test selection
 

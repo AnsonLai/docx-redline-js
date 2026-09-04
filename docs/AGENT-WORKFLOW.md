@@ -30,7 +30,7 @@ targets. Never normalize or reconstruct `exactText`. Operation files follow
 
 Inspection filters are `--range 10:30`, `--indexes 2,5,8`, `--search text`,
 `--revised`, `--table`, `--body`, `--non-empty`, and
-`--view accepted|rejected`.
+`--view accepted|rejected|current`.
 
 Mutating commands require `--author`, authors on every operation, or
 `--all-authors` where applicable. Without `--output`, a sibling such as

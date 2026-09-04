@@ -6,11 +6,12 @@ function localName(node) {
 
 /** Returns whether a node contributes to the selected revision view. */
 export function isNodeVisibleInRevisionView(node, boundary = null, revisionView = 'accepted') {
+    const view = revisionView === 'current' ? 'accepted' : revisionView;
     let cursor = node;
     while (cursor && cursor !== boundary) {
         const name = localName(cursor);
-        if (revisionView === 'accepted' && (name === 'del' || name === 'moveFrom')) return false;
-        if (revisionView === 'rejected' && (name === 'ins' || name === 'moveTo')) return false;
+        if (view === 'accepted' && (name === 'del' || name === 'moveFrom')) return false;
+        if (view === 'rejected' && (name === 'ins' || name === 'moveTo')) return false;
         cursor = cursor.parentNode;
     }
     return true;
@@ -18,7 +19,7 @@ export function isNodeVisibleInRevisionView(node, boundary = null, revisionView 
 
 /** Reads exact visible text from a run, including tabs, breaks and non-breaking hyphens. */
 export function readCanonicalRunText(run, options = {}) {
-    const revisionView = options.revisionView || 'accepted';
+    const revisionView = options.revisionView === 'current' ? 'accepted' : (options.revisionView || 'accepted');
     const boundary = options.boundary || null;
     if (!isNodeVisibleInRevisionView(run, boundary, revisionView)) return '';
     let text = '';

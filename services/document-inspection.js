@@ -141,20 +141,23 @@ function readCommentDefinitions(commentsDoc) {
     return result;
 }
 
-function commentAnchors(paragraph, revisionView) {
-    let visible = ''; const starts = new Map(); const anchors = new Map();
+function collectDocumentCommentAnchors(paragraphNodes, revisionView) {
+    const active = new Map(); const anchors = new Map();
+    let paragraphBoundary = null;
+    const append = value => { for (const item of active.values()) item.text += value; };
     const visit = node => {
         for (const child of Array.from(node?.childNodes || [])) {
             if (child?.nodeType !== 1) continue;
             const name = child.localName;
             if ((revisionView === 'accepted' && (name === 'del' || name === 'moveFrom')) || (revisionView === 'rejected' && (name === 'ins' || name === 'moveTo'))) continue;
-            if (name === 'commentRangeStart') starts.set(attr(child, 'id'), visible.length);
-            else if (name === 'commentRangeEnd') { const id = attr(child, 'id'); if (starts.has(id)) anchors.set(id, visible.slice(starts.get(id))); }
-            else if (name === 'r') visible += readCanonicalRunText(child, { revisionView, boundary: paragraph });
+            if (name === 'commentRangeStart') active.set(attr(child, 'id'), { text: '' });
+            else if (name === 'commentRangeEnd') { const id = attr(child, 'id'); if (active.has(id)) { anchors.set(id, active.get(id).text); active.delete(id); } }
+            else if (name === 'r') append(readCanonicalRunText(child, { revisionView, boundary: paragraphBoundary }));
             else visit(child);
         }
     };
-    visit(paragraph); return anchors;
+    paragraphNodes.forEach((paragraph, index) => { paragraphBoundary = paragraph; visit(paragraph); if (index < paragraphNodes.length - 1 && active.size) append('\n'); });
+    return anchors;
 }
 
 /** Read-only, stable document-parts inspection for agents and package adapters. */
@@ -169,12 +172,13 @@ export function inspectDocumentParts(parts, options = {}) {
     const comments = readCommentDefinitions(commentsPart.doc);
     const resolveNumbering = createNumberingResolver(numberingPart.doc);
     let nearestHeading = null;
-    let paragraphs = getDocumentParagraphNodes(documentPart.doc).map((paragraph, zeroIndex) => {
+    const paragraphNodes = getDocumentParagraphNodes(documentPart.doc);
+    const commentAnchors = collectDocumentCommentAnchors(paragraphNodes, options.revisionView || 'accepted');
+    let paragraphs = paragraphNodes.map((paragraph, zeroIndex) => {
         const text = extractCanonicalParagraphText(paragraph, { revisionView: options.revisionView || 'accepted' });
         const level = headingLevel(paragraph);
         if (level) nearestHeading = { level, text };
         const ids = [...new Set([...descendants(paragraph, 'commentRangeStart'), ...descendants(paragraph, 'commentReference')].map(node => attr(node, 'id')).filter(Boolean))];
-        const anchors = commentAnchors(paragraph, options.revisionView || 'accepted');
         const authors = revisionAuthors(paragraph);
         const list = resolveNumbering(paragraphListProperties(paragraph));
         const styleId = attr(first(first(paragraph, 'pPr'), 'pStyle'), 'val') || null;
@@ -186,16 +190,15 @@ export function inspectDocumentParts(parts, options = {}) {
         return {
             index, ref: `P${index}`, paragraphId: getParagraphId(paragraph), fingerprint: createParagraphFingerprint(paragraph),
             text, exactText: text, excerpt: text.slice(0, options.excerptLength || 120), humanReference, inTable: hasAncestor(paragraph, 'tc'), table: structure.table,
-            styleId, headingLevel: level, nearestHeading, list, structuralReferences: structure.references, hasRevisions: authors.length > 0, revisionAuthors: authors, commentIds: ids, _commentAnchors: anchors
+            styleId, headingLevel: level, nearestHeading, list, structuralReferences: structure.references, hasRevisions: authors.length > 0, revisionAuthors: authors, commentIds: ids
         };
     });
     for (const paragraph of paragraphs) for (const id of paragraph.commentIds) {
         const definition = comments.get(id) || { id, author: null, date: null, text: '' };
         definition.paragraphIndex ??= paragraph.index; definition.targetRef ??= paragraph.ref;
-        definition.anchoredText ??= paragraph._commentAnchors.get(id) || paragraph.text;
+        definition.anchoredText ??= commentAnchors.get(id) || paragraph.text;
         comments.set(id, definition);
     }
-    paragraphs.forEach(item => { delete item._commentAnchors; });
     if (options.revisedOnly) paragraphs = paragraphs.filter(item => item.hasRevisions);
     if (options.inTable != null) paragraphs = paragraphs.filter(item => item.inTable === !!options.inTable);
     if (options.skipEmpty) paragraphs = paragraphs.filter(item => item.text.length > 0);

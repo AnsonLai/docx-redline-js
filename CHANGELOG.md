@@ -44,9 +44,22 @@ default only on the newly added Node facade and CLI.
 - Canonical paragraph text consistently handles revisions, moves, tabs,
   breaks, soft hyphens, and non-breaking hyphens; see the breaking-change note
   above for `getParagraphText(...)` and fingerprint compatibility.
+- Structured inspection now explicitly supports the `current` view as the
+  accepted/current document view and resolves comment ranges spanning multiple
+  paragraphs as one exact anchor string.
+- Transactional no-op results preserve the original DOCX bytes exactly,
+  including when the same facade instance has already committed an edit.
 - Replacing an existing numbering part without a merge callback now emits a
   deprecation warning. The Node facade and CLI already merge safely by default;
   the low-level replacement behavior will become an error in the next major version.
+
+### Testing and development
+
+- Added five edge-case suites for canonical text views, cross-paragraph comment
+  inspection, table/list/reference context, sequential package transactions,
+  selective multi-author cleanup, ZIP rejection behavior, CLI filters, JSON
+  exit contracts, and destructive-output safeguards. The automated suite now
+  contains 55 passing test files.
 
 ## 0.3.0
 

@@ -170,9 +170,9 @@ export function ingestWordOoxmlToPlainText(oxml: string): string;
 export function ingestWordOoxmlToMarkdown(oxml: string): string;
 export function ingestWordOoxmlToPlainTextResult(oxml: unknown): IngestionTextResult;
 export function ingestWordOoxmlToMarkdownResult(oxml: unknown): IngestionTextResult;
-export function extractCanonicalParagraphText(paragraph: Element | null | undefined, options?: { revisionView?: 'accepted' | 'rejected' }): string;
-export function readCanonicalRunText(run: Element, options?: { revisionView?: 'accepted' | 'rejected'; boundary?: Element | null }): string;
-export function isNodeVisibleInRevisionView(node: Node, boundary?: Node | null, revisionView?: 'accepted' | 'rejected'): boolean;
+export function extractCanonicalParagraphText(paragraph: Element | null | undefined, options?: { revisionView?: 'accepted' | 'rejected' | 'current' }): string;
+export function readCanonicalRunText(run: Element, options?: { revisionView?: 'accepted' | 'rejected' | 'current'; boundary?: Element | null }): string;
+export function isNodeVisibleInRevisionView(node: Node, boundary?: Node | null, revisionView?: 'accepted' | 'rejected' | 'current'): boolean;
 
 export interface InspectedParagraph {
   index: number; ref: string; paragraphId: string | null; fingerprint: string | null;
@@ -185,7 +185,7 @@ export interface InspectedParagraph {
   hasRevisions: boolean; revisionAuthors: string[]; commentIds: string[];
 }
 export interface InspectedComment { id: string; author: string | null; date: string | null; text: string; paragraphIndex?: number; targetRef?: string; anchoredText?: string; }
-export interface DocumentInspectionOptions { revisionView?: 'accepted' | 'rejected'; excerptLength?: number; revisedOnly?: boolean; inTable?: boolean; skipEmpty?: boolean; search?: string; indexes?: number[]; range?: { start: number; end: number } | [number, number]; }
+export interface DocumentInspectionOptions { revisionView?: 'accepted' | 'rejected' | 'current'; excerptLength?: number; revisedOnly?: boolean; inTable?: boolean; skipEmpty?: boolean; search?: string; indexes?: number[]; range?: { start: number; end: number } | [number, number]; }
 export interface DocumentInspectionResult {
   status: 'ok' | 'error'; paragraphs: InspectedParagraph[]; comments: InspectedComment[];
   revisionAuthors?: string[]; commentAuthors?: string[]; counts?: { paragraphs: number; comments: number; revisedParagraphs: number };

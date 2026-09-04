@@ -40,7 +40,7 @@ export class DocxDocument {
                 commentIdAllocator: nextCommentId(working)
             });
             if (result.rolledBack || result.status === 'error') return { ...result, written: false, artifactsChanged: [], validation: { originalIssues, generatedIssues: [] }, buffer: this.originalBuffer, toBuffer: () => Buffer.from(this.originalBuffer) };
-            if (!result.hasChanges) return { ...result, written: false, artifactsChanged: [], validation: { originalIssues, generatedIssues: [] }, buffer: this.toBuffer(), toBuffer: () => this.toBuffer() };
+            if (!result.hasChanges) return { ...result, status: result.status || 'ok', written: false, artifactsChanged: [], validation: { originalIssues, generatedIssues: [] }, buffer: Buffer.from(this.originalBuffer), toBuffer: () => Buffer.from(this.originalBuffer) };
             working.set('word/document.xml', Buffer.from(result.documentXml));
             await ensureNumberingArtifactsInZip(zip, result.numberingXmlParts, { mergeNumberingXml: mergeNumberingXmlBySchemaOrder });
             await ensureCommentsArtifactsInZip(zip, result.commentsXml);

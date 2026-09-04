@@ -106,7 +106,8 @@ const inventory = inspectDocumentParts({ documentXml, commentsXml, numberingXml 
 
 Inspection returns exact paragraph text, target IDs/fingerprints, headings,
 table/list context, revision authors, and joined comment anchors. Filters such
-as `search`, `indexes`, `revisedOnly`, `inTable`, and `skipEmpty` limit output.
+as `search`, `indexes`, `range`, `revisedOnly`, `inTable`, and `skipEmpty`
+limit output. `revisionView` accepts `accepted`, `rejected`, or `current`.
 
 For complete `.docx` buffers in Node:
 

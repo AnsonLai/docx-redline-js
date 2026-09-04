@@ -81,7 +81,8 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 - `core/types.js`
   - Shared model enums/types plus revision metadata generation and document-aware revision ID seeding.
 - `core/paragraph-text.js`
-  - Canonical accepted/rejected-view text shared by targeting, ingestion, and inspection.
+  - Canonical accepted/rejected/current-view text shared by targeting,
+    ingestion, and inspection.
 - `core/redline-validation.js`
   - Runtime structural validation (`validateRedlineOoxml`) mirroring the test-suite invariants: no nested revisions, `w:delText` inside `w:del`, complete revision metadata, unique revision ids, preserved boundary whitespace.
 - `engine/oxml-engine.js`

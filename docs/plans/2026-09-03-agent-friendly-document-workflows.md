@@ -369,7 +369,7 @@ Before release:
 
 ### Phase 5 and final plan audit (2026-09-03)
 
-- `npm test`: 50/50 test files pass. The final suites cover duplicate targets,
+- `npm test`: 55/55 test files pass. The final suites cover duplicate targets,
   per-operation authors, existing high comment IDs, numbering preservation,
   exact comment anchors, coordinated comment deletion, atomic validation
   rollback, CLI safety, and accept/reject transforms.
@@ -398,6 +398,24 @@ implementation blockers. The existing Word, corpus, XSD, LibreOffice, and CI
 lanes documented in `docs/TESTING.md` and `docs/VALIDATION.md` should run before
 publishing a release. No local Word or independent-office validation result is
 claimed by this audit.
+
+### Follow-up regression expansion (2026-09-04)
+
+- Added five focused edge suites beyond the original Phase 1–5 acceptance
+  coverage. They verify canonical accepted/rejected/current views,
+  cross-paragraph comment anchors, outline/table/reference inspection, nested
+  numbering, byte-exact no-ops, reusable transaction rollback, selective
+  comment/revision authors, package ID seeding, invalid ZIP rejection, CLI
+  filters, output collisions, force/in-place authorization, and JSON exit codes.
+- The additional tests exposed and fixed three gaps: explicit `current` view
+  behavior, multi-paragraph comment-anchor reconstruction, and byte-exact
+  package output for no-op transactions.
+- `npm test` now passes 55/55 test files. The remaining release-environment
+  qualifications are unchanged: desktop Word/LibreOffice and multi-OS CI are
+  not claimed by this local test run.
+- `npm run test:coverage` passes at 89.05% statements/lines, 77.04% branches,
+  and 92.63% functions overall. The Node facade/CLI/ZIP surface reaches 99.61%
+  statements/lines, while canonical paragraph text reaches 100%.
 
 ## Non-goals
 
