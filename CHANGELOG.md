@@ -39,6 +39,11 @@ default only on the newly added Node facade and CLI.
 
 ### Behavior and reliability
 
+- Decomposed the standalone document-operation runner into a stable 13-line
+  compatibility facade plus focused session, applier, batch-orchestrator,
+  heuristic, and OOXML-mutation modules. Runtime exports and declarations are
+  unchanged, and operation internals now use leaf imports instead of importing
+  the root entry point.
 - Package comment IDs are seeded from existing anchors and definitions, and
   the Node facade merges numbering without discarding prior definitions.
 - Canonical paragraph text consistently handles revisions, moves, tabs,
@@ -55,11 +60,14 @@ default only on the newly added Node facade and CLI.
 
 ### Testing and development
 
+- Added a Phase 2 architecture regression covering facade export identity,
+  direct leaf imports, exact session rollback, isolated context commit, and
+  stable comment-first scheduling.
 - Added five edge-case suites for canonical text views, cross-paragraph comment
   inspection, table/list/reference context, sequential package transactions,
   selective multi-author cleanup, ZIP rejection behavior, CLI filters, JSON
-  exit contracts, and destructive-output safeguards. The automated suite now
-  contains 55 passing test files.
+  exit contracts, and destructive-output safeguards. Together with the Phase 2
+  boundary regression, the automated suite now contains 56 passing test files.
 
 ## 0.3.0
 

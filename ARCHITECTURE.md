@@ -51,6 +51,11 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 │   ├── numbering-helpers.js
 │   ├── revision-comment-management.js
 │   ├── document-inspection.js
+│   ├── document-operation-session.js
+│   ├── document-operation-applier.js
+│   ├── document-operation-mutations.js
+│   ├── batch-operation-orchestrator.js
+│   ├── operation-heuristics.js
 │   ├── standalone-docx-plumbing.js
 │   └── standalone-operation-runner.js
 ├── node/
@@ -104,7 +109,23 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 - `services/revision-comment-management.js`
   - OOXML transforms for accepting/rejecting insertion, deletion, move, paragraph-mark, and property-change revisions by author/all-authors, plus deleting comments by author/all-authors.
 - `services/standalone-operation-runner.js`
-  - Host-agnostic operation bridge for full-document `redline`, `highlight`, and `comment` workflows.
+  - Stable compatibility facade for full-document operations. It only re-exports
+    preflight, single-operation application, batch application, and scheduling.
+- `services/document-operation-applier.js`
+  - Canonical single-operation validation, author resolution, dispatch, and
+    result metadata assembly.
+- `services/document-operation-mutations.js`
+  - Coupled OOXML mutation implementations for redline, highlight, and comment
+    operations. These use leaf-module imports and never import the root entry.
+- `services/batch-operation-orchestrator.js`
+  - Comment-first stable scheduling, atomic policy, artifact aggregation,
+    per-operation results, and deferred runtime-context commit.
+- `services/document-operation-session.js`
+  - Per-invocation parse/allocation state, exact original XML rollback, index
+    invalidation hooks, and isolated runtime-context clone/commit helpers.
+- `services/operation-heuristics.js`
+  - DOM-light decisions for list/plain adjacency insertion and explicit-range
+    list insertion. Canonical list/table targeting remains in `core/*`.
 - `services/document-operation-contract.js`
   - Compatibility normalization, canonical operation kinds, author precedence,
     and stable runtime validation for document operations.

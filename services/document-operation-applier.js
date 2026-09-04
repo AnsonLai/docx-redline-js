@@ -1,0 +1,120 @@
+import { getDefaultAuthor } from '../adapters/config.js';
+import {
+    normalizeDocumentOperation,
+    resolveDocumentOperationAuthor,
+    validateDocumentOperation
+} from './document-operation-contract.js';
+import { DocumentOperationSession } from './document-operation-session.js';
+import {
+    applyCommentToParagraphByExactText,
+    applyHighlightToParagraphByExactText,
+    applyToParagraphByExactText
+} from './document-operation-mutations.js';
+
+export function normalizeOperationError(error) {
+    return {
+        code: typeof error?.code === 'string' && error.code ? error.code : 'OPERATION_ERROR',
+        message: error?.message || String(error),
+        ...(Array.isArray(error?.candidates) ? { candidates: error.candidates } : {})
+    };
+}
+
+/**
+ * Validates and dispatches one structured operation against full document XML.
+ * Result metadata is assembled here so every mutation path exposes the same
+ * operation type, author, and target-resolution audit fields.
+ */
+export async function applyOperationToDocumentXml(documentXml, op, author, runtimeContext = null, options = {}) {
+    const validation = validateDocumentOperation(op);
+    if (!validation.valid) {
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: validation.error,
+            operationType: normalizeDocumentOperation(op).operationKind,
+            authorUsed: resolveDocumentOperationAuthor(op, author, getDefaultAuthor())
+        };
+    }
+
+    const operation = validation.operation || normalizeDocumentOperation(op);
+    const authorUsed = resolveDocumentOperationAuthor(operation, author, getDefaultAuthor());
+    const session = new DocumentOperationSession(documentXml, options);
+    if (!session.valid) {
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: session.parseResult.error,
+            warnings: session.parseResult.warnings,
+            operationType: operation.operationKind,
+            authorUsed
+        };
+    }
+
+    const resolutionCapture = {};
+    const operationOptions = {
+        ...options,
+        ...(typeof operation.generateRedlines === 'boolean' ? { generateRedlines: operation.generateRedlines } : {}),
+        ...(operation.existingRevisions ? { existingRevisions: operation.existingRevisions } : {}),
+        targetDescriptor: operation.targetDescriptor,
+        _resolutionCapture: resolutionCapture,
+        _revisionIdAllocator: session.revisionIdAllocator
+    };
+
+    try {
+        let result;
+        if (operation.operationKind === 'highlight') {
+            result = await applyHighlightToParagraphByExactText(
+                documentXml,
+                operation.target,
+                operation.textToHighlight,
+                operation.color,
+                authorUsed,
+                operation.targetRef,
+                runtimeContext,
+                operationOptions
+            );
+        } else if (operation.operationKind === 'comment') {
+            result = await applyCommentToParagraphByExactText(
+                documentXml,
+                operation.target,
+                operation.textToComment,
+                operation.commentContent,
+                authorUsed,
+                operation.targetRef,
+                runtimeContext,
+                operationOptions
+            );
+        } else {
+            result = await applyToParagraphByExactText(
+                documentXml,
+                operation.target,
+                operation.modified,
+                authorUsed,
+                operation.targetRef,
+                operation.targetEndRef,
+                runtimeContext,
+                operationOptions
+            );
+        }
+        return {
+            ...result,
+            operationType: operation.operationKind,
+            authorUsed,
+            ...resolutionCapture
+        };
+    } catch (error) {
+        const normalizedError = normalizeOperationError(error);
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: normalizedError,
+            warnings: [normalizedError.message],
+            operationType: operation.operationKind,
+            authorUsed,
+            ...resolutionCapture
+        };
+    }
+}

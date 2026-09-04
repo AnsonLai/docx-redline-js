@@ -281,6 +281,11 @@ pipeline/
   serialization.js
   list-generation.js
 services/
+  document-operation-session.js
+  document-operation-applier.js
+  document-operation-mutations.js
+  batch-operation-orchestrator.js
+  operation-heuristics.js
   standalone-operation-runner.js
   standalone-operation-runner.d.ts
   document-operation-contract.js
