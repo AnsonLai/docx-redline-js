@@ -25,6 +25,7 @@ fixtures rarely contain.
 | Agent CLI | `node tests/agent_cli_tests.mjs` | JSON contracts, exact-text extraction, author requirements, safe output behavior, all command families, and operation-schema readability | Cross-platform CI beyond the current runner |
 | Agent edge cases | `node tests/canonical_paragraph_text_tests.mjs`, `node tests/document_inspection_edge_tests.mjs`, `node tests/docx_package_transaction_edge_tests.mjs`, `node tests/node_zip_archive_tests.mjs`, `node tests/agent_cli_edge_tests.mjs` | Revision-view semantics, cross-paragraph anchors, nested numbering, transaction reuse, multi-author cleanup, malformed ZIP handling, and destructive CLI safeguards | Desktop Word rendering and non-Windows CI |
 | Performance boundary regression | `node tests/performance_phase2_boundary_tests.mjs` | Stable facade re-exports, leaf imports, session rollback, isolated context commit, and comment-first scheduling | The Phase 1 one-parse/one-serialize performance target |
+| Live-session accuracy and instrumentation | `node tests/performance_phase1_session_tests.mjs` | One full parse/serialization, sequential semantic equivalence, exact accepted/rejected text, valid revisions, list/table/comment/highlight preservation, savepoint no-ops, and zero-serialization rollback | Desktop Word rendering |
 
 The package-facade regression opens a real ZIP buffer, adds a comment beside an
 existing high ID, validates OPC wiring, and checks an unrelated binary part is
@@ -50,12 +51,25 @@ logic again, verifies that internal operation code does not import the root
 entry point, and checks that failed atomic work can retain the exact source
 string while working maps and sets remain isolated until commit.
 
-The checked post-Phase-2 2026-09-04 coverage run reports 89.16%
-statements/lines, 77.18% branches, and 92.71% functions repository-wide; this
-meets or exceeds the pre-refactor baseline in every dimension. The new Node
+The checked post-Phase-1 2026-09-04 coverage run reports 89.32%
+statements/lines, 77.09% branches, and 92.78% functions repository-wide; this
+meets or exceeds the original pre-refactor baseline in every dimension. The new Node
 surface reports 99.61%
 statements/lines; `document-inspection.js` reports 97.64% statements/lines and
 100% functions; `paragraph-text.js` reports 100% statements/lines/functions.
+
+Run the observational live-session benchmark with:
+
+```powershell
+npm run benchmark:session
+```
+
+It writes `tmp/benchmarks/operation-session-latest.json`. The checked
+1,000-paragraph/10-operation run reduced full-document parse/serialization from
+10/10 to 1/1 and measured a 1.58x median speedup. Timing and heap figures are
+not correctness gates. Per-operation DOM savepoints are retained because
+redline accuracy, no-op isolation, and rollback fidelity take precedence over
+the aspirational speed target.
 
 ## Coverage matrix and test selection
 

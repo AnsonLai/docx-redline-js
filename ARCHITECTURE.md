@@ -119,10 +119,13 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
     operations. These use leaf-module imports and never import the root entry.
 - `services/batch-operation-orchestrator.js`
   - Comment-first stable scheduling, atomic policy, artifact aggregation,
-    per-operation results, and deferred runtime-context commit.
+    per-operation results, one final document serialization, and deferred
+    runtime-context commit.
 - `services/document-operation-session.js`
-  - Per-invocation parse/allocation state, exact original XML rollback, index
-    invalidation hooks, and isolated runtime-context clone/commit helpers.
+  - One live document DOM and revision allocator per invocation, immutable
+    start-of-batch target snapshot, lazy paragraph metadata, per-operation DOM
+    and allocator savepoints, exact original XML rollback, index invalidation,
+    artifact/result accumulation, and isolated runtime-context helpers.
 - `services/operation-heuristics.js`
   - DOM-light decisions for list/plain adjacency insertion and explicit-range
     list insertion. Canonical list/table targeting remains in `core/*`.
@@ -150,10 +153,17 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 1. Caller imports from `index.js`.
 2. Caller configures XML provider/logger/defaults when needed via `adapters/*`.
 3. Caller invokes reconciliation APIs (`applyRedlineToOxml`, operation runner, ingestion/export helpers).
-4. `engine/oxml-engine.js` routes to format, table, list, surgical, or reconstruction flows.
-5. Pipeline/services return OOXML, optional package artifacts (`numberingXml`, comments payloads), and non-breaking `status`/`error` fields where applicable.
-6. Optional revision/comment management transforms can accept/reject revisions, including move revisions, or delete comments by author.
-7. Caller writes resulting XML back to package/document boundaries.
+4. A full-document batch parses once, captures its initial target snapshot, and
+   creates an operation savepoint before each mutation.
+5. `engine/oxml-engine.js` routes each selected scope to format, table, list,
+   surgical, or reconstruction flows; successful scoped output is imported
+   into the live document.
+6. Failed and no-op operations restore their savepoint. A successful changed
+   batch serializes the full document once; atomic failures and all-no-op
+   batches return the exact input string without serialization.
+7. Pipeline/services return OOXML, optional package artifacts (`numberingXml`, comments payloads), and non-breaking `status`/`error` fields where applicable.
+8. Optional revision/comment management transforms can accept/reject revisions, including move revisions, or delete comments by author.
+9. Caller writes resulting XML back to package/document boundaries.
 
 ## Public Surfaces
 
@@ -202,6 +212,9 @@ still be re-exported from `index.js`.
 - Ambiguous matches are unsafe for document mutation. New targeting surfaces
   should report candidate matches or `AMBIGUOUS_TARGET` rather than silently
   choosing the first paragraph.
+- Do not remove operation-session savepoints merely to improve throughput.
+  Any replacement must prove that a thrown error or false no-op cannot leak a
+  partial DOM mutation or revision-ID allocation into later operations.
 
 ### Package artifacts and transactions
 

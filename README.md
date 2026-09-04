@@ -231,6 +231,11 @@ import { getParagraphText } from '@ansonlai/docx-redline-js/core/paragraph-targe
 
 Use `applyOperationsToDocumentXml(...)` for mixed batches. It stably runs comments before text-changing operations so replacements cannot invalidate their original anchors. Other operation types retain their relative order. Batch results retain each operation's original 1-based index and expose the actual `executionOrder`.
 
+The batch runner keeps one live document DOM and performs one final full-document
+serialization. Accuracy remains the controlling constraint: each operation has
+an internal savepoint so an error or no-op cannot leak a partial edit or consumed
+revision ID into later operations.
+
 Batches are atomic by default: any operation error returns the original
 `documentXml`, `hasChanges: false`, empty package artifacts, and
 `rolledBack: true`. The default `continueOnError: true` still attempts the full

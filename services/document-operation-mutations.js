@@ -59,6 +59,26 @@ import {
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
+function resolveMutationDocument(documentXml, options = {}) {
+    const operationSession = options?._documentOperationSession || null;
+    if (operationSession?.valid && operationSession.document) {
+        return {
+            xmlDoc: operationSession.document,
+            serializer: operationSession.serializer,
+            operationSession
+        };
+    }
+    return {
+        xmlDoc: parseOoxmlSafe(documentXml, 'application/xml').doc,
+        serializer: createSerializer(),
+        operationSession: null
+    };
+}
+
+function completedDocumentXml(xmlDoc, serializer, documentXml, operationSession) {
+    return operationSession ? documentXml : serializer.serializeToString(xmlDoc);
+}
+
 async function applyRedlineToOxml(oxml, originalText, modifiedText, options = {}) {
     const result = await applyRedlineToOxmlEngine(oxml, originalText, modifiedText, options);
     if (result?.useNativeApi && typeof result?.oxml !== 'string') {
@@ -411,6 +431,8 @@ async function buildInsertedPlainParagraph(xmlDoc, anchorParagraph, text, revisi
 async function tryExplicitDecimalHeaderListConversion({
     xmlDoc,
     serializer,
+    documentXml,
+    operationSession,
     targetParagraph,
     currentParagraphText,
     modifiedText,
@@ -513,12 +535,18 @@ async function tryExplicitDecimalHeaderListConversion({
     for (const node of replacementNodes) parent.insertBefore(xmlDoc.importNode(node, true), targetParagraph);
     parent.removeChild(targetParagraph);
     normalizeBodySectionOrder(xmlDoc);
-    return { documentXml: serializer.serializeToString(xmlDoc), hasChanges: true, numberingXml };
+    return {
+        documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
+        hasChanges: true,
+        numberingXml
+    };
 }
 
 async function trySingleParagraphListStructuralFallback({
     xmlDoc,
     serializer,
+    documentXml,
+    operationSession,
     targetParagraph,
     currentParagraphText,
     modifiedText,
@@ -643,17 +671,20 @@ async function trySingleParagraphListStructuralFallback({
     for (const node of replacementNodes) parent.insertBefore(xmlDoc.importNode(node, true), targetParagraph);
     parent.removeChild(targetParagraph);
     normalizeBodySectionOrder(xmlDoc);
-    return { documentXml: serializer.serializeToString(xmlDoc), hasChanges: true, numberingXml };
+    return {
+        documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
+        hasChanges: true,
+        numberingXml
+    };
 }
 
 export async function applyToParagraphByExactText(documentXml, targetText, modifiedText, author, targetRef = null, targetEndRef = null, runtimeContext = null, options = {}) {
     const generateRedlines = options.generateRedlines !== false;
     const onInfo = typeof options?.onInfo === 'function' ? options.onInfo : () => { };
     const onWarn = typeof options?.onWarn === 'function' ? options.onWarn : () => { };
-    const serializer = createSerializer();
-    const xmlDoc = parseOoxmlSafe(documentXml, 'application/xml').doc;
+    const { serializer, xmlDoc, operationSession } = resolveMutationDocument(documentXml, options);
     if (!xmlDoc) return { documentXml, hasChanges: false, status: 'error', error: { code: 'PARSE_ERROR', message: 'Could not parse document OOXML.' } };
-    const revisionIdAllocator = prepareRevisionAllocator(xmlDoc, options);
+    const revisionIdAllocator = operationSession?.revisionIdAllocator || prepareRevisionAllocator(xmlDoc, options);
     const resolved = resolveTargetParagraph(xmlDoc, targetText, targetRef, 'redline', runtimeContext, {
         ...options,
         onInfo,
@@ -720,7 +751,11 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
                 author
             });
             if (applied) {
-                return { documentXml: serializer.serializeToString(xmlDoc), hasChanges: true, numberingXml: null };
+                return {
+                    documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
+                    hasChanges: true,
+                    numberingXml: null
+                };
             }
         }
     }
@@ -776,7 +811,11 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
             : targetParagraph.nextSibling;
         parent.insertBefore(listParagraph, insertionPoint);
         normalizeBodySectionOrder(xmlDoc);
-        return { documentXml: serializer.serializeToString(xmlDoc), hasChanges: true, numberingXml: null };
+        return {
+            documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
+            hasChanges: true,
+            numberingXml: null
+        };
     }
 
     const plainAdjacencyInsertionCandidate = (!useTableScope && !hasExplicitRangeScope && !targetListInfo)
@@ -807,7 +846,11 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         }
 
         normalizeBodySectionOrder(xmlDoc);
-        return { documentXml: serializer.serializeToString(xmlDoc), hasChanges: true, numberingXml: null };
+        return {
+            documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
+            hasChanges: true,
+            numberingXml: null
+        };
     }
 
     const insertionOnlyPlan = (!useTableScope && !hasExplicitRangeScope)
@@ -837,7 +880,11 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
             parent.insertBefore(listParagraph, insertionPoint);
         }
         normalizeBodySectionOrder(xmlDoc);
-        return { documentXml: serializer.serializeToString(xmlDoc), hasChanges: true, numberingXml: null };
+        return {
+            documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
+            hasChanges: true,
+            numberingXml: null
+        };
     }
 
     const listScopeEdit = (!useTableScope && !hasExplicitRangeScope)
@@ -856,6 +903,8 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         const explicitHeaderListConversion = await tryExplicitDecimalHeaderListConversion({
             xmlDoc,
             serializer,
+            documentXml,
+            operationSession,
             targetParagraph,
             currentParagraphText,
             modifiedText: effectiveModifiedText,
@@ -869,6 +918,8 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         const listFallback = await trySingleParagraphListStructuralFallback({
             xmlDoc,
             serializer,
+            documentXml,
+            operationSession,
             targetParagraph,
             currentParagraphText,
             modifiedText: effectiveModifiedText,
@@ -964,17 +1015,21 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
     if (rawTableStructuralDedupeKey && tableStructuralDedupes && (useTableScope || containingTable)) {
         tableStructuralDedupes.add(rawTableStructuralDedupeKey);
     }
-    return { documentXml: serializer.serializeToString(xmlDoc), hasChanges: true, numberingXml, status: 'ok' };
+    return {
+        documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
+        hasChanges: true,
+        numberingXml,
+        status: 'ok'
+    };
 }
 
 export async function applyHighlightToParagraphByExactText(documentXml, targetText, textToHighlight, color, author, targetRef = null, runtimeContext = null, options = {}) {
     const generateRedlines = options.generateRedlines !== false;
     const onInfo = typeof options?.onInfo === 'function' ? options.onInfo : () => { };
     const onWarn = typeof options?.onWarn === 'function' ? options.onWarn : () => { };
-    const serializer = createSerializer();
-    const xmlDoc = parseOoxmlSafe(documentXml, 'application/xml').doc;
+    const { serializer, xmlDoc, operationSession } = resolveMutationDocument(documentXml, options);
     if (!xmlDoc) return { documentXml, hasChanges: false, status: 'error', error: { code: 'PARSE_ERROR', message: 'Could not parse document OOXML.' } };
-    const revisionIdAllocator = prepareRevisionAllocator(xmlDoc, options);
+    const revisionIdAllocator = operationSession?.revisionIdAllocator || prepareRevisionAllocator(xmlDoc, options);
     const resolved = resolveTargetParagraph(xmlDoc, targetText, targetRef, 'highlight', runtimeContext, {
         ...options,
         onInfo,
@@ -993,16 +1048,18 @@ export async function applyHighlightToParagraphByExactText(documentXml, targetTe
     for (const node of replacementNodes) parent.insertBefore(xmlDoc.importNode(node, true), targetParagraph);
     parent.removeChild(targetParagraph);
     normalizeBodySectionOrder(xmlDoc);
-    return { documentXml: serializer.serializeToString(xmlDoc), hasChanges: true };
+    return {
+        documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
+        hasChanges: true
+    };
 }
 
 export async function applyCommentToParagraphByExactText(documentXml, targetText, textToComment, commentContent, author, targetRef = null, runtimeContext = null, options = {}) {
     const onInfo = typeof options?.onInfo === 'function' ? options.onInfo : () => { };
     const onWarn = typeof options?.onWarn === 'function' ? options.onWarn : () => { };
-    const serializer = createSerializer();
-    const xmlDoc = parseOoxmlSafe(documentXml, 'application/xml').doc;
+    const { serializer, xmlDoc, operationSession } = resolveMutationDocument(documentXml, options);
     if (!xmlDoc) return { documentXml, hasChanges: false, commentsXml: null, status: 'error', error: { code: 'PARSE_ERROR', message: 'Could not parse document OOXML.' } };
-    prepareRevisionAllocator(xmlDoc, options);
+    if (!operationSession) prepareRevisionAllocator(xmlDoc, options);
     const resolved = resolveTargetParagraph(xmlDoc, targetText, targetRef, 'comment', runtimeContext, {
         ...options,
         onInfo,
@@ -1024,5 +1081,10 @@ export async function applyCommentToParagraphByExactText(documentXml, targetText
     for (const node of replacementNodes) parent.insertBefore(xmlDoc.importNode(node, true), targetParagraph);
     parent.removeChild(targetParagraph);
     normalizeBodySectionOrder(xmlDoc);
-    return { documentXml: serializer.serializeToString(xmlDoc), hasChanges: true, commentsXml: commentResult.commentsXml || null, warnings: commentResult.warnings || [] };
+    return {
+        documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
+        hasChanges: true,
+        commentsXml: commentResult.commentsXml || null,
+        warnings: commentResult.warnings || []
+    };
 }

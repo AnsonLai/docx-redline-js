@@ -80,6 +80,7 @@
     "lint": "eslint index.js adapters core engine pipeline services orchestration scripts tests",
     "test:coverage": "c8 --reporter=text --reporter=json --reporter=json-summary --reports-dir=coverage node scripts/run-tests.mjs",
     "coverage:gaps": "node scripts/report-coverage-gaps.mjs",
+    "benchmark:session": "node scripts/benchmark-operation-session.mjs",
     "smoke:word": "powershell -File scripts/word-com-smoke.ps1",
     "smoke:word:diff": "powershell -File scripts/word-com-differential.ps1",
     "test:word": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/word-com-suite.ps1",

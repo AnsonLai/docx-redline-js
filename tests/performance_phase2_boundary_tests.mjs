@@ -32,9 +32,21 @@ assert.doesNotMatch(mutationSource, /from\s+['"]\.\.\/index\.js['"]/, 'operation
 const session = new DocumentOperationSession(DOCUMENT_XML);
 assert.equal(session.valid, true);
 assert.match(session.serialize(), /<w:t>Original<\/w:t>/);
+const firstIndex = session.getParagraphIndex();
+assert.equal(firstIndex.length, 1);
+assert.equal(firstIndex[0].text, 'Original');
+assert.equal(Object.isFrozen(firstIndex), true);
 session.paragraphIndex = new Map([['Original', {}]]);
 session.invalidateParagraphIndex();
 assert.equal(session.paragraphIndex, null);
+assert.notEqual(session.getParagraphIndex(), firstIndex);
+const savepoint = session.createSavepoint();
+const allocatorNextId = session.revisionIdAllocator.nextId;
+session.document.documentElement.removeChild(session.document.documentElement.firstChild);
+session.revisionIdAllocator.next();
+session.restoreSavepoint(savepoint);
+assert.match(session.serialize(), /<w:t>Original<\/w:t>/);
+assert.equal(session.revisionIdAllocator.nextId, allocatorNextId);
 session.setDocumentXml('<changed/>');
 assert.equal(session.rollback(), DOCUMENT_XML, 'rollback must return the exact original string');
 

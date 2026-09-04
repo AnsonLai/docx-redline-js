@@ -1,6 +1,5 @@
 import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { getDefaultAuthor } from '../adapters/config.js';
-import { buildTargetReferenceSnapshot } from '../core/paragraph-targeting.js';
 import {
     normalizeDocumentOperation,
     resolveDocumentOperationAuthor
@@ -53,7 +52,10 @@ function mergeCommentsXml(existingXml, incomingXml) {
 }
 
 export async function applyOperationsToDocumentXml(documentXml, operations, author, runtimeContext = null, options = {}) {
-    const session = new DocumentOperationSession(documentXml, options);
+    const session = new DocumentOperationSession(documentXml, {
+        ...options,
+        _deferDocumentSerialization: true
+    });
     if (!session.valid) {
         return {
             documentXml,
@@ -77,15 +79,14 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
     const continueOnError = options.continueOnError !== false;
     const context = cloneBatchRuntimeContext(runtimeContext);
     if (!(context.targetRefSnapshot instanceof Map)) {
-        context.targetRefSnapshot = buildTargetReferenceSnapshot(session.document);
+        context.targetRefSnapshot = session.initialTargetReferenceSnapshot;
     }
+    session.runtimeContext = context;
 
-    let commentsXml = null;
     let hasChanges = false;
-    const numberingXmlParts = [];
-    const results = [];
-    const executionOrder = [];
-    const authorsUsed = new Set();
+    const results = session.results;
+    const executionOrder = session.executionOrder;
+    const authorsUsed = session.authorsUsed;
     let operationFailed = false;
 
     for (const { operation, index } of scheduled) {
@@ -96,12 +97,15 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
                 operation,
                 author,
                 context,
-                options
+                {
+                    ...options,
+                    _documentOperationSession: session,
+                    _deferDocumentSerialization: true
+                }
             );
-            session.setDocumentXml(result.documentXml);
             hasChanges = hasChanges || result.hasChanges === true;
-            commentsXml = mergeCommentsXml(commentsXml, result.commentsXml || null);
-            if (result.numberingXml) numberingXmlParts.push(result.numberingXml);
+            session.commentsXml = mergeCommentsXml(session.commentsXml, result.commentsXml || null);
+            if (result.numberingXml) session.numberingXmlParts.push(result.numberingXml);
             const isError = result.status === 'error' || !!result.error;
             operationFailed = operationFailed || isError;
             if (!isError && result.hasChanges && result.authorUsed) authorsUsed.add(result.authorUsed);
@@ -135,14 +139,24 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
     }
 
     results.sort((a, b) => a.index - b.index);
-    const rolledBack = atomic && operationFailed;
+    let rolledBack = atomic && operationFailed;
+    let outputDocumentXml = documentXml;
+    let serializationError = null;
+    if (!rolledBack && hasChanges) {
+        try {
+            outputDocumentXml = session.serializeCurrent();
+        } catch (error) {
+            serializationError = normalizeOperationError(error);
+            rolledBack = true;
+        }
+    }
     if (!rolledBack) commitBatchRuntimeContext(runtimeContext, context);
 
     return {
-        documentXml: rolledBack ? session.rollback() : session.currentDocumentXml,
+        documentXml: rolledBack ? session.rollback() : outputDocumentXml,
         hasChanges: rolledBack ? false : hasChanges,
-        commentsXml: rolledBack ? null : commentsXml,
-        numberingXmlParts: rolledBack ? [] : numberingXmlParts,
+        commentsXml: rolledBack ? null : session.commentsXml,
+        numberingXmlParts: rolledBack ? [] : session.numberingXmlParts,
         results,
         executionOrder,
         authorsUsed: rolledBack ? [] : Array.from(authorsUsed),
@@ -150,8 +164,9 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
             rolledBack: true,
             status: 'error',
             error: {
-                code: 'BATCH_OPERATION_FAILED',
-                message: 'Atomic batch rolled back because one or more operations failed.'
+                code: serializationError ? 'DOCUMENT_SERIALIZATION_FAILED' : 'BATCH_OPERATION_FAILED',
+                message: serializationError?.message
+                    || 'Atomic batch rolled back because one or more operations failed.'
             }
         } : {})
     };

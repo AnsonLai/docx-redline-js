@@ -39,6 +39,13 @@ default only on the newly added Node facade and CLI.
 
 ### Behavior and reliability
 
+- Full-document operation batches now share one live DOM and revision-ID
+  allocator, reducing complete-document parsing and serialization from once per
+  operation to once per changed batch. Scoped reconciliation engines and their
+  targeting decisions are unchanged.
+- Each live-session operation uses a DOM and allocator savepoint. Errors and
+  reported no-ops restore the savepoint; atomic failures and all-no-op batches
+  still return the exact original XML without serializing it.
 - Decomposed the standalone document-operation runner into a stable 13-line
   compatibility facade plus focused session, applier, batch-orchestrator,
   heuristic, and OOXML-mutation modules. Runtime exports and declarations are
@@ -60,6 +67,12 @@ default only on the newly added Node facade and CLI.
 
 ### Testing and development
 
+- Added a live-session accuracy and instrumentation suite covering accepted and
+  rejected text, structural validity, sequential equivalence, comments, lists,
+  tables, highlights, one-parse/one-serialize execution, exact no-ops, and
+  atomic rollback. Added `npm run benchmark:session`; the checked accuracy-first
+  benchmark reduced parse/serialize counts from 10/10 to 1/1 and measured a
+  1.58x median speedup with per-operation savepoints retained.
 - Added a Phase 2 architecture regression covering facade export identity,
   direct leaf imports, exact session rollback, isolated context commit, and
   stable comment-first scheduling.
@@ -67,7 +80,8 @@ default only on the newly added Node facade and CLI.
   inspection, table/list/reference context, sequential package transactions,
   selective multi-author cleanup, ZIP rejection behavior, CLI filters, JSON
   exit contracts, and destructive-output safeguards. Together with the Phase 2
-  boundary regression, the automated suite now contains 56 passing test files.
+  Phase 1 and Phase 2 regressions, the automated suite now contains 57 passing
+  test files.
 
 ## 0.3.0
 

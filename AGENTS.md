@@ -178,6 +178,11 @@ original `documentXml`, `hasChanges: false`, no comment/numbering artifacts, and
 partially applied document is intentional. Pass `{ continueOnError: false }` to
 stop attempting operations after the first error.
 
+Internally, a batch uses one live document DOM and one revision allocator, then
+serializes the full document once. Every operation has a DOM/allocator savepoint;
+do not remove this isolation merely for speed. Redline accuracy, accepted and
+rejected text, and exact rollback take precedence over throughput.
+
 Always inspect `status` and `error`, not only `hasChanges`. A failed transform
 can return `{ hasChanges: false, status: 'error', error: ... }`. A `no_change`
 batch item can also mean an anchor was not found; inspect its warnings before

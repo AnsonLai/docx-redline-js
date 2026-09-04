@@ -4,13 +4,22 @@ import {
     seedRevisionIdsFromDocument,
     setRevisionIdAllocatorForDocument
 } from '../core/types.js';
+import {
+    buildTargetReferenceSnapshot,
+    createParagraphFingerprint,
+    findContainingWordElement,
+    getDocumentParagraphNodes,
+    getParagraphId,
+    getParagraphText,
+    normalizeWhitespaceForTargeting
+} from '../core/paragraph-targeting.js';
 
 /**
  * Owns the document state used by one standalone operation or batch.
  *
- * Phase 2 establishes this boundary without changing the legacy per-operation
- * serialization behavior. Phase 1 can move mutation onto this live document
- * later without changing the applier or orchestrator contracts.
+ * The session keeps accuracy-sensitive mutation decisions unchanged while a
+ * batch shares one live DOM. Savepoints protect against partial failed/no-op
+ * mutations, and the original input string remains the rollback authority.
  */
 export class DocumentOperationSession {
     constructor(documentXml, options = {}) {
@@ -20,15 +29,27 @@ export class DocumentOperationSession {
         this.parseResult = parseOoxmlSafe(this.originalDocumentXml, 'application/xml');
         this.document = this.parseResult.doc || null;
         this.revisionIdAllocator = null;
+        this.initialTargetReferenceSnapshot = null;
         this.paragraphIndex = null;
         this.invalidated = false;
+        this.hasChanges = false;
+        this.deferSerialization = options?._deferDocumentSerialization === true;
+        this.instrumentation = options?._sessionInstrumentation || null;
+        this.runtimeContext = null;
+        this.commentsXml = null;
+        this.numberingXmlParts = [];
+        this.results = [];
+        this.executionOrder = [];
+        this.authorsUsed = new Set();
 
         if (this.document) {
+            this.instrumentation?.onDocumentParse?.(this.originalDocumentXml);
             this.revisionIdAllocator = options?._revisionIdAllocator instanceof RevisionIdAllocator
                 ? options._revisionIdAllocator
                 : new RevisionIdAllocator();
             seedRevisionIdsFromDocument(this.document, this.revisionIdAllocator);
             setRevisionIdAllocatorForDocument(this.document, this.revisionIdAllocator);
+            this.initialTargetReferenceSnapshot = buildTargetReferenceSnapshot(this.document);
         }
     }
 
@@ -38,8 +59,7 @@ export class DocumentOperationSession {
 
     setDocumentXml(documentXml) {
         this.currentDocumentXml = documentXml;
-        this.invalidated = true;
-        this.paragraphIndex = null;
+        this.invalidateParagraphIndex();
     }
 
     invalidateParagraphIndex() {
@@ -48,11 +68,73 @@ export class DocumentOperationSession {
     }
 
     serialize() {
-        return this.document ? this.serializer.serializeToString(this.document) : this.currentDocumentXml;
+        if (!this.document) return this.currentDocumentXml;
+        this.instrumentation?.onDocumentSerialize?.(this.document);
+        return this.serializer.serializeToString(this.document);
+    }
+
+    serializeCurrent() {
+        if (!this.hasChanges) return this.originalDocumentXml;
+        this.currentDocumentXml = this.serialize();
+        return this.currentDocumentXml;
+    }
+
+    markMutationCommitted() {
+        this.hasChanges = true;
+        this.invalidateParagraphIndex();
+    }
+
+    createSavepoint() {
+        if (!this.document) return null;
+        return {
+            document: this.document.cloneNode(true),
+            allocatorNextId: this.revisionIdAllocator?.nextId,
+            allocatorOccupiedIds: this.revisionIdAllocator?.occupiedIds instanceof Set
+                ? new Set(this.revisionIdAllocator.occupiedIds)
+                : null,
+            hasChanges: this.hasChanges,
+            currentDocumentXml: this.currentDocumentXml
+        };
+    }
+
+    restoreSavepoint(savepoint) {
+        if (!savepoint?.document) return;
+        this.document = savepoint.document;
+        this.hasChanges = savepoint.hasChanges;
+        this.currentDocumentXml = savepoint.currentDocumentXml;
+        if (this.revisionIdAllocator) {
+            this.revisionIdAllocator.nextId = savepoint.allocatorNextId;
+            if (savepoint.allocatorOccupiedIds instanceof Set) {
+                this.revisionIdAllocator.occupiedIds = new Set(savepoint.allocatorOccupiedIds);
+            }
+            setRevisionIdAllocatorForDocument(this.document, this.revisionIdAllocator);
+        }
+        this.invalidateParagraphIndex();
+    }
+
+    getParagraphIndex() {
+        if (this.paragraphIndex) return this.paragraphIndex;
+        const paragraphs = getDocumentParagraphNodes(this.document);
+        const metadata = paragraphs.map((paragraph, offset) => {
+            const text = getParagraphText(paragraph);
+            return Object.freeze({
+                paragraph,
+                index: offset + 1,
+                paragraphId: getParagraphId(paragraph),
+                text,
+                normalizedText: normalizeWhitespaceForTargeting(text),
+                fingerprint: createParagraphFingerprint(paragraph),
+                inTable: !!findContainingWordElement(paragraph, 'tbl')
+            });
+        });
+        this.paragraphIndex = Object.freeze(metadata);
+        this.invalidated = false;
+        return this.paragraphIndex;
     }
 
     rollback() {
         this.currentDocumentXml = this.originalDocumentXml;
+        this.hasChanges = false;
         return this.originalDocumentXml;
     }
 }

@@ -1,6 +1,6 @@
 # Performance and Complexity Reduction Plan
 
-**Status:** In progress — Phase 2 complete  
+**Status:** In progress — Phases 1 and 2 complete
 **Original date:** 2026-09-01  
 **Revised:** 2026-09-04  
 
@@ -12,6 +12,11 @@ The performance work must optimize the implementation behind those boundaries;
 it must not create a second runner, inspector, text model, or package mutation
 path.
 
+Accuracy is the governing constraint. A performance target is observational,
+not permission to weaken tracked-change fidelity, target safety, operation
+isolation, accepted/rejected text, or exact rollback. When speed and redline
+quality conflict, keep the accuracy safeguard and record the measured cost.
+
 ---
 
 ## 1. Current Baseline
@@ -20,15 +25,16 @@ As of 2026-09-04:
 
 - Before Phase 2, `npm test` ran 55 isolated test files successfully. A local
   sequential run took roughly 29 seconds, with process startup a material part
-  of the total. The Phase 2 boundary regression raises the suite to 56 files.
+  of the total. The Phase 1 and 2 regressions raise the suite to 57 files.
 - The pre-Phase-2 coverage baseline was 89.05% statements/lines, 77.04%
-  branches, and 92.63% functions. The checked Phase 2 result is 89.16%
-  statements/lines, 77.18% branches, and 92.71% functions.
+  branches, and 92.63% functions. The checked Phase 1 result is 89.32%
+  statements/lines, 77.09% branches, and 92.78% functions.
 - Before Phase 2, `services/standalone-operation-runner.js` was 1,564 lines /
   67,994 bytes. It is now a 13-line compatibility facade; the historical size
   remains the baseline for the decomposition work.
-- `applyOperationsToDocumentXml(...)` still serializes and reparses the full
-  document for each operation.
+- `applyOperationsToDocumentXml(...)` now parses the full document once and
+  serializes it once after a successful changed batch. Scoped engine payloads
+  still use their existing parse/serialize paths to preserve behavior.
 - `RevisionIdAllocator.seed(...)` performs one universal element query and
   copies the result with `Array.from(...)`.
 - `core/paragraph-text.js` is now the authoritative accepted/rejected/current
@@ -91,7 +97,7 @@ machine-readable results under ignored `tmp/benchmarks/`; keep fixture builders
 and thresholds in version control.
 
 Performance acceptance should use relative comparisons on the same machine.
-Initial targets are:
+Initial targets are aspirational after all correctness gates pass:
 
 - at least 5x lower median latency for 10+ paragraph operations on a large
   document;
@@ -99,6 +105,17 @@ Initial targets are:
   successful batch, excluding validation/package reads;
 - no more than 10% regression for single-operation calls;
 - no material peak-heap regression after removing parse/serialize churn.
+
+The 2026-09-04 Phase 1 benchmark (`npm run benchmark:session`) used 1,000
+paragraphs, 10 replacements, two warmups, and seven measured iterations on
+Node 24/Windows x64. The live batch recorded a 167.19 ms median and 224.25 ms
+p95 versus 264.96 ms and 306.17 ms for sequential single-operation execution,
+or a 1.58x median speedup. Full-document parse/serialize counts fell from 10/10
+to 1/1 and output sizes matched. The 5x aspiration was not met because each
+operation retains a full DOM savepoint so a thrown error or false no-op cannot
+leak a partial mutation. That is an intentional accuracy tradeoff, not a reason
+to remove the safeguard. Heap deltas were too GC-sensitive in this short run to
+support a claim; retain them as observational output only.
 
 Do not require byte-identical XML serialization. Require semantic equivalence,
 accepted/rejected text parity, structural validation, and unchanged package
@@ -108,21 +125,21 @@ parts; namespace and attribute ordering may legitimately differ.
 
 ## Phase 1 — In-Memory Document Operation Session
 
-**Status:** Pending. Phase 2 created the session boundary first; this phase must
-complete its live-DOM, index, artifact, and one-serialization behavior.
+**Status:** Complete (2026-09-04). Phase 2 created the boundary first; Phase 1
+then added live-DOM execution with accuracy-preserving savepoints.
 
 ### Problem
 
-The batch runner parses the complete document at the batch boundary, reparses
-inside every single-operation call, serializes after each mutation, and then
-parses again to continue. The new agent APIs add more metadata and preflight
-requirements, so a naive DOM cache must also preserve target identity and
-transaction state.
+Before Phase 1, the batch runner parsed the complete document at the batch
+boundary, reparsed inside every single-operation call, serialized after each
+mutation, and then parsed again to continue. The new agent APIs add more
+metadata and preflight requirements, so the live DOM must also preserve target
+identity and transaction state.
 
 ### Design
 
-Complete the internal `DocumentOperationSession` now owned by the batch
-orchestrator. It should contain:
+The internal `DocumentOperationSession` owned by the batch orchestrator
+contains:
 
 - the live `xmlDoc` and serializer;
 - the original input string for rollback;
@@ -165,6 +182,41 @@ artifacts transactionally.
   reparsed per operation.
 - Mixed batches retain original indexes, comment-first execution, resolution
   metadata, and per-operation authors.
+
+### Implementation record
+
+- A batch parses `word/document.xml` once, keeps the initial target-reference
+  snapshot and one revision allocator, mutates one live DOM, and serializes
+  once only after a successful changed batch.
+- The existing scoped redline, list, table, highlight, and comment engines are
+  unchanged. They still serialize only the selected scope and import their
+  result into the live document, preserving their established accuracy.
+- Every operation starts with a cloned-DOM and revision-allocator savepoint.
+  Errors and reported no-ops restore that savepoint. This is deliberately more
+  conservative than maximum-throughput mutation and prevents partial state or
+  consumed revision IDs from leaking across operations.
+- Atomic failure and all-no-op batches return the exact original XML without a
+  final serialization. Non-atomic batches serialize only successfully
+  committed mutations. Runtime context is committed only after successful
+  batch serialization; the Node facade continues to isolate package context in
+  its package transaction.
+- The session owns lazy paragraph metadata and invalidates it after every
+  committed mutation or restore, so future indexing work cannot reuse stale DOM
+  nodes.
+- `performance_phase1_session_tests.mjs` verifies real provider parse/serialize
+  counts, expected accepted and rejected text, structural redline validation,
+  list/table/comment/highlight behavior, equivalence with sequential execution,
+  byte-exact no-op output, and zero-serialization atomic rollback.
+- The checked benchmark reports the accuracy-first 1.58x result and the
+  documented 10/10 to 1/1 parse/serialize reduction above.
+- All 57 isolated tests and coverage pass. Coverage is 89.32%
+  statements/lines, 77.09% branches, and 92.78% functions. Isolation, types,
+  lint, build, the 143-file package dry run, package self-imports, and
+  `git diff --check` also pass.
+- Desktop Word, corpus, visual, XSD, and LibreOffice lanes were not rerun. The
+  scoped reconciliation engines and emitted revision construction were not
+  changed, while the new equivalence test validates exact accepted/rejected
+  outcomes and the existing package/OOXML suite exercises the integrated path.
 
 ---
 
@@ -366,7 +418,7 @@ conflict with the current API contract.
 
 ### Problem
 
-The sequential runner starts 56 Node processes. Importing every test into one
+The sequential runner starts 57 Node processes. Importing every test into one
 process would be faster, but it would also combine global XML providers,
 loggers, default authors, revision counters, module caches, environment changes,
 and top-level test side effects that are currently isolated.
@@ -400,9 +452,11 @@ and top-level test side effects that are currently isolated.
 1. **Measurement and safety baseline**
    - Add benchmarks, parse/serialize instrumentation, and result-equivalence
      fixtures.
-2. **In-memory session foundation**
+2. **In-memory session foundation — complete 2026-09-04**
    - Introduce the focused operation-session module behind the existing runner,
-     retain compatibility wrappers, and measure the improvement.
+     retain compatibility wrappers, and measure the improvement. Per-operation
+     savepoints remain mandatory unless an equally strong isolation proof
+     replaces them.
 3. **Boundary-preserving decomposition — complete 2026-09-04**
    - Extract the applier, orchestrator, and heuristics around the proven session
      without changing public behavior. This step was completed first; the

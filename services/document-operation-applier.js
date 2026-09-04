@@ -39,7 +39,9 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
 
     const operation = validation.operation || normalizeDocumentOperation(op);
     const authorUsed = resolveDocumentOperationAuthor(operation, author, getDefaultAuthor());
-    const session = new DocumentOperationSession(documentXml, options);
+    const session = options?._documentOperationSession instanceof DocumentOperationSession
+        ? options._documentOperationSession
+        : new DocumentOperationSession(documentXml, options);
     if (!session.valid) {
         return {
             documentXml,
@@ -53,13 +55,15 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
     }
 
     const resolutionCapture = {};
+    const savepoint = session.createSavepoint();
     const operationOptions = {
         ...options,
         ...(typeof operation.generateRedlines === 'boolean' ? { generateRedlines: operation.generateRedlines } : {}),
         ...(operation.existingRevisions ? { existingRevisions: operation.existingRevisions } : {}),
         targetDescriptor: operation.targetDescriptor,
         _resolutionCapture: resolutionCapture,
-        _revisionIdAllocator: session.revisionIdAllocator
+        _revisionIdAllocator: session.revisionIdAllocator,
+        _documentOperationSession: session
     };
 
     try {
@@ -98,6 +102,15 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                 operationOptions
             );
         }
+        const isError = result?.status === 'error' || !!result?.error;
+        if (isError || result?.hasChanges !== true) {
+            session.restoreSavepoint(savepoint);
+        } else {
+            session.markMutationCommitted();
+            result.documentXml = session.deferSerialization
+                ? session.currentDocumentXml
+                : session.serializeCurrent();
+        }
         return {
             ...result,
             operationType: operation.operationKind,
@@ -105,6 +118,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
             ...resolutionCapture
         };
     } catch (error) {
+        session.restoreSavepoint(savepoint);
         const normalizedError = normalizeOperationError(error);
         return {
             documentXml,
