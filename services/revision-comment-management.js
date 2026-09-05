@@ -62,19 +62,37 @@ function authorMatchesNode(node, filter) {
 }
 
 function parseXmlWithWarnings(oxml, parseFailurePrefix) {
-    const parsed = parseOoxmlSafe(oxml, 'application/xml');
+    let rawOxml = typeof oxml === 'string' ? oxml.replace(/^\uFEFF/, '').trim() : '';
+    let isFragmentWrapped = false;
+    let parsed = parseOoxmlSafe(rawOxml, 'application/xml');
+    if (parsed.error && (parsed.error.message.includes('HierarchyRequestError') || parsed.error.message.includes('Only one element'))) {
+        const wrapped = `<w:body xmlns:w="${NS_W}">${rawOxml}</w:body>`;
+        const wrappedParsed = parseOoxmlSafe(wrapped, 'application/xml');
+        if (!wrappedParsed.error) {
+            parsed = wrappedParsed;
+            isFragmentWrapped = true;
+        }
+    }
     const parseError = parsed.doc ? getXmlParseError(parsed.doc) : null;
     if (parsed.error || parseError) {
         const message = parsed.error?.message || parseError?.textContent || 'parse error';
         return {
             xmlDoc: null,
             serializer: null,
+            isFragmentWrapped: false,
             warning: `${parseFailurePrefix}: ${message}`,
             warnings: parsed.warnings,
             error: { code: 'PARSE_ERROR', message }
         };
     }
-    return { xmlDoc: parsed.doc, serializer: createSerializer(), warning: null, warnings: parsed.warnings, error: null };
+    return {
+        xmlDoc: parsed.doc,
+        serializer: createSerializer(),
+        isFragmentWrapped,
+        warning: null,
+        warnings: parsed.warnings,
+        error: null
+    };
 }
 
 function removeNode(node) {
@@ -124,11 +142,17 @@ function mergeParagraphIntoNextAndRemove(paragraph) {
     if (!paragraph?.parentNode) return false;
     const nextParagraph = getNextWordParagraph(paragraph);
     if (!nextParagraph) {
+        if (isWordElement(paragraph.parentNode, 'tc') && getWordElementsByLocalName(paragraph.parentNode, 'p').length <= 1) {
+            return false;
+        }
         return removeNode(paragraph);
     }
 
     const childrenToMove = Array.from(paragraph.childNodes || []).filter(child => !isWordElement(child, 'pPr'));
-    const insertionPoint = nextParagraph.firstChild || null;
+    let insertionPoint = nextParagraph.firstChild || null;
+    if (isWordElement(insertionPoint, 'pPr')) {
+        insertionPoint = insertionPoint.nextSibling || null;
+    }
     for (const child of childrenToMove) {
         nextParagraph.insertBefore(child, insertionPoint);
     }
@@ -214,8 +238,12 @@ export function acceptTrackedChangesInOoxml(oxml, options = {}) {
         }
     }
 
+    const serializedOxml = parseResult.isFragmentWrapped
+        ? Array.from(xmlDoc.documentElement.childNodes).map(n => serializer.serializeToString(n)).join('')
+        : serializer.serializeToString(xmlDoc);
+
     return {
-        oxml: serializer.serializeToString(xmlDoc),
+        oxml: serializedOxml,
         hasChanges: acceptedCount > 0,
         acceptedCount,
         warnings
@@ -395,8 +423,12 @@ export function rejectTrackedChangesInOoxml(oxml, options = {}) {
         }
     }
 
+    const serializedOxml = parseResult.isFragmentWrapped
+        ? Array.from(xmlDoc.documentElement.childNodes).map(n => serializer.serializeToString(n)).join('')
+        : serializer.serializeToString(xmlDoc);
+
     return {
-        oxml: serializer.serializeToString(xmlDoc),
+        oxml: serializedOxml,
         hasChanges: rejectedCount > 0,
         rejectedCount,
         warnings

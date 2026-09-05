@@ -41,6 +41,7 @@ function getElementsByLocalName(node, localName) {
 }
 
 import { extractCanonicalParagraphText } from './paragraph-text.js';
+import { isWordElement } from './word-xml.js';
 
 /**
  * Reads visible text from a paragraph by concatenating `w:t` nodes and mapping
@@ -827,4 +828,127 @@ export function resolveParagraphRangeByRefs(xmlDoc, startRef, endRef, options = 
     if (!parent) return null;
     if (!range.every(node => node && node.parentNode === parent)) return null;
     return range;
+}
+
+/**
+ * Validates a paragraph boundary operation (split, delete, join) before mutation.
+ * Returns { valid: true } or { valid: false, code: 'UNSAFE_PARAGRAPH_BOUNDARY', message: string }.
+ *
+ * @param {Element} targetParagraph - Target paragraph node
+ * @param {string} modifiedText - Replacement text
+ * @param {Object} [options={}] - Options
+ * @returns {{ valid: boolean, code?: string, message?: string }}
+ */
+export function validateParagraphBoundaryMutation(targetParagraph, modifiedText, options = {}) {
+    if (!targetParagraph || !targetParagraph.parentNode) {
+        return { valid: true };
+    }
+
+    const isDelete = modifiedText === '' || options.operationKind === 'delete';
+    const isSplit = typeof modifiedText === 'string' && modifiedText.includes('\n');
+    const targetEndParagraph = options.targetEndParagraph || null;
+
+    // 1. Table cell boundary checks
+    const containingTc = findContainingWordElement(targetParagraph, 'tc');
+    if (containingTc) {
+        if (isDelete) {
+            const cellParagraphs = Array.from(containingTc.childNodes).filter(node => isWordElement(node, 'p'));
+            if (cellParagraphs.length <= 1) {
+                return {
+                    valid: false,
+                    code: 'UNSAFE_PARAGRAPH_BOUNDARY',
+                    message: 'Refusing to delete the sole terminal paragraph of a table cell.'
+                };
+            }
+        }
+        if (targetEndParagraph) {
+            const endTc = findContainingWordElement(targetEndParagraph, 'tc');
+            if (endTc !== containingTc) {
+                return {
+                    valid: false,
+                    code: 'UNSAFE_PARAGRAPH_BOUNDARY',
+                    message: 'Refusing paragraph boundary join across different table cells.'
+                };
+            }
+        }
+    } else if (targetEndParagraph) {
+        const endTc = findContainingWordElement(targetEndParagraph, 'tc');
+        if (endTc) {
+            return {
+                valid: false,
+                code: 'UNSAFE_PARAGRAPH_BOUNDARY',
+                message: 'Refusing paragraph boundary join across table boundaries.'
+            };
+        }
+    }
+
+    // 2. Section break (w:sectPr) checks
+    const hasSectPr = targetParagraph.getElementsByTagNameNS(WORD_MAIN_NS, 'sectPr').length > 0;
+    if (hasSectPr && isDelete) {
+        return {
+            valid: false,
+            code: 'UNSAFE_PARAGRAPH_BOUNDARY',
+            message: 'Refusing to delete paragraph containing section properties (w:sectPr).'
+        };
+    }
+
+    if (targetEndParagraph) {
+        let cursor = targetParagraph;
+        while (cursor && cursor !== targetEndParagraph) {
+            if (isWordElement(cursor, 'p') && cursor.getElementsByTagNameNS(WORD_MAIN_NS, 'sectPr').length > 0) {
+                return {
+                    valid: false,
+                    code: 'UNSAFE_PARAGRAPH_BOUNDARY',
+                    message: 'Refusing paragraph boundary join across section break.'
+                };
+            }
+            cursor = cursor.nextSibling;
+        }
+    }
+
+    // 3. Field instruction checks during split
+    if (isSplit) {
+        const fldSimples = targetParagraph.getElementsByTagNameNS(WORD_MAIN_NS, 'fldSimple');
+        if (fldSimples.length > 0) {
+            return {
+                valid: false,
+                code: 'UNSAFE_PARAGRAPH_BOUNDARY',
+                message: 'Refusing to split paragraph containing a simple field instruction (w:fldSimple).'
+            };
+        }
+
+        const fldChars = Array.from(targetParagraph.getElementsByTagNameNS(WORD_MAIN_NS, 'fldChar'));
+        if (fldChars.length > 0) {
+            let activeFields = 0;
+            for (const fc of fldChars) {
+                const fldCharType = fc.getAttributeNS(WORD_MAIN_NS, 'fldCharType') || fc.getAttribute('w:fldCharType');
+                if (fldCharType === 'begin') activeFields++;
+                else if (fldCharType === 'end') activeFields = Math.max(0, activeFields - 1);
+            }
+            if (activeFields > 0) {
+                return {
+                    valid: false,
+                    code: 'UNSAFE_PARAGRAPH_BOUNDARY',
+                    message: 'Refusing to split paragraph across an unclosed field instruction.'
+                };
+            }
+        }
+
+        // 4. Bookmark range boundary checks
+        const bookmarkStarts = Array.from(targetParagraph.getElementsByTagNameNS(WORD_MAIN_NS, 'bookmarkStart'));
+        const bookmarkEnds = Array.from(targetParagraph.getElementsByTagNameNS(WORD_MAIN_NS, 'bookmarkEnd'));
+        const bStartIds = new Set(bookmarkStarts.map(b => b.getAttributeNS(WORD_MAIN_NS, 'id') || b.getAttribute('w:id')));
+        const bEndIds = new Set(bookmarkEnds.map(b => b.getAttributeNS(WORD_MAIN_NS, 'id') || b.getAttribute('w:id')));
+        for (const id of bStartIds) {
+            if (id && !bEndIds.has(id)) {
+                return {
+                    valid: false,
+                    code: 'UNSAFE_PARAGRAPH_BOUNDARY',
+                    message: `Refusing to split paragraph across open bookmark range (ID: ${id}).`
+                };
+            }
+        }
+    }
+
+    return { valid: true };
 }

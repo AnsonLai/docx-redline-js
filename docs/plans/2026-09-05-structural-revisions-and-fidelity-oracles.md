@@ -1296,10 +1296,11 @@ The ownership rules are evidence, not assumptions in prose:
 5. **Table Cells**: Cell terminal paragraph constraints must be preserved; internal cell paragraph boundary deletions follow the standard merge.
 6. **Bookmarks and Comments**: Range start and end markers are retained within their respective paragraph nodes across boundary revisions.
 
-### WP-10 — Paragraph Boundary Implementation
+### WP-10 — Paragraph Boundary Implementation [COMPLETED 2026-09-05]
 
 **Depends on:** WP-09  
-**Produces runtime changes:** New proven structural routes
+**Produces runtime changes:** New proven structural routes  
+**Status:** Completed — implemented structural paragraph boundary mutations (split, join, blank and whole-paragraph deletions) with explicit schema safeguards (refusing sole table cell paragraph deletion, cross-cell joins, section break paragraph deletion, field instruction splits, open bookmark splits returning `UNSAFE_PARAGRAPH_BOUNDARY`). Verified across 11 unit tests in `tests/paragraph_boundary_implementation_tests.mjs`, all 10 Word-native golden fixture tests in `tests/paragraph_boundary_matrix_tests.mjs`, and full regression/fuzz suites (77/77 test suites passing).
 
 **Files to inspect/edit**
 

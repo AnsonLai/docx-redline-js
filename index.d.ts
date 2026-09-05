@@ -40,6 +40,7 @@ export interface RedlineError {
     | 'DIFF_TOKEN_LIMIT'
     | 'UNSUPPORTED_REVISION_VIEW_MUTATION'
     | 'UNSUPPORTED_INSERTION_AFFINITY'
+    | 'UNSAFE_PARAGRAPH_BOUNDARY'
     | 'TARGET_INDEX_MISMATCH'
     | string;
   message: string;

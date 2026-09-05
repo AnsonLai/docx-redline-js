@@ -14,7 +14,8 @@ import {
     getParagraphId,
     getParagraphText,
     normalizeWhitespaceForTargeting,
-    resolveTargetParagraph
+    resolveTargetParagraph,
+    validateParagraphBoundaryMutation
 } from '../core/paragraph-targeting.js';
 import { createParagraphTextIndex, resolveTextInParagraphIndex } from './comment-locator.js';
 import {
@@ -199,6 +200,16 @@ export function preflightOperations(documentXml, operations, author, options = {
                     error = {
                         code: 'EXISTING_REVISIONS',
                         message: 'Target paragraph contains tracked changes and existingRevisions is "reject-input".'
+                    };
+                }
+            }
+
+            if (!error && operation.operationKind === 'redline') {
+                const boundaryCheck = validateParagraphBoundaryMutation(paragraph, operation.modified, options);
+                if (!boundaryCheck.valid) {
+                    error = {
+                        code: boundaryCheck.code,
+                        message: boundaryCheck.message
                     };
                 }
             }

@@ -59,7 +59,7 @@ function ensureParagraphMarkRunProperties(xmlDoc, pPr) {
     return rPr;
 }
 
-function markParagraphMark(xmlDoc, paragraph, author, type) {
+function markParagraphMark(xmlDoc, paragraph, author, type, revisionMetadata = null) {
     const pPr = ensureParagraphProperties(xmlDoc, paragraph);
     const rPr = ensureParagraphMarkRunProperties(xmlDoc, pPr);
 
@@ -71,7 +71,7 @@ function markParagraphMark(xmlDoc, paragraph, author, type) {
     }
 
     const marker = createWordElement(xmlDoc, type === 'ins' ? 'w:ins' : 'w:del');
-    const metadata = createRevisionMetadata(author, xmlDoc);
+    const metadata = revisionMetadata || createRevisionMetadata(author, xmlDoc);
     marker.setAttribute('w:id', String(metadata.id));
     marker.setAttribute('w:author', metadata.author);
     marker.setAttribute('w:date', metadata.date);
@@ -85,10 +85,11 @@ function markParagraphMark(xmlDoc, paragraph, author, type) {
  * @param {Document} xmlDoc - XML document
  * @param {Element} paragraph - Paragraph to mark
  * @param {string} author - Change author
+ * @param {Object|null} [revisionMetadata=null] - Optional explicit revision metadata
  * @returns {Element}
  */
-export function markParagraphMarkInserted(xmlDoc, paragraph, author) {
-    return markParagraphMark(xmlDoc, paragraph, author, 'ins');
+export function markParagraphMarkInserted(xmlDoc, paragraph, author, revisionMetadata = null) {
+    return markParagraphMark(xmlDoc, paragraph, author, 'ins', revisionMetadata);
 }
 
 /**
@@ -97,10 +98,11 @@ export function markParagraphMarkInserted(xmlDoc, paragraph, author) {
  * @param {Document} xmlDoc - XML document
  * @param {Element} paragraph - Paragraph to mark
  * @param {string} author - Change author
+ * @param {Object|null} [revisionMetadata=null] - Optional explicit revision metadata
  * @returns {Element}
  */
-export function markParagraphMarkDeleted(xmlDoc, paragraph, author) {
-    return markParagraphMark(xmlDoc, paragraph, author, 'del');
+export function markParagraphMarkDeleted(xmlDoc, paragraph, author, revisionMetadata = null) {
+    return markParagraphMark(xmlDoc, paragraph, author, 'del', revisionMetadata);
 }
 
 /**

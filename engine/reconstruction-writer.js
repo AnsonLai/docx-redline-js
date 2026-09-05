@@ -42,7 +42,15 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
 
     const createNewParagraph = (pPr) => {
         const newParagraph = createWordElement(xmlDoc, 'w:p');
-        if (pPr) newParagraph.appendChild(pPr.cloneNode(true));
+        if (pPr) {
+            const clonedPPr = pPr.cloneNode(true);
+            // Safeguard: Never place w:sectPr on both paragraphs during split
+            const sectPr = getFirstElementByTagNSOrTag(clonedPPr, NS_W, 'sectPr');
+            if (sectPr) {
+                clonedPPr.removeChild(sectPr);
+            }
+            newParagraph.appendChild(clonedPPr);
+        }
         return newParagraph;
     };
 
@@ -148,6 +156,39 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
             pendingReplacementEvent = null;
         }
     }
+
+    if (generateRedlines) {
+        containerFragments.forEach(fragment => {
+            Array.from(fragment.childNodes).forEach(node => {
+                if (isWordElement(node, 'p')) {
+                    const hasVisibleText = Array.from(node.getElementsByTagNameNS(NS_W, 't')).length > 0;
+                    const hasDeletedText = Array.from(node.getElementsByTagNameNS(NS_W, 'delText')).length > 0;
+                    if (paragraphs.length === 1 && !hasVisibleText && (hasDeletedText || context.originalFullText.trim() !== '')) {
+                        markParagraphMarkDeleted(xmlDoc, node, author);
+                    }
+                }
+            });
+        });
+    }
+
+    containerFragments.forEach(fragment => {
+        const createdParagraphs = Array.from(fragment.childNodes).filter(node => isWordElement(node, 'p'));
+        if (createdParagraphs.length > 1) {
+            const firstP = createdParagraphs[0];
+            const lastP = createdParagraphs[createdParagraphs.length - 1];
+            const firstPPr = getFirstElementByTagNSOrTag(firstP, NS_W, 'pPr');
+            const sectPr = firstPPr ? getFirstElementByTagNSOrTag(firstPPr, NS_W, 'sectPr') : null;
+            if (sectPr) {
+                firstPPr.removeChild(sectPr);
+                let lastPPr = getFirstElementByTagNSOrTag(lastP, NS_W, 'pPr');
+                if (!lastPPr) {
+                    lastPPr = createWordElement(xmlDoc, 'w:pPr');
+                    lastP.insertBefore(lastPPr, lastP.firstChild || null);
+                }
+                lastPPr.appendChild(sectPr);
+            }
+        }
+    });
 
     const paragraphSet = new Set(paragraphs);
     const insertionAnchors = new Map();

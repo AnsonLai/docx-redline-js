@@ -6,7 +6,7 @@ import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { findReconstructionParagraphRange } from '../engine/reconstruction-mapper.js';
 import { createRevisionMetadata } from '../core/types.js';
 import { containsTrackedChanges, createWordElement, withOoxmlSourceType } from '../core/word-xml.js';
-import { markParagraphMarkInserted } from '../engine/run-builders.js';
+import { markParagraphMarkInserted, markParagraphMarkDeleted } from '../engine/run-builders.js';
 import { applyRedlineToOxml as applyRedlineToOxmlEngine } from '../engine/oxml-engine.js';
 import { applyHighlightToOoxml } from '../engine/formatting-removal.js';
 import { parseTable as parseMarkdownTable } from '../pipeline/pipeline.js';
@@ -18,7 +18,8 @@ import {
     isMarkdownTableText,
     findContainingWordElement,
     resolveTargetParagraphWithSnapshot as resolveTargetParagraphWithSnapshotShared,
-    resolveParagraphRangeByRefs
+    resolveParagraphRangeByRefs,
+    validateParagraphBoundaryMutation
 } from '../core/paragraph-targeting.js';
 import {
     synthesizeExpandedListScopeEdit,
@@ -741,6 +742,32 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
                 }
             };
         }
+    }
+    const boundaryCheck = validateParagraphBoundaryMutation(targetParagraph, modifiedText, options);
+    if (!boundaryCheck.valid) {
+        return {
+            documentXml,
+            hasChanges: false,
+            numberingXml: null,
+            status: 'error',
+            error: {
+                code: boundaryCheck.code,
+                message: boundaryCheck.message
+            }
+        };
+    }
+    if (modifiedText === '' && currentParagraphText === '') {
+        if (generateRedlines) {
+            markParagraphMarkDeleted(xmlDoc, targetParagraph, author, createRevisionMetadata(author, xmlDoc));
+        } else {
+            targetParagraph.parentNode?.removeChild(targetParagraph);
+        }
+        normalizeBodySectionOrder(xmlDoc);
+        return {
+            documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
+            hasChanges: true,
+            numberingXml: null
+        };
     }
     const hasRevisions = containsTrackedChanges(targetParagraph);
     if (
