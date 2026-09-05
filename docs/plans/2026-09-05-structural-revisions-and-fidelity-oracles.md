@@ -964,10 +964,11 @@ gap has a reproducible fixture or test.
 The helper can prove exact untouched entry payload preservation without claiming
 the entire ZIP byte stream remains identical.
 
-### WP-02 — OOXML Canonical Subtree Helper
+### WP-02 — OOXML Canonical Subtree Helper [COMPLETED 2026-09-05]
 
 **Depends on:** WP-01  
-**Produces runtime changes:** No; test helper only
+**Produces runtime changes:** No; test helper only  
+**Status:** Completed — canonical XML helper implemented in `tests/helpers/canonical-ooxml.mjs` supporting QName-valued attribute canonicalization, verified by `tests/canonical_ooxml_tests.mjs`.
 
 **Files to inspect**
 
