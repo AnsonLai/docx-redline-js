@@ -2,6 +2,7 @@ import './setup-xml-provider.mjs';
 
 import assert from 'assert/strict';
 import { applyRedlineToOxml } from '../engine/oxml-engine.js';
+import { extractCanonicalParagraphText } from '../core/paragraph-text.js';
 import { applyOperationToDocumentXml } from '../services/standalone-operation-runner.js';
 import {
     acceptTrackedChangesInOoxml,
@@ -270,6 +271,81 @@ async function testInsertedListItemTracksParagraphMarkToPreventGhostMarker() {
     );
 }
 
+async function testSuppressedHeadingExpandsIntoSeparateFormattedBullets() {
+    // Word visual failure: a heading with numId="0" is numbering suppression,
+    // not a reusable list. Reusing it hides bullets; placing the deletion in
+    // the first new paragraph also renders PURPOSEArticle as one run-on line.
+    const original = 'A.\tPURPOSE';
+    const modified = '* Article A. Purpose and Interagency Alignment\n* Key Focus: Joint Street Outreach & Medical Triage';
+    const following = 'The agencies shall coordinate implementation.';
+    const xml = `
+        <w:document xmlns:w="${NS_W}">
+            <w:body>
+                <w:p>
+                    <w:pPr>
+                        <w:pStyle w:val="Level1"/>
+                        <w:numPr><w:ilvl w:val="0"/><w:numId w:val="0"/></w:numPr>
+                        <w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:b/><w:sz w:val="24"/><w:u w:val="single"/></w:rPr>
+                    </w:pPr>
+                    <w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:b/><w:sz w:val="24"/></w:rPr><w:t>A.</w:t></w:r>
+                    <w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:b/><w:sz w:val="24"/></w:rPr><w:tab/></w:r>
+                    <w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:b/><w:sz w:val="24"/><w:u w:val="single"/></w:rPr><w:t>PURPOSE</w:t></w:r>
+                </w:p>
+                <w:p><w:r><w:t>${following}</w:t></w:r></w:p>
+            </w:body>
+        </w:document>
+    `;
+    const result = await applyOperationToDocumentXml(xml, {
+        type: 'redline',
+        target: original,
+        modified
+    }, 'VisualGuard');
+
+    assert.equal(result.hasChanges, true);
+    const doc = parseXml(result.documentXml);
+    const paragraphs = elementsByLocalName(doc, 'p');
+    assert.equal(paragraphs.length, 4, 'Full-document replacement must not add a packaging-only blank paragraph');
+
+    const deletedHeading = paragraphs[0];
+    const insertedParagraphs = paragraphs.slice(1, 3);
+    assert.match(elementsByLocalName(deletedHeading, 'delText').map(node => node.textContent).join(''), /PURPOSE/);
+    assert.doesNotMatch(
+        elementsByLocalName(deletedHeading, 't').map(node => node.textContent).join(''),
+        /Article A/,
+        'Deleted heading and first bullet must occupy different paragraphs'
+    );
+
+    for (const paragraph of insertedParagraphs) {
+        const pPr = directChildByLocalName(paragraph, 'pPr');
+        const numPr = directChildByLocalName(pPr, 'numPr');
+        const numId = directChildByLocalName(numPr, 'numId');
+        assert.ok(Number.parseInt(numId?.getAttribute('w:val') || numId?.getAttribute('val'), 10) > 0,
+            'Inserted bullet must use a positive numbering ID');
+
+        const textInsertion = elementsByLocalName(paragraph, 'ins').find(ins => ins.parentNode === paragraph);
+        const run = elementsByLocalName(textInsertion, 'r')[0];
+        const rPr = directChildByLocalName(run, 'rPr');
+        assert.equal(directChildByLocalName(rPr, 'rFonts')?.getAttribute('w:ascii'), 'Times New Roman');
+        assert.equal(directChildByLocalName(rPr, 'sz')?.getAttribute('w:val'), '24');
+        assert.equal(directChildByLocalName(rPr, 'b'), null, 'Heading bold must not leak into bullet text');
+        assert.equal(directChildByLocalName(rPr, 'u'), null, 'Heading underline must not leak into bullet text');
+    }
+
+    const accepted = acceptTrackedChangesInOoxml(result.documentXml, { author: 'VisualGuard' });
+    const rejected = rejectTrackedChangesInOoxml(result.documentXml, { author: 'VisualGuard' });
+    const acceptedParagraphText = elementsByLocalName(parseXml(accepted.oxml), 'p')
+        .map(paragraph => extractCanonicalParagraphText(paragraph));
+    const rejectedParagraphText = elementsByLocalName(parseXml(rejected.oxml), 'p')
+        .map(paragraph => extractCanonicalParagraphText(paragraph));
+    assert.deepEqual(acceptedParagraphText, [
+        'Article A. Purpose and Interagency Alignment',
+        'Key Focus: Joint Street Outreach & Medical Triage',
+        following
+    ], 'Accept must produce exactly two list paragraphs without empty separator paragraphs');
+    assert.deepEqual(rejectedParagraphText, [original, following],
+        'Reject must restore the original heading paragraph exactly');
+}
+
 async function testListChangePreservesExistingNumberingIdAndLevel() {
     // Word visual failure: Adding a list item to an existing numbered list must preserve
     // the same numId and ilvl so that Word numbers it sequentially rather than breaking numbering.
@@ -460,6 +536,7 @@ await testUnderlineDoesNotBleedIntoSubsequentInsertion();
 await testReplacementAdjacentToHyperlinkPreservesCustomFontSizeAndFont();
 await testHeadingReconstructionPreservesHeadingStyleAndRunFormatting();
 await testInsertedListItemTracksParagraphMarkToPreventGhostMarker();
+await testSuppressedHeadingExpandsIntoSeparateFormattedBullets();
 await testListParagraphDeletionTracksParagraphMark();
 await testListChangePreservesExistingNumberingIdAndLevel();
 await testTableCellEditPreservesWidthBordersShadingAndAlignment();

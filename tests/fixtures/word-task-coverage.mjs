@@ -42,6 +42,7 @@ export const WORD_TASK_COVERAGE = Object.freeze({
     'administrative-list-change-upper-letter-agenda': coverage('list-change', ['list'], AI_REVIEWED),
     'administrative-list-change-dash-bullet': coverage('list-change', ['list'], AI_REVIEWED),
     'legal-list-change-symbol-bullet-multiple': coverage('list-change', ['list'], AI_REVIEWED),
+    'legal-suppressed-heading-to-bullet-list': coverage('list-change', ['list', 'formatted-runs'], AI_REVIEWED),
     'administrative-table-reconciliation-cell-update': coverage('table-reconciliation', ['table'], AI_REVIEWED),
     'legal-table-reconciliation-row-insertion': coverage('table-reconciliation', ['table'], AI_REVIEWED),
     'administrative-table-reconciliation-row-deletion': coverage('table-reconciliation', ['table'], AI_REVIEWED),

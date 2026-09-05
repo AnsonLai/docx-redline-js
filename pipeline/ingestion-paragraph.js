@@ -92,6 +92,9 @@ export function detectNumberingContext(pElement) {
     if (!numIdEl) return null;
 
     const numId = numIdEl.getAttribute('w:val');
+    // In WordprocessingML, numId="0" explicitly removes numbering inherited
+    // from a paragraph style. It is not a reusable list definition.
+    if (!/^\d+$/.test(numId) || Number.parseInt(numId, 10) === 0) return null;
     const type = numId === '1' ? 'bullet' : (numId === '2' ? 'numbered' : 'unknown');
 
     return {

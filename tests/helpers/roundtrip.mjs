@@ -86,10 +86,12 @@ function assertResolvedText(xml, expected, fidelity, label) {
  * @param {'exact'|'normalized'} [options.fidelity='exact'] - text comparison strictness.
  *   Use 'normalized' only when markdown preprocessing legitimately changes
  *   whitespace, and say why at the call site.
+ * @param {string} [options.expectedAcceptedText] - independent accepted-view
+ *   expectation for structural markdown whose visible text omits its markers.
  * @returns {Promise<{ redlined: object, accepted: object, rejected: object }>}
  */
 export async function assertRoundTrip(oxml, original, modified, options = {}) {
-    const { fidelity = 'exact', ...redlineOptions } = options;
+    const { fidelity = 'exact', expectedAcceptedText, ...redlineOptions } = options;
 
     const redlined = await applyRedlineToOxml(oxml, original, modified, {
         generateRedlines: true,
@@ -105,7 +107,7 @@ export async function assertRoundTrip(oxml, original, modified, options = {}) {
     const { cleanText } = preprocessMarkdown(modified);
     assertResolvedText(
         accepted.oxml,
-        cleanText,
+        expectedAcceptedText ?? cleanText,
         fidelity,
         'accepting generated revisions should yield modified text'
     );

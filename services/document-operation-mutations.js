@@ -175,6 +175,19 @@ function extractReplacementNodes(outputOxml) {
     return extractReplacementNodesFromOoxml(outputOxml);
 }
 
+function removeListPackagingSentinel(replacementNodes, warnings) {
+    if (!Array.isArray(replacementNodes) || replacementNodes.length === 0) return replacementNodes;
+    if (!Array.isArray(warnings) || !warnings.includes('Paragraph expanded to list fragment')) return replacementNodes;
+
+    const last = replacementNodes[replacementNodes.length - 1];
+    if (!last || last.localName !== 'p') return replacementNodes;
+    const meaningfulContent = Array.from(last.childNodes || []).some(child => (
+        child.nodeType === 1 && child.localName !== 'pPr'
+    ));
+    if (meaningfulContent) return replacementNodes;
+    return replacementNodes.slice(0, -1);
+}
+
 function normalizeBodySectionOrder(xmlDoc) {
     normalizeBodySectionOrderStandalone(xmlDoc);
 }
@@ -1023,7 +1036,7 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         throw new Error('Reconciliation engine did not return OOXML for a changed redline operation');
     }
     const extracted = extractReplacementNodes(result.oxml);
-    let replacementNodes = extracted.replacementNodes;
+    let replacementNodes = removeListPackagingSentinel(extracted.replacementNodes, result.warnings);
     let numberingXml = extracted.numberingXml;
     if (numberingXml && runtimeContext?.numberingIdState) {
         const normalizedNumbering = remapNumberingPayloadForDocument(numberingXml, replacementNodes, runtimeContext.numberingIdState);

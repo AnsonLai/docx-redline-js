@@ -291,6 +291,42 @@ function shapeWhitespace(rng) {
     };
 }
 
+/* --- shape: manually numbered heading expanded into a list --------------- */
+
+function shapeSuppressedHeadingList(rng) {
+    const label = `${rng.pick(['A', 'B', 'C', 'D'])}.`;
+    const heading = randomWord(rng).toUpperCase();
+    const font = rng.pick(['Times New Roman', 'Arial', 'Calibri']);
+    const size = rng.pick(['20', '22', '24']);
+    const itemCount = 2 + rng.int(3);
+    const marker = rng.pick(['*', '-']);
+    const original = `${label}\t${heading}`;
+    const items = Array.from({ length: itemCount }, () => randomText(rng, 3, 7));
+    const modified = items.map(item => `${marker} ${item}`).join('\n');
+    const typography = `<w:rFonts w:ascii="${font}" w:hAnsi="${font}"/><w:sz w:val="${size}"/>`;
+    const paragraphXml = `<w:p>`
+        + `<w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="0"/></w:numPr>`
+        + `<w:rPr>${typography}<w:b/><w:u w:val="single"/></w:rPr></w:pPr>`
+        + `<w:r><w:rPr>${typography}<w:b/></w:rPr><w:t>${label}</w:t></w:r>`
+        + '<w:r><w:tab/></w:r>'
+        + `<w:r><w:rPr>${typography}<w:b/><w:u w:val="single"/></w:rPr><w:t>${escapeXmlText(heading)}</w:t></w:r>`
+        + '</w:p>';
+
+    return {
+        shape: 'suppressedHeadingList',
+        oxml: wrapBody(paragraphXml),
+        original,
+        modified,
+        // Markdown marker removal and the package fragment's terminal sentinel
+        // make normalized fidelity appropriate here; the fixed regression pins
+        // the exact physical Accept/Reject paragraph sequence separately.
+        options: { fidelity: 'normalized', expectedAcceptedText: items.join('\n') },
+        expectedListItems: itemCount,
+        expectedFont: font,
+        expectedSize: size
+    };
+}
+
 /* --- shape: complex field with editable surrounding text ----------------- */
 
 function shapeComplexField(rng) {
@@ -369,6 +405,7 @@ const SHAPES = [
     shapeMultiParagraph,
     shapeTableCell,
     shapeWhitespace,
+    shapeSuppressedHeadingList,
     shapeComplexField,
     shapeExistingRevisions,
     shapeExistingRevisionsNoOp
@@ -416,6 +453,23 @@ for (let i = 0; i < ITERATIONS; i++) {
         if (testCase.shape === 'existingRevisionsNoOp') {
             assert.equal(roundTrip.redlined.hasChanges, false);
             assert.equal(roundTrip.redlined.oxml, testCase.oxml);
+        }
+        if (testCase.shape === 'suppressedHeadingList') {
+            const parsed = parseXmlFragment(roundTrip.redlined.oxml);
+            const insertedParagraphs = elementsByLocalName(parsed, 'p').filter(paragraph => (
+                elementsByLocalName(paragraph, 'ins').some(ins => ins.parentNode === paragraph)
+            ));
+            assert.equal(insertedParagraphs.length, testCase.expectedListItems);
+            for (const paragraph of insertedParagraphs) {
+                const numId = elementsByLocalName(paragraph, 'numId')[0];
+                assert.ok(Number.parseInt(numId?.getAttribute('w:val'), 10) > 0);
+                const textInsertion = elementsByLocalName(paragraph, 'ins').find(ins => ins.parentNode === paragraph);
+                const insertedRPr = elementsByLocalName(textInsertion, 'rPr')[0];
+                assert.equal(elementsByLocalName(insertedRPr, 'rFonts')[0]?.getAttribute('w:ascii'), testCase.expectedFont);
+                assert.equal(elementsByLocalName(insertedRPr, 'sz')[0]?.getAttribute('w:val'), testCase.expectedSize);
+                assert.equal(elementsByLocalName(insertedRPr, 'b').length, 0);
+                assert.equal(elementsByLocalName(insertedRPr, 'u').length, 0);
+            }
         }
     } catch (error) {
         const knownGap = classifyFailure(error);

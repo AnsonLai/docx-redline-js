@@ -196,6 +196,23 @@ const SYMBOL_BULLET_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone=
   </w:body>
 </w:document>`;
 
+const SUPPRESSED_HEADING_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}">
+  <w:body>
+    <w:p>
+      <w:pPr>
+        <w:pStyle w:val="Level1"/>
+        <w:numPr><w:ilvl w:val="0"/><w:numId w:val="0"/></w:numPr>
+        <w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:b/><w:sz w:val="24"/><w:u w:val="single"/></w:rPr>
+      </w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:b/><w:sz w:val="24"/></w:rPr><w:t>A.</w:t></w:r>
+      <w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:b/><w:sz w:val="24"/></w:rPr><w:tab/></w:r>
+      <w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:b/><w:sz w:val="24"/><w:u w:val="single"/></w:rPr><w:t>PURPOSE</w:t></w:r>
+    </w:p>
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+
 const RECONCILIATION_TABLE_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="${NS_W}">
   <w:body>
@@ -732,6 +749,24 @@ const WORD_TASK_CASE_DEFINITIONS = [
         packageParts: { numberingXml: MIXED_STYLE_NUMBERING_XML },
         requiredNumberingFormats: ['bullet'],
         requiredElements: { numPr: 4 }
+    },
+    {
+        name: 'legal-suppressed-heading-to-bullet-list',
+        category: 'legal',
+        task: 'replace-manual-heading-with-bullets',
+        sourceDocumentXml: SUPPRESSED_HEADING_DOCUMENT,
+        original: 'A.\tPURPOSE',
+        modified: '* Article A. Purpose and Interagency Alignment\n* Key Focus: Joint Street Outreach & Medical Triage',
+        operation: {
+            type: 'list-change',
+            target: 'A.\tPURPOSE',
+            modified: '* Article A. Purpose and Interagency Alignment\n* Key Focus: Joint Street Outreach & Medical Triage'
+        },
+        expectedAcceptedText: 'Article A. Purpose and Interagency Alignment\nKey Focus: Joint Street Outreach & Medical Triage',
+        expectedRejectedText: 'A.\tPURPOSE',
+        packageParts: { numberingXml: MIXED_STYLE_NUMBERING_XML },
+        requiredNumberingFormats: ['bullet'],
+        requiredElements: { numPr: 3, ins: 4, del: 4 }
     },
     {
         name: 'administrative-table-reconciliation-cell-update',

@@ -200,6 +200,33 @@ the safe ceiling of 262,144 unique diff tokens return `DIFF_TOKEN_LIMIT` with
 the original OOXML unchanged so callers can split the operation without risking
 silent text loss.
 
+### Replacing a heading with a tracked list
+
+The list route treats a one-paragraph heading expanded into multiple markdown
+items as a structural block replacement. The deleted heading stays in its own
+tracked paragraph, and every inserted item becomes a separate Word list
+paragraph. Accepting the revisions produces only the list items; rejecting them
+restores the original heading exactly.
+
+```js
+const result = await applyRedlineToOxml(
+  headingParagraphOoxml,
+  'A.\tPURPOSE',
+  '* Article A. Purpose and Interagency Alignment\n' +
+    '* Key Focus: Joint Street Outreach & Medical Triage',
+  { generateRedlines: true, author: 'Editor' }
+);
+```
+
+`w:numId w:val="0"` means numbering is explicitly suppressed; it is not a list
+definition and is never reused for generated bullets. New list items receive a
+positive numbering ID. Font family, size, language, and related script
+properties are inherited from the source paragraph, while heading emphasis
+(such as bold or underline) is not copied unless the replacement markdown asks
+for it. For a complete `word/document.xml`, prefer
+`applyOperationToDocumentXml(...)` so replacement nodes and numbering artifacts
+are imported at the correct scope.
+
 ### Pipeline (lower-level access)
 
 | Function | Purpose |
@@ -329,6 +356,9 @@ Different APIs return different OOXML shapes. Use this as a packaging safety che
 - Do use `applyOperationsToDocumentXml(...)` rather than an unsorted loop for batches containing comments and replacements that target the same original paragraph.
 - Redline application strips proofing markers (`w:proofErr`) from the matched target paragraph before diffing, while preserving complex-field scaffolding (`w:fldChar`, `w:instrText`) and its cached visible result as inert structure. Adjacent edits do not revise or move an unchanged field result.
 - Hyperlinks, bookmarks, comment range markers, tabs/breaks, and footnote/endnote references are treated as structural OOXML that should survive adjacent redline edits instead of being orphaned or wrapped in deletions.
+- Treat `w:numId w:val="0"` as numbering suppression, never as a reusable list
+  ID. Generated bullet and numbered paragraphs must reference a positive ID
+  whose definition is merged into `word/numbering.xml`.
 - Do use `extractReplacementNodesFromOoxml(...)` when you are consuming `result.oxml` from paragraph/range/table APIs.
 - Do merge numbering/comments artifacts with `ensureNumberingArtifactsInZip(...)` and `ensureCommentsArtifactsInZip(...)` when those parts are present. Supply `mergeNumberingXmlBySchemaOrder` when numbering already exists.
 - Don't write payloads that start with `<pkg:package` directly into `word/document.xml`.

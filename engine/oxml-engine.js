@@ -396,6 +396,7 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
                 originalText: ingested.acceptedText,
                 generateRedlines,
                 author,
+                font: options.font || null,
                 revisionIdAllocator,
                 numberingService: new NumberingService()
             });

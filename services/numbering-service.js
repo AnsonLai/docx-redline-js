@@ -6,6 +6,11 @@
 
 import { NumberFormat, NumberSuffix } from '../core/types.js';
 
+function isUsableNumId(numId) {
+    const normalized = String(numId ?? '');
+    return /^\d+$/.test(normalized) && Number.parseInt(normalized, 10) > 0;
+}
+
 export class NumberingService {
     constructor() {
         this.contextMap = new Map(); // Cache for numIds found in the document
@@ -20,7 +25,9 @@ export class NumberingService {
      * @param {string} numId - Existing numId from Word
      */
     registerExistingNumId(signature, numId) {
-        this.contextMap.set(signature, numId);
+        if (isUsableNumId(numId)) {
+            this.contextMap.set(signature, String(numId));
+        }
     }
 
     /**
@@ -34,7 +41,7 @@ export class NumberingService {
         const requestedType = formatConfig.type || NumberFormat.BULLET;
 
         // Priority 1: Use existing context if it matches the requested type
-        if (existingContext && existingContext.numId) {
+        if (existingContext && isUsableNumId(existingContext.numId)) {
             if (existingContext.type === requestedType || existingContext.type === 'unknown') {
                 return existingContext.numId;
             }
@@ -42,7 +49,9 @@ export class NumberingService {
 
         // Priority 2: Use cached numId for this format
         if (this.contextMap.has(requestedType)) {
-            return this.contextMap.get(requestedType);
+            const cachedNumId = this.contextMap.get(requestedType);
+            if (isUsableNumId(cachedNumId)) return cachedNumId;
+            this.contextMap.delete(requestedType);
         }
 
         // Priority 3: Special Handling for Outline (recursive 1.1.1)

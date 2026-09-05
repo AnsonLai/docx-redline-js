@@ -99,7 +99,7 @@ function resolveInsertionLevel(item, anchorLevel, baselineLevel) {
 
 function shouldPromoteBulletInsertionsToChildDepth(parsedItems, normalizedTargetText, anchorLevel) {
     if (!Array.isArray(parsedItems) || parsedItems.length < 2) return false;
-    if (!Number.isInteger(anchorLevel) || anchorLevel < 1) return false;
+    if (!Number.isInteger(anchorLevel) || anchorLevel < 0) return false;
 
     const firstItem = parsedItems[0];
     const trailingListItems = parsedItems.slice(1).filter(item => item.kind === 'list');
@@ -186,7 +186,7 @@ export function getParagraphListInfo(paragraph) {
     if (!numIdEl) return null;
 
     const numId = readValAttribute(numIdEl);
-    if (!numId) return null;
+    if (!numId || numId === '0') return null;
 
     const ilvlEl = getFirstDescendantByLocalName(numPr, 'ilvl');
     const ilvlRaw = readValAttribute(ilvlEl);

@@ -98,6 +98,17 @@ default only on the newly added Node facade and CLI.
 - Single-source-paragraph list expansion uses the focused list generator
   directly. Multi-paragraph marked-list edits deliberately retain the legacy
   run-aware reconciliation pipeline for structural parity.
+- Fixed paragraph-to-list expansion when a manually numbered heading carries
+  `w:numId w:val="0"`. Numbering suppression is no longer reused as a generated
+  list ID, so inserted bullet and numbered items receive valid positive IDs.
+- Tracked heading-to-list replacements now keep the deleted source heading in
+  its own paragraph and track the paragraph marks of every inserted list item.
+  This prevents deleted heading text from joining the first item and preserves
+  exact Accept/Reject structure without adding a full-document sentinel
+  paragraph.
+- Inserted list items now inherit source font family, size, language, and
+  related script typography without inheriting heading-only bold, underline,
+  italic, or strike formatting unless requested by the replacement markdown.
 - Canonical-only table-cell targeting now consumes the shared paragraph-text
   extractor, while offset- and sentinel-producing walkers remain specialized.
   Their accepted visible projections now agree on soft hyphens as well as tabs,
@@ -131,6 +142,14 @@ default only on the newly added Node facade and CLI.
   including when the same facade instance has already committed an edit.
 
 ### Testing and development
+
+- Added focused and semantic visual-failure regressions for suppressed
+  numbering, paragraph separation, paragraph-mark revisions, selective
+  typography inheritance, and exact accepted/rejected paragraph sequences,
+  plus seeded fuzz variants across list length, marker, font, and size.
+  Added the independently specified
+  `legal-suppressed-heading-to-bullet-list` Microsoft Word differential fixture;
+  the synthetic catalogue now contains 48 cases and 48 task types.
 
 - The JavaScript test runner now uses bounded asynchronous subprocess workers,
   capped at four by default, while retaining one fresh Node process per file,

@@ -38,6 +38,22 @@ if (corpusReady && suppliedCorpusFixturesDir) {
     console.warn('Run npm run test:corpus:word once to fetch and validate the pinned corpus.');
 }
 
+const lane1FixturesArgIndex = process.argv.indexOf('--lane1-fixtures-dir');
+if (lane1FixturesArgIndex >= 0 && !process.argv[lane1FixturesArgIndex + 1]) {
+    throw new Error('--lane1-fixtures-dir requires a path');
+}
+const suppliedLane1FixturesDir = lane1FixturesArgIndex >= 0;
+const lane1FixturesDir = suppliedLane1FixturesDir
+    ? resolve(repoRoot, process.argv[lane1FixturesArgIndex + 1])
+    : join(repoRoot, 'tmp', 'lane1-docx');
+
+if (!existsSync(join(lane1FixturesDir, 'manifest.json'))) {
+    run('scripts/export-lane1-fixtures.mjs', ['--output-dir', lane1FixturesDir]);
+}
+
 const args = ['scripts/generate-test-dashboard.mjs', '--fixtures-dir', syntheticDir];
 if (corpusReady) args.push('--corpus-fixtures-dir', corpusFixturesDir);
+if (existsSync(join(lane1FixturesDir, 'manifest.json'))) {
+    args.push('--lane1-fixtures-dir', lane1FixturesDir);
+}
 run(args[0], args.slice(1));

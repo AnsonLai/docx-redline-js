@@ -108,6 +108,9 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 - `pipeline/list-markers.js`
   - Dependency-light canonical list-marker grammar, classification, numbering
     vocabulary, and parsed list-item representation.
+- `pipeline/list-generation.js`
+  - Structural paragraph-to-list generation, paragraph-mark revisions, and
+    selective inheritance of source typography for inserted list runs.
 - `pipeline/*`
   - Ingestion, markdown preprocessing, diffing, patching, and serialization stages. Ingestion treats deleted and moved-from content as non-visible text and inserted/moved-to content as visible text.
 - `services/comment-engine.js`
@@ -225,6 +228,29 @@ still be re-exported from `index.js`.
 - Do not remove operation-session savepoints merely to improve throughput.
   Any replacement must prove that a thrown error or false no-op cannot leak a
   partial DOM mutation or revision-ID allocation into later operations.
+
+### Structural paragraph-to-list replacement
+
+- In WordprocessingML, `w:numId w:val="0"` suppresses numbering. It represents
+  no reusable list context and must never be returned by numbering allocation
+  or assigned to a generated list item. Generated lists use a positive `numId`
+  bound to a compatible `w:abstractNum` definition.
+- Expanding one non-list paragraph into multiple list paragraphs is a block
+  replacement, not an inline replacement. The original content remains in its
+  own paragraph with a deleted paragraph mark; every replacement item occupies
+  its own paragraph with an inserted paragraph mark and inserted text. This is
+  required so Word can accept the edit as the new paragraphs or reject it as
+  the exact original paragraph without joining the old heading to item one.
+- Inserted list runs selectively inherit source typography (`w:rFonts`, size,
+  language, and related script properties). Semantic emphasis such as bold,
+  underline, italic, or strike is emitted only when requested by the replacement
+  markup; heading emphasis must not leak into ordinary list body text.
+- Low-level list output can carry a package-fragment sentinel needed by its
+  standalone payload shape. Full-document mutation removes that sentinel while
+  importing replacement nodes, so it cannot become an empty document paragraph.
+- Tests for this route must verify positive numbering IDs, separate physical
+  paragraphs, formatting inheritance/non-inheritance, valid revision markup,
+  and exact accepted and rejected paragraph sequences.
 
 ### Package artifacts and transactions
 

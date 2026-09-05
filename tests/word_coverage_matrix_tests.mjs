@@ -12,8 +12,8 @@ import {
 import { validateCoverageMetadata } from '../scripts/lib/word-coverage-metadata.mjs';
 
 const { cases, priorities } = loadCoverageCatalogue();
-assert.equal(cases.length, 107);
-assert.equal(cases.filter(item => item.lane === 'synthetic').length, 47);
+assert.equal(cases.length, 108);
+assert.equal(cases.filter(item => item.lane === 'synthetic').length, 48);
 assert.equal(cases.filter(item => item.lane === 'superdoc').length, 60);
 
 const matrix = validateCoveragePriorities(cases, priorities);
@@ -74,8 +74,8 @@ assert.equal(secondReport, firstReport, 'coverage report must be deterministic')
 const report = JSON.parse(firstReport);
 assert.equal(report.totals.cases, cases.length);
 assert.equal(report.totals.manualMissing, cases.length);
-assert.equal(report.totals.aiPreflight, 22);
-assert.equal(report.totals.syntheticWord, 47);
+assert.equal(report.totals.aiPreflight, 23);
+assert.equal(report.totals.syntheticWord, 48);
 assert.equal(report.totals.realDocumentWord, 60);
 
 execFileSync(process.execPath, ['scripts/prepare-word-review.mjs', '--cycle=2'], {
@@ -84,7 +84,7 @@ execFileSync(process.execPath, ['scripts/prepare-word-review.mjs', '--cycle=2'],
 });
 const review = JSON.parse(readFileSync(new URL('../tmp/word-manual-review/review-manifest-cycle-2.json', import.meta.url)));
 assert.equal(review.humanSignOff.status, 'pending');
-assert.ok(review.cases.length >= Math.ceil(47 * 0.2) + 2);
+assert.ok(review.cases.length >= Math.ceil(48 * 0.2) + 2);
 assert.ok(review.cases.every(item => Object.values(item.views).every(status => status === 'pending')));
 assert.ok(review.cases.some(item => item.lane === 'superdoc' && item.category === 'legal'));
 assert.ok(review.cases.some(item => item.lane === 'superdoc' && item.category === 'administrative'));

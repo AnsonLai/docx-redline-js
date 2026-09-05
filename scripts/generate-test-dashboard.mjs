@@ -17,6 +17,8 @@ function parseArgs(argv) {
     if (fixturesIndex >= 0 && !argv[fixturesIndex + 1]) throw new Error('--fixtures-dir requires a path');
     const corpusIndex = argv.indexOf('--corpus-fixtures-dir');
     if (corpusIndex >= 0 && !argv[corpusIndex + 1]) throw new Error('--corpus-fixtures-dir requires a path');
+    const lane1Index = argv.indexOf('--lane1-fixtures-dir');
+    if (lane1Index >= 0 && !argv[lane1Index + 1]) throw new Error('--lane1-fixtures-dir requires a path');
     return {
         outputPath: outputIndex >= 0
             ? resolve(process.cwd(), argv[outputIndex + 1])
@@ -26,11 +28,14 @@ function parseArgs(argv) {
             : join(process.cwd(), 'tmp', 'dashboard-docx'),
         corpusFixturesDir: corpusIndex >= 0
             ? resolve(process.cwd(), argv[corpusIndex + 1])
-            : null
+            : null,
+        lane1FixturesDir: lane1Index >= 0
+            ? resolve(process.cwd(), argv[lane1Index + 1])
+            : (existsSync(join(process.cwd(), 'tmp', 'lane1-docx', 'manifest.json')) ? join(process.cwd(), 'tmp', 'lane1-docx') : null)
     };
 }
 
-export function buildDashboardData(fixturesDir = null, corpusFixturesDir = null) {
+export function buildDashboardData(fixturesDir = null, corpusFixturesDir = null, lane1FixturesDir = null) {
     const { cases, priorities } = loadCoverageCatalogue();
     const corpusSuitePath = corpusFixturesDir ? join(corpusFixturesDir, 'suite.json') : null;
     const corpusSuite = corpusSuitePath && existsSync(corpusSuitePath)
@@ -40,6 +45,27 @@ export function buildDashboardData(fixturesDir = null, corpusFixturesDir = null)
     const visualEligible = new Set(
         selectVisualReviewCases().map(testCase => `synthetic:${testCase.name}`)
     );
+
+    const resolvedLane1Dir = lane1FixturesDir || (existsSync(join(process.cwd(), 'tmp', 'lane1-docx', 'manifest.json')) ? join(process.cwd(), 'tmp', 'lane1-docx') : null);
+    let lane1Cases = [];
+    if (resolvedLane1Dir && existsSync(join(resolvedLane1Dir, 'manifest.json'))) {
+        const lane1Manifest = JSON.parse(readFileSync(join(resolvedLane1Dir, 'manifest.json'), 'utf8'));
+        lane1Cases = (lane1Manifest.cases || []).map(item => {
+            const readBase64 = suffix => {
+                const path = join(resolvedLane1Dir, `${item.name}${suffix}.docx`);
+                return existsSync(path) ? readFileSync(path).toString('base64') : null;
+            };
+            return {
+                ...item,
+                docxVariants: {
+                    source: readBase64('.source'),
+                    tracked: readBase64(''),
+                    accepted: readBase64('.accepted'),
+                    rejected: readBase64('.rejected')
+                }
+            };
+        });
+    }
     return {
         generatedAt: new Date().toISOString(),
         tasks: COVERAGE_TASKS,
@@ -96,7 +122,8 @@ export function buildDashboardData(fixturesDir = null, corpusFixturesDir = null)
                     formatting: (documentXml.match(/<w:(?:rPrChange|pPrChange)\b/g) || []).length
                 }
             };
-        })
+        }),
+        lane1Cases
     };
 }
 
@@ -227,6 +254,15 @@ export function renderDashboardHtml(data, libraries = {}) {
 @media(prefers-color-scheme:dark){:root{--bg:#10141d;--surface:#181e29;--surface2:#222a37;--text:#edf2fb;--muted:#a8b3c5;--line:#323c4d;--blue:#78a7ff;--blue2:#223d68;--green:#58d2a0;--green2:#183f33;--amber:#ffc66d;--amber2:#533d1e;--red:#ff929a;--red2:#55282d;--purple:#b9a1ff;--purple2:#382f59;--shadow:none}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}button,select,input{font:inherit;color:inherit}.shell{max-width:1480px;margin:auto;padding:28px;transition:max-width .18s ease}.top{display:flex;justify-content:space-between;gap:24px;align-items:end;margin-bottom:22px}.eyebrow{text-transform:uppercase;letter-spacing:.12em;color:var(--blue);font-weight:700;font-size:11px}h1{margin:4px 0 2px;font-size:clamp(25px,4vw,40px);line-height:1.12}h2{font-size:18px;margin:0 0 14px}.stamp{color:var(--muted);text-align:right}.controls{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 18px}.controls label{display:flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 11px}.controls select,.controls input{border:0;background:transparent;outline:none}.stats{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:12px;margin-bottom:18px}.stat,.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}.stat{padding:16px}.stat strong{display:block;font-size:25px;line-height:1.1}.stat span{color:var(--muted);font-size:12px}.layout{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(300px,.7fr);gap:18px}.sidebar-hidden .shell{max-width:none}.sidebar-hidden .layout{grid-template-columns:minmax(0,1fr)}.sidebar-hidden #dashboard-sidebar{display:none}.panel{padding:18px;margin-bottom:18px}.panel-head{display:flex;align-items:start;justify-content:space-between;gap:12px}.sub{color:var(--muted);font-size:12px;margin-top:-8px;margin-bottom:14px}.matrix-wrap{overflow:auto}.matrix{display:grid;min-width:1040px;gap:4px;align-items:stretch}.matrix .label{font-size:11px;color:var(--muted);padding:8px 5px;display:flex;align-items:end}.matrix .row-label{justify-content:flex-end;text-align:right;align-items:center}.cell{border:0;border-radius:7px;min-height:42px;padding:4px;cursor:pointer;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-weight:700}.cell:hover,.cell:focus{outline:2px solid var(--blue);outline-offset:1px}.cell.tested{background:var(--green2);color:var(--green)}.cell.planned{background:var(--amber2);color:var(--amber)}.cell.missing{background:var(--red2);color:var(--red)}.cell.empty{color:var(--muted);font-weight:400}.cell.selected{box-shadow:inset 0 0 0 3px currentColor}.legend{display:flex;flex-wrap:wrap;gap:15px;margin-top:12px;color:var(--muted);font-size:12px}.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px}.bars{display:grid;gap:9px}.bar-row{display:grid;grid-template-columns:130px minmax(0,1fr) 34px;gap:8px;align-items:center}.track{height:12px;background:var(--surface2);border-radius:99px;overflow:hidden;display:flex}.seg-syn{background:var(--blue)}.seg-real{background:var(--purple)}.bar-value{text-align:right;font-variant-numeric:tabular-nums}.detail{min-height:180px}.detail h3{font-size:16px;margin:0 0 8px}.detail ul{margin:8px 0 0;padding-left:18px;max-height:310px;overflow:auto}.detail code{font-size:11px;overflow-wrap:anywhere}.badge{display:inline-block;border-radius:99px;padding:3px 8px;margin:3px 4px 3px 0;background:var(--surface2);font-size:11px}.badge.syn{background:var(--blue2);color:var(--blue)}.badge.real{background:var(--purple2);color:var(--purple)}.gap{padding:11px 0;border-top:1px solid var(--line)}.gap:first-of-type{border-top:0}.gap strong{display:block}.gap p{margin:4px 0;color:var(--muted);font-size:12px}.oracle{display:grid;grid-template-columns:1fr 44px;gap:8px;align-items:center;margin:9px 0}.oracle .track{height:8px}.search-results{margin-top:8px}.case-row{display:grid;grid-template-columns:minmax(220px,1.4fr) 100px 130px;gap:12px;padding:9px 0;border-top:1px solid var(--line);align-items:center}.case-row:first-child{border-top:0}.case-row code{overflow-wrap:anywhere;font-size:11px}.empty-state{color:var(--muted);padding:18px 0}.docx-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}.docx-toolbar select{min-width:300px;max-width:100%;border:1px solid var(--line);background:var(--surface2);border-radius:8px;padding:7px 9px}.docx-status{color:var(--muted);font-size:12px}.docx-compare{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.docx-pane{min-width:0}.docx-pane h3{font-size:13px;margin:0 0 7px}.docx-view{background:var(--surface2);border:1px solid var(--line);border-radius:10px;min-height:330px;max-height:620px;overflow:auto}.docx-view .docx-wrapper{background:var(--surface2)!important;padding:12px!important}.docx-view .docx-wrapper>section.docx{background:#fff!important;color:#111!important;width:100%!important;min-height:380px!important;padding:44px!important;margin:0!important;box-shadow:none!important}.docx-view ins,.docx-view ins *{background:#dcfce7!important;color:#15803d!important;text-decoration:underline!important;text-decoration-color:#15803d!important;text-decoration-thickness:2px!important}.docx-view del,.docx-view del *{background:#fee2e2!important;color:#b91c1c!important;text-decoration:line-through!important;text-decoration-color:#b91c1c!important;text-decoration-thickness:2px!important}.docx-view ins:has(p,table,div),.docx-view del:has(p,table,div){display:block!important}.docx-view tr.docx-ins-row td,.docx-view tr.docx-ins-row td *{background:#dcfce7!important;color:#15803d!important}.docx-view tr.docx-del-row td,.docx-view tr.docx-del-row td *{background:#fee2e2!important;color:#b91c1c!important;text-decoration:line-through!important}.docx-view .docx-format-change{background:#fef08a!important;outline:1px dashed #ca8a04!important}.diff-del{background:#fee2e2;color:#b91c1c;text-decoration:line-through;padding:1px 3px;border-radius:3px;font-weight:600}.diff-ins{background:#dcfce7;color:#15803d;text-decoration:underline;padding:1px 3px;border-radius:3px;font-weight:600}.screen-reader{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}@media(max-width:980px){.stats{grid-template-columns:repeat(3,1fr)}.layout{grid-template-columns:1fr}.stamp{text-align:left}.top{align-items:start;flex-direction:column}}@media(max-width:760px){.docx-compare{grid-template-columns:1fr}}@media(max-width:620px){.shell{padding:16px}.stats{grid-template-columns:repeat(2,1fr)}.bar-row{grid-template-columns:100px minmax(0,1fr) 30px}.case-row{grid-template-columns:1fr}.controls label{width:100%;justify-content:space-between}.docx-toolbar select{min-width:0;width:100%}.docx-view .docx-wrapper>section.docx{padding:24px!important}}
 .action{border:1px solid var(--line);background:var(--surface2);border-radius:8px;padding:7px 10px;cursor:pointer}.action:hover,.action:focus{border-color:var(--blue)}.action.primary{background:var(--blue);border-color:var(--blue);color:#fff}.preset-row{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 14px}.docx-meta{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}.pane-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:7px}.pane-head h3{margin:0}.pane-controls{display:flex;gap:7px}.pane-controls select{border:1px solid var(--line);background:var(--surface2);border-radius:7px;padding:5px}.expectations{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}.expectation{background:var(--surface2);border-radius:9px;padding:11px;white-space:pre-wrap;overflow-wrap:anywhere}.expectation strong{display:block;margin-bottom:5px}.sync-control{display:inline-flex;align-items:center;gap:5px}.case-row{grid-template-columns:minmax(220px,1.4fr) 100px 120px auto}@media(max-width:760px){.expectations{grid-template-columns:1fr}}@media(max-width:620px){.case-row{grid-template-columns:1fr}.pane-head{align-items:flex-start;flex-direction:column}.pane-controls{width:100%}.pane-controls select{flex:1}}
+.lane1-card{background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:12px}
+.lane1-comments-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px;margin-top:10px}
+.lane1-comment-box{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:8px;padding:10px 12px;font-size:13px}
+.lane1-comment-anchor{color:var(--amber);font-weight:600;font-family:ui-monospace,monospace;font-size:12px}
+.lane1-comment-author{color:var(--muted);font-size:11px;margin-top:4px}
+.lane1-ops-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px}
+.lane1-ops-table th,.lane1-ops-table td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+.lane1-ops-table th{background:var(--surface2)}
+.badge.lane1{background:var(--purple2);color:var(--purple);font-weight:600}
 </style>
 </head>
 <body>
@@ -236,6 +272,8 @@ export function renderDashboardHtml(data, libraries = {}) {
     <label>Lane <select id="lane"><option value="all">All cases</option><option value="synthetic">Synthetic Word</option><option value="superdoc">Real documents</option></select></label>
     <label>Category <select id="category"><option value="all">All categories</option><option value="legal">Legal</option><option value="administrative">Administrative</option></select></label>
     <label>Find case <input id="search" type="search" placeholder="Name or structure"></label>
+    <a href="#docx-comparison" class="action" style="text-decoration:none;display:inline-flex;align-items:center;">Word COM Workbench</a>
+    <a href="#lane1-workbench" class="action primary" style="text-decoration:none;display:inline-flex;align-items:center;">Lane 1 Visual Showcase</a>
     <button class="action" id="sidebar-toggle" type="button" aria-controls="dashboard-sidebar" aria-expanded="true">Hide sidebar</button>
   </div>
   <section class="stats" id="stats" aria-label="Coverage summary"></section>
@@ -243,6 +281,78 @@ export function renderDashboardHtml(data, libraries = {}) {
     <div>
       <section class="panel"><div class="panel-head"><div><h2>Task × structure matrix</h2><div class="sub">Select a cell to inspect its cases. Planned cells are high-priority gaps with recorded dependencies.</div></div></div><div class="matrix-wrap"><div class="matrix" id="matrix"></div></div><div class="legend"><span><i style="background:var(--green2)"></i>Tested</span><span><i style="background:var(--amber2)"></i>Planned high priority</span><span><i style="background:var(--red2)"></i>Unplanned high priority</span><span><i style="background:var(--surface2)"></i>Not prioritized</span></div></section>
       <section class="panel" id="docx-comparison"><h2>DOCX comparison workbench</h2><div class="sub">Compare source, tracked, accepted, and rejected states from synthetic fixtures and reviewed real legal/administrative documents. Tracked markup uses docxjs experimental revision rendering.</div><div class="docx-toolbar"><label for="docx-case">Document</label><select id="docx-case"></select><label class="sync-control"><input id="sync-scroll" type="checkbox" checked> Sync scroll</label><span class="docx-status" id="docx-status"></span></div><div class="preset-row"><button class="action primary" type="button" data-preset="source,tracked">Source ↔ tracked</button><button class="action" type="button" data-preset="source,accepted">Source ↔ accepted</button><button class="action" type="button" data-preset="accepted,rejected">Accepted ↔ rejected</button></div><div class="docx-meta" id="docx-meta"></div><div class="docx-compare"><div class="docx-pane"><div class="pane-head"><h3>Left document</h3><div class="pane-controls"><select id="left-view" aria-label="Left document state"></select><button class="action" id="left-download" type="button">Download</button></div></div><div class="docx-view" id="docx-left"></div></div><div class="docx-pane"><div class="pane-head"><h3>Right document</h3><div class="pane-controls"><select id="right-view" aria-label="Right document state"></select><button class="action" id="right-download" type="button">Download</button></div></div><div class="docx-view" id="docx-right"></div></div></div><div class="expectations"><div class="expectation"><strong>Expected rejected/source text</strong><span id="expected-before"></span></div><div class="expectation"><strong>Expected accepted text</strong><span id="expected-after"></span></div></div></section>
+      <section class="panel" id="lane1-workbench">
+        <div class="panel-head">
+          <div>
+            <div class="eyebrow">Lane 1 Automated Regression Showcase</div>
+            <h2>Lane 1 Visual Inspection & Compound Batch Workflows</h2>
+            <div class="sub">Side-by-side visual comparison of high-complexity compound operations, real-world legal markup, multi-paragraph revisions, tables, lists, and package-level comment threads from Lane 1 automated test suites.</div>
+          </div>
+          <div id="lane1-count-badge"></div>
+        </div>
+        <div class="docx-toolbar">
+          <label for="lane1-case">Lane 1 Scenario</label>
+          <select id="lane1-case"></select>
+          <label class="sync-control"><input id="lane1-sync-scroll" type="checkbox" checked> Sync scroll</label>
+          <span class="docx-status" id="lane1-status"></span>
+        </div>
+        <div class="preset-row">
+          <button class="action primary" type="button" data-lane1-preset="source,tracked">Source ↔ Tracked (with comments)</button>
+          <button class="action" type="button" data-lane1-preset="source,accepted">Source ↔ Accepted</button>
+          <button class="action" type="button" data-lane1-preset="accepted,rejected">Accepted ↔ Rejected</button>
+        </div>
+        <div class="docx-meta" id="lane1-meta"></div>
+        <div class="docx-compare">
+          <div class="docx-pane">
+            <div class="pane-head">
+              <h3>Left document</h3>
+              <div class="pane-controls">
+                <select id="lane1-left-view" aria-label="Left document state"></select>
+                <button class="action" id="lane1-left-download" type="button">Download</button>
+              </div>
+            </div>
+            <div class="docx-view" id="lane1-docx-left"></div>
+          </div>
+          <div class="docx-pane">
+            <div class="pane-head">
+              <h3>Right document</h3>
+              <div class="pane-controls">
+                <select id="lane1-right-view" aria-label="Right document state"></select>
+                <button class="action" id="lane1-right-download" type="button">Download</button>
+              </div>
+            </div>
+            <div class="docx-view" id="lane1-docx-right"></div>
+          </div>
+        </div>
+        <div style="margin-top:18px;display:grid;gap:12px;">
+          <details class="lane1-card" open id="lane1-comments-details">
+            <summary style="cursor:pointer;font-weight:700;font-size:14px;">
+              Counsel Comments & Review Notes (<span id="lane1-comments-count">0</span>)
+            </summary>
+            <div class="lane1-comments-grid" id="lane1-comments-list"></div>
+          </details>
+          <details class="lane1-card" id="lane1-ops-details">
+            <summary style="cursor:pointer;font-weight:700;font-size:14px;">
+              Operations Audit Ledger (<span id="lane1-ops-count">0</span> operations applied)
+            </summary>
+            <div style="overflow-x:auto;">
+              <table class="lane1-ops-table">
+                <thead>
+                  <tr>
+                    <th style="width:40px;">#</th>
+                    <th style="width:85px;">Type</th>
+                    <th style="width:165px;">Author</th>
+                    <th>Clause / Target</th>
+                    <th>Change / Detail</th>
+                    <th style="width:80px;">Status</th>
+                  </tr>
+                </thead>
+                <tbody id="lane1-ops-body"></tbody>
+              </table>
+            </div>
+          </details>
+        </div>
+      </section>
       <section class="panel"><h2>Coverage by structure</h2><div class="sub">Unique case count, split between synthetic packages and reviewed real documents.</div><div class="bars" id="structure-bars"></div></section>
       <section class="panel"><h2>Matching cases</h2><div class="sub" id="case-caption"></div><div class="search-results" id="case-list"></div></section>
     </div>
@@ -331,8 +441,94 @@ function downloadView(side){const item=activeDocx(),state=$(side+'-view').value,
 function initDocx(){const available=DATA.cases.filter(c=>c.docxVariants?.tracked),options=lane=>available.filter(c=>c.lane===lane).map(c=>'<option value="'+c.identity+'">'+escapeHtml(c.displayName||c.identity)+'</option>').join('');$('docx-case').innerHTML='<optgroup label="Reviewed real documents">'+options('superdoc')+'</optgroup><optgroup label="Synthetic fixtures">'+options('synthetic')+'</optgroup>';$('left-view').innerHTML=viewOptions('source');$('right-view').innerHTML=viewOptions('tracked');const preferred=available.find(c=>c.lane==='superdoc')||available.find(c=>c.identity==='synthetic:administrative-tab-aligned-status')||available[0];if(preferred)$('docx-case').value=preferred.identity;$('docx-case').addEventListener('change',renderDocxComparison);$('left-view').addEventListener('change',renderDocxComparison);$('right-view').addEventListener('change',renderDocxComparison);document.querySelectorAll('[data-preset]').forEach(button=>button.addEventListener('click',()=>setComparison(...button.dataset.preset.split(','))));$('left-download').addEventListener('click',()=>downloadView('left'));$('right-download').addEventListener('click',()=>downloadView('right'));let syncing=false;for(const [from,to] of [[$('docx-left'),$('docx-right')],[$('docx-right'),$('docx-left')]])from.addEventListener('scroll',()=>{if(!$('sync-scroll').checked||syncing)return;syncing=true;const maxFrom=from.scrollHeight-from.clientHeight,maxTo=to.scrollHeight-to.clientHeight;to.scrollTop=maxFrom>0?from.scrollTop/maxFrom*maxTo:0;to.scrollLeft=from.scrollLeft;requestAnimationFrame(()=>{syncing=false})});renderDocxComparison()}
 function render(){const cases=filtered();renderStats(cases);renderMatrix(cases);renderBars(cases);renderOracles(cases);renderCases(cases)}
 function setSidebarHidden(hidden){document.body.classList.toggle('sidebar-hidden',hidden);const toggle=$('sidebar-toggle');toggle.textContent=hidden?'Show sidebar':'Hide sidebar';toggle.setAttribute('aria-expanded',String(!hidden));try{localStorage.setItem('docx-dashboard-sidebar-hidden',hidden?'1':'0')}catch{}}
+const LANE1_CASES=DATA.lane1Cases||[];
+function activeLane1Docx(){return LANE1_CASES.find(c=>c.identity===$('lane1-case').value)||LANE1_CASES[0]}
+function renderLane1Meta(item){
+    if(!item)return;const r=item.revisions||{},b=item.breakdown||{};
+    let meta='<span class="badge lane1">Lane 1 Automated Test</span>';
+    if(item.category)meta+='<span class="badge">'+label(item.category)+'</span>';
+    if(item.sourceWords)meta+='<span class="badge">'+item.sourceWords.toLocaleString()+' words</span>';
+    if(item.sourceParagraphs)meta+='<span class="badge">'+item.sourceParagraphs+' paragraphs</span>';
+    if(item.operationsCount)meta+='<span class="badge">'+item.operationsCount+' operations ('+(b.redlines||0)+' redlines, '+(b.comments||0)+' comments, '+(b.formatting||0)+' formatting)</span>';
+    if(r.insertions)meta+='<span class="badge">'+r.insertions+' insertions</span>';
+    if(r.deletions)meta+='<span class="badge">'+r.deletions+' deletions</span>';
+    if(item.authors && item.authors.length > 1){
+        meta+='<span class="badge" style="background:var(--purple2);color:var(--purple);font-weight:600;">Dual-Author Negotiation</span>';
+        meta+='<span class="badge" style="border:1px solid var(--blue);color:var(--blue);">Lead: '+escapeHtml(item.authors[0])+'</span>';
+        meta+='<span class="badge" style="border:1px solid var(--amber);color:var(--amber);">Counterparty: '+escapeHtml(item.authors[1])+'</span>';
+    } else if(item.author){
+        meta+='<span class="badge">Author: '+escapeHtml(item.author)+'</span>';
+    }
+    $('lane1-meta').innerHTML=meta;
+
+    const comments=item.comments||[];
+    $('lane1-comments-count').textContent=comments.length;
+    if(comments.length===0){$('lane1-comments-list').innerHTML='<div class="empty-state">No comments in this scenario.</div>'}
+    else{$('lane1-comments-list').innerHTML=comments.map(c=>{
+        const isCounter = item.authors && c.author === item.authors[1];
+        const borderStyle = isCounter ? 'border-left:3px solid var(--amber);' : 'border-left:3px solid var(--blue);';
+        const tag = isCounter ? '<span class="badge" style="background:var(--amber2);color:var(--amber);margin-right:6px;font-size:10px;">Counterparty</span>' : (item.authors?.length > 1 ? '<span class="badge" style="background:var(--blue2);color:var(--blue);margin-right:6px;font-size:10px;">Lead Agency</span>' : '');
+        return '<div class="lane1-comment-box" style="'+borderStyle+'"><div class="lane1-comment-anchor">'+tag+'Anchor: &ldquo;'+escapeHtml(c.anchor)+'&rdquo;</div><div style="margin:5px 0;font-weight:500;">'+escapeHtml(c.content)+'</div><div class="lane1-comment-author">By '+escapeHtml(c.author)+' &bull; Clause: '+escapeHtml(c.target).slice(0,75)+(c.target.length>75?'...':'')+'</div></div>';
+    }).join('')}
+
+    const ops=item.operations||[];
+    $('lane1-ops-count').textContent=ops.length;
+    if(ops.length===0){$('lane1-ops-body').innerHTML='<tr><td colspan="6" class="empty-state">No operations logged.</td></tr>'}
+    else{$('lane1-ops-body').innerHTML=ops.map(op=>{
+        const isCounter = item.authors && op.author === item.authors[1];
+        const authorBadge = op.author ? '<span class="badge" style="font-size:11px;'+(isCounter?'background:var(--amber2);color:var(--amber);':'background:var(--blue2);color:var(--blue);')+'">'+escapeHtml(op.author)+'</span>' : '';
+        return '<tr><td>'+op.index+'</td><td><span class="badge">'+escapeHtml(op.type)+'</span></td><td>'+authorBadge+'</td><td><code>'+escapeHtml(op.target).slice(0,95)+(op.target.length>95?'...':'')+'</code></td><td>'+escapeHtml(op.change).slice(0,130)+(op.change.length>130?'...':'')+'</td><td><span class="badge" style="background:var(--green2);color:var(--green);">'+escapeHtml(op.status)+'</span></td></tr>';
+    }).join('')}
+}
+async function renderLane1Pane(side,item){
+    const state=$('lane1-'+side+'-view').value,target=$('lane1-docx-'+side),payload=item.docxVariants?.[state];
+    target.innerHTML='';if(!payload){target.innerHTML='<div class="empty-state">This document state is unavailable.</div>';return}
+    const base={experimental:true,renderHeaders:true,renderFooters:true,renderFootnotes:true,renderEndnotes:true,renderComments:true,ignoreWidth:true,ignoreHeight:true,breakPages:false,useBase64URL:true,renderChanges:state==='tracked'};
+    await window.docx.renderAsync(decodeDocx(payload),target,null,base);
+}
+async function renderLane1Comparison(){
+    const item=activeLane1Docx();
+    if(!item?.docxVariants?.tracked){$('lane1-status').textContent='No Lane 1 DOCX is available.';return}
+    if(!window.docx?.renderAsync){$('lane1-status').textContent='docxjs failed to load.';return}
+    $('lane1-status').textContent='Rendering Lane 1 documents…';
+    renderLane1Meta(item);
+    try{await Promise.all([renderLane1Pane('left',item),renderLane1Pane('right',item)]);$('lane1-status').textContent='Ready · docx-preview (Lane 1 legal markup)'}
+    catch(error){$('lane1-status').textContent='Render error: '+error.message}
+}
+function setLane1Comparison(left,right){$('lane1-left-view').value=left;$('lane1-right-view').value=right;renderLane1Comparison()}
+function downloadLane1View(side){
+    const item=activeLane1Docx(),state=$('lane1-'+side+'-view').value,payload=item?.docxVariants?.[state];
+    if(!payload)return;const blob=new Blob([decodeDocx(payload)],{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url;a.download=item.name+'.'+state+'.docx';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function initLane1Docx(){
+    if(!LANE1_CASES.length){if($('lane1-workbench'))$('lane1-workbench').style.display='none';return}
+    $('lane1-count-badge').innerHTML='<span class="badge syn">'+LANE1_CASES.length+' compound scenario'+(LANE1_CASES.length===1?'':'s')+'</span>';
+    $('lane1-case').innerHTML=LANE1_CASES.map(c=>'<option value="'+c.identity+'">'+escapeHtml(c.title||c.name)+'</option>').join('');
+    $('lane1-left-view').innerHTML=viewOptions('source');
+    $('lane1-right-view').innerHTML=viewOptions('tracked');
+    $('lane1-case').value=LANE1_CASES[0].identity;
+
+    $('lane1-case').addEventListener('change',renderLane1Comparison);
+    $('lane1-left-view').addEventListener('change',renderLane1Comparison);
+    $('lane1-right-view').addEventListener('change',renderLane1Comparison);
+    document.querySelectorAll('[data-lane1-preset]').forEach(b=>b.addEventListener('click',()=>setLane1Comparison(...b.dataset.lane1Preset.split(','))));
+    $('lane1-left-download').addEventListener('click',()=>downloadLane1View('left'));
+    $('lane1-right-download').addEventListener('click',()=>downloadLane1View('right'));
+
+    let syncing=false;
+    for(const [from,to] of [[$('lane1-docx-left'),$('lane1-docx-right')],[$('lane1-docx-right'),$('lane1-docx-left')]]){
+        from.addEventListener('scroll',()=>{
+            if(!$('lane1-sync-scroll').checked||syncing)return;
+            syncing=true;const maxFrom=from.scrollHeight-from.clientHeight,maxTo=to.scrollHeight-to.clientHeight;
+            to.scrollTop=maxFrom>0?from.scrollTop/maxFrom*maxTo:0;to.scrollLeft=from.scrollLeft;
+            requestAnimationFrame(()=>{syncing=false});
+        });
+    }
+    renderLane1Comparison();
+}
 function initSidebar(){let hidden=false;try{hidden=localStorage.getItem('docx-dashboard-sidebar-hidden')==='1'}catch{}setSidebarHidden(hidden);$('sidebar-toggle').addEventListener('click',()=>setSidebarHidden(!document.body.classList.contains('sidebar-hidden')))}
-$('lane').addEventListener('change',render);$('category').addEventListener('change',render);$('search').addEventListener('input',render);$('stamp').textContent='Generated '+new Date(DATA.generatedAt).toLocaleString();renderGaps();render();initSidebar();initDocx();
+$('lane').addEventListener('change',render);$('category').addEventListener('change',render);$('search').addEventListener('input',render);$('stamp').textContent='Generated '+new Date(DATA.generatedAt).toLocaleString();renderGaps();render();initSidebar();initDocx();initLane1Docx();
 </script>
 </body>
 </html>\n`;
@@ -340,13 +536,13 @@ $('lane').addEventListener('change',render);$('category').addEventListener('chan
 
 const isCli = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isCli) {
-    const { outputPath, fixturesDir, corpusFixturesDir } = parseArgs(process.argv.slice(2));
+    const { outputPath, fixturesDir, corpusFixturesDir, lane1FixturesDir } = parseArgs(process.argv.slice(2));
     const unminifiedDocxPreviewPath = join(process.cwd(), 'node_modules', 'docx-preview', 'dist', 'docx-preview.js');
     const libraries = {
         jszipSource: readFileSync(join(process.cwd(), 'node_modules', 'jszip', 'dist', 'jszip.min.js'), 'utf8'),
         docxPreviewSource: readFileSync(unminifiedDocxPreviewPath, 'utf8')
     };
-    const html = renderDashboardHtml(buildDashboardData(fixturesDir, corpusFixturesDir), libraries);
+    const html = renderDashboardHtml(buildDashboardData(fixturesDir, corpusFixturesDir, lane1FixturesDir), libraries);
     mkdirSync(dirname(outputPath), { recursive: true });
     writeFileSync(outputPath, html, 'utf8');
     console.log(`Wrote test comparison dashboard: ${outputPath}`);

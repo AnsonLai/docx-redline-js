@@ -68,6 +68,24 @@ if (existsSync(corpusSuitePath)) {
                 renderChanges: state === 'tracked'
             });
             assert.ok(document.documentPart?.body, `${testCase.name} ${state} has no document body`);
+        }
+    }
+}
+
+const lane1Dir = join(repoRoot, 'tmp', 'lane1-docx');
+const lane1ManifestPath = join(lane1Dir, 'manifest.json');
+if (existsSync(lane1ManifestPath)) {
+    const manifest = JSON.parse(readFileSync(lane1ManifestPath, 'utf8'));
+    for (const testCase of manifest.cases) {
+        for (const state of ['source', 'tracked', 'accepted', 'rejected']) {
+            const suffix = state === 'tracked' ? '' : `.${state}`;
+            const path = join(lane1Dir, `${testCase.name}${suffix}.docx`);
+            assert.ok(existsSync(path), `Lane 1 ${testCase.name} ${state} package is missing`);
+            const document = await parseAsync(readFileSync(path), {
+                experimental: true,
+                renderChanges: state === 'tracked'
+            });
+            assert.ok(document.documentPart?.body, `Lane 1 ${testCase.name} ${state} has no document body`);
             parsed++;
         }
     }

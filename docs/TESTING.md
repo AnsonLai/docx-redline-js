@@ -181,9 +181,9 @@ package.
 ### Expand weak list and table cells with structural operations
 
 The list/table expansion was driven directly by the task-by-structure matrix;
-it did not add more plain replacement cases. The current catalogue contains 107
-Word cases: 47 synthetic fixtures and 60 reviewed real-document scenarios. The
-`List Change × List` cell now contains 26 cases; the
+it did not add more plain replacement cases. The current catalogue contains 108
+Word cases: 48 synthetic fixtures and 60 reviewed real-document scenarios. The
+`List Change × List` cell now contains 27 cases; the
 `Table Reconciliation × Table` cell contains 11 cases.
 
 The added synthetic cases isolate one structural decision at a time:
@@ -194,6 +194,8 @@ The added synthetic cases isolate one structural decision at a time:
 - insert into the middle of an explicit list range;
 - preserve upper- and lower-Roman numbering;
 - preserve upper-letter, parenthesized lower-letter, dash, and symbol bullets;
+- expand a manually numbered heading whose `w:numId="0"` suppresses numbering
+  into separate, positively numbered list paragraphs;
 - update one table cell;
 - insert a table row;
 - delete a table row; and

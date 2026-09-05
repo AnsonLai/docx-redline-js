@@ -7,11 +7,12 @@ import { fileURLToPath } from 'url';
 import { buildDashboardData, renderDashboardHtml } from '../scripts/generate-test-dashboard.mjs';
 
 const data = buildDashboardData();
-assert.equal(data.cases.length, 107);
-assert.equal(data.cases.filter(item => item.lane === 'synthetic').length, 47);
+assert.equal(data.cases.length, 108);
+assert.equal(data.cases.filter(item => item.lane === 'synthetic').length, 48);
 assert.equal(data.cases.filter(item => item.lane === 'superdoc').length, 60);
-assert.equal(data.cases.filter(item => item.visualEligible).length, 90);
+assert.equal(data.cases.filter(item => item.visualEligible).length, 91);
 assert.equal(data.priorities.emptyCellDispositions.length, 1);
+assert.ok(Array.isArray(data.lane1Cases));
 
 const embeddedFixtureUrl = new URL('../tmp/dashboard-report-test/simple-redline.docx', import.meta.url);
 mkdirSync(dirname(fileURLToPath(embeddedFixtureUrl)), { recursive: true });
@@ -85,6 +86,10 @@ assert.match(html, /docx-dashboard-sidebar-hidden/);
 assert.match(html, /reviewed real legal\/administrative documents/);
 assert.match(html, /Reviewed real documents/);
 assert.match(html, /synthetic:simple-redline/);
+assert.match(html, /Lane 1 Visual Inspection/);
+assert.match(html, /id="lane1-workbench"/);
+assert.match(html, /id="lane1-case"/);
+assert.match(html, /renderLane1Comparison/);
 assert.doesNotMatch(html, /<script[^>]+src=/i);
 assert.doesNotMatch(html, /fetch\s*\(/);
 assert.doesNotMatch(html, /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/);

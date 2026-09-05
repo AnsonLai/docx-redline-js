@@ -18,7 +18,9 @@ function parseXml(xml, partName, required = false) {
 function paragraphListProperties(paragraph) {
     const numPr = first(first(paragraph, 'pPr'), 'numPr');
     if (!numPr) return null;
-    return { numId: attr(first(numPr, 'numId'), 'val'), level: Number.parseInt(attr(first(numPr, 'ilvl'), 'val') || '0', 10) || 0 };
+    const numId = attr(first(numPr, 'numId'), 'val');
+    if (!numId || numId === '0') return null;
+    return { numId, level: Number.parseInt(attr(first(numPr, 'ilvl'), 'val') || '0', 10) || 0 };
 }
 
 function parseNumbering(numberingDoc) {

@@ -8,6 +8,9 @@ import { serializeToOoxml } from './serialization.js';
 import { generateTableOoxml } from '../services/table-reconciliation.js';
 import { parseTable } from './content-analysis.js';
 import { log } from '../adapters/logger.js';
+import { createRevisionMetadata, NS_W, RunKind } from '../core/types.js';
+import { parseOoxmlSafe, serializeXml } from '../adapters/xml-adapter.js';
+import { createWordElement } from '../core/word-xml.js';
 
 /**
  * Executes list generation when paragraph content expands into list/table blocks.
@@ -40,6 +43,8 @@ export async function executeListGeneration(options) {
     const lineMetadata = buildLineMetadata(normalizedListText);
     const rawLines = lineMetadata.map(line => line.raw);
     const results = [];
+    const sourcePPr = getSourceParagraphProperties(originalRunModel);
+    const inheritedTypographyRPrXml = extractInheritedTypographyRPrXml(originalRunModel, sourcePPr);
 
     let deletionRuns = [];
     if (generateRedlines) {
@@ -59,6 +64,16 @@ export async function executeListGeneration(options) {
         }
     }
 
+    if (generateRedlines && deletionRuns.length > 0) {
+        const deletedPPr = addParagraphMarkRevision(sourcePPr, 'del', author, revisionIdAllocator);
+        const deletedParagraph = serializeToOoxml(deletionRuns, deletedPPr, [], {
+            author,
+            generateRedlines,
+            revisionIdAllocator
+        });
+        results.push(deletedParagraph);
+    }
+
     const indentStep = detectIndentationStep(rawLines);
     log(`[ListGen] Detected indentation step: ${indentStep} spaces/chars`);
 
@@ -71,15 +86,6 @@ export async function executeListGeneration(options) {
         if (tableBlock) {
             const tableData = parseTable(tableBlock.tableText);
             if (tableData.headers.length > 0 || tableData.rows.length > 0) {
-                if (generateRedlines && results.length === 0 && deletionRuns.length > 0) {
-                    results.push(serializeToOoxml(deletionRuns, null, [], {
-                        author,
-                        generateRedlines,
-                        font,
-                        revisionIdAllocator
-                    }));
-                }
-
                 results.push(generateTableOoxml(tableData, {
                     generateRedlines,
                     author,
@@ -93,7 +99,6 @@ export async function executeListGeneration(options) {
         const line = lineMetadata[i];
         const entry = buildListEntry(
             line,
-            i,
             indentStep,
             numberingContext,
             numberingService,
@@ -101,21 +106,19 @@ export async function executeListGeneration(options) {
             author,
             font,
             revisionIdAllocator,
-            deletionRuns
+            inheritedTypographyRPrXml
         );
         results.push(entry.ooxml);
     }
 
     const numberingXml = numberingService.generateNumberingXml();
     const finalOoxml = results.join('');
-    const blankParagraph = '<w:p><w:pPr></w:pPr></w:p>';
-    const oxmlWithSpacing = finalOoxml + blankParagraph;
 
-    log(`[ListGen] ✅ Generated OOXML for ${results.length} list items, total length: ${oxmlWithSpacing.length}`);
-    log(`[ListGen] First 200 chars: ${oxmlWithSpacing.substring(0, 200)}...`);
+    log(`[ListGen] ✅ Generated OOXML for ${results.length} paragraphs, total length: ${finalOoxml.length}`);
+    log(`[ListGen] First 200 chars: ${finalOoxml.substring(0, 200)}...`);
 
     return {
-        ooxml: oxmlWithSpacing,
+        ooxml: finalOoxml,
         isValid: true,
         warnings: ['Paragraph expanded to list fragment'],
         type: 'fragment',
@@ -228,7 +231,6 @@ function collectMarkdownTableBlock(lineMetadata, index) {
 
 function buildListEntry(
     line,
-    lineIndex,
     indentStep,
     numberingContext,
     numberingService,
@@ -236,7 +238,7 @@ function buildListEntry(
     author,
     font,
     revisionIdAllocator,
-    deletionRuns
+    inheritedTypographyRPrXml
 ) {
     let pPrXml = '';
     let segmentText = '';
@@ -263,16 +265,22 @@ function buildListEntry(
         segmentText = line.raw;
     }
 
+    if (generateRedlines) {
+        pPrXml = addParagraphMarkRevision(
+            pPrXml || '<w:pPr/>',
+            'ins',
+            author,
+            revisionIdAllocator
+        );
+    }
+
     const { cleanText, formatHints } = preprocessMarkdown(segmentText);
     const runModel = [];
-
-    if (lineIndex === 0 && deletionRuns.length > 0) {
-        runModel.push(...deletionRuns);
-    }
 
     runModel.push({
         kind: generateRedlines ? 'insertion' : 'run',
         text: cleanText,
+        rPrXml: inheritedTypographyRPrXml,
         author,
         startOffset: 0,
         endOffset: cleanText.length
@@ -286,4 +294,67 @@ function buildListEntry(
             revisionIdAllocator
         })
     };
+}
+
+function getSourceParagraphProperties(originalRunModel) {
+    const paragraphStart = (originalRunModel || []).find(run => run.kind === RunKind.PARAGRAPH_START);
+    return paragraphStart?.pPrElement || paragraphStart?.pPrXml || null;
+}
+
+function extractInheritedTypographyRPrXml(originalRunModel, sourcePPr) {
+    const sources = (originalRunModel || [])
+        .filter(run => (run.kind === RunKind.TEXT || run.kind === 'text') && run.rPrXml)
+        .map(run => run.rPrXml);
+
+    if (sourcePPr) {
+        sources.push(typeof sourcePPr === 'string' ? sourcePPr : serializeXml(sourcePPr));
+    }
+
+    const tagOrder = ['rFonts', 'kern', 'position', 'sz', 'szCs', 'rtl', 'cs', 'lang'];
+    const inherited = [];
+    for (const tagName of tagOrder) {
+        let match = null;
+        for (const source of sources) {
+            match = String(source || '').match(new RegExp(`<w:${tagName}\\b[^>]*(?:\\/>|>[\\s\\S]*?<\\/w:${tagName}>)`));
+            if (match) break;
+        }
+        if (match) inherited.push(match[0]);
+    }
+
+    return inherited.length > 0 ? `<w:rPr>${inherited.join('')}</w:rPr>` : '';
+}
+
+function addParagraphMarkRevision(xml, type, author, revisionIdAllocator) {
+    const metadata = createRevisionMetadata(author, revisionIdAllocator);
+    let pPr;
+    let ownerDoc;
+
+    if (xml?.nodeType === 1) {
+        pPr = xml.cloneNode(true);
+        ownerDoc = pPr.ownerDocument;
+    } else {
+        const pPrXml = typeof xml === 'string' && xml.trim() ? xml : '<w:pPr/>';
+        const parsed = parseOoxmlSafe(`<w:root xmlns:w="${NS_W}">${pPrXml}</w:root>`);
+        if (!parsed.doc) {
+            throw new Error(parsed.error?.message || 'Could not parse paragraph properties for list revision');
+        }
+        ownerDoc = parsed.doc;
+        pPr = Array.from(ownerDoc.documentElement.childNodes || []).find(node => (
+            node.nodeType === 1 && node.localName === 'pPr'
+        ));
+    }
+
+    if (!pPr || !ownerDoc) throw new Error('List paragraph properties are unavailable');
+    let rPr = Array.from(pPr.childNodes || []).find(node => node.nodeType === 1 && node.localName === 'rPr');
+    if (!rPr) {
+        rPr = createWordElement(ownerDoc, 'w:rPr');
+        pPr.appendChild(rPr);
+    }
+
+    const marker = createWordElement(ownerDoc, type === 'del' ? 'w:del' : 'w:ins');
+    marker.setAttribute('w:id', String(metadata.id));
+    marker.setAttribute('w:author', metadata.author);
+    marker.setAttribute('w:date', metadata.date);
+    rPr.appendChild(marker);
+    return serializeXml(pPr);
 }
