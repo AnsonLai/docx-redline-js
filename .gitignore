@@ -9,4 +9,7 @@ tmp/
 docs/plans/*
 !docs/plans/2026-09-01-performance-and-complexity-reduction.md
 !docs/plans/2026-09-03-agent-friendly-document-workflows.md
-!docs/plans/2026-09-04-comment-anchor-and-cli-reliability.md
+!docs/plans/completed/
+docs/plans/completed/*
+!docs/plans/completed/2026-09-04-comment-anchor-and-cli-reliability.md
+*.bat

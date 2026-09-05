@@ -331,6 +331,8 @@ function processRun(runElement, startOffset) {
             text += '\t';
         } else if (nodeName.endsWith(':noBreakHyphen') || nodeName === 'noBreakHyphen') {
             text += '\u2011';
+        } else if (nodeName.endsWith(':softHyphen') || nodeName === 'softHyphen') {
+            text += '\u00ad';
         }
     }
 

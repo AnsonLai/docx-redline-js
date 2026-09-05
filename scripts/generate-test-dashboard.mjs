@@ -102,12 +102,120 @@ export function buildDashboardData(fixturesDir = null, corpusFixturesDir = null)
 
 function escapeJsonForHtml(value) {
     return JSON.stringify(value).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026');
+}export function patchDocxPreview(rawSource) {
+    let s = rawSource;
+    // 1. Hyperlink element parsing: support ins, del, moveFrom, moveTo
+    s = s.replace(
+        /parseHyperlink\(node,\s*parent\)\s*\{[\s\S]*?for\s*\(const\s+c\s+of\s+globalXmlParser\.elements\(node\)\)\s*\{[\s\S]*?switch\s*\(c\.localName\)\s*\{[\s\S]*?case\s*"r":[\s\S]*?break;\s*\}\s*\}\s*return\s+result;\s*\}/,
+        `parseHyperlink(node, parent) {
+            var result = { type: DomType.Hyperlink, parent: parent, children: [] };
+            result.anchor = globalXmlParser.attr(node, "anchor");
+            result.id = globalXmlParser.attr(node, "id");
+            for (const c of globalXmlParser.elements(node)) {
+                switch (c.localName) {
+                    case "r":
+                        result.children.push(this.parseRun(c, result));
+                        break;
+                    case "moveTo":
+                    case "ins":
+                        result.children.push(this.parseChange(DomType.Inserted, c, e => this.parseParagraph(e)));
+                        break;
+                    case "moveFrom":
+                    case "del":
+                        result.children.push(this.parseChange(DomType.Deleted, c, e => this.parseParagraph(e)));
+                        break;
+                }
+            }
+            return result;
+        }`
+    );
+    // 2. SmartTag element parsing: support ins, del, moveFrom, moveTo
+    s = s.replace(
+        /parseSmartTag\(node,\s*parent\)\s*\{[\s\S]*?for\s*\(const\s+c\s+of\s+globalXmlParser\.elements\(node\)\)\s*\{[\s\S]*?case\s*"r":[\s\S]*?case\s*"smartTag":[\s\S]*?break;\s*\}\s*\}\s*return\s+result;\s*\}/,
+        `parseSmartTag(node, parent) {
+            var result = { type: DomType.SmartTag, parent, children: [] };
+            var uri = globalXmlParser.attr(node, "uri");
+            var element = globalXmlParser.attr(node, "element");
+            if (uri) result.uri = uri;
+            if (element) result.element = element;
+            for (const c of globalXmlParser.elements(node)) {
+                switch (c.localName) {
+                    case "r":
+                        result.children.push(this.parseRun(c, result));
+                        break;
+                    case "smartTag":
+                        result.children.push(this.parseSmartTag(c, result));
+                        break;
+                    case "moveTo":
+                    case "ins":
+                        result.children.push(this.parseChange(DomType.Inserted, c, e => this.parseParagraph(e)));
+                        break;
+                    case "moveFrom":
+                    case "del":
+                        result.children.push(this.parseChange(DomType.Deleted, c, e => this.parseParagraph(e)));
+                        break;
+                }
+            }
+            return result;
+        }`
+    );
+    // 3. Paragraph level: support moveFrom and moveTo as del/ins
+    s = s.replace(
+        /case "ins":\s*result\.children\.push\(this\.parseChange\(DomType\.Inserted,\s*el,\s*e\s*=>\s*this\.parseParagraph\(e\)\)\);\s*break;\s*case "del":\s*result\.children\.push\(this\.parseChange\(DomType\.Deleted,\s*el,\s*e\s*=>\s*this\.parseParagraph\(e\)\)\);\s*break;/,
+        `case "moveTo":
+                case "ins":
+                    result.children.push(this.parseChange(DomType.Inserted, el, e => this.parseParagraph(e)));
+                    break;
+                case "moveFrom":
+                case "del":
+                    result.children.push(this.parseChange(DomType.Deleted, el, e => this.parseParagraph(e)));
+                    break;`
+    );
+    // 4. Body element level: support block-level ins and del
+    s = s.replace(
+        /case "tbl":\s*children\.push\(this\.parseTable\(elem\)\);\s*break;\s*case "sdt":\s*children\.push\(\.\.\.this\.parseSdt\(elem,\s*e\s*=>\s*this\.parseBodyElements\(e\)\)\);\s*break;/,
+        `case "tbl":
+                    children.push(this.parseTable(elem));
+                    break;
+                case "sdt":
+                    children.push(...this.parseSdt(elem, e => this.parseBodyElements(e)));
+                    break;
+                case "moveTo":
+                case "ins":
+                    children.push(this.parseChange(DomType.Inserted, elem, e => ({ children: this.parseBodyElements(e) })));
+                    break;
+                case "moveFrom":
+                case "del":
+                    children.push(this.parseChange(DomType.Deleted, elem, e => ({ children: this.parseBodyElements(e) })));
+                    break;`
+    );
+    // 5. Table rows: support trPr ins and del
+    s = s.replace(
+        /case "trPr":\s*case "tblPrEx":\s*this\.parseTableRowProperties\(c,\s*result\);\s*break;/,
+        `case "trPr":
+                case "tblPrEx":
+                    this.parseTableRowProperties(c, result);
+                    if (globalXmlParser.element(c, "ins")) result.className = (result.className ? result.className + " " : "") + "docx-ins-row";
+                    if (globalXmlParser.element(c, "del")) result.className = (result.className ? result.className + " " : "") + "docx-del-row";
+                    break;`
+    );
+    // 6. Formatting revisions (rPrChange)
+    s = s.replace(
+        /case "vertAlign":\s*run\.verticalAlign\s*=\s*values\.valueOfVertAlign\(c,\s*true\);\s*break;/,
+        `case "vertAlign":
+                    run.verticalAlign = values.valueOfVertAlign(c, true);
+                    break;
+                case "rPrChange":
+                    run.className = (run.className ? run.className + " " : "") + "docx-format-change";
+                    break;`
+    );
+    return s;
 }
 
 export function renderDashboardHtml(data, libraries = {}) {
     const encoded = escapeJsonForHtml(data);
     const jszipSource = String(libraries.jszipSource || '').replace(/<\/script/gi, '<\\/script');
-    const docxPreviewSource = String(libraries.docxPreviewSource || '').replace(/<\/script/gi, '<\\/script');
+    const docxPreviewSource = patchDocxPreview(String(libraries.docxPreviewSource || '')).replace(/<\/script/gi, '<\\/script');
     return `<!doctype html>
 <html lang="en">
 <head>
@@ -117,7 +225,7 @@ export function renderDashboardHtml(data, libraries = {}) {
 <style>
 :root{color-scheme:light dark;--bg:#f4f7fb;--surface:#fff;--surface2:#eef3f9;--text:#172033;--muted:#68758a;--line:#d9e1ec;--blue:#2563eb;--blue2:#dbeafe;--green:#138a5b;--green2:#d9f5e9;--amber:#b66a00;--amber2:#fff1cf;--red:#be3b45;--red2:#ffe2e5;--purple:#7656c8;--purple2:#eee8ff;--shadow:0 12px 30px rgba(38,55,80,.09)}
 @media(prefers-color-scheme:dark){:root{--bg:#10141d;--surface:#181e29;--surface2:#222a37;--text:#edf2fb;--muted:#a8b3c5;--line:#323c4d;--blue:#78a7ff;--blue2:#223d68;--green:#58d2a0;--green2:#183f33;--amber:#ffc66d;--amber2:#533d1e;--red:#ff929a;--red2:#55282d;--purple:#b9a1ff;--purple2:#382f59;--shadow:none}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}button,select,input{font:inherit;color:inherit}.shell{max-width:1480px;margin:auto;padding:28px;transition:max-width .18s ease}.top{display:flex;justify-content:space-between;gap:24px;align-items:end;margin-bottom:22px}.eyebrow{text-transform:uppercase;letter-spacing:.12em;color:var(--blue);font-weight:700;font-size:11px}h1{margin:4px 0 2px;font-size:clamp(25px,4vw,40px);line-height:1.12}h2{font-size:18px;margin:0 0 14px}.stamp{color:var(--muted);text-align:right}.controls{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 18px}.controls label{display:flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 11px}.controls select,.controls input{border:0;background:transparent;outline:none}.stats{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:12px;margin-bottom:18px}.stat,.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}.stat{padding:16px}.stat strong{display:block;font-size:25px;line-height:1.1}.stat span{color:var(--muted);font-size:12px}.layout{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(300px,.7fr);gap:18px}.sidebar-hidden .shell{max-width:none}.sidebar-hidden .layout{grid-template-columns:minmax(0,1fr)}.sidebar-hidden #dashboard-sidebar{display:none}.panel{padding:18px;margin-bottom:18px}.panel-head{display:flex;align-items:start;justify-content:space-between;gap:12px}.sub{color:var(--muted);font-size:12px;margin-top:-8px;margin-bottom:14px}.matrix-wrap{overflow:auto}.matrix{display:grid;min-width:1040px;gap:4px;align-items:stretch}.matrix .label{font-size:11px;color:var(--muted);padding:8px 5px;display:flex;align-items:end}.matrix .row-label{justify-content:flex-end;text-align:right;align-items:center}.cell{border:0;border-radius:7px;min-height:42px;padding:4px;cursor:pointer;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-weight:700}.cell:hover,.cell:focus{outline:2px solid var(--blue);outline-offset:1px}.cell.tested{background:var(--green2);color:var(--green)}.cell.planned{background:var(--amber2);color:var(--amber)}.cell.missing{background:var(--red2);color:var(--red)}.cell.empty{color:var(--muted);font-weight:400}.cell.selected{box-shadow:inset 0 0 0 3px currentColor}.legend{display:flex;flex-wrap:wrap;gap:15px;margin-top:12px;color:var(--muted);font-size:12px}.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px}.bars{display:grid;gap:9px}.bar-row{display:grid;grid-template-columns:130px minmax(0,1fr) 34px;gap:8px;align-items:center}.track{height:12px;background:var(--surface2);border-radius:99px;overflow:hidden;display:flex}.seg-syn{background:var(--blue)}.seg-real{background:var(--purple)}.bar-value{text-align:right;font-variant-numeric:tabular-nums}.detail{min-height:180px}.detail h3{font-size:16px;margin:0 0 8px}.detail ul{margin:8px 0 0;padding-left:18px;max-height:310px;overflow:auto}.detail code{font-size:11px;overflow-wrap:anywhere}.badge{display:inline-block;border-radius:99px;padding:3px 8px;margin:3px 4px 3px 0;background:var(--surface2);font-size:11px}.badge.syn{background:var(--blue2);color:var(--blue)}.badge.real{background:var(--purple2);color:var(--purple)}.gap{padding:11px 0;border-top:1px solid var(--line)}.gap:first-of-type{border-top:0}.gap strong{display:block}.gap p{margin:4px 0;color:var(--muted);font-size:12px}.oracle{display:grid;grid-template-columns:1fr 44px;gap:8px;align-items:center;margin:9px 0}.oracle .track{height:8px}.search-results{margin-top:8px}.case-row{display:grid;grid-template-columns:minmax(220px,1.4fr) 100px 130px;gap:12px;padding:9px 0;border-top:1px solid var(--line);align-items:center}.case-row:first-child{border-top:0}.case-row code{overflow-wrap:anywhere;font-size:11px}.empty-state{color:var(--muted);padding:18px 0}.docx-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}.docx-toolbar select{min-width:300px;max-width:100%;border:1px solid var(--line);background:var(--surface2);border-radius:8px;padding:7px 9px}.docx-status{color:var(--muted);font-size:12px}.docx-compare{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.docx-pane{min-width:0}.docx-pane h3{font-size:13px;margin:0 0 7px}.docx-view{background:var(--surface2);border:1px solid var(--line);border-radius:10px;min-height:330px;max-height:620px;overflow:auto}.docx-view .docx-wrapper{background:var(--surface2)!important;padding:12px!important}.docx-view .docx-wrapper>section.docx{background:#fff!important;color:#111!important;width:100%!important;min-height:380px!important;padding:44px!important;margin:0!important;box-shadow:none!important}.docx-view ins{background:#dcfce7;color:#166534;text-decoration:none}.docx-view del{background:#fee2e2;color:#991b1b}.screen-reader{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}@media(max-width:980px){.stats{grid-template-columns:repeat(3,1fr)}.layout{grid-template-columns:1fr}.stamp{text-align:left}.top{align-items:start;flex-direction:column}}@media(max-width:760px){.docx-compare{grid-template-columns:1fr}}@media(max-width:620px){.shell{padding:16px}.stats{grid-template-columns:repeat(2,1fr)}.bar-row{grid-template-columns:100px minmax(0,1fr) 30px}.case-row{grid-template-columns:1fr}.controls label{width:100%;justify-content:space-between}.docx-toolbar select{min-width:0;width:100%}.docx-view .docx-wrapper>section.docx{padding:24px!important}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}button,select,input{font:inherit;color:inherit}.shell{max-width:1480px;margin:auto;padding:28px;transition:max-width .18s ease}.top{display:flex;justify-content:space-between;gap:24px;align-items:end;margin-bottom:22px}.eyebrow{text-transform:uppercase;letter-spacing:.12em;color:var(--blue);font-weight:700;font-size:11px}h1{margin:4px 0 2px;font-size:clamp(25px,4vw,40px);line-height:1.12}h2{font-size:18px;margin:0 0 14px}.stamp{color:var(--muted);text-align:right}.controls{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 18px}.controls label{display:flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 11px}.controls select,.controls input{border:0;background:transparent;outline:none}.stats{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:12px;margin-bottom:18px}.stat,.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}.stat{padding:16px}.stat strong{display:block;font-size:25px;line-height:1.1}.stat span{color:var(--muted);font-size:12px}.layout{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(300px,.7fr);gap:18px}.sidebar-hidden .shell{max-width:none}.sidebar-hidden .layout{grid-template-columns:minmax(0,1fr)}.sidebar-hidden #dashboard-sidebar{display:none}.panel{padding:18px;margin-bottom:18px}.panel-head{display:flex;align-items:start;justify-content:space-between;gap:12px}.sub{color:var(--muted);font-size:12px;margin-top:-8px;margin-bottom:14px}.matrix-wrap{overflow:auto}.matrix{display:grid;min-width:1040px;gap:4px;align-items:stretch}.matrix .label{font-size:11px;color:var(--muted);padding:8px 5px;display:flex;align-items:end}.matrix .row-label{justify-content:flex-end;text-align:right;align-items:center}.cell{border:0;border-radius:7px;min-height:42px;padding:4px;cursor:pointer;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-weight:700}.cell:hover,.cell:focus{outline:2px solid var(--blue);outline-offset:1px}.cell.tested{background:var(--green2);color:var(--green)}.cell.planned{background:var(--amber2);color:var(--amber)}.cell.missing{background:var(--red2);color:var(--red)}.cell.empty{color:var(--muted);font-weight:400}.cell.selected{box-shadow:inset 0 0 0 3px currentColor}.legend{display:flex;flex-wrap:wrap;gap:15px;margin-top:12px;color:var(--muted);font-size:12px}.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px}.bars{display:grid;gap:9px}.bar-row{display:grid;grid-template-columns:130px minmax(0,1fr) 34px;gap:8px;align-items:center}.track{height:12px;background:var(--surface2);border-radius:99px;overflow:hidden;display:flex}.seg-syn{background:var(--blue)}.seg-real{background:var(--purple)}.bar-value{text-align:right;font-variant-numeric:tabular-nums}.detail{min-height:180px}.detail h3{font-size:16px;margin:0 0 8px}.detail ul{margin:8px 0 0;padding-left:18px;max-height:310px;overflow:auto}.detail code{font-size:11px;overflow-wrap:anywhere}.badge{display:inline-block;border-radius:99px;padding:3px 8px;margin:3px 4px 3px 0;background:var(--surface2);font-size:11px}.badge.syn{background:var(--blue2);color:var(--blue)}.badge.real{background:var(--purple2);color:var(--purple)}.gap{padding:11px 0;border-top:1px solid var(--line)}.gap:first-of-type{border-top:0}.gap strong{display:block}.gap p{margin:4px 0;color:var(--muted);font-size:12px}.oracle{display:grid;grid-template-columns:1fr 44px;gap:8px;align-items:center;margin:9px 0}.oracle .track{height:8px}.search-results{margin-top:8px}.case-row{display:grid;grid-template-columns:minmax(220px,1.4fr) 100px 130px;gap:12px;padding:9px 0;border-top:1px solid var(--line);align-items:center}.case-row:first-child{border-top:0}.case-row code{overflow-wrap:anywhere;font-size:11px}.empty-state{color:var(--muted);padding:18px 0}.docx-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}.docx-toolbar select{min-width:300px;max-width:100%;border:1px solid var(--line);background:var(--surface2);border-radius:8px;padding:7px 9px}.docx-status{color:var(--muted);font-size:12px}.docx-compare{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.docx-pane{min-width:0}.docx-pane h3{font-size:13px;margin:0 0 7px}.docx-view{background:var(--surface2);border:1px solid var(--line);border-radius:10px;min-height:330px;max-height:620px;overflow:auto}.docx-view .docx-wrapper{background:var(--surface2)!important;padding:12px!important}.docx-view .docx-wrapper>section.docx{background:#fff!important;color:#111!important;width:100%!important;min-height:380px!important;padding:44px!important;margin:0!important;box-shadow:none!important}.docx-view ins,.docx-view ins *{background:#dcfce7!important;color:#15803d!important;text-decoration:underline!important;text-decoration-color:#15803d!important;text-decoration-thickness:2px!important}.docx-view del,.docx-view del *{background:#fee2e2!important;color:#b91c1c!important;text-decoration:line-through!important;text-decoration-color:#b91c1c!important;text-decoration-thickness:2px!important}.docx-view ins:has(p,table,div),.docx-view del:has(p,table,div){display:block!important}.docx-view tr.docx-ins-row td,.docx-view tr.docx-ins-row td *{background:#dcfce7!important;color:#15803d!important}.docx-view tr.docx-del-row td,.docx-view tr.docx-del-row td *{background:#fee2e2!important;color:#b91c1c!important;text-decoration:line-through!important}.docx-view .docx-format-change{background:#fef08a!important;outline:1px dashed #ca8a04!important}.diff-del{background:#fee2e2;color:#b91c1c;text-decoration:line-through;padding:1px 3px;border-radius:3px;font-weight:600}.diff-ins{background:#dcfce7;color:#15803d;text-decoration:underline;padding:1px 3px;border-radius:3px;font-weight:600}.screen-reader{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}@media(max-width:980px){.stats{grid-template-columns:repeat(3,1fr)}.layout{grid-template-columns:1fr}.stamp{text-align:left}.top{align-items:start;flex-direction:column}}@media(max-width:760px){.docx-compare{grid-template-columns:1fr}}@media(max-width:620px){.shell{padding:16px}.stats{grid-template-columns:repeat(2,1fr)}.bar-row{grid-template-columns:100px minmax(0,1fr) 30px}.case-row{grid-template-columns:1fr}.controls label{width:100%;justify-content:space-between}.docx-toolbar select{min-width:0;width:100%}.docx-view .docx-wrapper>section.docx{padding:24px!important}}
 .action{border:1px solid var(--line);background:var(--surface2);border-radius:8px;padding:7px 10px;cursor:pointer}.action:hover,.action:focus{border-color:var(--blue)}.action.primary{background:var(--blue);border-color:var(--blue);color:#fff}.preset-row{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 14px}.docx-meta{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}.pane-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:7px}.pane-head h3{margin:0}.pane-controls{display:flex;gap:7px}.pane-controls select{border:1px solid var(--line);background:var(--surface2);border-radius:7px;padding:5px}.expectations{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}.expectation{background:var(--surface2);border-radius:9px;padding:11px;white-space:pre-wrap;overflow-wrap:anywhere}.expectation strong{display:block;margin-bottom:5px}.sync-control{display:inline-flex;align-items:center;gap:5px}.case-row{grid-template-columns:minmax(220px,1.4fr) 100px 120px auto}@media(max-width:760px){.expectations{grid-template-columns:1fr}}@media(max-width:620px){.case-row{grid-template-columns:1fr}.pane-head{align-items:flex-start;flex-direction:column}.pane-controls{width:100%}.pane-controls select{flex:1}}
 </style>
 </head>
@@ -169,9 +277,54 @@ const escapeHtml=value=>String(value??'').replace(/&/g,'&amp;').replace(/</g,'&l
 function decodeDocx(value){const raw=atob(value),bytes=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);return bytes}
 function activeDocx(){return DATA.cases.find(c=>c.identity===$('docx-case').value)}
 function viewOptions(selected){return Object.entries(VIEW_LABELS).map(([value,text])=>'<option value="'+value+'"'+(value===selected?' selected':'')+'>'+text+'</option>').join('')}
-function renderDocxMeta(item){const r=item.revisions;$('docx-meta').innerHTML='<span class="badge '+(item.lane==='superdoc'?'real':'syn')+'">'+(item.lane==='superdoc'?'Reviewed real document':'Synthetic fixture')+'</span><span class="badge">'+label(item.category)+'</span><span class="badge">'+label(item.task)+'</span>'+item.structures.map(s=>'<span class="badge">'+label(s)+'</span>').join('')+'<span class="badge">'+r.insertions+' insertion revision'+(r.insertions===1?'':'s')+'</span><span class="badge">'+r.deletions+' deletion revision'+(r.deletions===1?'':'s')+'</span>'+(r.formatting?'<span class="badge">'+r.formatting+' formatting revision'+(r.formatting===1?'':'s')+'</span>':'');$('expected-before').textContent=item.expectations?.rejected||item.expectations?.source||'';$('expected-after').textContent=item.expectations?.accepted||''}
+function diffWords(before, after) {
+    if (!before || !after) return null;
+    const tokenize = s => s.match(/\\s+|[^\\s\\w]+|\\w+/g) || [s];
+    const a = tokenize(before);
+    const b = tokenize(after);
+    const m = a.length, n = b.length;
+    if (m * n > 250000) {
+        return [{ type: 'del', text: before }, { type: 'ins', text: after }];
+    }
+    const dp = Array.from({ length: m + 1 }, () => new Uint16Array(n + 1));
+    for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+            if (a[i - 1] === b[j - 1]) dp[i][j] = dp[i - 1][j - 1] + 1;
+            else dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+        }
+    }
+    let i = m, j = n;
+    const diff = [];
+    while (i > 0 || j > 0) {
+        if (i > 0 && j > 0 && a[i - 1] === b[j - 1]) {
+            diff.unshift({ type: 'same', text: a[i - 1] });
+            i--; j--;
+        } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+            diff.unshift({ type: 'ins', text: b[j - 1] });
+            j--;
+        } else {
+            diff.unshift({ type: 'del', text: a[i - 1] });
+            i--;
+        }
+    }
+    return diff;
+}
+function renderDocxMeta(item){
+    const r=item.revisions;
+    $('docx-meta').innerHTML='<span class="badge '+(item.lane==='superdoc'?'real':'syn')+'">'+(item.lane==='superdoc'?'Reviewed real document':'Synthetic fixture')+'</span><span class="badge">'+label(item.category)+'</span><span class="badge">'+label(item.task)+'</span>'+item.structures.map(s=>'<span class="badge">'+label(s)+'</span>').join('')+'<span class="badge">'+r.insertions+' insertion revision'+(r.insertions===1?'':'s')+'</span><span class="badge">'+r.deletions+' deletion revision'+(r.deletions===1?'':'s')+'</span>'+(r.formatting?'<span class="badge">'+r.formatting+' formatting revision'+(r.formatting===1?'':'s')+'</span>':'');
+    const beforeText = item.expectations?.rejected || item.expectations?.source || '';
+    const afterText = item.expectations?.accepted || '';
+    const diff = diffWords(beforeText, afterText);
+    if (diff && beforeText !== afterText) {
+        $('expected-before').innerHTML = diff.filter(x => x.type !== 'ins').map(x => x.type === 'del' ? '<del class="diff-del">' + escapeHtml(x.text) + '</del>' : escapeHtml(x.text)).join('');
+        $('expected-after').innerHTML = diff.filter(x => x.type !== 'del').map(x => x.type === 'ins' ? '<ins class="diff-ins">' + escapeHtml(x.text) + '</ins>' : escapeHtml(x.text)).join('');
+    } else {
+        $('expected-before').textContent = beforeText;
+        $('expected-after').textContent = afterText;
+    }
+}
 async function renderPane(side,item){const state=$(side+'-view').value,target=$('docx-'+side),payload=item.docxVariants?.[state];target.innerHTML='';if(!payload){target.innerHTML='<div class="empty-state">This document state is unavailable.</div>';return}const base={experimental:true,renderHeaders:true,renderFooters:true,renderFootnotes:true,renderEndnotes:true,renderComments:true,ignoreWidth:true,ignoreHeight:true,breakPages:false,useBase64URL:true,renderChanges:state==='tracked'};await window.docx.renderAsync(decodeDocx(payload),target,null,base)}
-async function renderDocxComparison(){const item=activeDocx();if(!item?.docxVariants?.tracked){$('docx-status').textContent='No embedded DOCX is available.';return}if(!window.docx?.renderAsync){$('docx-status').textContent='docxjs failed to load.';return}$('docx-status').textContent='Rendering both documents…';renderDocxMeta(item);try{await Promise.all([renderPane('left',item),renderPane('right',item)]);$('docx-status').textContent='Ready · docx-preview 0.4.0';}catch(error){$('docx-status').textContent='Render error: '+error.message}}
+async function renderDocxComparison(){const item=activeDocx();if(!item?.docxVariants?.tracked){$('docx-status').textContent='No embedded DOCX is available.';return}if(!window.docx?.renderAsync){$('docx-status').textContent='docxjs failed to load.';return}$('docx-status').textContent='Rendering both documents…';renderDocxMeta(item);try{await Promise.all([renderPane('left',item),renderPane('right',item)]);$('docx-status').textContent='Ready · docx-preview 0.4.0 (revisions enhanced)';}catch(error){$('docx-status').textContent='Render error: '+error.message}}
 function setComparison(left,right){$('left-view').value=left;$('right-view').value=right;renderDocxComparison()}
 function selectDocx(identity){if(!$('docx-case').querySelector('option[value="'+identity+'"]'))return;$('docx-case').value=identity;renderDocxComparison()}
 function downloadView(side){const item=activeDocx(),state=$(side+'-view').value,payload=item?.docxVariants?.[state];if(!payload)return;const blob=new Blob([decodeDocx(payload)],{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=item.identity.replace(/^(synthetic|superdoc):/,'')+'.'+state+'.docx';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
@@ -188,9 +341,10 @@ $('lane').addEventListener('change',render);$('category').addEventListener('chan
 const isCli = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isCli) {
     const { outputPath, fixturesDir, corpusFixturesDir } = parseArgs(process.argv.slice(2));
+    const unminifiedDocxPreviewPath = join(process.cwd(), 'node_modules', 'docx-preview', 'dist', 'docx-preview.js');
     const libraries = {
         jszipSource: readFileSync(join(process.cwd(), 'node_modules', 'jszip', 'dist', 'jszip.min.js'), 'utf8'),
-        docxPreviewSource: readFileSync(join(process.cwd(), 'node_modules', 'docx-preview', 'dist', 'docx-preview.min.js'), 'utf8')
+        docxPreviewSource: readFileSync(unminifiedDocxPreviewPath, 'utf8')
     };
     const html = renderDashboardHtml(buildDashboardData(fixturesDir, corpusFixturesDir), libraries);
     mkdirSync(dirname(outputPath), { recursive: true });

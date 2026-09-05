@@ -75,18 +75,74 @@ export function getParagraphId(paragraph) {
     return attribute?.value || null;
 }
 
-export function createParagraphFingerprint(paragraph) {
+export function createParagraphFingerprint(paragraph, metadata = {}) {
     if (!paragraph) return null;
-    const text = getParagraphText(paragraph);
-    const documentRoot = paragraph.ownerDocument || paragraph;
-    const documentIndex = getDocumentParagraphNodes(documentRoot).indexOf(paragraph) + 1;
-    const identity = `${getParagraphId(paragraph) || ''}\u001f${documentIndex}\u001f${isParagraphInTable(paragraph) ? 'table' : 'body'}\u001f${text}`;
+    const text = typeof metadata.text === 'string' ? metadata.text : getParagraphText(paragraph);
+    const documentIndex = Number.isInteger(metadata.index)
+        ? metadata.index
+        : getDocumentParagraphNodes(paragraph.ownerDocument || paragraph).indexOf(paragraph) + 1;
+    const paragraphId = metadata.paragraphId === undefined ? getParagraphId(paragraph) : metadata.paragraphId;
+    const inTable = typeof metadata.inTable === 'boolean' ? metadata.inTable : isParagraphInTable(paragraph);
+    const identity = `${paragraphId || ''}\u001f${documentIndex}\u001f${inTable ? 'table' : 'body'}\u001f${text}`;
     let hash = 0x811c9dc5;
     for (let i = 0; i < identity.length; i++) {
         hash ^= identity.charCodeAt(i);
         hash = Math.imul(hash, 0x01000193) >>> 0;
     }
     return `fnv1a32:${hash.toString(16).padStart(8, '0')}`;
+}
+
+/**
+ * Builds immutable paragraph metadata and grouped lookup maps for one document
+ * state. The index is intentionally session-scoped because it retains DOM
+ * nodes and must be discarded after a mutation.
+ *
+ * @param {Document|Element|null|undefined} xmlDoc - OOXML document root
+ * @returns {{entries: ReadonlyArray<Object>, byParagraph: Map<Element,Object>, byId: Map<string,Object>, byNormalizedText: Map<string,ReadonlyArray<Object>>}}
+ */
+export function buildParagraphMetadataIndex(xmlDoc) {
+    const paragraphs = getDocumentParagraphNodes(xmlDoc);
+    const entries = [];
+    const byParagraph = new Map();
+    const byId = new Map();
+    const grouped = new Map();
+
+    for (let offset = 0; offset < paragraphs.length; offset++) {
+        const paragraph = paragraphs[offset];
+        const text = getParagraphText(paragraph);
+        const paragraphId = getParagraphId(paragraph);
+        const inTable = isParagraphInTable(paragraph);
+        const normalizedText = normalizeWhitespaceForTargeting(text);
+        const entry = Object.freeze({
+            paragraph,
+            index: offset + 1,
+            paragraphId,
+            text,
+            normalizedText,
+            fingerprint: createParagraphFingerprint(paragraph, {
+                text,
+                index: offset + 1,
+                paragraphId,
+                inTable
+            }),
+            inTable
+        });
+        entries.push(entry);
+        byParagraph.set(paragraph, entry);
+        if (paragraphId && !byId.has(paragraphId)) byId.set(paragraphId, entry);
+        if (normalizedText) {
+            if (!grouped.has(normalizedText)) grouped.set(normalizedText, []);
+            grouped.get(normalizedText).push(entry);
+        }
+    }
+
+    for (const [key, values] of grouped) grouped.set(key, Object.freeze(values));
+    return Object.freeze({
+        entries: Object.freeze(entries),
+        byParagraph,
+        byId,
+        byNormalizedText: grouped
+    });
 }
 
 /**
@@ -167,10 +223,12 @@ export function splitLeadingParagraphMarker(text) {
  * @param {number|null|undefined} targetRef - 1-based paragraph number
  * @returns {Element|null}
  */
-export function findParagraphByReference(xmlDoc, targetRef) {
+export function findParagraphByReference(xmlDoc, targetRef, paragraphMetadataIndex = null) {
     if (!Number.isInteger(targetRef) || targetRef < 1) return null;
-    const paragraphs = getDocumentParagraphNodes(xmlDoc);
-    return paragraphs[targetRef - 1] || null;
+    if (paragraphMetadataIndex?.entries) {
+        return paragraphMetadataIndex.entries[targetRef - 1]?.paragraph || null;
+    }
+    return getDocumentParagraphNodes(xmlDoc)[targetRef - 1] || null;
 }
 
 /**
@@ -203,15 +261,22 @@ export function findContainingWordElement(node, localName, namespaceUri = WORD_M
  * @param {string} targetText - Target paragraph text
  * @returns {Element|null}
  */
-export function findParagraphByStrictText(xmlDoc, targetText) {
-    const paragraphs = getDocumentParagraphNodes(xmlDoc);
+export function findParagraphByStrictText(xmlDoc, targetText, options = {}) {
+    const metadataIndex = options.paragraphMetadataIndex || null;
+    const entries = metadataIndex?.entries || null;
+    const paragraphs = entries ? null : getDocumentParagraphNodes(xmlDoc);
     const normalizedTarget = String(targetText || '').trim();
     if (!normalizedTarget) return null;
 
-    const exact = paragraphs.find(p => getParagraphText(p).trim() === normalizedTarget);
+    const exact = entries
+        ? entries.find(entry => entry.text.trim() === normalizedTarget)?.paragraph
+        : paragraphs.find(p => getParagraphText(p).trim() === normalizedTarget);
     if (exact) return exact;
 
     const normTarget = normalizeWhitespaceForTargeting(normalizedTarget);
+    if (metadataIndex?.byNormalizedText) {
+        return metadataIndex.byNormalizedText.get(normTarget)?.[0]?.paragraph || null;
+    }
     return paragraphs.find(p => normalizeWhitespaceForTargeting(getParagraphText(p)) === normTarget) || null;
 }
 
@@ -225,28 +290,34 @@ export function findParagraphByStrictText(xmlDoc, targetText) {
  */
 export function findParagraphByBestTextMatch(xmlDoc, targetText, options = {}) {
     const onInfo = typeof options.onInfo === 'function' ? options.onInfo : () => {};
-    const paragraphs = getDocumentParagraphNodes(xmlDoc);
+    const metadataIndex = options.paragraphMetadataIndex || null;
+    const entries = metadataIndex?.entries || null;
+    const paragraphs = entries ? null : getDocumentParagraphNodes(xmlDoc);
     const normalizedTarget = String(targetText || '').trim();
     if (!normalizedTarget) return null;
 
-    const strictMatch = findParagraphByStrictText(xmlDoc, normalizedTarget);
+    const strictMatch = findParagraphByStrictText(xmlDoc, normalizedTarget, { paragraphMetadataIndex: metadataIndex });
     if (strictMatch) return strictMatch;
 
     const normTarget = normalizeWhitespaceForTargeting(normalizedTarget);
 
-    const startsWithMatch = paragraphs.find(p => {
-        const paragraphText = normalizeWhitespaceForTargeting(getParagraphText(p));
-        return paragraphText.length > 10 && normTarget.startsWith(paragraphText);
-    });
+    const startsWithMatch = entries
+        ? (entries.find(entry => entry.normalizedText.length > 10 && normTarget.startsWith(entry.normalizedText))?.paragraph || null)
+        : paragraphs.find(p => {
+            const paragraphText = normalizeWhitespaceForTargeting(getParagraphText(p));
+            return paragraphText.length > 10 && normTarget.startsWith(paragraphText);
+        });
     if (startsWithMatch) {
         onInfo(`[Fuzzy] Prefix match (target starts with paragraph): "${getParagraphText(startsWithMatch).trim().slice(0, 60)}..."`);
         return startsWithMatch;
     }
 
-    const containsMatch = paragraphs.find(p => {
-        const paragraphText = normalizeWhitespaceForTargeting(getParagraphText(p));
-        return paragraphText.length > 15 && normTarget.includes(paragraphText);
-    });
+    const containsMatch = entries
+        ? (entries.find(entry => entry.normalizedText.length > 15 && normTarget.includes(entry.normalizedText))?.paragraph || null)
+        : paragraphs.find(p => {
+            const paragraphText = normalizeWhitespaceForTargeting(getParagraphText(p));
+            return paragraphText.length > 15 && normTarget.includes(paragraphText);
+        });
     if (containsMatch) {
         onInfo(`[Fuzzy] Contains match: "${getParagraphText(containsMatch).trim().slice(0, 60)}..."`);
         return containsMatch;
@@ -255,8 +326,10 @@ export function findParagraphByBestTextMatch(xmlDoc, targetText, options = {}) {
     let bestScore = 0;
     let bestParagraph = null;
     const targetWords = new Set(normTarget.toLowerCase().split(/\s+/).filter(word => word.length > 2));
-    for (const paragraph of paragraphs) {
-        const paragraphText = getParagraphText(paragraph).trim();
+    const candidateCount = entries?.length ?? paragraphs.length;
+    for (let index = 0; index < candidateCount; index++) {
+        const paragraph = entries?.[index]?.paragraph ?? paragraphs[index];
+        const paragraphText = (entries?.[index]?.text ?? getParagraphText(paragraph)).trim();
         if (!paragraphText) continue;
 
         const paragraphWords = normalizeWhitespaceForTargeting(paragraphText)
@@ -307,16 +380,18 @@ export function resolveTargetParagraph(xmlDoc, options = {}) {
     const cleanTargetText = String(descriptor?.text ?? options.targetText ?? '').trim();
     const parsedRef = parseParagraphReference(descriptor?.index ?? options.targetRef);
     const strictAmbiguity = options.strictAmbiguity === true;
+    const paragraphMetadataIndex = options.paragraphMetadataIndex || null;
 
     if (descriptor?.paragraphId) {
-        const byId = findParagraphById(xmlDoc, descriptor.paragraphId);
+        const byId = findParagraphById(xmlDoc, descriptor.paragraphId, paragraphMetadataIndex);
         if (!byId) {
             throw createTargetError(
                 'TARGET_NOT_FOUND',
                 `Target paragraphId not found: "${descriptor.paragraphId}".`
             );
         }
-        const actualFingerprint = createParagraphFingerprint(byId);
+        const actualFingerprint = paragraphMetadataIndex?.byParagraph?.get(byId)?.fingerprint
+            || createParagraphFingerprint(byId);
         if (descriptor.fingerprint && descriptor.fingerprint !== actualFingerprint) {
             throw createTargetError(
                 'TARGET_FINGERPRINT_MISMATCH',
@@ -330,7 +405,8 @@ export function resolveTargetParagraph(xmlDoc, options = {}) {
             );
         }
         if (cleanTargetText) {
-            const actualText = normalizeWhitespaceForTargeting(getParagraphText(byId));
+            const actualText = paragraphMetadataIndex?.byParagraph?.get(byId)?.normalizedText
+                || normalizeWhitespaceForTargeting(getParagraphText(byId));
             if (actualText !== normalizeWhitespaceForTargeting(cleanTargetText)) {
                 throw createTargetError(
                     'TARGET_TEXT_MISMATCH',
@@ -342,7 +418,7 @@ export function resolveTargetParagraph(xmlDoc, options = {}) {
     }
 
     if (cleanTargetText) {
-        const unfilteredCandidates = findStrictTargetCandidates(xmlDoc, cleanTargetText);
+        const unfilteredCandidates = findStrictTargetCandidates(xmlDoc, cleanTargetText, paragraphMetadataIndex);
         const candidates = filterTargetCandidates(unfilteredCandidates, descriptor);
 
         if (descriptor?.fingerprint && unfilteredCandidates.length > 0 && candidates.length === 0) {
@@ -414,11 +490,11 @@ export function resolveTargetParagraph(xmlDoc, options = {}) {
     }
 
     if (parsedRef) {
-        const byRef = findParagraphByReference(xmlDoc, parsedRef);
+        const byRef = findParagraphByReference(xmlDoc, parsedRef, paragraphMetadataIndex);
         if (byRef) {
             if (cleanTargetText) {
-                const strictMatch = findParagraphByStrictText(xmlDoc, cleanTargetText);
-                const byRefText = getParagraphText(byRef).trim();
+                const strictMatch = findParagraphByStrictText(xmlDoc, cleanTargetText, { paragraphMetadataIndex });
+                const byRefText = (paragraphMetadataIndex?.byParagraph?.get(byRef)?.text || getParagraphText(byRef)).trim();
                 const byRefNorm = normalizeWhitespaceForTargeting(byRefText);
                 const targetNorm = normalizeWhitespaceForTargeting(cleanTargetText);
                 const hasDrift = byRefNorm !== targetNorm;
@@ -429,7 +505,7 @@ export function resolveTargetParagraph(xmlDoc, options = {}) {
                 }
 
                 if (hasDrift) {
-                    const fuzzyMatch = findParagraphByBestTextMatch(xmlDoc, cleanTargetText, { onInfo });
+                    const fuzzyMatch = findParagraphByBestTextMatch(xmlDoc, cleanTargetText, { onInfo, paragraphMetadataIndex });
                     if (fuzzyMatch && fuzzyMatch !== byRef) {
                         onInfo(`[Target] [P${parsedRef}] drifted for ${opType}; using fuzzy text rematch.`);
                         return { paragraph: fuzzyMatch, resolvedBy: 'fuzzy_text_after_ref_drift' };
@@ -448,10 +524,10 @@ export function resolveTargetParagraph(xmlDoc, options = {}) {
     }
 
     if (cleanTargetText && !strictAmbiguity) {
-        const strictMatch = findParagraphByStrictText(xmlDoc, cleanTargetText);
+        const strictMatch = findParagraphByStrictText(xmlDoc, cleanTargetText, { paragraphMetadataIndex });
         if (strictMatch) return { paragraph: strictMatch, resolvedBy: 'strict_text' };
 
-        const fuzzyMatch = findParagraphByBestTextMatch(xmlDoc, cleanTargetText, { onInfo });
+        const fuzzyMatch = findParagraphByBestTextMatch(xmlDoc, cleanTargetText, { onInfo, paragraphMetadataIndex });
         if (fuzzyMatch) return { paragraph: fuzzyMatch, resolvedBy: 'fuzzy_text' };
     }
 
@@ -464,9 +540,13 @@ function isParagraphInTable(paragraph) {
     return !!findContainingWordElement(paragraph, 'tbl');
 }
 
-export function findStrictTargetCandidates(xmlDoc, targetText) {
+export function findStrictTargetCandidates(xmlDoc, targetText, paragraphMetadataIndex = null) {
     const normalizedTarget = normalizeWhitespaceForTargeting(targetText);
     if (!normalizedTarget) return [];
+
+    if (paragraphMetadataIndex?.byNormalizedText) {
+        return Array.from(paragraphMetadataIndex.byNormalizedText.get(normalizedTarget) || []);
+    }
 
     const paragraphs = getDocumentParagraphNodes(xmlDoc);
     const candidates = [];
@@ -508,8 +588,9 @@ function filterTargetCandidates(candidates, descriptor) {
     return scoped;
 }
 
-function findParagraphById(xmlDoc, paragraphId) {
+function findParagraphById(xmlDoc, paragraphId, paragraphMetadataIndex = null) {
     if (!paragraphId) return null;
+    if (paragraphMetadataIndex?.byId) return paragraphMetadataIndex.byId.get(paragraphId)?.paragraph || null;
     return getDocumentParagraphNodes(xmlDoc).find(paragraph => getParagraphId(paragraph) === paragraphId) || null;
 }
 
@@ -538,16 +619,18 @@ function selectBestTargetCandidate(candidates, parsedRef, expectedInTable = null
  * @param {Document|Element|null|undefined} xmlDoc - OOXML document root
  * @returns {Map<number, { text: string, normalizedText: string, inTable: boolean }>}
  */
-export function buildTargetReferenceSnapshot(xmlDoc) {
-    const paragraphs = getDocumentParagraphNodes(xmlDoc);
+export function buildTargetReferenceSnapshot(xmlDoc, paragraphMetadataIndex = null) {
+    const entries = paragraphMetadataIndex?.entries || null;
+    const paragraphs = entries ? null : getDocumentParagraphNodes(xmlDoc);
     const snapshot = new Map();
-    for (let i = 0; i < paragraphs.length; i++) {
-        const paragraph = paragraphs[i];
-        const text = getParagraphText(paragraph).trim();
+    const paragraphCount = entries?.length ?? paragraphs.length;
+    for (let i = 0; i < paragraphCount; i++) {
+        const paragraph = entries?.[i]?.paragraph ?? paragraphs[i];
+        const text = (entries?.[i]?.text ?? getParagraphText(paragraph)).trim();
         snapshot.set(i + 1, {
             text,
-            normalizedText: normalizeWhitespaceForTargeting(text),
-            inTable: isParagraphInTable(paragraph)
+            normalizedText: entries?.[i]?.normalizedText ?? normalizeWhitespaceForTargeting(text),
+            inTable: entries?.[i]?.inTable ?? isParagraphInTable(paragraph)
         });
     }
     return snapshot;
@@ -585,7 +668,8 @@ export function resolveTargetParagraphWithSnapshot(xmlDoc, options = {}) {
     const expectedNorm = normalizeWhitespaceForTargeting(expectedText);
     if (!expectedNorm) return resolved;
 
-    const resolvedNorm = normalizeWhitespaceForTargeting(getParagraphText(resolved.paragraph));
+    const resolvedNorm = options.paragraphMetadataIndex?.byParagraph?.get(resolved.paragraph)?.normalizedText
+        || normalizeWhitespaceForTargeting(getParagraphText(resolved.paragraph));
     if (resolvedNorm === expectedNorm) return resolved;
 
     const candidateTexts = [];
@@ -599,7 +683,7 @@ export function resolveTargetParagraphWithSnapshot(xmlDoc, options = {}) {
 
     let bestCandidate = null;
     for (const candidateText of candidateTexts) {
-        const candidates = findStrictTargetCandidates(xmlDoc, candidateText);
+        const candidates = findStrictTargetCandidates(xmlDoc, candidateText, options.paragraphMetadataIndex || null);
         const selected = selectBestTargetCandidate(candidates, parsedRef, snapshotEntry.inTable);
         if (!selected) continue;
         if (!bestCandidate) bestCandidate = selected;

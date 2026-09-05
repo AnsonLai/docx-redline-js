@@ -202,15 +202,24 @@ export class RevisionIdAllocator {
 
     seed(xmlDoc) {
         let maxFound = -1;
-        const elements = Array.from(xmlDoc?.getElementsByTagName?.('*') || []);
-        if (xmlDoc?.nodeType === 1) elements.unshift(xmlDoc);
+        const traversalRoot = xmlDoc?.nodeType === 9 ? xmlDoc.documentElement : xmlDoc;
+        let node = traversalRoot || null;
 
-        for (const element of elements) {
-            if (!isRevisionIdElement(element)) continue;
-            const id = readWordId(element);
-            if (id == null) continue;
-            this.occupiedIds.add(id);
-            maxFound = Math.max(maxFound, id);
+        while (node) {
+            if (isRevisionIdElement(node)) {
+                const id = readWordId(node);
+                if (id != null) {
+                    this.occupiedIds.add(id);
+                    maxFound = Math.max(maxFound, id);
+                }
+            }
+
+            if (node.firstChild) {
+                node = node.firstChild;
+                continue;
+            }
+            while (node && node !== traversalRoot && !node.nextSibling) node = node.parentNode;
+            node = node && node !== traversalRoot ? node.nextSibling : null;
         }
 
         const highRiskBoundary = MAX_PRACTICAL_REVISION_ID - REVISION_ID_SAFETY_MARGIN;

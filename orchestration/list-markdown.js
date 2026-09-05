@@ -2,23 +2,19 @@
  * Shared list markdown construction/parsing helpers for command adapters.
  */
 
+import {
+    matchListMarker,
+    stripListMarker
+} from '../pipeline/list-markers.js';
+
+export { inferNumberingStyleFromMarker } from '../pipeline/list-markers.js';
+
 /**
  * Infers numbering style from a list marker.
  *
  * @param {string} marker - Marker text
  * @returns {'decimal'|'lowerAlpha'|'upperAlpha'|'lowerRoman'|'upperRoman'}
  */
-export function inferNumberingStyleFromMarker(marker) {
-    const m = (marker || '').trim();
-    if (!m) return 'decimal';
-    if (/^\d+(?:\.\d+)*\.?$/.test(m) || /^\(\d+\)$/.test(m)) return 'decimal';
-    if (/^[ivxlcdm]+\.$/.test(m)) return 'lowerRoman';
-    if (/^[IVXLCDM]{2,}\.$/.test(m)) return 'upperRoman';
-    if (/^[a-z]\.$/.test(m)) return 'lowerAlpha';
-    if (/^[A-Z]\.$/.test(m)) return 'upperAlpha';
-    return 'decimal';
-}
-
 /**
  * Builds list markdown from normalized item+level input.
  *
@@ -60,8 +56,6 @@ export function buildListMarkdown(itemsWithLevels, listType, numberingStyle) {
  */
 export function normalizeListItemsWithLevels(rawItems, options = {}) {
     const indentSpaces = Math.max(1, Number(options.indentSpaces) || 4);
-    const markersRegex = /^((?:\d+(?:\.\d+)*\.?|\((?:\d+|[a-zA-Z]|[ivxlcIVXLC]+)\)|[a-zA-Z]\.|\d+\.|[ivxlcIVXLC]+\.|[-*•])\s*)/;
-
     return (rawItems || []).map((rawItem) => {
         const item = String(rawItem ?? '');
         const indentMatch = item.match(/^(\s*)/);
@@ -70,10 +64,10 @@ export function normalizeListItemsWithLevels(rawItems, options = {}) {
 
         let stripped = item.trim();
         let removedMarker = null;
-        const markerMatch = stripped.match(markersRegex);
+        const markerMatch = matchListMarker(stripped, { allowZeroSpaceAfterMarker: true });
         if (markerMatch) {
-            removedMarker = markerMatch[1].trim() || null;
-            stripped = stripped.replace(markersRegex, '');
+            removedMarker = markerMatch[2].trim() || null;
+            stripped = stripListMarker(stripped, { allowZeroSpaceAfterMarker: true });
         }
 
         return {

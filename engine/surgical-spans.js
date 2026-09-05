@@ -7,6 +7,7 @@ export function getRunChildText(child) {
     if (isWordElement(child, 'br') || isWordElement(child, 'cr')) return '\n';
     if (isWordElement(child, 'tab')) return '\t';
     if (isWordElement(child, 'noBreakHyphen')) return '\u2011';
+    if (isWordElement(child, 'softHyphen')) return '\u00ad';
     return '';
 }
 
@@ -15,7 +16,8 @@ export function isTextLikeRunChild(child) {
         || isWordElement(child, 'br')
         || isWordElement(child, 'cr')
         || isWordElement(child, 'tab')
-        || isWordElement(child, 'noBreakHyphen');
+        || isWordElement(child, 'noBreakHyphen')
+        || isWordElement(child, 'softHyphen');
 }
 
 export function buildSurgicalTextSpans(paragraphs) {

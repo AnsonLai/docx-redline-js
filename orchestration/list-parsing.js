@@ -4,7 +4,7 @@
  * Keeps command-layer list parsing aligned with reconciliation marker logic.
  */
 
-import { matchListMarker, stripListMarker } from '../pipeline/list-markers.js';
+import { parseListItem } from '../pipeline/list-markers.js';
 
 /**
  * Parses markdown list-like content into structured items.
@@ -26,19 +26,14 @@ export function parseMarkdownListContent(content) {
     for (const line of lines) {
         if (!line.trim()) continue;
 
-        const markerMatch = matchListMarker(line, { allowZeroSpaceAfterMarker: false });
-        if (markerMatch) {
-            const indent = markerMatch[1] || '';
-            const marker = markerMatch[2].trim();
-            const text = stripListMarker(line, { allowZeroSpaceAfterMarker: false }).trim();
-            const level = Math.floor(indent.length / 2);
-            const isBullet = /^[-*+\u2022]$/.test(marker);
+        const parsed = parseListItem(line, { allowZeroSpaceAfterMarker: false, indentSpaces: 2 });
+        if (parsed) {
 
             items.push({
-                type: isBullet ? 'bullet' : 'numbered',
-                level,
-                text,
-                marker
+                type: parsed.markerType,
+                level: parsed.level,
+                text: parsed.text.trim(),
+                marker: parsed.marker
             });
             continue;
         }

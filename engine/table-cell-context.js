@@ -11,6 +11,7 @@ import { buildParagraphOnlyPackage } from '../services/package-builder.js';
 import { getElementsByTagNSOrTag } from '../core/xml-query.js';
 import { NS_W } from '../core/types.js';
 import { isWordElement } from '../core/word-xml.js';
+import { extractCanonicalParagraphText } from '../core/paragraph-text.js';
 
 const W14_NS = 'http://schemas.microsoft.com/office/word/2010/wordml';
 
@@ -70,11 +71,7 @@ export function detectTableCellContext(xmlDoc, originalText, options = {}) {
         const normalizedTarget = originalText.trim();
         if (!targetParagraph) {
             for (const p of paragraphsInCells) {
-                const textNodes = getElementsByTagNSOrTag(p, NS_W, 't');
-                let paragraphText = '';
-                for (const t of textNodes) {
-                    paragraphText += t.textContent || '';
-                }
+                const paragraphText = extractCanonicalParagraphText(p);
 
                 if (paragraphText.trim() === normalizedTarget) {
                     targetParagraph = p;

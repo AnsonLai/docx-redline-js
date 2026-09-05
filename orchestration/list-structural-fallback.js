@@ -11,7 +11,8 @@ import {
     normalizeWhitespaceForTargeting
 } from '../core/paragraph-targeting.js';
 import { getParagraphListInfo } from '../core/list-targeting.js';
-import { ReconciliationPipeline } from '../pipeline/pipeline.js';
+import { executeListGeneration } from '../pipeline/list-generation.js';
+import { NumberingService } from '../services/numbering-service.js';
 import { preprocessMarkdown } from '../pipeline/markdown-processor.js';
 import { parseMarkdownListContent, hasListItems } from './list-parsing.js';
 import { inferNumberingStyleFromMarker } from './list-markdown.js';
@@ -433,7 +434,7 @@ export function buildSingleLineListStructuralFallbackPlan(options = {}) {
  * @param {{
  *   author?: string,
  *   generateRedlines?: boolean,
- *   pipeline?: ReconciliationPipeline,
+ *   pipeline?: import('../pipeline/pipeline.js').ReconciliationPipeline,
  *   setAbstractStartOverride?: boolean
  * }} [options={}] - Execution options
  * @returns {Promise<{
@@ -461,14 +462,22 @@ export async function executeSingleLineListStructuralFallback(plan, options = {}
 
     const author = options.author || 'AI';
     const generateRedlines = options.generateRedlines ?? true;
-    const pipeline = options.pipeline || new ReconciliationPipeline({ author, generateRedlines });
-
-    const result = await pipeline.executeListGeneration(
-        plan.listInput,
-        null,
-        null,
-        String(plan.originalText || '')
-    );
+    const result = options.pipeline
+        ? await options.pipeline.executeListGeneration(
+            plan.listInput,
+            null,
+            null,
+            String(plan.originalText || '')
+        )
+        : await executeListGeneration({
+            cleanText: plan.listInput,
+            numberingContext: null,
+            originalRunModel: [],
+            originalText: String(plan.originalText || ''),
+            generateRedlines,
+            author,
+            numberingService: new NumberingService()
+        });
 
     const rawOxml = result?.oxml || result?.ooxml || '';
     const oxml = trimTrailingBlankParagraph(rawOxml);

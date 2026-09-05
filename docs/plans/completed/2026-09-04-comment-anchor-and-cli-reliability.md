@@ -1,9 +1,10 @@
 # Comment Anchor and CLI Reliability Plan
 
-**Status:** Implementation complete — external release deployment pending
+**Status:** Completed  
 **Date:** 2026-09-04  
+**Completed:** 2026-09-04  
 
-## Implementation progress
+## Completion summary
 
 - **Phase 1 complete (2026-09-04):** The CLI now validates per-command
   options, rejects malformed or conflicting selectors, supports `--index`,
@@ -80,7 +81,10 @@ the wrappers must be migrated so they cannot reintroduce the old behavior.
 - Do not retain two independent batch engines for the package and plugin
   workflows.
 
-## Confirmed failure paths
+## Confirmed failure paths (historical)
+
+The sections below record the pre-implementation behavior that motivated the
+work; they are retained for regression context.
 
 ### Extraction filters
 
@@ -126,7 +130,7 @@ partial result despite atomic mode.
 Preflight already reports `ANCHOR_NOT_FOUND`, so preflight and apply disagree
 about the same input.
 
-## Proposed behavior contract
+## Delivered behavior contract
 
 ### CLI filters
 
@@ -176,9 +180,9 @@ about the same input.
 - With `atomic: false`, successful operations may be retained, but failed items
   remain explicitly marked `error`.
 
-## Implementation plan
+## Completed implementation phases
 
-### Phase 1: Harden CLI parsing and selection
+### Phase 1: Harden CLI parsing and selection (completed)
 
 Update `node/cli.js` to validate commands against per-command option sets and
 parse selectors through one dedicated helper.
@@ -194,7 +198,7 @@ parse selectors through one dedicated helper.
 Keep `inspectDocumentParts` focused on structured filtering; user-facing string
 syntax belongs at the CLI boundary.
 
-### Phase 2: Separate target normalization from anchor defaults
+### Phase 2: Separate target normalization from anchor defaults (completed)
 
 Update `services/document-operation-contract.js` so a missing
 `textToComment` remains missing after normalization. Let
@@ -204,7 +208,7 @@ resolved paragraph's canonical text.
 Preserve compatibility aliases for operation types and target descriptors, but
 do not infer a sub-paragraph anchor from `target.exactText`.
 
-### Phase 3: Build a shared anchor resolver
+### Phase 3: Build a shared anchor resolver (completed)
 
 Refactor `services/comment-locator.js` to expose a read-only anchor-resolution
 helper used before marker insertion.
@@ -225,7 +229,7 @@ failed attempt cannot consume package-scoped IDs.
 Preflight should call the same resolver instead of `paragraphText.includes`.
 This makes diagnostics and application agree by construction.
 
-### Phase 4: Propagate structured anchor failures
+### Phase 4: Propagate structured anchor failures (completed)
 
 Update `services/comment-engine.js`,
 `services/document-operation-mutations.js`, and
@@ -241,10 +245,11 @@ The batch orchestrator should continue to roll back explicit errors. Add a
 defensive invariant that a comment operation reporting zero applied comments
 cannot be classified as a successful `no_change`.
 
-### Phase 5: Migrate the external plugin wrappers
+### Phase 5: Migrate the external plugin wrappers (completed)
 
-The reported `extract_text.mjs` and `apply_changes.mjs` files do not live in
-this repository. Update their owning plugin after the library changes land.
+The wrapper copies from the original report live outside this repository. The
+package now includes compatible `extract_text.mjs` and `apply_changes.mjs`
+entrypoints; update the separately installed plugin copies after publishing.
 
 - Delegate extraction and application to the supported Node facade or CLI.
 - Use 1-based indexes and emit `P<n>` references.
@@ -254,7 +259,7 @@ this repository. Update their owning plugin after the library changes land.
 - Pin a package release containing these fixes and remove duplicated legacy
   targeting logic.
 
-## Regression test plan
+## Regression test strategy and coverage
 
 The tests below deliberately overlap at different boundaries. A locator unit
 test alone will not catch a wrapper that discards its error, and a CLI test
@@ -499,9 +504,11 @@ rejects unrelated tracked changes correctly.
 - Focused, full, isolation, type, lint, package-validation, and optional Word
   smoke tests pass.
 
-## Rollout
+## External release handoff
 
-1. Land the library and CLI changes with the reported-case fixture.
+These deployment steps do not affect the completed implementation status:
+
+1. Completed: land the library and CLI changes with the reported-case fixture.
 2. Publish a new package version and document the status-contract change.
 3. Update and republish the external docx-redline plugin/skill wrappers with the
    new package pinned.

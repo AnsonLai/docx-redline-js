@@ -5,13 +5,8 @@ import {
     setRevisionIdAllocatorForDocument
 } from '../core/types.js';
 import {
-    buildTargetReferenceSnapshot,
-    createParagraphFingerprint,
-    findContainingWordElement,
-    getDocumentParagraphNodes,
-    getParagraphId,
-    getParagraphText,
-    normalizeWhitespaceForTargeting
+    buildParagraphMetadataIndex,
+    buildTargetReferenceSnapshot
 } from '../core/paragraph-targeting.js';
 
 /**
@@ -49,7 +44,8 @@ export class DocumentOperationSession {
                 : new RevisionIdAllocator();
             seedRevisionIdsFromDocument(this.document, this.revisionIdAllocator);
             setRevisionIdAllocatorForDocument(this.document, this.revisionIdAllocator);
-            this.initialTargetReferenceSnapshot = buildTargetReferenceSnapshot(this.document);
+            const paragraphIndex = this.getParagraphMetadataIndex();
+            this.initialTargetReferenceSnapshot = buildTargetReferenceSnapshot(this.document, paragraphIndex);
         }
     }
 
@@ -113,21 +109,12 @@ export class DocumentOperationSession {
     }
 
     getParagraphIndex() {
+        return this.getParagraphMetadataIndex().entries;
+    }
+
+    getParagraphMetadataIndex() {
         if (this.paragraphIndex) return this.paragraphIndex;
-        const paragraphs = getDocumentParagraphNodes(this.document);
-        const metadata = paragraphs.map((paragraph, offset) => {
-            const text = getParagraphText(paragraph);
-            return Object.freeze({
-                paragraph,
-                index: offset + 1,
-                paragraphId: getParagraphId(paragraph),
-                text,
-                normalizedText: normalizeWhitespaceForTargeting(text),
-                fingerprint: createParagraphFingerprint(paragraph),
-                inTable: !!findContainingWordElement(paragraph, 'tbl')
-            });
-        });
-        this.paragraphIndex = Object.freeze(metadata);
+        this.paragraphIndex = buildParagraphMetadataIndex(this.document);
         this.invalidated = false;
         return this.paragraphIndex;
     }

@@ -1,6 +1,6 @@
 # Performance and Complexity Reduction Plan
 
-**Status:** In progress — Phases 1 and 2 complete
+**Status:** Complete — Phases 1 through 6 finished (2026-09-04)
 **Original date:** 2026-09-01  
 **Revised:** 2026-09-04  
 
@@ -301,6 +301,10 @@ boundaries that the decomposition reused.
 
 ## Phase 3 — Target and Traversal Hot Paths
 
+**Status:** Complete (2026-09-04). The session and preflight paths now share
+one document-scoped metadata representation, while all caches remain bounded
+to their owning operation or preflight call.
+
 ### Work
 
 1. Build paragraph metadata once per operation session: canonical text,
@@ -330,9 +334,57 @@ boundaries that the decomposition reused.
 - Profiles demonstrate reduced traversal/allocation cost on large fixtures.
 - Browser and Node benchmarks show no meaningful single-operation regression.
 
+### Implementation record
+
+- `buildParagraphMetadataIndex(...)` computes canonical text, normalized text,
+  paragraph ID, fingerprint, table context, and the one-based document index in
+  one pass. It exposes grouped paragraph-ID and normalized-text maps plus a
+  node-keyed metadata map; entries are immutable and retain document order.
+- `DocumentOperationSession` constructs the index once and uses it to build the
+  initial target-reference snapshot. It preserves the earlier paragraph-array
+  accessor for internal compatibility, exposes the richer index separately,
+  and invalidates both after any committed mutation or savepoint restore.
+- Batch preflight builds one metadata index and shares it with every strict
+  target resolution. Mutation targeting and resolution metadata use the same
+  cached entries, avoiding repeated canonical-text, ID, table-context, and
+  fingerprint traversal without changing the resolver's public JSON shapes.
+- Strict duplicate detection uses the grouped normalized-text map. Exact-text
+  filtering still occurs within the matched group, so whitespace normalization
+  does not broaden strict selection and duplicate targets remain ambiguous.
+- `RevisionIdAllocator.seed(...)` now uses a pointer-based depth-first walk and
+  examines revision-bearing elements without materializing every element into
+  an array. A regression deliberately disables universal tag queries to prove
+  the allocator uses the pointer traversal.
+- `performance_phase3_target_hot_paths_tests.mjs` covers cached/uncached
+  resolution parity for exact text, duplicate occurrences, paragraph IDs,
+  fingerprints, transient indexes, and table context; it also checks snapshot
+  construction, session reuse/invalidation, and revision-ID allocation.
+- `npm run benchmark:targeting` is a deterministic 10,000-paragraph benchmark
+  with two warmups and seven measured iterations. On Node 24/Windows x64, one
+  operation improved from a 45.10 ms median to 36.53 ms (1.23x), satisfying
+  the no-regression constraint. One hundred resolutions improved from
+  1,948.49 ms to 41.31 ms (47.16x). The uncached comparison includes the same
+  initial target snapshot required before this phase, so the comparison does
+  not omit session setup work.
+- `scripts/benchmark-targeting-browser.html` runs the same fixture, warmups,
+  percentiles, snapshot work, and resolver comparison against a native browser
+  DOM. Query parameters select paragraph, operation, and iteration counts so
+  single-operation and batch profiles can be reproduced without a Node DOM.
+  On Chrome 151/Windows x64, the 10,000-paragraph single-operation median moved
+  from 43.10 ms to 42.30 ms (1.02x), satisfying the browser no-regression
+  constraint. One hundred resolutions moved from 1,363.20 ms to 37.40 ms
+  (36.45x). Both browser measurements used two warmups and seven measured runs.
+- No extra diff prefix/suffix fast path was introduced: the work did not show
+  token preprocessing to be the dominant cost, and `diff-match-patch` already
+  performs prefix/suffix trimming internally.
+
 ---
 
 ## Phase 4 — List-Domain Consolidation Without Replacing Canonical Text
+
+**Status:** Complete (2026-09-04). Canonical consumers now use the established
+paragraph-text API, specialized offset/sentinel walkers remain specialized,
+and all list-facing parsers share one dependency-light grammar.
 
 ### Current state
 
@@ -372,9 +424,48 @@ through a string-only helper.
   responsibilities.
 - All list, numbering, inspection, package, and Word differential fixtures pass.
 
+### Implementation record
+
+- `docs/PERFORMANCE-CONSOLIDATION.md` inventories the remaining text walkers as
+  canonical consumers or specialized mappings and records the semantic boundary
+  of each. `core/paragraph-text.js` remains the sole canonical visible-text
+  definition.
+- `engine/table-cell-context.js`, a string-only consumer, now calls
+  `extractCanonicalParagraphText(...)`. Mapping walkers in ingestion, surgical
+  editing, formatting, reconstruction, and comment anchoring keep their richer
+  offset, run, sentinel, or reference models.
+- The accepted visible projections in ingestion and surgical span mapping now
+  include soft hyphens consistently with the canonical walker. Existing
+  structural ownership and zero-width handling for fields and note references
+  are retained.
+- `pipeline/list-markers.js` now owns list-marker matching, stripping,
+  classification, numbering-style inference, outline-depth parsing, and the
+  common parsed list-item representation. Pipeline analysis, orchestration
+  parsing/normalization, and list targeting consume those helpers; numbering
+  allocation, structural planning, OOXML writing, and package merging remain
+  in their focused modules.
+- The shared vocabulary recognizes bullet markers (`-`, `*`, `+`, and common
+  Unicode bullets), decimal/composite decimal markers, alphabetic markers, and
+  Roman markers. It reports `bullet`/`numbered`, the established numbering
+  style, indentation level, and optional outline level.
+- `performance_phase4_list_and_text_parity_tests.mjs` exercises marker parity
+  across every consumer, including redundant marker stripping, and compares
+  canonical, ingestion, and surgical visible projections for tabs, breaks,
+  hyperlinks, soft/non-breaking hyphens, fields, notes, insertions, deletions,
+  and moves.
+- The complete automated suite and the 47-fixture Microsoft Word differential
+  pass. The Word set includes ten list cases plus tables, comments, hyperlinks,
+  fields, footnotes/endnotes, formatting-only edits, and independent Accept All
+  and Reject All expectations.
+
 ---
 
 ## Phase 5 — Diff-Engine Consolidation With a Compatibility Window
+
+**Status:** Complete (2026-09-04). The preferred focused list generator now
+serves the safe single-paragraph route, while multi-paragraph marked-list edits
+remain on the compatibility pipeline until equally strong structural evidence
+supports moving them.
 
 ### Problem
 
@@ -412,9 +503,56 @@ conflict with the current API contract.
 - Any eventual major-version removal has a migration example and deprecation
   period.
 
+### Implementation record
+
+- `engine/route-selection.js` contains an executable capability matrix for
+  format-only, surgical, reconstruction, table, direct-list, and compatibility-
+  pipeline routes. It records primary structures, retained structures, artifact
+  behavior, and the reason each route remains distinct.
+- Route instrumentation is opt-in and internal: `_routeInstrumentation.onRoute`
+  observes the selected route and context without changing public result
+  shapes or providing a routing-policy override. `npm run profile:routes`
+  provides a deterministic synthetic frequency profile; its checked four-case
+  sample selects table, reconstruction, direct-list, and compatibility-list
+  exactly once each.
+- A list edit sourced from one paragraph now calls the focused
+  `executeListGeneration(...)` path directly with the established numbering
+  service and document-scoped revision allocator. This preserves wrapping,
+  `numberingXml`, `sourceType`, warnings, and native-API signaling.
+- Multi-paragraph marked-list edits continue through `ReconciliationPipeline`.
+  That path performs run-aware patching across existing paragraph boundaries;
+  retaining it is an intentional accuracy boundary, not unfinished deletion.
+- The structural list fallback uses the focused generator directly during
+  normal execution but continues to honor an explicitly injected pipeline for
+  compatibility tests and existing internal integrations.
+- `performance_phase5_route_consolidation_tests.mjs` compares direct and legacy
+  list generation with independent accepted/rejected extraction, verifies
+  numbering-package output, locks single- versus multi-paragraph route choices,
+  checks the capability matrix, and proves the public compatibility export
+  identities remain available.
+- `ReconciliationPipeline`, `serializeToOoxml`, and `wrapInDocumentFragment`
+  remain public and supported throughout the current major version. No public
+  API was deprecated or removed by this phase; future removal still requires a
+  major version, a prior deprecation notice, and a migration example.
+- All automated, coverage, isolation, type, lint, build, package-dry-run, and
+  fixture-export checks pass. The 62-file coverage result is 89.81% statements/
+  lines, 77.34% branches, and 93.04% functions, improving every recorded
+  baseline dimension. The 47/47 Microsoft Word differential also passes.
+- The 60-scenario SuperDoc Microsoft Word corpus passes after the route change,
+  including multi-paragraph and nested lists, list insertions/deletions, table
+  reconciliation, page headers, long documents, and mixed batches. Its package
+  guard also verifies that every unrelated DOCX part remains byte-identical.
+- The local ECMA-376 XSD command could not run because this Windows environment
+  has the WSL launcher but no usable `/bin/bash`. Schema validation remains in
+  the nightly independent-oracle workflow; runtime structural validation, the
+  synthetic Word differential, and the real-document Word corpus all passed.
+
 ---
 
 ## Phase 6 — Faster Tests While Preserving Isolation
+
+**Status:** Complete (2026-09-04). The JavaScript suite now uses bounded
+subprocess concurrency while every test file retains a fresh Node process.
 
 ### Problem
 
@@ -445,6 +583,44 @@ and top-level test side effects that are currently isolated.
 - No flaky failures occur across at least 20 repeated parallel runs.
 - `npm run test:coverage`, isolation checks, and Windows paths remain valid.
 
+### Implementation record
+
+- `scripts/run-tests.mjs` now launches test files with asynchronous
+  `execFile(...)` workers instead of synchronous shell command strings. It uses
+  `process.execPath` plus an argument array, avoiding shell quoting and keeping
+  Windows paths safe.
+- The default worker count is the runtime's available parallelism capped at
+  four. `DOCX_TEST_CONCURRENCY=1` provides deterministic serial reproduction;
+  any positive integer is accepted explicitly and is bounded by the discovered
+  test count. Invalid values fail before starting tests.
+- Test discovery and final reporting remain filename-sorted regardless of
+  completion order. Every child retains its own process, 30-second timeout,
+  captured stdout/stderr, failure-marker detection, and nonzero-exit handling.
+  Success summaries stay on stdout and detailed failure output stays on stderr.
+- The Word COM, synthetic visual, corpus, corpus-visual, and other independent
+  oracle commands remain separate serial runners. JavaScript tests that write
+  fixtures use distinct temporary directories; the runner does not combine
+  their module state or files into one process.
+- `performance_phase6_parallel_runner_tests.mjs` locks sorted discovery,
+  setup-helper exclusion, the concurrency bound, separate child PIDs, serial/
+  parallel result parity, successful-exit failure markers, nonzero exits,
+  stdout/stderr capture, timeouts, and deterministic reporting.
+- `npm run benchmark:tests` runs one warmup and three paired measurements and
+  writes machine-readable output to ignored
+  `tmp/benchmarks/test-runner-latest.json`. On Node 24/Windows x64, concurrency
+  four reduced the median from 18,018.68 ms to 7,964.47 ms: a 55.80% reduction
+  and 2.26x speedup, exceeding the 40% acceptance target.
+- Twenty consecutive four-worker runs passed all 63 test files with no flaky
+  failure. Their observed range was 7.49–8.24 seconds, with a 7.86-second
+  average. A separate `DOCX_TEST_CONCURRENCY=1` run passed the same 63 files.
+- c8 successfully merged the parallel subprocess data, so the regular coverage
+  command remains parallel. The checked result is 89.90% statements/lines,
+  77.40% branches, and 93.10% functions, meeting or improving the Phase 5
+  totals. No coverage-specific serial fork was added.
+- Node's native test runner was not adopted: these files remain top-level
+  assertion scripts with intentional process-global isolation. A future
+  migration should first document and change that execution contract.
+
 ---
 
 ## 4. Revised Execution Roadmap
@@ -461,7 +637,7 @@ and top-level test side effects that are currently isolated.
    - Extract the applier, orchestrator, and heuristics around the proven session
      without changing public behavior. This step was completed first; the
      session boundary exists but still uses legacy per-operation serialization.
-4. **Measured hot paths and parallel test runner**
+4. **Measured hot paths and parallel test runner — complete 2026-09-04**
    - Optimize indexes/traversals and add bounded subprocess concurrency.
 5. **List-domain cleanup**
    - Share syntax and visible-text semantics without collapsing distinct

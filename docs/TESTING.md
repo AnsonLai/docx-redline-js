@@ -26,6 +26,9 @@ fixtures rarely contain.
 | Agent edge cases | `node tests/canonical_paragraph_text_tests.mjs`, `node tests/document_inspection_edge_tests.mjs`, `node tests/docx_package_transaction_edge_tests.mjs`, `node tests/node_zip_archive_tests.mjs`, `node tests/agent_cli_edge_tests.mjs` | Revision-view semantics, cross-paragraph anchors, nested numbering, transaction reuse, multi-author cleanup, malformed ZIP handling, and destructive CLI safeguards | Desktop Word rendering and non-Windows CI |
 | Performance boundary regression | `node tests/performance_phase2_boundary_tests.mjs` | Stable facade re-exports, leaf imports, session rollback, isolated context commit, and comment-first scheduling | The Phase 1 one-parse/one-serialize performance target |
 | Live-session accuracy and instrumentation | `node tests/performance_phase1_session_tests.mjs` | One full parse/serialization, sequential semantic equivalence, exact accepted/rejected text, valid revisions, list/table/comment/highlight preservation, savepoint no-ops, and zero-serialization rollback | Desktop Word rendering |
+| Target hot-path parity | `node tests/performance_phase3_target_hot_paths_tests.mjs` | Cached and uncached resolution metadata parity, duplicate safety, snapshots, session invalidation, and pointer-based revision-ID seeding | Machine-independent latency thresholds |
+| List and text-walker parity | `node tests/performance_phase4_list_and_text_parity_tests.mjs` | One shared marker vocabulary and canonical/specialized visible-text agreement across structural characters and revision views | That all specialized mappings are interchangeable |
+| Route compatibility | `node tests/performance_phase5_route_consolidation_tests.mjs` | Direct/legacy list accepted-rejected parity, numbering artifacts, route selection, capability records, and stable public exports | Permission to migrate the retained multi-paragraph compatibility route |
 
 The package-facade regression opens a real ZIP buffer, adds a comment beside an
 existing high ID, validates OPC wiring, and checks an unrelated binary part is
@@ -51,12 +54,16 @@ logic again, verifies that internal operation code does not import the root
 entry point, and checks that failed atomic work can retain the exact source
 string while working maps and sets remain isolated until commit.
 
-The checked post-Phase-1 2026-09-04 coverage run reports 89.32%
-statements/lines, 77.09% branches, and 92.78% functions repository-wide; this
-meets or exceeds the original pre-refactor baseline in every dimension. The new Node
-surface reports 99.61%
-statements/lines; `document-inspection.js` reports 97.64% statements/lines and
-100% functions; `paragraph-text.js` reports 100% statements/lines/functions.
+The checked post-Phase-5 2026-09-04 coverage run reports 89.81%
+statements/lines, 77.34% branches, and 93.04% functions repository-wide; this
+is above every recorded pre-refactor dimension. Targeting performance can be
+measured in Node with `npm run benchmark:targeting` and against the native DOM
+by serving the repository locally and opening
+`scripts/benchmark-targeting-browser.html`; its `paragraphs`, `operations`, and
+`iterations` query parameters reproduce the checked fixture sizes.
+The Node surface reports 99.61% statements/lines; `document-inspection.js`
+reports 97.64% statements/lines and 100% functions; `paragraph-text.js` reports
+100% statements/lines/functions.
 
 Run the observational live-session benchmark with:
 
@@ -360,9 +367,24 @@ unchanged sample.
 ## Automated JavaScript tests
 
 Files matching `tests/*.mjs` are discovered by `scripts/run-tests.mjs`. Tests
-use `assert/strict` and run as separate Node processes. Shared OOXML assertions
-belong in `tests/helpers/ooxml-assertions.mjs`; XML-provider setup belongs in
+use `assert/strict` and each runs in a separate Node process. The runner uses up
+to four workers by default while preserving filename-sorted reporting. Set
+`DOCX_TEST_CONCURRENCY=1` for deterministic serial reproduction, or another
+positive integer for an explicit worker bound. Word, visual, and corpus lanes
+remain separate serial commands. Shared OOXML assertions belong in
+`tests/helpers/ooxml-assertions.mjs`; XML-provider setup belongs in
 `tests/setup-xml-provider.mjs`.
+
+Measure serial and parallel execution on the same machine with:
+
+```powershell
+npm run benchmark:tests
+```
+
+The benchmark performs paired warmups/runs and writes its JSON result to
+`tmp/benchmarks/test-runner-latest.json`. The checked Node 24/Windows x64 run
+reduced median time from 18.02 seconds to 7.96 seconds (55.80%). Twenty
+consecutive four-worker runs completed without a failure.
 
 For function-level gap work, run:
 

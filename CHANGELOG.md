@@ -2,30 +2,77 @@
 
 ## Unreleased
 
-### Breaking changes
+### ⚠️ Breaking changes
 
-- `getParagraphText(...)` now returns canonical accepted-view text instead of
-  the earlier simplified `w:t`/`w:tab` concatenation. For affected OOXML it now
-  excludes deleted and `w:moveFrom` content and includes structural breaks,
-  soft hyphens, and non-breaking hyphens. Callers that compare, cache, or store
-  its output may observe different strings. Use the new
-  `extractCanonicalParagraphText(...)` explicitly when accepted/rejected-view
-  semantics are intended; callers that require the former raw traversal must
-  preserve that behavior in their integration before upgrading.
-- Paragraph fingerprints include canonical paragraph text. Previously stored
-  fingerprints can therefore become stale for paragraphs containing revisions,
-  moves, breaks, soft hyphens, or non-breaking hyphens. Regenerate fingerprints
-  from the upgraded library rather than persisting them across the upgrade.
-- Malformed or field-incompatible document-operation objects now return a
-  structured `INVALID_OPERATION` error at the runner boundary. Integrations
-  that treated invalid operations as later failures or no-ops must handle this
-  explicit error result.
+The following changes can require caller or contributor updates. No public
+export or valid existing function signature was removed.
 
-No public export or valid existing function signature was removed. Strict
-targeting also remains opt-in on existing low-level mutation APIs; it is the
+#### Runtime and result-contract changes
+
+- **Canonical paragraph text:** `getParagraphText(...)` now returns the
+  accepted/current view instead of the earlier simplified `w:t`/`w:tab`
+  concatenation. It excludes deleted and `w:moveFrom` content and includes
+  structural breaks, soft hyphens, and non-breaking hyphens.
+  **Migration:** regenerate compared/cached text with the upgraded library. Use
+  `extractCanonicalParagraphText(...)` when accepted/rejected-view semantics
+  are intended; integrations that require the former raw traversal must retain
+  their own legacy extractor before upgrading.
+- **Paragraph fingerprints:** fingerprints now incorporate canonical paragraph
+  text. Stored fingerprints can become stale for paragraphs containing
+  revisions, moves, breaks, soft hyphens, or non-breaking hyphens.
+  **Migration:** do not carry fingerprints across this upgrade; re-extract the
+  document and regenerate target descriptors.
+- **Invalid operations:** malformed or field-incompatible document-operation
+  objects now return a structured `INVALID_OPERATION` error at the runner
+  boundary instead of reaching later failure/no-op paths.
+  **Migration:** validate operation files against the published schema and
+  handle `status === 'error'` plus `error.code === 'INVALID_OPERATION'`.
+- **Commented paragraph deletion:** deleting a complete paragraph that contains
+  an existing comment now fails with `COMMENTED_CONTENT_DELETE` instead of
+  producing OOXML with dangling comment references.
+  **Migration:** preserve or deliberately remove/relocate the comment before
+  deleting the paragraph, and handle the structured error. Atomic callers keep
+  the original document unchanged.
+- **Comment anchor failures:** missing or ambiguous comment anchors now return
+  `ANCHOR_NOT_FOUND` or `AMBIGUOUS_ANCHOR` and fail/roll back an atomic batch;
+  they are no longer reported as successful `no_change` operations.
+  **Migration:** treat these codes as failed operations and use a unique exact
+  anchor or stricter target descriptor before retrying.
+- **Stricter package validation:** DOCX package validation now rejects
+  unbalanced comment ranges, dangling references/usages, orphan definitions,
+  and duplicate comment-definition IDs that earlier validation could allow.
+  **Migration:** repair the comment anchors and `word/comments.xml` definitions
+  before applying or validating further changes.
+
+#### Development workflow change
+
+- **Parallel tests by default:** `npm test` now runs up to four isolated child
+  processes concurrently. This does not change the published runtime API, but
+  contributor automation that depends on test execution order or shared files
+  must be updated. **Migration:** make tests independent or set
+  `DOCX_TEST_CONCURRENCY=1` for the previous serial scheduling behavior.
+
+Strict targeting remains opt-in on existing low-level mutation APIs; it is the
 default only on the newly added Node facade and CLI.
 
+### Deprecations and future breaking changes
+
+- Replacing an existing numbering part without a merge callback now emits a
+  deprecation warning. The Node facade and CLI already merge safely by default.
+  **This remains supported in this release but will become an error in the next
+  major version.** Migrate low-level callers to
+  `mergeNumberingXmlBySchemaOrder` before that release.
+
 ### Added
+
+- Added session-scoped paragraph metadata indexing for canonical text,
+  normalized text, paragraph IDs, fingerprints, table context, and document
+  indexes, plus deterministic targeting and route-profiling benchmarks.
+- Added a shared list-marker grammar and parsed list-item vocabulary used by
+  pipeline analysis, orchestration, normalization, and list targeting.
+- Added an internal reconciliation capability matrix and opt-in route
+  instrumentation. Public reconciliation result shapes and route selection
+  policy remain unchanged.
 
 - Added `scripts/extract_text.mjs` and `scripts/apply_changes.mjs` as thin
   compatibility entrypoints for legacy skill installations. They delegate to
@@ -43,21 +90,23 @@ default only on the newly added Node facade and CLI.
 
 ### Behavior and reliability
 
-- Whole-paragraph deletions now fail with `COMMENTED_CONTENT_DELETE` when the
-  target contains an existing comment. Package callers receive the affected
-  comment IDs and, when `word/comments.xml` is available, the comment author
-  and text so reviewer feedback cannot disappear silently. Atomic application
-  preserves the original DOCX bytes.
-- DOCX package validation now cross-checks comment range starts, range ends,
-  references, and definitions, rejecting unbalanced ranges, dangling usages,
-  orphan definitions, and duplicate definition IDs.
+- Target preflight and live mutation reuse one document-scoped paragraph index;
+  strict duplicate detection and resolution metadata retain their prior
+  semantics while avoiding repeated whole-document text traversal.
+- Revision-ID seeding now walks the DOM with child/sibling pointers instead of
+  allocating an array containing every element.
+- Single-source-paragraph list expansion uses the focused list generator
+  directly. Multi-paragraph marked-list edits deliberately retain the legacy
+  run-aware reconciliation pipeline for structural parity.
+- Canonical-only table-cell targeting now consumes the shared paragraph-text
+  extractor, while offset- and sentinel-producing walkers remain specialized.
+  Their accepted visible projections now agree on soft hyphens as well as tabs,
+  breaks, hyperlinks, and non-breaking hyphens.
+
 - Comment preflight and application now share one anchor resolver. Exact
   matches take priority, unique ordinary-space/NBSP differences preserve raw
   offsets, and missing or repeated anchors return structured
   `ANCHOR_NOT_FOUND` or `AMBIGUOUS_ANCHOR` errors.
-- Comment operations that place no comment can no longer be reported as
-  successful `no_change` items. They fail the operation, roll back atomic
-  batches, and allocate no comment ID when anchor resolution fails.
 - Full-document operation batches now share one live DOM and revision-ID
   allocator, reducing complete-document parsing and serialization from once per
   operation to once per changed batch. Scoped reconciliation engines and their
@@ -80,11 +129,28 @@ default only on the newly added Node facade and CLI.
   paragraphs as one exact anchor string.
 - Transactional no-op results preserve the original DOCX bytes exactly,
   including when the same facade instance has already committed an edit.
-- Replacing an existing numbering part without a merge callback now emits a
-  deprecation warning. The Node facade and CLI already merge safely by default;
-  the low-level replacement behavior will become an error in the next major version.
 
 ### Testing and development
+
+- The JavaScript test runner now uses bounded asynchronous subprocess workers,
+  capped at four by default, while retaining one fresh Node process per file,
+  sorted reporting, timeouts, captured diagnostics, and failure-marker checks.
+  Set `DOCX_TEST_CONCURRENCY=1` for serial reproduction.
+- Added `npm run benchmark:tests` and a Phase 6 runner regression. The checked
+  benchmark reduced median suite time from 18.02 seconds to 7.96 seconds
+  (55.80%); 20 consecutive parallel runs and a separate serial run passed all
+  63 files. Parallel c8 collection remains valid at 89.90% statements/lines,
+  77.40% branches, and 93.10% functions.
+
+- Added Phase 3 targeting/traversal, Phase 4 list/text parity, and Phase 5 route
+  compatibility regressions. Together with the Phase 6 runner regression, the
+  suite now contains 63 passing test files.
+- Added `npm run benchmark:targeting` and `npm run profile:routes`. The checked
+  10,000-paragraph benchmark showed no single-operation regression and a 47.16x
+  Node median improvement for 100 cached resolutions. The equivalent native
+  Chrome benchmark showed no single-operation regression and a 36.45x batch
+  improvement. All 47 Microsoft Word differential fixtures and all 60 real-
+  document Word corpus scenarios passed after the routing changes.
 
 - Added subprocess coverage for legacy wrapper selection, operation-file
   compatibility, successful output, atomic anchor failure, source-byte
@@ -102,8 +168,8 @@ default only on the newly added Node facade and CLI.
   inspection, table/list/reference context, sequential package transactions,
   selective multi-author cleanup, ZIP rejection behavior, CLI filters, JSON
   exit contracts, and destructive-output safeguards. Together with the Phase 2
-  Phase 1 and Phase 2 regressions, the automated suite now contains 57 passing
-  test files.
+  Phase 1 and Phase 2 regressions, these established the earlier 57-file
+  baseline expanded by the subsequent performance phases.
 
 ## 0.3.0
 

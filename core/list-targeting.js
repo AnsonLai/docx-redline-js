@@ -7,6 +7,7 @@ import {
     getParagraphText,
     normalizeWhitespaceForTargeting
 } from './paragraph-targeting.js';
+import { parseListItem, stripListMarker } from '../pipeline/list-markers.js';
 
 function getFirstDescendantByLocalName(node, localName) {
     if (!node || typeof node.getElementsByTagNameNS !== 'function') return null;
@@ -25,15 +26,6 @@ function readValAttribute(element) {
     return element.getAttribute('w:val') || element.getAttribute('val') || null;
 }
 
-function parseOutlineLevelFromMarker(marker) {
-    const normalized = String(marker || '').trim();
-    if (!/^\d+(?:\.\d+)+\.?$/.test(normalized)) return null;
-    const parts = normalized.replace(/\.$/, '').split('.');
-    return Math.max(0, parts.length - 1);
-}
-
-const REDUNDANT_LIST_PREFIX_REGEX = /^(?:(?:\d+(?:\.\d+)*\.?|\((?:\d+|[a-zA-Z]|[ivxlcIVXLC]+)\)|[a-zA-Z]\.|[ivxlcIVXLC]+\.|[-*+\u2022]))\s+/;
-
 /**
  * Strips redundant manual list markers from the start of list item text.
  *
@@ -47,8 +39,10 @@ const REDUNDANT_LIST_PREFIX_REGEX = /^(?:(?:\d+(?:\.\d+)*\.?|\((?:\d+|[a-zA-Z]|[
 export function stripRedundantLeadingListMarkers(text) {
     let value = String(text || '').trim();
     let passes = 0;
-    while (passes < 4 && REDUNDANT_LIST_PREFIX_REGEX.test(value)) {
-        value = value.replace(REDUNDANT_LIST_PREFIX_REGEX, '').trimStart();
+    while (passes < 4) {
+        const stripped = stripListMarker(value);
+        if (stripped === value) break;
+        value = stripped.trimStart();
         passes++;
     }
     return value.trim();
@@ -63,19 +57,16 @@ function parseModifiedListItems(modifiedText) {
         const line = rawLine.trimEnd();
         if (!line.trim()) continue;
 
-        const markerMatch = line.match(/^(\s*)((?:\d+(?:\.\d+)*\.?|\((?:\d+|[a-zA-Z]|[ivxlcIVXLC]+)\)|[a-zA-Z]\.|[ivxlcIVXLC]+\.|[-*+\u2022]))\s+(.*)$/);
-        if (markerMatch) {
+        const parsed = parseListItem(line, { indentSpaces: 2 });
+        if (parsed) {
             hasListMarkers = true;
-            const marker = markerMatch[2];
-            const markerType = /^[-*+\u2022]$/.test(marker) ? 'bullet' : 'numbered';
-            const level = Math.floor((markerMatch[1] || '').length / 2);
             items.push({
                 kind: 'list',
-                markerType,
-                level,
-                marker,
-                outlineLevel: markerType === 'numbered' ? parseOutlineLevelFromMarker(marker) : null,
-                text: stripRedundantLeadingListMarkers(markerMatch[3])
+                markerType: parsed.markerType,
+                level: parsed.level,
+                marker: parsed.marker,
+                outlineLevel: parsed.outlineLevel,
+                text: stripRedundantLeadingListMarkers(parsed.text)
             });
             continue;
         }

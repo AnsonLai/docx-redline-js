@@ -7,6 +7,8 @@
 import { preprocessMarkdown } from '../pipeline/markdown-processor.js';
 import { isListTargetLoose } from '../pipeline/list-markers.js';
 import { ReconciliationPipeline } from '../pipeline/pipeline.js';
+import { ingestOoxml, detectNumberingContext } from '../pipeline/ingestion.js';
+import { executeListGeneration } from '../pipeline/list-generation.js';
 import { wrapInDocumentFragment } from '../pipeline/serialization.js';
 import {
     getElementsByTagNSOrTag,
@@ -33,6 +35,8 @@ import {
 } from '../core/types.js';
 import { acceptTrackedChangesInOoxml } from '../services/revision-comment-management.js';
 import { isDiffTokenLimitError } from '../pipeline/diff-engine.js';
+import { NumberingService } from '../services/numbering-service.js';
+import { recordRouteSelection } from './route-selection.js';
 
 /**
  * Applies redline track changes to OOXML by modifying the DOM in-place.
@@ -253,6 +257,7 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
         && hasExistingFormatting;
 
     if (!hasTextChanges && !hasFormatHints && !hasExistingFormatting) {
+        recordRouteSelection(options, 'noChange');
         log('[OxmlEngine] No text changes, no format hints, and no existing formatting detected');
         return finalizeUnchanged();
     }
@@ -263,6 +268,7 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
     }
 
     if (needsFormatRemoval) {
+        recordRouteSelection(options, 'formatOnly', { removeFormatting: true });
         log('[OxmlEngine] Format REMOVAL detected: applying surgical replacement in OOXML');
 
         const tableCellCtx = initialTableCellContext;
@@ -303,6 +309,7 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
     }
 
     if (!hasTextChanges && hasFormatHints) {
+        recordRouteSelection(options, 'formatOnly', { removeFormatting: false });
         log(`[OxmlEngine] Format-only change detected: ${formatHints.length} format hints`);
 
         const tableCellCtx = initialTableCellContext;
@@ -336,14 +343,17 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
 
     try {
     if (isMarkdownTable && !hasTables) {
+        recordRouteSelection(options, 'table', { transformation: 'text-to-table' });
         log('[OxmlEngine] Text-to-table transformation: generating new table from Markdown');
         return finalize(applyTextToTableTransformation(xmlDoc, cleanModifiedText, serializer, null, author, generateRedlines));
     }
 
     if (hasTables && isMarkdownTable) {
+        recordRouteSelection(options, 'table', { transformation: 'table-reconciliation' });
         return finalize(applyTableReconciliation(xmlDoc, cleanModifiedText, serializer, null, author, generateRedlines));
     }
     if (hasTables) {
+        recordRouteSelection(options, 'surgical', { tableScoped: true });
         const surgicalTarget = tableCellContext.hasTableWrapper && tableCellContext.targetParagraph
             ? tableCellContext.targetParagraph
             : null;
@@ -369,13 +379,34 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
         return finalize(result);
     }
     if (isTargetList) {
-        log('[OxmlEngine] 🎯 Using reconciliation pipeline for list generation');
-        const pipeline = new ReconciliationPipeline({
-            author,
-            generateRedlines,
-            revisionIdAllocator
+        const sourceParagraphs = getElementsByTagNSOrTag(xmlDoc, NS_W, 'p');
+        const useDirectListGeneration = sourceParagraphs.length === 1;
+        recordRouteSelection(options, useDirectListGeneration ? 'listDirect' : 'listCompatibilityPipeline', {
+            sourceParagraphCount: sourceParagraphs.length
         });
-        const result = await pipeline.execute(workingOoxml, sanitizedText, { xmlDoc });
+        log(`[OxmlEngine] 🎯 Using ${useDirectListGeneration ? 'direct list generation' : 'compatibility pipeline'} for list reconciliation`);
+        let result;
+        if (useDirectListGeneration) {
+            const ingested = ingestOoxml(workingOoxml, { xmlDoc });
+            const numberingContext = detectNumberingContext(sourceParagraphs[0]);
+            result = await executeListGeneration({
+                cleanText: cleanModifiedText,
+                numberingContext,
+                originalRunModel: ingested.runModel,
+                originalText: ingested.acceptedText,
+                generateRedlines,
+                author,
+                revisionIdAllocator,
+                numberingService: new NumberingService()
+            });
+        } else {
+            const pipeline = new ReconciliationPipeline({
+                author,
+                generateRedlines,
+                revisionIdAllocator
+            });
+            result = await pipeline.execute(workingOoxml, sanitizedText, { xmlDoc });
+        }
 
         if (result.error?.code === 'DIFF_TOKEN_LIMIT') {
             return finalize({ oxml: inputOoxml, hasChanges: false, status: 'error', error: result.error });
@@ -389,11 +420,16 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
                 numberingXml: result.numberingXml
             });
             log(`[OxmlEngine] ✅ Wrapped OOXML length: ${wrapped.length}`);
-            return finalize({ oxml: wrapped, hasChanges: true });
+            return finalize({
+                oxml: wrapped,
+                hasChanges: true,
+                ...(Array.isArray(result.warnings) ? { warnings: result.warnings } : {})
+            });
         }
         return finalizeUnchanged();
     }
 
+    recordRouteSelection(options, 'reconstruction');
     return finalize(applyReconstructionMode(
         xmlDoc,
         originalText,

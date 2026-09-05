@@ -3,7 +3,7 @@
  */
 
 import { ContentType } from '../core/types.js';
-import { matchListMarker, stripListMarker } from './list-markers.js';
+import { parseListItem } from './list-markers.js';
 
 /**
  * Parses table from markdown-style table text.
@@ -60,22 +60,17 @@ export function parseListItems(text) {
     const items = [];
 
     lines.forEach(line => {
-        const markerMatch = matchListMarker(line, { allowZeroSpaceAfterMarker: true });
-        if (!markerMatch) return;
-
-        const marker = markerMatch[2].trim();
-        const indent = (line.match(/^(\s*)/)?.[1].length) || 0;
-        const listType = /^[-*+•]/.test(marker) ? 'bullet' : 'numbered';
-        const outlineDepth = (marker.match(/\./g) || []).length;
-        const level = outlineDepth > 1 ? Math.min(8, outlineDepth - 1) : Math.min(8, Math.floor(indent / 2));
+        const parsed = parseListItem(line, { allowZeroSpaceAfterMarker: true, indentSpaces: 2 });
+        if (!parsed) return;
+        const level = parsed.outlineLevel ?? parsed.level;
 
         items.push({
             line,
-            text: stripListMarker(line, { allowZeroSpaceAfterMarker: true }),
-            marker,
-            indent,
+            text: parsed.text,
+            marker: parsed.marker,
+            indent: parsed.indent,
             level,
-            listType
+            listType: parsed.listType
         });
     });
 

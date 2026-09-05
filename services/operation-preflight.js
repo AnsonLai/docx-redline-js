@@ -6,6 +6,7 @@ import { parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { getDefaultAuthor } from '../adapters/config.js';
 import { containsTrackedChanges } from '../core/word-xml.js';
 import {
+    buildParagraphMetadataIndex,
     createParagraphFingerprint,
     findContainingWordElement,
     getDocumentParagraphNodes,
@@ -34,19 +35,20 @@ function operationNeedsNumbering(operation) {
     return operation.modified.split(/\r?\n/).some(line => /^\s*(?:[-+*]|\d+[.)])\s+/.test(line));
 }
 
-function targetMetadata(xmlDoc, paragraph, resolvedBy, suppliedText) {
-    const paragraphs = getDocumentParagraphNodes(xmlDoc);
-    const actualText = getParagraphText(paragraph);
+function targetMetadata(xmlDoc, paragraph, resolvedBy, suppliedText, paragraphMetadataIndex = null) {
+    const cached = paragraphMetadataIndex?.byParagraph?.get(paragraph) || null;
+    const paragraphs = cached ? null : getDocumentParagraphNodes(xmlDoc);
+    const actualText = cached?.text ?? getParagraphText(paragraph);
     const normalizedSupplied = normalizeWhitespaceForTargeting(suppliedText || '');
     const normalizedActual = normalizeWhitespaceForTargeting(actualText);
     return {
         resolvedBy,
         resolvedTarget: {
-            index: paragraphs.indexOf(paragraph) + 1,
-            paragraphId: getParagraphId(paragraph),
+            index: cached?.index ?? paragraphs.indexOf(paragraph) + 1,
+            paragraphId: cached?.paragraphId ?? getParagraphId(paragraph),
             text: actualText,
-            fingerprint: createParagraphFingerprint(paragraph),
-            inTable: !!findContainingWordElement(paragraph, 'tbl')
+            fingerprint: cached?.fingerprint ?? createParagraphFingerprint(paragraph),
+            inTable: cached?.inTable ?? !!findContainingWordElement(paragraph, 'tbl')
         },
         matchDiagnostics: {
             exactTextMatch: typeof suppliedText === 'string' && suppliedText === actualText,
@@ -87,6 +89,7 @@ export function preflightOperations(documentXml, operations, author, options = {
     }
 
     const xmlDoc = parsed.doc;
+    const paragraphMetadataIndex = buildParagraphMetadataIndex(xmlDoc);
     const sourceOperations = Array.isArray(operations) ? operations : [];
     const strictTargets = options.strictTargets !== false;
     const results = [];
@@ -124,11 +127,12 @@ export function preflightOperations(documentXml, operations, author, options = {
                 targetDescriptor: operation.targetDescriptor,
                 opType: operation.operationKind,
                 strictAmbiguity: strictTargets,
+                paragraphMetadataIndex,
                 onInfo: options.onInfo,
                 onWarn: options.onWarn
             });
             const paragraph = resolved.paragraph;
-            const metadata = targetMetadata(xmlDoc, paragraph, resolved.resolvedBy, operation.target);
+            const metadata = targetMetadata(xmlDoc, paragraph, resolved.resolvedBy, operation.target, paragraphMetadataIndex);
             const paragraphText = metadata.resolvedTarget.text;
             const anchor = operation.operationKind === 'comment'
                 ? (operation.textToComment || paragraphText)

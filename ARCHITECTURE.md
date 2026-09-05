@@ -88,16 +88,26 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 - `core/paragraph-text.js`
   - Canonical accepted/rejected/current-view text shared by targeting,
     ingestion, and inspection.
+- `core/paragraph-targeting.js`
+  - Target descriptors and session-scoped paragraph metadata indexes. The
+    index groups IDs and normalized text while retaining canonical text,
+    fingerprints, document order, and table context for deterministic reuse.
 - `core/redline-validation.js`
   - Runtime structural validation (`validateRedlineOoxml`) mirroring the test-suite invariants: no nested revisions, `w:delText` inside `w:del`, complete revision metadata, unique revision ids, preserved boundary whitespace.
 - `engine/oxml-engine.js`
   - Main reconciliation router, mode selection, existing-revision policy gate, and status/error result handling.
+- `engine/route-selection.js`
+  - Internal reconciliation capability matrix and opt-in diagnostic route
+    instrumentation. It observes policy; it does not expose a route override.
 - `engine/run-builders.js`
   - Shared builders for insertion/deletion wrappers, paragraph-mark revisions, visible run content, and run-property changes.
 - `engine/surgical-*.js`
   - Surgical run splitting, diff application, and span helpers for localized edits that preserve surrounding markup.
 - `engine/formatting-removal.js`
   - Shared formatting removal and highlight helpers.
+- `pipeline/list-markers.js`
+  - Dependency-light canonical list-marker grammar, classification, numbering
+    vocabulary, and parsed list-item representation.
 - `pipeline/*`
   - Ingestion, markdown preprocessing, diffing, patching, and serialization stages. Ingestion treats deleted and moved-from content as non-visible text and inserted/moved-to content as visible text.
 - `services/comment-engine.js`
@@ -264,7 +274,12 @@ The bundle inlines `diff-match-patch` and keeps `@xmldom/xmldom` external.
 ## Testing
 
 - `npm test`
-  - Runs the package test runner (`scripts/run-tests.mjs`) against all `tests/*.mjs` except setup helpers.
+  - Runs all `tests/*.mjs` except setup helpers in separate Node processes with
+    a conservative four-worker cap. Use `DOCX_TEST_CONCURRENCY=1` to reproduce
+    the same sorted suite serially.
+- `npm run benchmark:tests`
+  - Compares paired serial and bounded-parallel suite runs and records JSON
+    under ignored `tmp/benchmarks/`.
 - `npm run test:isolation`
   - Runs boundary checks for Word API markers and dependency-graph isolation.
 - `npm run check:types`

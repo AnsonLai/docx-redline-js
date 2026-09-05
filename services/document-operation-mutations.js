@@ -142,6 +142,7 @@ function getParagraphText(paragraph) {
 function resolveTargetParagraph(xmlDoc, targetText, targetRef, opType, runtimeContext = null, options = {}) {
     const onInfo = typeof options?.onInfo === 'function' ? options.onInfo : () => { };
     const onWarn = typeof options?.onWarn === 'function' ? options.onWarn : () => { };
+    const paragraphMetadataIndex = options?._documentOperationSession?.getParagraphMetadataIndex?.() || null;
     const resolved = resolveTargetParagraphWithSnapshotShared(xmlDoc, {
         targetText,
         targetRef,
@@ -149,20 +150,21 @@ function resolveTargetParagraph(xmlDoc, targetText, targetRef, opType, runtimeCo
         targetRefSnapshot: runtimeContext?.targetRefSnapshot || null,
         targetDescriptor: options?.targetDescriptor || null,
         strictAmbiguity: options?.strictTargets === true,
+        paragraphMetadataIndex,
         onInfo,
         onWarn
     });
     if (options?._resolutionCapture && resolved?.paragraph) {
-        const paragraphs = Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p'));
         const paragraph = resolved.paragraph;
+        const metadata = paragraphMetadataIndex?.byParagraph?.get(paragraph) || null;
         Object.assign(options._resolutionCapture, {
             resolvedBy: resolved.resolvedBy,
             resolvedTarget: {
-                index: paragraphs.indexOf(paragraph) + 1,
-                paragraphId: getParagraphId(paragraph),
-                text: getParagraphText(paragraph),
-                fingerprint: createParagraphFingerprint(paragraph),
-                inTable: !!findContainingWordElement(paragraph, 'tbl')
+                index: metadata?.index ?? Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p')).indexOf(paragraph) + 1,
+                paragraphId: metadata?.paragraphId ?? getParagraphId(paragraph),
+                text: metadata?.text ?? getParagraphText(paragraph),
+                fingerprint: metadata?.fingerprint ?? createParagraphFingerprint(paragraph),
+                inTable: metadata?.inTable ?? !!findContainingWordElement(paragraph, 'tbl')
             }
         });
     }
