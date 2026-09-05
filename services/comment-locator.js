@@ -5,24 +5,27 @@
 import { createWordElement } from '../core/word-xml.js';
 import { getElementsByTag, getFirstElementByTag } from '../core/xml-query.js';
 import { refreshRunPropertyChangeIds } from '../core/revision-cloning.js';
+import { readCanonicalRunText, isNodeVisibleInRevisionView } from '../core/paragraph-text.js';
 
 /**
  * Builds a paragraph text index in a single pass for repeated lookups.
  *
  * @param {Element} paragraph - w:p element
+ * @param {Object} [options={}] - Options
+ * @param {'accepted'|'rejected'} [options.revisionView='accepted'] - Revision view
  * @returns {{ fullText: string, runOffsets: Array<{run: Element, start: number, end: number}> }}
  */
-export function createParagraphTextIndex(paragraph) {
+export function createParagraphTextIndex(paragraph, options = {}) {
+    const revisionView = options.revisionView === 'current' ? 'accepted' : (options.revisionView || 'accepted');
     const runs = getElementsByTag(paragraph, 'w:r');
     const runOffsets = [];
     let fullText = '';
 
     for (const run of runs) {
+        if (!isNodeVisibleInRevisionView(run, paragraph, revisionView)) continue;
         const start = fullText.length;
-        const textNodes = getElementsByTag(run, 'w:t');
-        for (const textNode of textNodes) {
-            fullText += textNode.textContent || '';
-        }
+        const text = readCanonicalRunText(run, { revisionView, boundary: paragraph });
+        fullText += text;
         runOffsets.push({ run, start, end: fullText.length });
     }
 

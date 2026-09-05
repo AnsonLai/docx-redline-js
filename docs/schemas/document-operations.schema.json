@@ -22,7 +22,8 @@
             "exactText": { "type": "string" }, "text": { "type": "string" },
             "index": { "type": ["integer", "string"] }, "paragraphIndex": { "type": ["integer", "string"] },
             "paragraphId": { "type": "string" }, "occurrence": { "type": "integer", "minimum": 1 },
-            "inTable": { "type": "boolean" }, "fingerprint": { "type": "string" }, "sourceFingerprint": { "type": "string" }
+            "inTable": { "type": "boolean" }, "fingerprint": { "type": "string" }, "sourceFingerprint": { "type": "string" },
+            "revisionView": { "type": "string", "enum": ["accepted", "rejected"] }
           },
           "additionalProperties": false,
           "anyOf": [ { "required": ["exactText"] }, { "required": ["text"] }, { "required": ["index"] }, { "required": ["paragraphIndex"] }, { "required": ["paragraphId"] }, { "required": ["fingerprint"] }, { "required": ["sourceFingerprint"] } ]

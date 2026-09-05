@@ -1101,10 +1101,11 @@ Do not weaken an envelope merely to make a failure disappear.
 Existing extraction output must be byte-for-byte unchanged for all current
 fixtures.
 
-### WP-05 — Revision-View Target Resolution
+### WP-05 — Revision-View Target Resolution [COMPLETED 2026-09-05]
 
 **Depends on:** WP-04  
-**Produces runtime changes:** Additive target option for inspection/preflight
+**Produces runtime changes:** Additive target option for inspection/preflight  
+**Status:** Completed — implemented revisionView-aware caching and conjunctive descriptor resolution in `core/paragraph-targeting.js`, validation in `services/document-operation-contract.js`, preflight multi-view support in `services/operation-preflight.js`, mutation refusal with `UNSUPPORTED_REVISION_VIEW_MUTATION` in `services/document-operation-applier.js`, JSON schema updates, and verified by `tests/revision_view_target_tests.mjs`.
 
 **Files to edit**
 

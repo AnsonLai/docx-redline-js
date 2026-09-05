@@ -30,7 +30,14 @@ export type {
 } from './services/standalone-operation-runner.js';
 
 export interface RedlineError {
-  code: 'PARSE_ERROR' | 'TARGET_NOT_FOUND' | 'EXISTING_REVISIONS' | 'DIFF_TOKEN_LIMIT' | string;
+  code:
+    | 'PARSE_ERROR'
+    | 'TARGET_NOT_FOUND'
+    | 'EXISTING_REVISIONS'
+    | 'DIFF_TOKEN_LIMIT'
+    | 'UNSUPPORTED_REVISION_VIEW_MUTATION'
+    | 'TARGET_INDEX_MISMATCH'
+    | string;
   message: string;
   commentIds?: string[];
   comments?: Array<{ id: string; author: string; text: string }>;

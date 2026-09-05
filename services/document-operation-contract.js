@@ -39,7 +39,8 @@ export function normalizeTargetDescriptor(target, legacyTargetRef = null) {
             paragraphId: null,
             occurrence: null,
             inTable: null,
-            fingerprint: null
+            fingerprint: null,
+            revisionView: 'accepted'
         };
     }
 
@@ -55,7 +56,8 @@ export function normalizeTargetDescriptor(target, legacyTargetRef = null) {
         inTable: typeof target.inTable === 'boolean' ? target.inTable : null,
         fingerprint: nonEmptyString(target.fingerprint)
             ? target.fingerprint.trim()
-            : (nonEmptyString(target.sourceFingerprint) ? target.sourceFingerprint.trim() : null)
+            : (nonEmptyString(target.sourceFingerprint) ? target.sourceFingerprint.trim() : null),
+        revisionView: target.revisionView === 'rejected' ? 'rejected' : 'accepted'
     };
 }
 
@@ -98,6 +100,30 @@ export function validateDocumentOperation(operation) {
     }
 
     const normalized = normalizeDocumentOperation(operation);
+    if (isRecord(operation.target) && operation.target.revisionView != null) {
+        if (operation.target.revisionView !== 'accepted' && operation.target.revisionView !== 'rejected') {
+            return {
+                valid: false,
+                error: {
+                    code: 'INVALID_OPERATION',
+                    message: 'Target revisionView must be "accepted" or "rejected" when provided.'
+                }
+            };
+        }
+    }
+
+    if (isRecord(operation.targetEnd) && operation.targetEnd.revisionView != null) {
+        if (operation.targetEnd.revisionView !== 'accepted' && operation.targetEnd.revisionView !== 'rejected') {
+            return {
+                valid: false,
+                error: {
+                    code: 'INVALID_OPERATION',
+                    message: 'Target revisionView must be "accepted" or "rejected" when provided.'
+                }
+            };
+        }
+    }
+
     const target = normalized.targetDescriptor;
     if (!nonEmptyString(target.text) && target.index == null && !target.paragraphId) {
         return {

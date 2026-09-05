@@ -77,13 +77,17 @@ export function getParagraphId(paragraph) {
 
 export function createParagraphFingerprint(paragraph, metadata = {}) {
     if (!paragraph) return null;
-    const text = typeof metadata.text === 'string' ? metadata.text : getParagraphText(paragraph);
+    const revisionView = metadata.revisionView === 'rejected' ? 'rejected' : 'accepted';
+    const text = typeof metadata.text === 'string'
+        ? metadata.text
+        : extractCanonicalParagraphText(paragraph, { revisionView });
     const documentIndex = Number.isInteger(metadata.index)
         ? metadata.index
         : getDocumentParagraphNodes(paragraph.ownerDocument || paragraph).indexOf(paragraph) + 1;
     const paragraphId = metadata.paragraphId === undefined ? getParagraphId(paragraph) : metadata.paragraphId;
     const inTable = typeof metadata.inTable === 'boolean' ? metadata.inTable : isParagraphInTable(paragraph);
-    const identity = `${paragraphId || ''}\u001f${documentIndex}\u001f${inTable ? 'table' : 'body'}\u001f${text}`;
+    const viewPart = revisionView === 'rejected' ? 'rejected\u001f' : '';
+    const identity = `${paragraphId || ''}\u001f${documentIndex}\u001f${inTable ? 'table' : 'body'}\u001f${viewPart}${text}`;
     let hash = 0x811c9dc5;
     for (let i = 0; i < identity.length; i++) {
         hash ^= identity.charCodeAt(i);
@@ -98,9 +102,12 @@ export function createParagraphFingerprint(paragraph, metadata = {}) {
  * nodes and must be discarded after a mutation.
  *
  * @param {Document|Element|null|undefined} xmlDoc - OOXML document root
- * @returns {{entries: ReadonlyArray<Object>, byParagraph: Map<Element,Object>, byId: Map<string,Object>, byNormalizedText: Map<string,ReadonlyArray<Object>>}}
+ * @param {Object} [options={}] - Options
+ * @param {'accepted'|'rejected'} [options.revisionView='accepted'] - Revision view
+ * @returns {{revisionView: 'accepted'|'rejected', entries: ReadonlyArray<Object>, byParagraph: Map<Element,Object>, byId: Map<string,Object>, byNormalizedText: Map<string,ReadonlyArray<Object>>}}
  */
-export function buildParagraphMetadataIndex(xmlDoc) {
+export function buildParagraphMetadataIndex(xmlDoc, options = {}) {
+    const revisionView = options.revisionView === 'rejected' ? 'rejected' : 'accepted';
     const paragraphs = getDocumentParagraphNodes(xmlDoc);
     const entries = [];
     const byParagraph = new Map();
@@ -109,7 +116,7 @@ export function buildParagraphMetadataIndex(xmlDoc) {
 
     for (let offset = 0; offset < paragraphs.length; offset++) {
         const paragraph = paragraphs[offset];
-        const text = getParagraphText(paragraph);
+        const text = extractCanonicalParagraphText(paragraph, { revisionView });
         const paragraphId = getParagraphId(paragraph);
         const inTable = isParagraphInTable(paragraph);
         const normalizedText = normalizeWhitespaceForTargeting(text);
@@ -119,11 +126,13 @@ export function buildParagraphMetadataIndex(xmlDoc) {
             paragraphId,
             text,
             normalizedText,
+            revisionView,
             fingerprint: createParagraphFingerprint(paragraph, {
                 text,
                 index: offset + 1,
                 paragraphId,
-                inTable
+                inTable,
+                revisionView
             }),
             inTable
         });
@@ -138,6 +147,7 @@ export function buildParagraphMetadataIndex(xmlDoc) {
 
     for (const [key, values] of grouped) grouped.set(key, Object.freeze(values));
     return Object.freeze({
+        revisionView,
         entries: Object.freeze(entries),
         byParagraph,
         byId,
@@ -377,10 +387,17 @@ export function resolveTargetParagraph(xmlDoc, options = {}) {
     const descriptor = options.targetDescriptor && typeof options.targetDescriptor === 'object'
         ? options.targetDescriptor
         : null;
-    const cleanTargetText = String(descriptor?.text ?? options.targetText ?? '').trim();
-    const parsedRef = parseParagraphReference(descriptor?.index ?? options.targetRef);
+    const revisionView = descriptor?.revisionView === 'rejected' ? 'rejected' : 'accepted';
+    const cleanTargetText = String(descriptor?.exactText ?? descriptor?.text ?? options.targetText ?? '').trim();
+    const parsedRef = parseParagraphReference(descriptor?.index ?? descriptor?.paragraphIndex ?? options.targetRef);
     const strictAmbiguity = options.strictAmbiguity === true;
-    const paragraphMetadataIndex = options.paragraphMetadataIndex || null;
+    let paragraphMetadataIndex = options.paragraphMetadataIndex || null;
+    if (paragraphMetadataIndex && paragraphMetadataIndex.revisionView !== revisionView) {
+        paragraphMetadataIndex = options.metadataIndices?.[revisionView]
+            || buildParagraphMetadataIndex(xmlDoc, { revisionView });
+    } else if (!paragraphMetadataIndex) {
+        paragraphMetadataIndex = buildParagraphMetadataIndex(xmlDoc, { revisionView });
+    }
 
     if (descriptor?.paragraphId) {
         const byId = findParagraphById(xmlDoc, descriptor.paragraphId, paragraphMetadataIndex);
@@ -390,27 +407,51 @@ export function resolveTargetParagraph(xmlDoc, options = {}) {
                 `Target paragraphId not found: "${descriptor.paragraphId}".`
             );
         }
-        const actualFingerprint = paragraphMetadataIndex?.byParagraph?.get(byId)?.fingerprint
-            || createParagraphFingerprint(byId);
+        const cachedEntry = paragraphMetadataIndex?.byParagraph?.get(byId) || null;
+        const actualIndex = cachedEntry?.index ?? getDocumentParagraphNodes(xmlDoc).indexOf(byId) + 1;
+        const actualFingerprint = cachedEntry?.fingerprint
+            || createParagraphFingerprint(byId, { revisionView });
+        const actualInTable = cachedEntry?.inTable ?? isParagraphInTable(byId);
+        const actualText = cachedEntry?.normalizedText
+            || normalizeWhitespaceForTargeting(extractCanonicalParagraphText(byId, { revisionView }));
+
+        if (parsedRef != null && parsedRef !== actualIndex) {
+            throw createTargetError(
+                'TARGET_INDEX_MISMATCH',
+                `Target paragraphId "${descriptor.paragraphId}" (index ${actualIndex}) does not match requested index ${parsedRef}.`,
+                cachedEntry ? [serializeTargetCandidate(cachedEntry)] : null
+            );
+        }
         if (descriptor.fingerprint && descriptor.fingerprint !== actualFingerprint) {
             throw createTargetError(
                 'TARGET_FINGERPRINT_MISMATCH',
-                `Target paragraphId "${descriptor.paragraphId}" no longer matches its source fingerprint.`
+                `Target paragraphId "${descriptor.paragraphId}" no longer matches its source fingerprint.`,
+                cachedEntry ? [serializeTargetCandidate(cachedEntry)] : null
             );
         }
-        if (typeof descriptor.inTable === 'boolean' && descriptor.inTable !== isParagraphInTable(byId)) {
+        if (typeof descriptor.inTable === 'boolean' && descriptor.inTable !== actualInTable) {
             throw createTargetError(
                 'TARGET_CONTEXT_MISMATCH',
-                `Target paragraphId "${descriptor.paragraphId}" does not match the requested table context.`
+                `Target paragraphId "${descriptor.paragraphId}" does not match the requested table context.`,
+                cachedEntry ? [serializeTargetCandidate(cachedEntry)] : null
             );
         }
-        if (cleanTargetText) {
-            const actualText = paragraphMetadataIndex?.byParagraph?.get(byId)?.normalizedText
-                || normalizeWhitespaceForTargeting(getParagraphText(byId));
-            if (actualText !== normalizeWhitespaceForTargeting(cleanTargetText)) {
+        if (cleanTargetText && actualText !== normalizeWhitespaceForTargeting(cleanTargetText)) {
+            throw createTargetError(
+                'TARGET_TEXT_MISMATCH',
+                `Target paragraphId "${descriptor.paragraphId}" no longer matches the supplied text.`,
+                cachedEntry ? [serializeTargetCandidate(cachedEntry)] : null
+            );
+        }
+        if (descriptor.occurrence != null) {
+            const textToFind = cleanTargetText || actualText;
+            const textCandidates = findStrictTargetCandidates(xmlDoc, textToFind, paragraphMetadataIndex);
+            const actualOccurrence = textCandidates.findIndex(c => c.paragraph === byId) + 1;
+            if (actualOccurrence === 0 || actualOccurrence !== descriptor.occurrence) {
                 throw createTargetError(
-                    'TARGET_TEXT_MISMATCH',
-                    `Target paragraphId "${descriptor.paragraphId}" no longer matches the supplied text.`
+                    'TARGET_OCCURRENCE_MISMATCH',
+                    `Target paragraphId "${descriptor.paragraphId}" matches occurrence ${actualOccurrence}, not requested occurrence ${descriptor.occurrence}.`,
+                    textCandidates.map(serializeTargetCandidate)
                 );
             }
         }
@@ -440,6 +481,7 @@ export function resolveTargetParagraph(xmlDoc, options = {}) {
                 unfilteredCandidates.map(serializeTargetCandidate)
             );
         }
+
 
         if (descriptor?.occurrence) {
             const occurrenceMatch = candidates[descriptor.occurrence - 1] || null;
@@ -492,9 +534,22 @@ export function resolveTargetParagraph(xmlDoc, options = {}) {
     if (parsedRef) {
         const byRef = findParagraphByReference(xmlDoc, parsedRef, paragraphMetadataIndex);
         if (byRef) {
+            const cached = paragraphMetadataIndex?.byParagraph?.get(byRef) || null;
+            if (descriptor?.fingerprint && descriptor.fingerprint !== cached?.fingerprint) {
+                throw createTargetError(
+                    'TARGET_FINGERPRINT_MISMATCH',
+                    `Target fingerprint does not match paragraph reference [P${parsedRef}].`
+                );
+            }
+            if (typeof descriptor?.inTable === 'boolean' && descriptor.inTable !== cached?.inTable) {
+                throw createTargetError(
+                    'TARGET_CONTEXT_MISMATCH',
+                    `Target paragraph reference [P${parsedRef}] does not match requested table context.`
+                );
+            }
             if (cleanTargetText) {
                 const strictMatch = findParagraphByStrictText(xmlDoc, cleanTargetText, { paragraphMetadataIndex });
-                const byRefText = (paragraphMetadataIndex?.byParagraph?.get(byRef)?.text || getParagraphText(byRef)).trim();
+                const byRefText = (cached?.text || extractCanonicalParagraphText(byRef, { revisionView })).trim();
                 const byRefNorm = normalizeWhitespaceForTargeting(byRefText);
                 const targetNorm = normalizeWhitespaceForTargeting(cleanTargetText);
                 const hasDrift = byRefNorm !== targetNorm;
@@ -540,19 +595,26 @@ function isParagraphInTable(paragraph) {
     return !!findContainingWordElement(paragraph, 'tbl');
 }
 
-export function findStrictTargetCandidates(xmlDoc, targetText, paragraphMetadataIndex = null) {
+export function findStrictTargetCandidates(xmlDoc, targetText, optionsOrIndex = null) {
     const normalizedTarget = normalizeWhitespaceForTargeting(targetText);
     if (!normalizedTarget) return [];
 
-    if (paragraphMetadataIndex?.byNormalizedText) {
-        return Array.from(paragraphMetadataIndex.byNormalizedText.get(normalizedTarget) || []);
+    const metadataIndex = optionsOrIndex?.byNormalizedText
+        ? optionsOrIndex
+        : (optionsOrIndex?.paragraphMetadataIndex || null);
+    const revisionView = optionsOrIndex?.revisionView
+        || metadataIndex?.revisionView
+        || 'accepted';
+
+    if (metadataIndex?.byNormalizedText && metadataIndex.revisionView === revisionView) {
+        return Array.from(metadataIndex.byNormalizedText.get(normalizedTarget) || []);
     }
 
     const paragraphs = getDocumentParagraphNodes(xmlDoc);
     const candidates = [];
     for (let i = 0; i < paragraphs.length; i++) {
         const paragraph = paragraphs[i];
-        const paragraphText = getParagraphText(paragraph).trim();
+        const paragraphText = extractCanonicalParagraphText(paragraph, { revisionView }).trim();
         if (!paragraphText) continue;
         if (normalizeWhitespaceForTargeting(paragraphText) !== normalizedTarget) continue;
         candidates.push({
@@ -560,8 +622,13 @@ export function findStrictTargetCandidates(xmlDoc, targetText, paragraphMetadata
             index: i + 1,
             inTable: isParagraphInTable(paragraph),
             paragraphId: getParagraphId(paragraph),
-            fingerprint: createParagraphFingerprint(paragraph),
-            text: getParagraphText(paragraph)
+            fingerprint: createParagraphFingerprint(paragraph, {
+                text: paragraphText,
+                index: i + 1,
+                revisionView
+            }),
+            text: paragraphText,
+            revisionView
         });
     }
     return candidates;
@@ -573,12 +640,16 @@ function serializeTargetCandidate(candidate) {
         paragraphId: candidate.paragraphId || null,
         text: candidate.text,
         inTable: candidate.inTable,
-        fingerprint: candidate.fingerprint
+        fingerprint: candidate.fingerprint,
+        revisionView: candidate.revisionView || 'accepted'
     };
 }
 
 function filterTargetCandidates(candidates, descriptor) {
     let scoped = candidates.slice();
+    if (descriptor?.paragraphId) {
+        scoped = scoped.filter(candidate => candidate.paragraphId === descriptor.paragraphId);
+    }
     if (typeof descriptor?.inTable === 'boolean') {
         scoped = scoped.filter(candidate => candidate.inTable === descriptor.inTable);
     }

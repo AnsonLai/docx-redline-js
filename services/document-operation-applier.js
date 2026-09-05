@@ -39,6 +39,20 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
 
     const operation = validation.operation || normalizeDocumentOperation(op);
     const authorUsed = resolveDocumentOperationAuthor(operation, author, getDefaultAuthor());
+
+    if (operation.targetDescriptor?.revisionView === 'rejected') {
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: {
+                code: 'UNSUPPORTED_REVISION_VIEW_MUTATION',
+                message: 'Targeting rejected revision view for mutation is not supported yet.'
+            },
+            operationType: operation.operationKind,
+            authorUsed
+        };
+    }
     const session = options?._documentOperationSession instanceof DocumentOperationSession
         ? options._documentOperationSession
         : new DocumentOperationSession(documentXml, options);
