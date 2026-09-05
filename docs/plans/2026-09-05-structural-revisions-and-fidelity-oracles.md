@@ -1171,10 +1171,11 @@ general `preserve-input` switch until the matrix below is implemented.
 
 If internal and Word selective-author outcomes differ, keep the case refused.
 
-### WP-07 — Replacement Event Metadata
+### WP-07 — Replacement Event Metadata [COMPLETED 2026-09-05]
 
 **Depends on:** WP-03  
-**Produces runtime changes:** Opt-in paired metadata
+**Produces runtime changes:** Opt-in paired metadata  
+**Status:** Completed — implemented opt-in `pairReplacements` with shared author/timestamp metadata, distinct document-allocated revision IDs, structural boundary safety fallback emitting `PAIRING_SKIPPED_STRUCTURAL_BOUNDARY`, lifecycle equivalence, schema and type declarations, and verified by `tests/replacement_event_metadata_tests.mjs`.
 
 **Files to inspect/edit**
 

@@ -1061,6 +1061,7 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
             generateRedlines,
             existingRevisions: options.existingRevisions,
             structuredContent: options.structuredContent === true,
+            pairReplacements: options.pairReplacements === true,
             _revisionIdAllocator: revisionIdAllocator,
             _isolatedTableCell: useTableScope
         });
@@ -1114,7 +1115,8 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
         hasChanges: true,
         numberingXml,
-        status: 'ok'
+        status: 'ok',
+        ...(Array.isArray(result.warnings) && result.warnings.length > 0 ? { warnings: result.warnings } : {})
     };
 }
 

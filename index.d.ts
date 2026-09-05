@@ -51,6 +51,7 @@ export interface RedlineOptions {
   removeFormatting?: boolean;
   sanitizeInput?: boolean;
   structuredContent?: boolean;
+  pairReplacements?: boolean;
   [key: string]: unknown;
 }
 

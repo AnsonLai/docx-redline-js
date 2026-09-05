@@ -20,7 +20,7 @@ import { withOoxmlSourceType } from '../core/word-xml.js';
  * @param {{ diffTimeoutSeconds?: number }} [diffOptions={}] - Diff configuration
  * @returns {{ oxml: string, hasChanges: boolean }}
  */
-export function applyReconstructionMode(xmlDoc, originalText, modifiedText, serializer, author, formatHints, generateRedlines = true, diffOptions = {}) {
+export function applyReconstructionMode(xmlDoc, originalText, modifiedText, serializer, author, formatHints, generateRedlines = true, diffOptions = {}, options = {}) {
     const selectedParagraphs = findReconstructionParagraphRange(xmlDoc, originalText);
     if (selectedParagraphs === null) {
         return withOoxmlSourceType({
@@ -48,6 +48,7 @@ export function applyReconstructionMode(xmlDoc, originalText, modifiedText, seri
         serializer,
         author,
         formatHints,
-        generateRedlines
+        generateRedlines,
+        options
     ));
 }

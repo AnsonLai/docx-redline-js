@@ -17,11 +17,12 @@ import { createWordElement } from '../core/word-xml.js';
  * @param {'ins'|'del'} type - Wrapper type
  * @param {Element|null} run - Optional run to append
  * @param {string} author - Change author
+ * @param {Object|null} [revisionMetadata=null] - Optional explicit revision metadata
  * @returns {Element}
  */
-export function createTrackChange(xmlDoc, type, run, author) {
+export function createTrackChange(xmlDoc, type, run, author, revisionMetadata = null) {
     const wrapper = createWordElement(xmlDoc, type === 'ins' ? 'w:ins' : 'w:del');
-    const metadata = createRevisionMetadata(author, xmlDoc);
+    const metadata = revisionMetadata || createRevisionMetadata(author, xmlDoc);
     wrapper.setAttribute('w:id', String(metadata.id));
     wrapper.setAttribute('w:author', metadata.author);
     wrapper.setAttribute('w:date', metadata.date);

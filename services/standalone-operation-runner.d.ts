@@ -19,6 +19,7 @@ export interface DocumentOperationBase {
   author?: string;
   generateRedlines?: boolean;
   existingRevisions?: ExistingRevisionsPolicy;
+  pairReplacements?: boolean;
 }
 
 export interface RedlineDocumentOperation extends DocumentOperationBase {
@@ -75,6 +76,7 @@ export interface StandaloneRunnerOptions {
   generateRedlines?: boolean;
   existingRevisions?: ExistingRevisionsPolicy;
   strictTargets?: boolean;
+  pairReplacements?: boolean;
   onInfo?: (message: string) => void;
   onWarn?: (message: string) => void;
   [key: string]: unknown;

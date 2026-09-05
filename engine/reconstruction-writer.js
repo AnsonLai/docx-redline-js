@@ -12,7 +12,7 @@ import {
     markParagraphMarkInserted
 } from './run-builders.js';
 import { getFirstElementByTagNSOrTag } from '../core/xml-query.js';
-import { NS_W } from '../core/types.js';
+import { NS_W, createReplacementRevisionEvent, createRevisionMetadata } from '../core/types.js';
 import { createWordElement, isWordElement } from '../core/word-xml.js';
 
 /**
@@ -27,7 +27,7 @@ import { createWordElement, isWordElement } from '../core/word-xml.js';
  * @param {boolean} [generateRedlines=true] - Track change toggle
  * @returns {{ oxml: string, hasChanges: boolean }}
  */
-export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, author, formatHints, generateRedlines = true) {
+export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, author, formatHints, generateRedlines = true, options = {}) {
     const {
         paragraphs,
         containerFragments,
@@ -55,12 +55,9 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
 
     let currentOriginalIndex = 0;
     let currentInsertOffset = 0;
-    // A replacement is represented as one or more deletions followed by an
-    // insertion. Remember where that deleted range began so replacement text
-    // inherits the formatting at the start of the range, rather than the last
-    // deleted character (which may be a superscript ordinal, footnote-style
-    // run, or another narrow formatting boundary).
+    const pairReplacements = options?.pairReplacements === true;
     let pendingReplacementStart = null;
+    let pendingReplacementEvent = null;
     const emittedCommentMarkers = new WeakSet();
 
     for (const [op, text] of diffs) {
@@ -68,8 +65,12 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
             const type = op === 0 ? 'equal' : 'delete';
             if (op === 0) {
                 pendingReplacementStart = null;
+                pendingReplacementEvent = null;
             } else if (pendingReplacementStart === null) {
                 pendingReplacementStart = currentOriginalIndex;
+                if (pairReplacements) {
+                    pendingReplacementEvent = createReplacementRevisionEvent(author, xmlDoc);
+                }
             }
             let offset = 0;
 
@@ -97,7 +98,8 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
                     formatHints,
                     currentInsertOffset,
                     generateRedlines,
-                    emittedCommentMarkers
+                    emittedCommentMarkers,
+                    pendingReplacementEvent
                 );
                 currentParagraph = appendResult.currentParagraph;
 
@@ -137,11 +139,13 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
                 formatHints,
                 currentInsertOffset,
                 generateRedlines,
-                emittedCommentMarkers
+                emittedCommentMarkers,
+                pendingReplacementEvent
             );
             currentParagraph = appendResult.currentParagraph;
             currentInsertOffset += text.length;
             pendingReplacementStart = null;
+            pendingReplacementEvent = null;
         }
     }
 
@@ -213,7 +217,8 @@ function appendTextToCurrent(
     formatHints = [],
     insertOffset = 0,
     generateRedlines = true,
-    emittedCommentMarkers = new WeakSet()
+    emittedCommentMarkers = new WeakSet(),
+    replacementEvent = null
 ) {
     let localBaseIndex = baseIndex;
     let localInsertOffset = insertOffset;
@@ -314,7 +319,12 @@ function appendTextToCurrent(
             run.appendChild(delText);
 
             if (generateRedlines) {
-                const del = createTrackChange(xmlDoc, 'del', run, author);
+                const metadata = replacementEvent ? {
+                    id: createRevisionMetadata(author, xmlDoc).id,
+                    author: replacementEvent.author,
+                    date: replacementEvent.date
+                } : null;
+                const del = createTrackChange(xmlDoc, 'del', run, author, metadata);
                 parent.appendChild(del);
             }
         } else {
@@ -322,7 +332,12 @@ function appendTextToCurrent(
             const runs = createFormattedRuns(xmlDoc, part, rPr, applicableHints, localInsertOffset, author, generateRedlines);
 
             if (type === 'insert' && generateRedlines) {
-                const ins = createTrackChange(xmlDoc, 'ins', null, author);
+                const metadata = replacementEvent ? {
+                    id: createRevisionMetadata(author, xmlDoc).id,
+                    author: replacementEvent.author,
+                    date: replacementEvent.date
+                } : null;
+                const ins = createTrackChange(xmlDoc, 'ins', null, author, metadata);
                 runs.forEach(run => ins.appendChild(run));
                 parent.appendChild(ins);
             } else {

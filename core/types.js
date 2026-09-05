@@ -311,6 +311,38 @@ export function createRevisionMetadata(author, allocatorOrNode = null) {
 }
 
 /**
+ * @typedef {Object} ReplacementRevisionEvent
+ * @property {number} deletionId - Unique revision ID for deletion
+ * @property {number} insertionId - Unique revision ID for insertion
+ * @property {string} author - Change author
+ * @property {string} date - Shared ISO timestamp
+ */
+
+/**
+ * Creates paired revision metadata for a replacement event.
+ * Allocates two unique IDs but shares author and timestamp.
+ *
+ * @param {string} [author]
+ * @param {RevisionIdAllocator|Document|Element|null} [allocatorOrNode=null]
+ * @returns {ReplacementRevisionEvent}
+ */
+export function createReplacementRevisionEvent(author, allocatorOrNode = null) {
+    const resolvedAuthor = typeof author === 'string' && author.trim()
+        ? author.trim()
+        : getDefaultAuthor();
+    const allocator = allocatorOrNode instanceof RevisionIdAllocator
+        ? allocatorOrNode
+        : (getRevisionIdAllocatorForDocument(allocatorOrNode) || defaultRevisionIdAllocator);
+    const date = getRevisionTimestamp();
+    return {
+        deletionId: allocator.next(),
+        insertionId: allocator.next(),
+        author: resolvedAuthor,
+        date
+    };
+}
+
+/**
  * Seeds the revision ID counter above any existing Word revision/comment id values.
  *
  * @param {Document|Element} xmlDoc - Parsed OOXML document or element

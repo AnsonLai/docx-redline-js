@@ -386,7 +386,9 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
             author,
             formatHints,
             generateRedlines,
-            surgicalTarget
+            surgicalTarget,
+            {},
+            options
         );
 
         if (tableCellContext.hasTableWrapper && result.hasChanges && tableCellContext.targetParagraph) {
@@ -455,7 +457,9 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
         serializer,
         author,
         formatHints,
-        generateRedlines
+        generateRedlines,
+        {},
+        options
     ));
     } catch (caught) {
         if (isDiffTokenLimitError(caught)) {

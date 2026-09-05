@@ -159,6 +159,13 @@ export function validateDocumentOperation(operation) {
         };
     }
 
+    if (normalized.pairReplacements != null && typeof normalized.pairReplacements !== 'boolean') {
+        return {
+            valid: false,
+            error: { code: 'INVALID_OPERATION', message: 'pairReplacements must be a boolean when provided.' }
+        };
+    }
+
     if (normalized.operationKind === 'comment') {
         if (!nonEmptyString(normalized.commentContent)) {
             return {

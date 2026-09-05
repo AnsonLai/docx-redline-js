@@ -6,6 +6,7 @@ import {
     createTextRunWithRPrElement,
     injectFormattingToRPr
 } from './run-builders.js';
+import { createRevisionMetadata } from '../core/types.js';
 import {
     createRunFromPieces,
     getRunContentPieces,
@@ -67,7 +68,7 @@ export function reconcileFormattingForTextSpan(xmlDoc, span, start, end, applica
     return true;
 }
 
-export function processDelete(xmlDoc, spanIndex, startPos, endPos, author, generateRedlines) {
+export function processDelete(xmlDoc, spanIndex, startPos, endPos, author, generateRedlines, revisionMetadata = null) {
     const spans = [];
     forEachOverlappingSpan(spanIndex, startPos, endPos, span => {
         spans.push(span);
@@ -83,6 +84,7 @@ export function processDelete(xmlDoc, spanIndex, startPos, endPos, author, gener
     });
 
     let changed = false;
+    let usedDelMetadata = false;
     spansByRun.forEach((runSpans, runElement) => {
         const parent = runElement.parentNode;
         if (!parent) return;
@@ -114,7 +116,11 @@ export function processDelete(xmlDoc, spanIndex, startPos, endPos, author, gener
 
         if (generateRedlines && deletedPieces.length > 0) {
             const delRun = createRunFromPieces(xmlDoc, deletedPieces, runSpans[0].rPr);
-            const delWrapper = createTrackChange(xmlDoc, 'del', delRun, author);
+            const metadata = revisionMetadata
+                ? (usedDelMetadata ? { ...revisionMetadata, id: createRevisionMetadata(author, xmlDoc).id } : revisionMetadata)
+                : null;
+            usedDelMetadata = true;
+            const delWrapper = createTrackChange(xmlDoc, 'del', delRun, author, metadata);
             parent.insertBefore(delWrapper, runElement);
         }
 
@@ -126,7 +132,7 @@ export function processDelete(xmlDoc, spanIndex, startPos, endPos, author, gener
     return changed;
 }
 
-export function processInsert(xmlDoc, spanIndex, pos, text, author, formatHints = [], insertOffset = 0, generateRedlines = true, fallbackParagraph = null) {
+export function processInsert(xmlDoc, spanIndex, pos, text, author, formatHints = [], insertOffset = 0, generateRedlines = true, fallbackParagraph = null, revisionMetadata = null) {
     let targetSpan = findContainingSpan(spanIndex, pos);
 
     if (!targetSpan && pos > 0) {
@@ -143,14 +149,14 @@ export function processInsert(xmlDoc, spanIndex, pos, text, author, formatHints 
 
     if (!targetSpan) {
         if (!fallbackParagraph) return false;
-        insertTextRuns(xmlDoc, fallbackParagraph, null, text, null, author, formatHints, insertOffset, generateRedlines);
+        insertTextRuns(xmlDoc, fallbackParagraph, null, text, null, author, formatHints, insertOffset, generateRedlines, revisionMetadata);
         return true;
     }
 
     const parent = targetSpan.runElement.parentNode;
     if (!parent) {
         if (!fallbackParagraph) return false;
-        insertTextRuns(xmlDoc, fallbackParagraph, null, text, targetSpan.rPr, author, formatHints, insertOffset, generateRedlines);
+        insertTextRuns(xmlDoc, fallbackParagraph, null, text, targetSpan.rPr, author, formatHints, insertOffset, generateRedlines, revisionMetadata);
         return true;
     }
 
@@ -165,24 +171,24 @@ export function processInsert(xmlDoc, spanIndex, pos, text, author, formatHints 
         const afterPieces = sliceRunPieces(xmlDoc, pieces, localInsertPos, getRunTextLength(pieces), false);
 
         insertRunPiecesBefore(xmlDoc, parent, targetSpan.runElement, beforePieces, targetSpan.rPr);
-        insertTextRuns(xmlDoc, parent, targetSpan.runElement, text, targetSpan.rPr, author, formatHints, insertOffset, generateRedlines);
+        insertTextRuns(xmlDoc, parent, targetSpan.runElement, text, targetSpan.rPr, author, formatHints, insertOffset, generateRedlines, revisionMetadata);
         insertRunPiecesBefore(xmlDoc, parent, targetSpan.runElement, afterPieces, targetSpan.rPr);
         parent.removeChild(targetSpan.runElement);
         return true;
     }
 
     const referenceNode = pos <= targetSpan.charStart ? targetSpan.runElement : targetSpan.runElement.nextSibling;
-    insertTextRuns(xmlDoc, parent, referenceNode, text, targetSpan.rPr, author, formatHints, insertOffset, generateRedlines);
+    insertTextRuns(xmlDoc, parent, referenceNode, text, targetSpan.rPr, author, formatHints, insertOffset, generateRedlines, revisionMetadata);
     return true;
 }
 
-function insertTextRuns(xmlDoc, parent, referenceNode, text, baseRPr, author, formatHints, insertOffset, generateRedlines) {
+function insertTextRuns(xmlDoc, parent, referenceNode, text, baseRPr, author, formatHints, insertOffset, generateRedlines, revisionMetadata = null) {
     const applicableHints = getApplicableFormatHints(formatHints, insertOffset, insertOffset + text.length);
 
     if (applicableHints.length === 0) {
         const insRun = createTextRun(xmlDoc, text, baseRPr, false);
         if (generateRedlines) {
-            const insWrapper = createTrackChange(xmlDoc, 'ins', insRun, author);
+            const insWrapper = createTrackChange(xmlDoc, 'ins', insRun, author, revisionMetadata);
             parent.insertBefore(insWrapper, referenceNode);
         } else {
             parent.insertBefore(insRun, referenceNode);
@@ -193,7 +199,7 @@ function insertTextRuns(xmlDoc, parent, referenceNode, text, baseRPr, author, fo
     const runs = createFormattedRuns(xmlDoc, text, baseRPr, applicableHints, insertOffset, author, generateRedlines);
 
     if (generateRedlines) {
-        const insWrapper = createTrackChange(xmlDoc, 'ins', null, author);
+        const insWrapper = createTrackChange(xmlDoc, 'ins', null, author, revisionMetadata);
         runs.forEach(run => insWrapper.appendChild(run));
         parent.insertBefore(insWrapper, referenceNode);
     } else {
