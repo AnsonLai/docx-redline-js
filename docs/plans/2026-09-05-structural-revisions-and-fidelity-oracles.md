@@ -1258,12 +1258,14 @@ and preservation of every range marker.
 ### WP-09 — Paragraph Boundary Fixture Matrix
 
 **Depends on:** WP-03  
-**Produces runtime changes:** No; fixture/oracle work
+**Produces runtime changes:** No; fixture/oracle work  
+**Status:** Completed — generated 10 Word-native golden fixture triples (30 DOCX files and 30 extracted XML parts in `tests/fixtures/paragraph-boundaries/`) covering split, boundary deletion, middle paragraph deletion, blank paragraph insertion, style boundaries, list levels, section breaks, table cells, bookmarks/comments, and multi-author revisions using desktop Word COM automation (`scripts/generate-paragraph-boundary-fixtures.ps1`). Validated all 10 fixtures and codified the empirical ownership rules in `tests/paragraph_boundary_matrix_tests.mjs`.
 
 **New files**
 
 - `tests/fixtures/paragraph-boundaries/`
 - `tests/paragraph_boundary_matrix_tests.mjs`
+- `scripts/generate-paragraph-boundary-fixtures.ps1`
 
 **Fixture creation**
 
@@ -1286,7 +1288,13 @@ which `w:pPr` survives acceptance.
 
 **Done when**
 
-The ownership rules are evidence, not assumptions in prose.
+The ownership rules are evidence, not assumptions in prose:
+1. **Paragraph Split**: Paragraph A owns the inserted paragraph mark (`w:pPr/w:rPr/w:ins`), Paragraph B contains the moved runs without false insertion wrappers; on rejection, Paragraph B content is folded back into Paragraph A and Paragraph B is removed.
+2. **Boundary Deletion**: Paragraph A owns the deleted paragraph mark (`w:pPr/w:rPr/w:del`), Paragraph B's content is untouched in pending state; on acceptance, Paragraph A's contents are prepended into Paragraph B, Paragraph A is removed, and Paragraph B's properties survive (with any style inheritance tracked via `w:pPrChange`); on rejection, Paragraph A's deleted mark is removed and both paragraphs remain distinct.
+3. **Paragraph Deletion**: The deleted paragraph owns both its paragraph mark deletion (`w:pPr/w:rPr/w:del`) and text deletions (`w:del/w:r/w:delText`). On acceptance, the paragraph is removed; on rejection, the paragraph and its runs are restored intact.
+4. **Section Breaks**: Embedded in `w:pPr/w:sectPr`; deleting the break marks the paragraph mark ending Paragraph A deleted.
+5. **Table Cells**: Cell terminal paragraph constraints must be preserved; internal cell paragraph boundary deletions follow the standard merge.
+6. **Bookmarks and Comments**: Range start and end markers are retained within their respective paragraph nodes across boundary revisions.
 
 ### WP-10 — Paragraph Boundary Implementation
 
