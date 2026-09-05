@@ -1012,10 +1012,11 @@ If QName-valued attributes cannot be canonicalized safely, limit the first
 oracle to exact serialized subtree bytes and document the limitation. Do not
 ship a prefix-replacement approximation as canonical XML.
 
-### WP-03 — Mutation Envelope Registry and Fidelity Suite
+### WP-03 — Mutation Envelope Registry and Fidelity Suite [COMPLETED 2026-09-05]
 
 **Depends on:** WP-01, WP-02  
-**Produces runtime changes:** No unless a discovered fidelity bug is separately scoped
+**Produces runtime changes:** No unless a discovered fidelity bug is separately scoped  
+**Status:** Completed — mutation envelopes registry implemented in `tests/helpers/mutation-envelopes.mjs`, verified against the multi-feature fixture matrix in `tests/fidelity_oracle_tests.mjs`.
 
 **New files**
 
