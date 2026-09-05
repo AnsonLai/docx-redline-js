@@ -108,6 +108,17 @@ const TABLE_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
   </w:body>
 </w:document>`;
 
+const MIXED_ATTACHMENT_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}">
+  <w:body>
+    <w:p>
+      <w:pPr><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="24"/></w:rPr></w:pPr>
+      <w:r><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="24"/></w:rPr><w:t>Date</w:t></w:r>
+    </w:p>
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+
 const NUMBERED_LIST_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="${NS_W}">
   <w:body>
@@ -930,6 +941,29 @@ const WORD_TASK_CASE_DEFINITIONS = [
                 target: 'https://example.com/legal/filing-policy'
             }]
         }
+    },
+    {
+        name: 'legal-structured-attachment-mixed-blocks',
+        category: 'legal',
+        task: 'replace-anchor-with-mixed-attachment',
+        sourceDocumentXml: MIXED_ATTACHMENT_DOCUMENT,
+        original: 'Date',
+        modified: '# ATTACHMENT 4 - JOINT AGENCY PUBLIC ANNOUNCEMENT\n\nFOR IMMEDIATE RELEASE\n\n| Agency | Contact |\n| --- | --- |\n| BCHD | Dr. Jenkins |\n| MOHS | Marcus Vance |\n\n## PROTOCOL FOR PUBLIC STATEMENTS\n\n1. Joint clearance\n2. Rapid escalation\n\nThis attachment forms part of the agreement.',
+        operationOptions: { structuredContent: true },
+        assertionMode: 'contains',
+        expectedAcceptedContains: [
+            'ATTACHMENT 4 - JOINT AGENCY PUBLIC ANNOUNCEMENT',
+            'BCHD',
+            'Dr. Jenkins',
+            'PROTOCOL FOR PUBLIC STATEMENTS',
+            'Joint clearance',
+            'Rapid escalation',
+            'This attachment forms part of the agreement.'
+        ],
+        expectedAcceptedAbsent: ['Date', '| Agency |'],
+        expectedRejectedContains: ['Date'],
+        expectedRejectedAbsent: ['ATTACHMENT 4 - JOINT AGENCY PUBLIC ANNOUNCEMENT', 'BCHD'],
+        requiredElements: { tbl: 1, tr: 3, tc: 6, numPr: 2, pStyle: 2 }
     }
 ];
 

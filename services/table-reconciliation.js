@@ -19,7 +19,12 @@ import { preprocessMarkdown } from '../pipeline/markdown-processor.js';
  * @returns {string} Complete w:tbl OOXML
  */
 export function generateTableOoxml(tableData, options = {}) {
-    const { generateRedlines = false, author = 'AI', revisionIdAllocator = null } = options;
+    const {
+        generateRedlines = false,
+        author = 'AI',
+        revisionIdAllocator = null,
+        trackAsBlock = false
+    } = options;
     const tableInsertMeta = generateRedlines ? createRevisionMetadata(author, revisionIdAllocator) : null;
 
     // Determine number of columns
@@ -60,7 +65,7 @@ export function generateTableOoxml(tableData, options = {}) {
 
             // Build run model for the cell
             const runModel = [{
-                kind: generateRedlines ? RunKind.INSERTION : RunKind.TEXT,
+                kind: generateRedlines && !trackAsBlock ? RunKind.INSERTION : RunKind.TEXT,
                 text: cleanText,
                 rPrXml: isHeaderRow ? '<w:rPr><w:b/></w:rPr>' : '',
                 author,
@@ -80,8 +85,12 @@ export function generateTableOoxml(tableData, options = {}) {
             cellsXml += `<w:tc>${tcPr}${runsOoxml}</w:tc>`;
         }
 
-        // Row properties
-        const trPr = '<w:trPr/>';
+        // Keep each logical record intact across page boundaries. When a
+        // Markdown header is present, also mark it as a repeating Word table
+        // header so continuation pages retain their column labels.
+        const trPr = isHeaderRow
+            ? '<w:trPr><w:tblHeader/><w:cantSplit/></w:trPr>'
+            : '<w:trPr><w:cantSplit/></w:trPr>';
         rowsXml += `<w:tr>${trPr}${cellsXml}</w:tr>`;
     }
 

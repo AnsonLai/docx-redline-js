@@ -833,7 +833,12 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         onInfo('[Table] Markdown table edit detected in table cell target; applying reconciliation at table scope.');
     }
 
-    const adjacencyInsertionCandidate = (!useTableScope && !hasExplicitRangeScope && targetListInfo)
+    const adjacencyInsertionCandidate = (
+        options.structuredContent !== true
+        && !useTableScope
+        && !hasExplicitRangeScope
+        && targetListInfo
+    )
         ? deriveSingleParagraphListAdjacencyInsertion(currentParagraphText, effectiveModifiedText)
         : null;
     if (adjacencyInsertionCandidate) {
@@ -867,7 +872,12 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         };
     }
 
-    const plainAdjacencyInsertionCandidate = (!useTableScope && !hasExplicitRangeScope && !targetListInfo)
+    const plainAdjacencyInsertionCandidate = (
+        options.structuredContent !== true
+        && !useTableScope
+        && !hasExplicitRangeScope
+        && !targetListInfo
+    )
         ? deriveSingleParagraphPlainAdjacencyInsertion(currentParagraphText, effectiveModifiedText)
         : null;
     if (plainAdjacencyInsertionCandidate) {
@@ -902,7 +912,7 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         };
     }
 
-    const insertionOnlyPlan = (!useTableScope && !hasExplicitRangeScope)
+    const insertionOnlyPlan = (options.structuredContent !== true && !useTableScope && !hasExplicitRangeScope)
         ? planListInsertionOnlyEdit(targetParagraph, effectiveModifiedText, {
             currentParagraphText,
             onInfo,
@@ -936,7 +946,7 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         };
     }
 
-    const listScopeEdit = (!useTableScope && !hasExplicitRangeScope)
+    const listScopeEdit = (options.structuredContent !== true && !useTableScope && !hasExplicitRangeScope)
         ? synthesizeExpandedListScopeEdit(targetParagraph, effectiveModifiedText, {
             currentParagraphText,
             onInfo,
@@ -948,7 +958,7 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         effectiveModifiedText = listScopeEdit.modifiedText;
     }
 
-    if (!useTableScope && !useListScope && !hasExplicitRangeScope) {
+    if (options.structuredContent !== true && !useTableScope && !useListScope && !hasExplicitRangeScope) {
         const explicitHeaderListConversion = await tryExplicitDecimalHeaderListConversion({
             xmlDoc,
             serializer,
@@ -1008,6 +1018,7 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
             author,
             generateRedlines,
             existingRevisions: options.existingRevisions,
+            structuredContent: options.structuredContent === true,
             _revisionIdAllocator: revisionIdAllocator,
             _isolatedTableCell: useTableScope
         })
@@ -1015,6 +1026,7 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
             author,
             generateRedlines,
             existingRevisions: options.existingRevisions,
+            structuredContent: options.structuredContent === true,
             _revisionIdAllocator: revisionIdAllocator,
             _isolatedTableCell: useTableScope
         });

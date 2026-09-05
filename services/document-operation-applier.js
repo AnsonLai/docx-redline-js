@@ -60,6 +60,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
         ...options,
         ...(typeof operation.generateRedlines === 'boolean' ? { generateRedlines: operation.generateRedlines } : {}),
         ...(operation.existingRevisions ? { existingRevisions: operation.existingRevisions } : {}),
+        ...(operation.structuredContent === true ? { structuredContent: true } : {}),
         targetDescriptor: operation.targetDescriptor,
         _resolutionCapture: resolutionCapture,
         _revisionIdAllocator: session.revisionIdAllocator,

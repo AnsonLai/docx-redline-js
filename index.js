@@ -23,6 +23,7 @@ import {
 import { withOoxmlSourceType } from './core/word-xml.js';
 export { containsTrackedChanges } from './core/word-xml.js';
 export { validateRedlineOoxml } from './core/redline-validation.js';
+export { analyzeStructuredContent, planStructuredReplacement } from './pipeline/structured-content.js';
 
 /**
  * Standalone-safe redline wrapper.

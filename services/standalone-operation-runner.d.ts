@@ -23,6 +23,7 @@ export interface DocumentOperationBase {
 export interface RedlineDocumentOperation extends DocumentOperationBase {
   type: 'redline' | 'replace' | 'format' | 'list-change' | 'table-reconciliation' | 'insert';
   modified: string;
+  structuredContent?: boolean;
   targetEnd?: ParagraphTargetDescriptor;
   targetEndRef?: number | string | null;
 }

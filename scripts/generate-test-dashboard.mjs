@@ -57,6 +57,7 @@ export function buildDashboardData(fixturesDir = null, corpusFixturesDir = null,
             };
             return {
                 ...item,
+                fixtureGeneratedAt: lane1Manifest.generatedAt || null,
                 docxVariants: {
                     source: readBase64('.source'),
                     tracked: readBase64(''),
@@ -499,7 +500,7 @@ function setLane1Comparison(left,right){$('lane1-left-view').value=left;$('lane1
 function downloadLane1View(side){
     const item=activeLane1Docx(),state=$('lane1-'+side+'-view').value,payload=item?.docxVariants?.[state];
     if(!payload)return;const blob=new Blob([decodeDocx(payload)],{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}),url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download=item.name+'.'+state+'.docx';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    a.href=url;a.download=state==='tracked'?item.name+'-STRUCTURED-FIX.docx':item.name+'.'+state+'.docx';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 function initLane1Docx(){
     if(!LANE1_CASES.length){if($('lane1-workbench'))$('lane1-workbench').style.display='none';return}

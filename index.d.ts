@@ -33,6 +33,7 @@ export interface RedlineOptions {
   existingRevisions?: ExistingRevisionsPolicy;
   removeFormatting?: boolean;
   sanitizeInput?: boolean;
+  structuredContent?: boolean;
   [key: string]: unknown;
 }
 
@@ -168,6 +169,37 @@ export function reconcileMarkdownTableOoxml(
   markdownTable: string,
   options?: RedlineOptions
 ): Promise<TableReconciliationResult>;
+
+export interface StructuredContentIssue {
+  severity: 'error' | 'warning';
+  code: string;
+  line: number;
+  message: string;
+}
+export interface StructuredContentBlock {
+  type: 'heading' | 'paragraph' | 'list' | 'table';
+  markdown: string;
+  text?: string;
+  level?: number;
+  items?: number;
+  columns?: number;
+  rows?: number;
+  hasHeader?: boolean;
+}
+export interface StructuredContentAnalysis {
+  valid: boolean;
+  normalizedMarkdown: string;
+  blocks: StructuredContentBlock[];
+  issues: StructuredContentIssue[];
+  counts: Record<'heading' | 'paragraph' | 'list' | 'table', number>;
+  requiresStructuredContent: boolean;
+}
+export function analyzeStructuredContent(markdown: string): StructuredContentAnalysis;
+export function planStructuredReplacement(
+  target: string | import('./services/standalone-operation-runner.js').ParagraphTargetDescriptor,
+  markdown: string,
+  options?: { author?: string; generateRedlines?: boolean; existingRevisions?: ExistingRevisionsPolicy }
+): StructuredContentAnalysis & { operation: import('./services/standalone-operation-runner.js').RedlineDocumentOperation | null };
 
 export function ingestWordOoxmlToPlainText(oxml: string): string;
 export function ingestWordOoxmlToMarkdown(oxml: string): string;

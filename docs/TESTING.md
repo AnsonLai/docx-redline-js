@@ -181,8 +181,8 @@ package.
 ### Expand weak list and table cells with structural operations
 
 The list/table expansion was driven directly by the task-by-structure matrix;
-it did not add more plain replacement cases. The current catalogue contains 108
-Word cases: 48 synthetic fixtures and 60 reviewed real-document scenarios. The
+it did not add more plain replacement cases. The current catalogue contains 109
+Word cases: 49 synthetic fixtures and 60 reviewed real-document scenarios. The
 `List Change × List` cell now contains 27 cases; the
 `Table Reconciliation × Table` cell contains 11 cases.
 
@@ -200,6 +200,11 @@ The added synthetic cases isolate one structural decision at a time:
 - insert a table row;
 - delete a table row; and
 - update several cells in one reconciliation.
+
+The mixed-attachment fixture replaces one anchor with explicit headings,
+ordinary paragraphs, a Markdown table, and a numbered list. It verifies real
+`w:pStyle`, `w:tbl`, and positive-numbering structures plus independent Word
+Accept All and Reject All results; literal table pipes are forbidden.
 
 The real-document cases repeat those claims against native numbering and table
 markup from municipal notices, board agendas, a long zoning ordinance, PPG
@@ -417,6 +422,13 @@ For an engine regression:
 4. If engine behavior changed, add the same shape to the deterministic fuzz
    corpus so nearby inputs are exercised too.
 5. Run `npm test`, isolation, types, and lint.
+
+For a mixed attachment regression, also run the content through
+`planStructuredReplacement(...)`. Assert the declared block sequence, reject
+malformed table grammar, and verify that the result contains real `w:tbl`,
+heading styles, positive list numbering IDs, valid non-nested revisions, and
+independent Accept/Reject outcomes. Do not treat absence of literal pipe text as
+sufficient proof of a table.
 
 ## Synthetic Microsoft Word tests
 

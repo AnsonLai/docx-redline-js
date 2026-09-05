@@ -41,7 +41,7 @@
     "operation": {
       "oneOf": [
         {
-          "allOf": [ { "$ref": "#/$defs/base" }, { "type": "object", "required": ["modified"], "properties": { "type": { "enum": ["redline", "replace", "format", "list-change", "table-reconciliation", "insert"] }, "modified": { "type": "string" }, "targetEnd": { "$ref": "#/$defs/target" }, "targetEndRef": { "type": ["integer", "string", "null"] } } } ]
+          "allOf": [ { "$ref": "#/$defs/base" }, { "type": "object", "required": ["modified"], "properties": { "type": { "enum": ["redline", "replace", "format", "list-change", "table-reconciliation", "insert"] }, "modified": { "type": "string" }, "structuredContent": { "type": "boolean" }, "targetEnd": { "$ref": "#/$defs/target" }, "targetEndRef": { "type": ["integer", "string", "null"] } } } ]
         },
         {
           "allOf": [ { "$ref": "#/$defs/base" }, { "type": "object", "properties": { "type": { "const": "delete" }, "modified": { "const": "" } } } ]

@@ -47,8 +47,15 @@ const lane1FixturesDir = suppliedLane1FixturesDir
     ? resolve(repoRoot, process.argv[lane1FixturesArgIndex + 1])
     : join(repoRoot, 'tmp', 'lane1-docx');
 
-if (!existsSync(join(lane1FixturesDir, 'manifest.json'))) {
+// The dashboard is self-contained: once generated, it keeps the exact DOCX
+// bytes that were embedded at build time. Regenerate the default Lane 1
+// fixtures on every dashboard build so an existing manifest cannot pin the
+// report to an obsolete tracked document. An explicitly supplied fixture
+// directory is treated as an immutable caller-selected snapshot.
+if (!suppliedLane1FixturesDir) {
     run('scripts/export-lane1-fixtures.mjs', ['--output-dir', lane1FixturesDir]);
+} else if (!existsSync(join(lane1FixturesDir, 'manifest.json'))) {
+    throw new Error(`Supplied Lane 1 fixture directory has no manifest.json: ${lane1FixturesDir}`);
 }
 
 const args = ['scripts/generate-test-dashboard.mjs', '--fixtures-dir', syntheticDir];

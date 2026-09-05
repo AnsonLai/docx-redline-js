@@ -49,8 +49,12 @@ function assertSyntheticClaim(testCase, structure) {
         'multi-paragraph': () => elementCount(xml, 'p') > 1 || testCase.sourceText?.includes('\n')
             || testCase.original.includes('\n') || testCase.modified.includes('\n'),
         'formatted-runs': () => /<(?:w:)?(?:b|i|u)(?:\s|\/|>)/.test(xml) || /(?:\*\*|\*|\+\+)/.test(testCase.modified),
-        list: () => elementCount(xml, 'numPr') > 0,
-        table: () => elementCount(xml, 'tbl') > 0,
+        list: () => elementCount(xml, 'numPr') > 0
+            || (testCase.operationOptions?.structuredContent === true
+                && /^\s*(?:[-+*]|\d+[.)])\s+/m.test(testCase.modified)),
+        table: () => elementCount(xml, 'tbl') > 0
+            || (testCase.operationOptions?.structuredContent === true
+                && /^\s*\|.*\|\s*\r?\n\s*\|\s*:?-{3,}/m.test(testCase.modified)),
         bookmark: () => elementCount(xml, 'bookmarkStart') > 0 && elementCount(xml, 'bookmarkEnd') > 0,
         hyperlink: () => elementCount(xml, 'hyperlink') > 0,
         'content-control': () => elementCount(xml, 'sdt') > 0,

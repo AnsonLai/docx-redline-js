@@ -7,10 +7,10 @@ import { fileURLToPath } from 'url';
 import { buildDashboardData, renderDashboardHtml } from '../scripts/generate-test-dashboard.mjs';
 
 const data = buildDashboardData();
-assert.equal(data.cases.length, 108);
-assert.equal(data.cases.filter(item => item.lane === 'synthetic').length, 48);
+assert.equal(data.cases.length, 109);
+assert.equal(data.cases.filter(item => item.lane === 'synthetic').length, 49);
 assert.equal(data.cases.filter(item => item.lane === 'superdoc').length, 60);
-assert.equal(data.cases.filter(item => item.visualEligible).length, 91);
+assert.equal(data.cases.filter(item => item.visualEligible).length, 92);
 assert.equal(data.priorities.emptyCellDispositions.length, 1);
 assert.ok(Array.isArray(data.lane1Cases));
 
@@ -36,6 +36,38 @@ assert.deepEqual(Object.keys(embeddedCase.docxVariants), ['source', 'tracked', '
 assert.ok(Object.values(embeddedCase.docxVariants).every(value => value.length > 100));
 assert.deepEqual(embeddedCase.revisions, { insertions: 1, deletions: 1, formatting: 1 });
 assert.equal(embeddedCase.expectations.accepted, 'The new sentence.');
+
+const lane1FixturesUrl = new URL('../tmp/dashboard-lane1-report-test/', import.meta.url);
+mkdirSync(fileURLToPath(lane1FixturesUrl), { recursive: true });
+const lane1Name = 'interagency-agreement-multi-author';
+const lane1Bytes = {
+    source: 'current-source-copy',
+    tracked: 'current-structured-tracked-copy',
+    accepted: 'current-accepted-copy',
+    rejected: 'current-rejected-copy'
+};
+for (const [state, contents] of Object.entries(lane1Bytes)) {
+    const suffix = state === 'tracked' ? '' : `.${state}`;
+    writeFileSync(new URL(`${lane1Name}${suffix}.docx`, lane1FixturesUrl), contents);
+}
+writeFileSync(new URL('manifest.json', lane1FixturesUrl), JSON.stringify({
+    generatedAt: '2026-09-05T07:54:54.621Z',
+    cases: [{ identity: 'lane1:interagency', name: lane1Name, title: 'Interagency structured copy' }]
+}));
+const lane1EmbeddedData = buildDashboardData(
+    dirname(fileURLToPath(embeddedFixtureUrl)),
+    null,
+    fileURLToPath(lane1FixturesUrl)
+);
+assert.equal(lane1EmbeddedData.lane1Cases.length, 1);
+assert.equal(lane1EmbeddedData.lane1Cases[0].fixtureGeneratedAt, '2026-09-05T07:54:54.621Z');
+for (const [state, contents] of Object.entries(lane1Bytes)) {
+    assert.equal(
+        Buffer.from(lane1EmbeddedData.lane1Cases[0].docxVariants[state], 'base64').toString('utf8'),
+        contents,
+        `Lane 1 ${state} must embed the exact selected fixture bytes`
+    );
+}
 
 const realCase = data.cases.find(item => item.lane === 'superdoc');
 const realSourceId = realCase.identity.slice('superdoc:'.length);
@@ -90,6 +122,7 @@ assert.match(html, /Lane 1 Visual Inspection/);
 assert.match(html, /id="lane1-workbench"/);
 assert.match(html, /id="lane1-case"/);
 assert.match(html, /renderLane1Comparison/);
+assert.match(html, /item\.name\+'-STRUCTURED-FIX\.docx'/);
 assert.doesNotMatch(html, /<script[^>]+src=/i);
 assert.doesNotMatch(html, /fetch\s*\(/);
 assert.doesNotMatch(html, /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/);

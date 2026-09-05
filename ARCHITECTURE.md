@@ -111,6 +111,10 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 - `pipeline/list-generation.js`
   - Structural paragraph-to-list generation, paragraph-mark revisions, and
     selective inheritance of source typography for inserted list runs.
+- `pipeline/structured-content.js`
+  - Strict decomposition and planning for atomic mixed heading/paragraph/list/
+    table replacements. It rejects ambiguous table-like pipe text rather than
+    allowing a fallback to literal paragraphs.
 - `pipeline/*`
   - Ingestion, markdown preprocessing, diffing, patching, and serialization stages. Ingestion treats deleted and moved-from content as non-visible text and inserted/moved-to content as visible text.
 - `services/comment-engine.js`
@@ -251,6 +255,24 @@ still be re-exported from `index.js`.
 - Tests for this route must verify positive numbering IDs, separate physical
   paragraphs, formatting inheritance/non-inheritance, valid revision markup,
   and exact accepted and rejected paragraph sequences.
+
+### Atomic mixed-content replacement
+
+- `planStructuredReplacement(...)` converts agent-authored Markdown into one
+  replacement operation carrying `structuredContent: true`. The block plan is
+  diagnostic metadata; execution remains one mutation so replacing the anchor
+  cannot invalidate later blocks.
+- Mixed-content parsing recognizes explicit Markdown headings, blank-line
+  paragraph boundaries, adjacent list items, and contiguous table rows. Tables
+  require a header separator and consistent column counts. Invalid input fails
+  with `STRUCTURED_CONTENT_INVALID`; silently degrading table pipes into visible
+  paragraph text is forbidden on this route.
+- Newly inserted tables inside a mixed replacement are tracked once at block
+  scope. Cell runs are not nested in additional `w:ins` wrappers, preserving the
+  no-nested-revisions invariant while allowing Reject All to remove the table.
+- Agents must use explicit heading markers and valid table grammar rather than
+  relying on capitalization or layout inference. The engine preserves the
+  declared block types and does not guess legal-document semantics.
 
 ### Package artifacts and transactions
 

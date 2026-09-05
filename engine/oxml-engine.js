@@ -9,6 +9,7 @@ import { isListTargetLoose } from '../pipeline/list-markers.js';
 import { ReconciliationPipeline } from '../pipeline/pipeline.js';
 import { ingestOoxml, detectNumberingContext } from '../pipeline/ingestion.js';
 import { executeListGeneration } from '../pipeline/list-generation.js';
+import { analyzeStructuredContent } from '../pipeline/structured-content.js';
 import { wrapInDocumentFragment } from '../pipeline/serialization.js';
 import {
     getElementsByTagNSOrTag,
@@ -172,9 +173,24 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
         return isolatedResult;
     }
 
-    const sanitizedText = options.sanitizeInput === true ? sanitizeAiResponse(modifiedText) : modifiedText;
+    let sanitizedText = options.sanitizeInput === true ? sanitizeAiResponse(modifiedText) : modifiedText;
     if (sanitizedText !== modifiedText) {
         operationWarnings.push('Input was sanitized; pass sanitizeInput: false to disable.');
+    }
+    let structuredAnalysis = null;
+    if (options.structuredContent === true) {
+        structuredAnalysis = analyzeStructuredContent(sanitizedText);
+        if (!structuredAnalysis.valid) {
+            const message = structuredAnalysis.issues.map(issue => `${issue.code}: ${issue.message}`).join(' ');
+            return finalize({
+                oxml: inputOoxml,
+                hasChanges: false,
+                status: 'error',
+                error: { code: 'STRUCTURED_CONTENT_INVALID', message },
+                warnings: structuredAnalysis.issues.map(issue => issue.message)
+            });
+        }
+        sanitizedText = structuredAnalysis.normalizedMarkdown;
     }
     const { cleanText: cleanModifiedText, formatHints } = preprocessMarkdown(sanitizedText);
 
@@ -337,6 +353,7 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
     const hasTables = tables.length > 0;
     const isMarkdownTable = /^\|.+\|/.test(cleanModifiedText.trim()) && cleanModifiedText.includes('\n');
     const isTargetList = isListTargetLoose(cleanModifiedText);
+    const isStructuredContent = options.structuredContent === true && structuredAnalysis?.requiresStructuredContent === true;
     const tableCellContext = initialTableCellContext;
 
     log(`[OxmlEngine] Mode: ${hasTables ? 'SURGICAL' : 'RECONSTRUCTION'}, formatHints: ${formatHints.length}, isMarkdownTable: ${isMarkdownTable}, isTargetList: ${isTargetList}, isTableCellParagraph: ${tableCellContext.isTableCellParagraph}`);
@@ -378,7 +395,7 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
         }
         return finalize(result);
     }
-    if (isTargetList) {
+    if (isTargetList || isStructuredContent) {
         const sourceParagraphs = getElementsByTagNSOrTag(xmlDoc, NS_W, 'p');
         const useDirectListGeneration = sourceParagraphs.length === 1;
         recordRouteSelection(options, useDirectListGeneration ? 'listDirect' : 'listCompatibilityPipeline', {

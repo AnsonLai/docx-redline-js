@@ -65,6 +65,11 @@ default only on the newly added Node facade and CLI.
 
 ### Added
 
+- Added `analyzeStructuredContent(...)` and `planStructuredReplacement(...)`
+  for agent-authored attachments and schedules containing mixed headings,
+  paragraphs, lists, and tables. The planner returns typed blocks and produces
+  one atomic `structuredContent` operation only when the Markdown is valid.
+
 - Added session-scoped paragraph metadata indexing for canonical text,
   normalized text, paragraph IDs, fingerprints, table context, and document
   indexes, plus deterministic targeting and route-profiling benchmarks.
@@ -89,6 +94,13 @@ default only on the newly added Node facade and CLI.
   commands, plus a published operation-file JSON Schema.
 
 ### Behavior and reliability
+
+- Explicit structured replacements now reject missing Markdown table separator
+- Generated Markdown tables repeat their header row and prevent logical data rows from splitting across pages.
+  rows, missing data rows, and inconsistent column counts with
+  `STRUCTURED_CONTENT_INVALID` instead of inserting literal pipe-delimited text.
+- Tables created inside mixed replacements are tracked once at block scope,
+  avoiding nested revisions while keeping Accept All and Reject All symmetric.
 
 - Target preflight and live mutation reuse one document-scoped paragraph index;
   strict duplicate detection and resolution metadata retain their prior
@@ -148,8 +160,9 @@ default only on the newly added Node facade and CLI.
   typography inheritance, and exact accepted/rejected paragraph sequences,
   plus seeded fuzz variants across list length, marker, font, and size.
   Added the independently specified
-  `legal-suppressed-heading-to-bullet-list` Microsoft Word differential fixture;
-  the synthetic catalogue now contains 48 cases and 48 task types.
+  `legal-suppressed-heading-to-bullet-list` and
+  `legal-structured-attachment-mixed-blocks` Microsoft Word differential
+  fixtures; the synthetic catalogue now contains 49 cases and 49 task types.
 
 - The JavaScript test runner now uses bounded asynchronous subprocess workers,
   capped at four by default, while retaining one fresh Node process per file,

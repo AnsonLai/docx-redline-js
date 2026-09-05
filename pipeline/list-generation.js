@@ -45,6 +45,11 @@ export async function executeListGeneration(options) {
     const results = [];
     const sourcePPr = getSourceParagraphProperties(originalRunModel);
     const inheritedTypographyRPrXml = extractInheritedTypographyRPrXml(originalRunModel, sourcePPr);
+    const inheritedHeadingRPrXml = extractInheritedTypographyRPrXml(
+        originalRunModel,
+        sourcePPr,
+        ['rFonts', 'kern', 'position', 'rtl', 'cs', 'lang']
+    );
 
     let deletionRuns = [];
     if (generateRedlines) {
@@ -89,7 +94,8 @@ export async function executeListGeneration(options) {
                 results.push(generateTableOoxml(tableData, {
                     generateRedlines,
                     author,
-                    revisionIdAllocator
+                    revisionIdAllocator,
+                    trackAsBlock: true
                 }));
                 i = tableBlock.endIndex;
                 continue;
@@ -106,7 +112,8 @@ export async function executeListGeneration(options) {
             author,
             font,
             revisionIdAllocator,
-            inheritedTypographyRPrXml
+            inheritedTypographyRPrXml,
+            inheritedHeadingRPrXml
         );
         results.push(entry.ooxml);
     }
@@ -238,10 +245,12 @@ function buildListEntry(
     author,
     font,
     revisionIdAllocator,
-    inheritedTypographyRPrXml
+    inheritedTypographyRPrXml,
+    inheritedHeadingRPrXml
 ) {
     let pPrXml = '';
     let segmentText = '';
+    let insertedRPrXml = inheritedTypographyRPrXml;
 
     if (line.headerMatch) {
         const level = Math.min(line.headerMatch[1].length, 9);
@@ -250,6 +259,10 @@ function buildListEntry(
         const headingSize = headingSizes[level - 1] || headingSizes[headingSizes.length - 1];
         segmentText = line.headerMatch[2].trim();
         pPrXml = `<w:pPr><w:pStyle w:val="Heading${level}"/><w:outlineLvl w:val="${outlineLevel}"/><w:rPr><w:b/><w:sz w:val="${headingSize}"/><w:szCs w:val="${headingSize}"/></w:rPr></w:pPr>`;
+        insertedRPrXml = mergeRunProperties(
+            inheritedHeadingRPrXml,
+            `<w:rPr><w:b/><w:sz w:val="${headingSize}"/><w:szCs w:val="${headingSize}"/></w:rPr>`
+        );
     } else if (line.marker) {
         const lineFormat = numberingService.detectNumberingFormat(line.marker);
         const indentLevel = indentStep > 0 ? Math.floor(line.indentSize / indentStep) : 0;
@@ -280,7 +293,7 @@ function buildListEntry(
     runModel.push({
         kind: generateRedlines ? 'insertion' : 'run',
         text: cleanText,
-        rPrXml: inheritedTypographyRPrXml,
+        rPrXml: insertedRPrXml,
         author,
         startOffset: 0,
         endOffset: cleanText.length
@@ -301,7 +314,11 @@ function getSourceParagraphProperties(originalRunModel) {
     return paragraphStart?.pPrElement || paragraphStart?.pPrXml || null;
 }
 
-function extractInheritedTypographyRPrXml(originalRunModel, sourcePPr) {
+function extractInheritedTypographyRPrXml(
+    originalRunModel,
+    sourcePPr,
+    tagOrder = ['rFonts', 'kern', 'position', 'sz', 'szCs', 'rtl', 'cs', 'lang']
+) {
     const sources = (originalRunModel || [])
         .filter(run => (run.kind === RunKind.TEXT || run.kind === 'text') && run.rPrXml)
         .map(run => run.rPrXml);
@@ -310,7 +327,6 @@ function extractInheritedTypographyRPrXml(originalRunModel, sourcePPr) {
         sources.push(typeof sourcePPr === 'string' ? sourcePPr : serializeXml(sourcePPr));
     }
 
-    const tagOrder = ['rFonts', 'kern', 'position', 'sz', 'szCs', 'rtl', 'cs', 'lang'];
     const inherited = [];
     for (const tagName of tagOrder) {
         let match = null;
@@ -322,6 +338,14 @@ function extractInheritedTypographyRPrXml(originalRunModel, sourcePPr) {
     }
 
     return inherited.length > 0 ? `<w:rPr>${inherited.join('')}</w:rPr>` : '';
+}
+
+function mergeRunProperties(...sources) {
+    const properties = sources
+        .map(source => String(source || '').replace(/^\s*<w:rPr[^>]*>|<\/w:rPr>\s*$/g, ''))
+        .filter(Boolean)
+        .join('');
+    return properties ? `<w:rPr>${properties}</w:rPr>` : '';
 }
 
 function addParagraphMarkRevision(xml, type, author, revisionIdAllocator) {

@@ -227,6 +227,51 @@ for it. For a complete `word/document.xml`, prefer
 `applyOperationToDocumentXml(...)` so replacement nodes and numbering artifacts
 are imported at the correct scope.
 
+### Planning large mixed-content insertions
+
+For an attachment or schedule containing several kinds of content, use
+`planStructuredReplacement(...)` before applying the edit. It decomposes the
+Markdown into typed heading, paragraph, list, and table blocks, normalizes the
+block boundaries, and returns one atomic operation with
+`structuredContent: true`.
+
+```js
+import { planStructuredReplacement } from '@ansonlai/docx-redline-js';
+
+const plan = planStructuredReplacement(
+  { exactText: 'Date', index: 172 },
+  `# ATTACHMENT 4
+
+Introductory paragraph.
+
+| Agency | Contact |
+| --- | --- |
+| BCHD | Dr. Jenkins |
+
+## Protocol
+
+1. Joint clearance
+2. Rapid escalation`,
+  { author: 'Editor' }
+);
+
+if (!plan.valid || !plan.operation) {
+  throw new Error(plan.issues.map(issue => issue.message).join(' '));
+}
+
+const result = await document.applyOperations([plan.operation], {
+  author: 'Editor', atomic: true, validate: true
+});
+```
+
+Every Markdown table must include a separator row immediately below its header.
+Missing separators, missing data rows, and inconsistent column counts are
+reported as structured errors instead of being inserted as visible pipe text.
+Use `#` through `#########` to request Word heading paragraphs; blank lines
+separate paragraphs; adjacent list markers form a real Word list. Keep the
+planned content in one operation so later blocks do not depend on an anchor that
+an earlier block has already replaced.
+
 ### Pipeline (lower-level access)
 
 | Function | Purpose |
@@ -238,6 +283,8 @@ are imported at the correct scope.
 | `ingestWordOoxmlToMarkdownResult(oxml)` | Markdown counterpart to the result-returning plain-text helper. |
 | `ingestOoxml(oxml)` | Flatten OOXML into an internal run model with offsets. |
 | `preprocessMarkdown(text)` | Normalize markdown and extract format hints. |
+| `analyzeStructuredContent(markdown)` | Decompose mixed Markdown into typed blocks and report malformed table syntax without creating an operation. |
+| `planStructuredReplacement(target, markdown, options)` | Validate mixed content and return one atomic `structuredContent` replacement operation, or `operation: null` with issues. |
 | `containsTrackedChanges(xmlDoc)` | Detect `w:ins`, `w:del`, move revisions, property changes, and paragraph-mark revision markup in a parsed OOXML document/fragment. |
 | `validateRedlineOoxml(oxml)` | Validate generated redline OOXML against the package's structural invariants (no nested revisions, `w:delText` inside `w:del`, complete metadata, unique revision ids, preserved boundary whitespace). Returns `{ valid, issues }`; run it before writing output into a package. |
 

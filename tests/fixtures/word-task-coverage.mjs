@@ -54,5 +54,6 @@ export const WORD_TASK_COVERAGE = Object.freeze({
     'administrative-footnote-adjacent-deadline': coverage('replace', ['plain-paragraph', 'note'], AI_REVIEWED),
     'legal-endnote-adjacent-duration': coverage('replace', ['plain-paragraph', 'note'], AI_REVIEWED),
     'administrative-header-footer-package': coverage('replace', ['plain-paragraph', 'header-footer', 'section-boundary'], AI_REVIEWED),
-    'legal-external-hyperlink-adjacent-replacement': coverage('replace', ['plain-paragraph', 'hyperlink'], AI_REVIEWED)
+    'legal-external-hyperlink-adjacent-replacement': coverage('replace', ['plain-paragraph', 'hyperlink'], AI_REVIEWED),
+    'legal-structured-attachment-mixed-blocks': coverage('replace', ['multi-paragraph', 'list', 'table'], AI_REVIEWED)
 });

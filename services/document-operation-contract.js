@@ -126,6 +126,13 @@ export function validateDocumentOperation(operation) {
         };
     }
 
+    if (normalized.structuredContent != null && typeof normalized.structuredContent !== 'boolean') {
+        return {
+            valid: false,
+            error: { code: 'INVALID_OPERATION', message: 'structuredContent must be a boolean when provided.' }
+        };
+    }
+
     if (normalized.operationKind === 'comment') {
         if (!nonEmptyString(normalized.commentContent)) {
             return {

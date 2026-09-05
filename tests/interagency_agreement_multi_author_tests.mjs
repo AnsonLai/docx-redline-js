@@ -63,9 +63,9 @@ export async function loadSourceDocxBuffer() {
 // ----------------------------------------------------------------------------
 export const ATTACHMENT_4_BODY = `Date
 
-ATTACHMENT 4 – JOINT AGENCY PUBLIC ANNOUNCEMENT & COMMUNICATIONS PROTOCOL
+# ATTACHMENT 4 – JOINT AGENCY PUBLIC ANNOUNCEMENT & COMMUNICATIONS PROTOCOL
 
-FOR IMMEDIATE RELEASE: BALTIMORE CITY LAUNCHES COMPREHENSIVE INTERAGENCY HEALTH & HOUSING COLLABORATIVE
+## FOR IMMEDIATE RELEASE: BALTIMORE CITY LAUNCHES COMPREHENSIVE INTERAGENCY HEALTH & HOUSING COLLABORATIVE
 
 BALTIMORE, MD — The Baltimore City Health Department (BCHD) and the Mayor's Office of Homeless Services (MOHS) today announced the formal launch of a comprehensive interagency collaborative designed to unify street-level clinical medicine, behavioral health intervention, and rapid housing navigation across Baltimore City.
 
@@ -76,11 +76,12 @@ Under this historic partnership, multidisciplinary clinical outreach teams will 
 "Housing is healthcare," stated the Director of the Mayor's Office of Homeless Services. "This agreement provides the stable framework and clinical resources required to assist residents in moving rapidly from street-level vulnerability to lasting stabilization."
 
 | Agency / Role | Designated Contact | Title / Division | Embargo Deadline | Release Channel |
+| --- | --- | --- | --- | --- |
 | BCHD Lead PIO | Dr. Sarah Jenkins | Chief Medical Communications Officer | Oct 1, 2026 09:00 EST | City Press Wire |
 | MOHS Liaison | Marcus Vance | Director of Public Information | Oct 1, 2026 09:00 EST | Mayoral Briefing |
 | City Solicitor | Elena Rostova | Special Assistant City Solicitor | Oct 1, 2026 08:30 EST | Legal Review |
 
-PROTOCOL FOR PUBLIC STATEMENTS AND MEDIA INQUIRIES:
+## PROTOCOL FOR PUBLIC STATEMENTS AND MEDIA INQUIRIES:
 
 1. Joint Clearance Protocol: All official press releases, public announcements, and media advisories must receive written concurrence from both BCHD and MOHS public information officers prior to public dissemination.
 2. Designee Restrictions: No employee, agent, or contracted provider may deliver on-the-record public statements regarding the collaborative without prior authorization from the designated agency liaisons.
@@ -88,6 +89,7 @@ PROTOCOL FOR PUBLIC STATEMENTS AND MEDIA INQUIRIES:
 4. Annual Performance Transparency: The collaborative shall publish an annual joint outcomes dashboard documenting client engagements, medical encounters, and permanent housing placements.
 
 | Milestone Phase | Target Implementation Period | Key Deliverables & Clinical Outputs | Responsible Agency | Target KPI / Success Benchmark |
+| --- | --- | --- | --- | --- |
 | Phase 1: Operational Launch | Q3 2026 (July – Sept) | Mobilize 4 street medicine clinical units and establish shared EHR platform | BCHD / MOHS | 500 unduplicated individuals engaged |
 | Phase 2: Housing Navigation | Q4 2026 (Oct – Dec) | Transition eligible shelter residents into permanent supportive housing | MOHS | 150 placements with 90-day retention |
 | Phase 3: Annual Audit & Review | Q2 2027 (April – June) | Complete comprehensive federal grant compliance review and KPI audit | Joint Oversight Panel | 100% compliance with Uniform Guidance |
@@ -294,6 +296,7 @@ export const AUTHOR_1_OPERATIONS = [
         type: 'replace',
         target: { exactText: 'Date', index: 172 },
         modified: ATTACHMENT_4_BODY,
+        structuredContent: true,
         author: AUTHOR_1
     }
 ];
@@ -366,25 +369,25 @@ export const AUTHOR_2_OPERATIONS = [
     // --- 3. Counterparty Redlines: Notices Block for Department 2 ---
     {
         type: 'replace',
-        target: { exactText: '_______________________________', index: 81 },
+        target: { exactText: '_______________________________', occurrence: 5 },
         modified: "Mayor's Office of Homeless Services",
         author: AUTHOR_2
     },
     {
         type: 'replace',
-        target: { exactText: '_______________________________', index: 82 },
+        target: { exactText: '_______________________________', occurrence: 5 },
         modified: 'Attention: Executive Director & General Counsel',
         author: AUTHOR_2
     },
     {
         type: 'replace',
-        target: { exactText: '_______________________________', index: 83 },
+        target: { exactText: '_______________________________', occurrence: 5 },
         modified: '7 E. Redwood Street, 9th Floor, Baltimore, MD 21202',
         author: AUTHOR_2
     },
     {
         type: 'replace',
-        target: { exactText: '_______________________________', index: 84 },
+        target: { exactText: '_______________________________', occurrence: 5 },
         modified: 'Email: mohs.legal@baltimorecity.gov | Fax: (410) 396-8182',
         author: AUTHOR_2
     },
@@ -392,7 +395,7 @@ export const AUTHOR_2_OPERATIONS = [
     // --- 4. Counterparty Redlines: Signatory Block ---
     {
         type: 'replace',
-        target: { exactText: '\t\t\t\t\t\t\tSIGNATORY', index: 105 },
+        target: { exactText: '\t\t\t\t\t\t\tSIGNATORY', occurrence: 2 },
         modified: '\t\t\t\t\t\t\tErnestina Del-Sarto, Executive Director',
         author: AUTHOR_2
     },
@@ -473,6 +476,12 @@ async function testEngineMultiAuthor(docXml) {
     assert.ok(pass1.documentXml.includes('PROTOCOL FOR PUBLIC STATEMENTS AND MEDIA INQUIRIES'), 'Attachment 4 protocols must be present');
     assert.ok(pass1.documentXml.includes('Joint Clearance Protocol:'), 'Attachment 4 policy list must be present');
     assert.ok(pass1.documentXml.includes('Phase 1: Operational Launch'), 'Attachment 4 milestone content must be present');
+    const sourceTableCount = (docXml.match(/<w:tbl(?:\s|>)/g) || []).length;
+    const pass1TableCount = (pass1.documentXml.match(/<w:tbl(?:\s|>)/g) || []).length;
+    assert.equal(pass1TableCount, sourceTableCount + 2, 'Attachment 4 must add two real Word tables');
+    assert.ok(pass1.documentXml.includes('<w:pStyle w:val="Heading1"'), 'Attachment 4 title must be a Word heading');
+    assert.ok(pass1.documentXml.includes('<w:pStyle w:val="Heading2"'), 'Attachment 4 section labels must be Word headings');
+    assert.ok(!pass1.documentXml.includes('| Agency / Role |'), 'Attachment 4 table syntax must not remain literal pipe text');
 
     // Pass 2: Author 2 (MOHS Counterparty Counsel)
     const pass2 = await applyOperationsToDocumentXml(pass1.documentXml, AUTHOR_2_OPERATIONS, AUTHOR_2);
@@ -528,7 +537,7 @@ async function testGlobalAcceptRejectAll(multiAuthorDocXml, originalDocXml) {
     // Accept All
     const acceptedAll = acceptTrackedChangesInOoxml(multiAuthorDocXml, { allAuthors: true });
     assert.equal(acceptedAll.hasChanges, true);
-    assert.equal((acceptedAll.oxml.match(/<w:ins/g) || []).length, 0, 'No w:ins must remain in accepted document');
+    assert.equal((acceptedAll.oxml.match(/<w:ins\b/g) || []).length, 0, 'No w:ins must remain in accepted document');
     assert.equal((acceptedAll.oxml.match(/<w:del\b/g) || []).length, 0, 'No w:del must remain in accepted document');
 
     const acceptedText = ingestWordOoxmlToPlainText(acceptedAll.oxml);
@@ -541,7 +550,7 @@ async function testGlobalAcceptRejectAll(multiAuthorDocXml, originalDocXml) {
     // Reject All
     const rejectedAll = rejectTrackedChangesInOoxml(multiAuthorDocXml, { allAuthors: true });
     assert.equal(rejectedAll.hasChanges, true);
-    assert.equal((rejectedAll.oxml.match(/<w:ins/g) || []).length, 0, 'No w:ins must remain in rejected document');
+    assert.equal((rejectedAll.oxml.match(/<w:ins\b/g) || []).length, 0, 'No w:ins must remain in rejected document');
     assert.equal((rejectedAll.oxml.match(/<w:del\b/g) || []).length, 0, 'No w:del must remain in rejected document');
 
     const rejectedText = ingestWordOoxmlToPlainText(rejectedAll.oxml);

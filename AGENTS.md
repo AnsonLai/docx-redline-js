@@ -244,6 +244,42 @@ const result = await applyRedlineToOxml(oxml, 'Item text', '1. Item text', {
 });
 ```
 
+### Insert a large mixed-content block safely
+
+Do not send a long attachment containing literal pipe rows, headings, lists,
+and paragraphs as an unchecked replacement. Plan it first:
+
+```js
+import { planStructuredReplacement } from '@ansonlai/docx-redline-js';
+
+const plan = planStructuredReplacement(targetDescriptor, markdown, {
+  author: 'Agent'
+});
+if (!plan.valid || !plan.operation) {
+  throw new Error(plan.issues.map(issue => issue.message).join(' '));
+}
+const result = await document.applyOperations([plan.operation], {
+  author: 'Agent', atomic: true, validate: true
+});
+```
+
+Use blank lines between paragraphs, `#`/`##` for headings, normal Markdown
+markers for lists, and a separator row immediately after every table header:
+
+```markdown
+| Agency | Contact |
+| --- | --- |
+| BCHD | Dr. Jenkins |
+```
+
+The planner returns typed `blocks`, counts, normalized Markdown, and structured
+issues. `TABLE_SEPARATOR_REQUIRED` is an error: never remove `structuredContent`
+or retry the same content as plain text merely to make the operation pass. Keep
+the result as one atomic replacement operation so the first inserted block does
+not invalidate the anchor for later blocks. After applying, require real
+`w:tbl`, positive list `w:numId` values, valid redline OOXML, and independent
+Accept/Reject checks.
+
 ### Reconcile a table
 
 ```js
