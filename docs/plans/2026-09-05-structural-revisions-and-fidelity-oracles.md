@@ -920,10 +920,11 @@ No new test is required, but all tests linked from the matrix must be executed.
 No later work package describes existing behavior as absent, and every claimed
 gap has a reproducible fixture or test.
 
-### WP-01 — Package Part Inventory Helper
+### WP-01 — Package Part Inventory Helper [COMPLETED 2026-09-05]
 
 **Depends on:** WP-00  
-**Produces runtime changes:** No; test helper only
+**Produces runtime changes:** No; test helper only  
+**Status:** Completed — helper implemented in `tests/helpers/package-fidelity.mjs`, verified by `tests/package_fidelity_inventory_tests.mjs`.
 
 **Files to inspect**
 
