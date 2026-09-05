@@ -377,7 +377,8 @@ orchestration/
 ```
 
 Known error codes include `PARSE_ERROR`, `TARGET_NOT_FOUND`, `PARTIAL_TARGET`,
-`EXISTING_REVISIONS`, `DIFF_TOKEN_LIMIT`, and `BATCH_OPERATION_FAILED`.
+`EXISTING_REVISIONS`, `UNSAFE_REVISION_NESTING`, `UNSUPPORTED_REVISION_VIEW_MUTATION`,
+`DIFF_TOKEN_LIMIT`, and `BATCH_OPERATION_FAILED`.
 
 For ingestion that must distinguish an empty document from malformed OOXML,
 use `ingestWordOoxmlToPlainTextResult` or

@@ -1136,10 +1136,11 @@ fixtures.
 - Descriptor fields disagree despite one individually matching.
 - Invalid view is rejected by runtime contract and JSON schema.
 
-### WP-06 — Existing-Revision Mutation Policy
+### WP-06 — Existing-Revision Mutation Policy [COMPLETED 2026-09-05]
 
 **Depends on:** WP-05  
-**Produces runtime changes:** Opt-in only
+**Produces runtime changes:** Opt-in only  
+**Status:** Completed — implemented policy matrix: allow schema-valid comments inside pending insertions across same and different authors with selective accept/reject preservation; refuse deletion comments, cross-container comment ranges, and deletion/move replacements with `UNSAFE_REVISION_NESTING`; refuse pending insertion replacements with `EXISTING_REVISIONS`; verified by `tests/existing_revision_mutation_policy_tests.mjs`.
 
 **Goal**
 

@@ -46,7 +46,7 @@ function createDocumentXml(paragraphsXml) {
     assert.equal(acceptedPreflight.results[0].resolvedTarget.paragraphId, 'P1');
     assert.equal(acceptedPreflight.results[0].resolvedTarget.revisionView, 'accepted');
 
-    // In rejected view, "Target phrase" is in P2
+    // In rejected view, "Target phrase" resolves to P2; comment on deletion is refused per WP-06 policy
     const rejectedPreflight = preflightOperations(docXml, [
         {
             type: 'comment',
@@ -54,11 +54,11 @@ function createDocumentXml(paragraphsXml) {
             commentContent: 'Rejected note'
         }
     ], 'Reviewer');
-    assert.equal(rejectedPreflight.valid, true);
-    assert.equal(rejectedPreflight.results[0].status, 'ready');
     assert.equal(rejectedPreflight.results[0].resolvedTarget.index, 2);
     assert.equal(rejectedPreflight.results[0].resolvedTarget.paragraphId, 'P2');
     assert.equal(rejectedPreflight.results[0].resolvedTarget.revisionView, 'rejected');
+    assert.equal(rejectedPreflight.results[0].status, 'error');
+    assert.equal(rejectedPreflight.results[0].error.code, 'UNSAFE_REVISION_NESTING');
 }
 
 // Test 2: Phrase exists only in an insertion
@@ -103,7 +103,7 @@ function createDocumentXml(paragraphsXml) {
         </w:p>
     `);
 
-    // Rejected view finds it
+    // Rejected view finds it in P1; comment on deletion is refused per WP-06 policy
     const rejected = preflightOperations(docXml, [
         {
             type: 'comment',
@@ -111,9 +111,9 @@ function createDocumentXml(paragraphsXml) {
             commentContent: 'Comment on deleted text'
         }
     ], 'Reviewer');
-    assert.equal(rejected.valid, true);
-    assert.equal(rejected.results[0].status, 'ready');
     assert.equal(rejected.results[0].resolvedTarget.paragraphId, 'P1');
+    assert.equal(rejected.results[0].status, 'error');
+    assert.equal(rejected.results[0].error.code, 'UNSAFE_REVISION_NESTING');
 
     // Accepted view does NOT find it
     const accepted = preflightOperations(docXml, [

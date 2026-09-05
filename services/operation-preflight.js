@@ -5,6 +5,7 @@
 import { parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { getDefaultAuthor } from '../adapters/config.js';
 import { containsTrackedChanges } from '../core/word-xml.js';
+import { NS_W } from '../core/types.js';
 import {
     buildParagraphMetadataIndex,
     createParagraphFingerprint,
@@ -181,10 +182,25 @@ export function preflightOperations(documentXml, operations, author, options = {
                 && hasRevisions
                 && existingPolicy === 'reject-input'
             ) {
-                error = {
-                    code: 'EXISTING_REVISIONS',
-                    message: 'Target paragraph contains tracked changes and existingRevisions is "reject-input".'
-                };
+                const hasDel = paragraph.getElementsByTagNameNS(NS_W, 'del').length > 0;
+                const hasMove = paragraph.getElementsByTagNameNS(NS_W, 'moveFrom').length > 0
+                    || paragraph.getElementsByTagNameNS(NS_W, 'moveTo').length > 0;
+                if (hasDel) {
+                    error = {
+                        code: 'UNSAFE_REVISION_NESTING',
+                        message: 'Refusing to replace content with pending deletions; nesting revisions is unsafe.'
+                    };
+                } else if (hasMove) {
+                    error = {
+                        code: 'UNSAFE_REVISION_NESTING',
+                        message: 'Refusing to mutate content with move revisions until move lifecycle is designed.'
+                    };
+                } else {
+                    error = {
+                        code: 'EXISTING_REVISIONS',
+                        message: 'Target paragraph contains tracked changes and existingRevisions is "reject-input".'
+                    };
+                }
             }
 
             results.push({

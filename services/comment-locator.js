@@ -74,6 +74,41 @@ function attachRunOffsets(paragraphIndex, candidate, resolvedBy) {
     return { found: true, resolvedBy, ...candidate, startRun, startOffset, endRun, endOffset };
 }
 
+function findAncestorTag(node, tagNames, boundary = null) {
+    let current = node?.parentNode;
+    while (current && current.nodeType === 1 && current !== boundary && (current.localName || current.nodeName.replace(/^.*:/, '')) !== 'p') {
+        const local = current.localName || current.nodeName.replace(/^.*:/, '');
+        if (tagNames.includes(local)) return { node: current, tag: local };
+        current = current.parentNode;
+    }
+    return null;
+}
+
+function validateAnchorLocation(paragraphIndex, location) {
+    if (!location || !location.found) return location;
+
+    const intersectingRuns = paragraphIndex.runOffsets
+        .filter(entry => entry.end > location.start && entry.start < location.end)
+        .map(entry => entry.run);
+
+    for (const run of intersectingRuns) {
+        if (findAncestorTag(run, ['del'])) {
+            return {
+                found: false,
+                error: anchorError('UNSAFE_REVISION_NESTING', 'Refusing to attach comment to pending deletion.', [location])
+            };
+        }
+        if (findAncestorTag(run, ['moveFrom', 'moveTo'])) {
+            return {
+                found: false,
+                error: anchorError('UNSAFE_REVISION_NESTING', 'Refusing to comment on move revision until move lifecycle is designed.', [location])
+            };
+        }
+    }
+
+    return location;
+}
+
 /**
  * Resolves a unique comment anchor without mutating the paragraph DOM.
  * Exact matching wins. A one-to-one ASCII-space/NBSP comparison is used only
@@ -90,7 +125,7 @@ export function resolveTextInParagraphIndex(paragraphIndex, searchText) {
     }
     if (exactCandidates.length === 1) {
         const resolved = attachRunOffsets(paragraphIndex, exactCandidates[0], 'exact_anchor');
-        if (resolved) return resolved;
+        if (resolved) return validateAnchorLocation(paragraphIndex, resolved);
     }
 
     const normalizedNeedle = spaceEquivalentText(needle);
@@ -104,7 +139,7 @@ export function resolveTextInParagraphIndex(paragraphIndex, searchText) {
     }
     if (equivalentCandidates.length === 1) {
         const resolved = attachRunOffsets(paragraphIndex, equivalentCandidates[0], 'space_equivalent_anchor');
-        if (resolved) return resolved;
+        if (resolved) return validateAnchorLocation(paragraphIndex, resolved);
     }
 
     return {

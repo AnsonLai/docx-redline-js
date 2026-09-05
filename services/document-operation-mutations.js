@@ -5,7 +5,7 @@
 import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { findReconstructionParagraphRange } from '../engine/reconstruction-mapper.js';
 import { createRevisionMetadata } from '../core/types.js';
-import { createWordElement, withOoxmlSourceType } from '../core/word-xml.js';
+import { containsTrackedChanges, createWordElement, withOoxmlSourceType } from '../core/word-xml.js';
 import { markParagraphMarkInserted } from '../engine/run-builders.js';
 import { applyRedlineToOxml as applyRedlineToOxmlEngine } from '../engine/oxml-engine.js';
 import { applyHighlightToOoxml } from '../engine/formatting-removal.js';
@@ -738,6 +738,40 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
                     message: 'Refusing to delete a paragraph with existing comments. Resolve or explicitly remove the comments before deleting the paragraph.',
                     commentIds,
                     ...(comments.length > 0 ? { comments } : {})
+                }
+            };
+        }
+    }
+    const hasRevisions = containsTrackedChanges(targetParagraph);
+    if (
+        hasRevisions
+        && options.existingRevisions !== 'accept-all-first'
+        && options.existingRevisions !== 'accept-all-first-keep-normalized'
+    ) {
+        const hasDel = targetParagraph.getElementsByTagNameNS(NS_W, 'del').length > 0;
+        const hasMove = targetParagraph.getElementsByTagNameNS(NS_W, 'moveFrom').length > 0
+            || targetParagraph.getElementsByTagNameNS(NS_W, 'moveTo').length > 0;
+        if (hasDel) {
+            return {
+                documentXml,
+                hasChanges: false,
+                numberingXml: null,
+                status: 'error',
+                error: {
+                    code: 'UNSAFE_REVISION_NESTING',
+                    message: 'Refusing to replace content with pending deletions; nesting revisions is unsafe.'
+                }
+            };
+        }
+        if (hasMove) {
+            return {
+                documentXml,
+                hasChanges: false,
+                numberingXml: null,
+                status: 'error',
+                error: {
+                    code: 'UNSAFE_REVISION_NESTING',
+                    message: 'Refusing to mutate content with move revisions until move lifecycle is designed.'
                 }
             };
         }
