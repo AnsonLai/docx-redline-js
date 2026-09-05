@@ -1,6 +1,16 @@
 export type OoxmlSourceType = 'package' | 'document' | 'fragment';
 export type RedlineStatus = 'ok' | 'no-op' | 'error';
 export type ExistingRevisionsPolicy = 'reject-input' | 'accept-all-first' | 'accept-all-first-keep-normalized';
+export type RevisionView = 'accepted' | 'rejected';
+
+export interface RevisionTextSegment {
+  text: string;
+  kind: 'baseline' | 'insertion' | 'deletion' | 'move_from' | 'move_to';
+  author?: string;
+  revisionId?: string;
+  acceptedStart: number | null;
+  rejectedStart: number | null;
+}
 
 export type {
   BatchOperationItemResult,
@@ -206,6 +216,7 @@ export function ingestWordOoxmlToMarkdown(oxml: string): string;
 export function ingestWordOoxmlToPlainTextResult(oxml: unknown): IngestionTextResult;
 export function ingestWordOoxmlToMarkdownResult(oxml: unknown): IngestionTextResult;
 export function extractCanonicalParagraphText(paragraph: Element | null | undefined, options?: { revisionView?: 'accepted' | 'rejected' | 'current' }): string;
+export function extractParagraphRevisionSegments(paragraph: Element | null | undefined, options?: { mergeRuns?: boolean; [key: string]: unknown }): RevisionTextSegment[];
 export function readCanonicalRunText(run: Element, options?: { revisionView?: 'accepted' | 'rejected' | 'current'; boundary?: Element | null }): string;
 export function isNodeVisibleInRevisionView(node: Node, boundary?: Node | null, revisionView?: 'accepted' | 'rejected' | 'current'): boolean;
 
@@ -218,6 +229,7 @@ export interface InspectedParagraph {
   headingLevel: number | null; nearestHeading: { level: number; text: string } | null;
   list: { numId: string; level: number; label: string | null; format: string | null } | null;
   hasRevisions: boolean; revisionAuthors: string[]; commentIds: string[];
+  segments: RevisionTextSegment[];
 }
 export interface InspectedComment { id: string; author: string | null; date: string | null; text: string; paragraphIndex?: number; targetRef?: string; anchoredText?: string; }
 export interface DocumentInspectionOptions { revisionView?: 'accepted' | 'rejected' | 'current'; excerptLength?: number; revisedOnly?: boolean; inTable?: boolean; skipEmpty?: boolean; search?: string; indexes?: number[]; range?: { start: number; end: number } | [number, number]; }

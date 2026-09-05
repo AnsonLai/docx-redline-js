@@ -1056,10 +1056,11 @@ ship a prefix-replacement approximation as canonical XML.
 The suite passes current behavior or produces separately tracked fidelity bugs.
 Do not weaken an envelope merely to make a failure disappear.
 
-### WP-04 — Revision-View Segment Extraction
+### WP-04 — Revision-View Segment Extraction [COMPLETED 2026-09-05]
 
 **Depends on:** WP-03  
-**Produces runtime changes:** Additive inspection API
+**Produces runtime changes:** Additive inspection API  
+**Status:** Completed — implemented `extractParagraphRevisionSegments` in `core/paragraph-text.js`, wired `segments` into `inspectDocumentParts` in `services/document-inspection.js`, exported types in `index.d.ts` and `index.js`, and verified by `tests/revision_view_segment_tests.mjs`.
 
 **Files to edit**
 

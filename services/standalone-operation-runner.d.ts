@@ -10,6 +10,7 @@ export interface ParagraphTargetDescriptor {
   inTable?: boolean;
   fingerprint?: string;
   sourceFingerprint?: string;
+  revisionView?: 'accepted' | 'rejected';
 }
 
 export interface DocumentOperationBase {

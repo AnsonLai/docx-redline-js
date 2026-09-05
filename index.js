@@ -238,7 +238,7 @@ export {
     ingestWordOoxmlToPlainTextResult,
     ingestWordOoxmlToMarkdownResult
 } from './pipeline/ingestion-export.js';
-export { extractCanonicalParagraphText, readCanonicalRunText, isNodeVisibleInRevisionView } from './core/paragraph-text.js';
+export { extractCanonicalParagraphText, readCanonicalRunText, isNodeVisibleInRevisionView, extractParagraphRevisionSegments } from './core/paragraph-text.js';
 export { inspectDocumentParts } from './services/document-inspection.js';
 export { preprocessMarkdown } from './pipeline/markdown-processor.js';
 export { serializeToOoxml, wrapInDocumentFragment } from './pipeline/serialization.js';

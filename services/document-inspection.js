@@ -1,6 +1,6 @@
 import { parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { NS_W } from '../core/types.js';
-import { extractCanonicalParagraphText, readCanonicalRunText } from '../core/paragraph-text.js';
+import { extractCanonicalParagraphText, readCanonicalRunText, extractParagraphRevisionSegments } from '../core/paragraph-text.js';
 import { createParagraphFingerprint, getDocumentParagraphNodes, getParagraphId } from '../core/paragraph-targeting.js';
 
 const attr = (node, name) => node?.getAttribute?.(`w:${name}`) || node?.getAttribute?.(name) || '';
@@ -189,10 +189,12 @@ export function inspectDocumentParts(parts, options = {}) {
         const provision = list?.label && list.format !== 'bullet' ? list.label : null;
         const headingText = nearestHeading?.text || null;
         const humanReference = [provision, headingText, text.slice(0, options.excerptLength || 120)].filter(Boolean).join(' — ');
+        const segments = extractParagraphRevisionSegments(paragraph);
         return {
             index, ref: `P${index}`, paragraphId: getParagraphId(paragraph), fingerprint: createParagraphFingerprint(paragraph),
             text, exactText: text, excerpt: text.slice(0, options.excerptLength || 120), humanReference, inTable: hasAncestor(paragraph, 'tc'), table: structure.table,
-            styleId, headingLevel: level, nearestHeading, list, structuralReferences: structure.references, hasRevisions: authors.length > 0, revisionAuthors: authors, commentIds: ids
+            styleId, headingLevel: level, nearestHeading, list, structuralReferences: structure.references, hasRevisions: authors.length > 0, revisionAuthors: authors, commentIds: ids,
+            segments
         };
     });
     for (const paragraph of paragraphs) for (const id of paragraph.commentIds) {
