@@ -1062,6 +1062,7 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
             existingRevisions: options.existingRevisions,
             structuredContent: options.structuredContent === true,
             pairReplacements: options.pairReplacements === true,
+            insertionAffinity: options.insertionAffinity || null,
             _revisionIdAllocator: revisionIdAllocator,
             _isolatedTableCell: useTableScope
         });

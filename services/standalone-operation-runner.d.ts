@@ -13,6 +13,14 @@ export interface ParagraphTargetDescriptor {
   revisionView?: 'accepted' | 'rejected';
 }
 
+export interface InsertionAffinity {
+  formatting?: 'left' | 'right' | 'none';
+  hyperlink?: 'inside' | 'outside' | 'preserve';
+  revision?: 'coalesce_same_author' | 'separate';
+  bookmark?: 'inside' | 'outside';
+  comment?: 'inside' | 'outside';
+}
+
 export interface DocumentOperationBase {
   target?: string | ParagraphTargetDescriptor;
   targetRef?: number | string | null;
@@ -20,6 +28,7 @@ export interface DocumentOperationBase {
   generateRedlines?: boolean;
   existingRevisions?: ExistingRevisionsPolicy;
   pairReplacements?: boolean;
+  insertionAffinity?: InsertionAffinity;
 }
 
 export interface RedlineDocumentOperation extends DocumentOperationBase {
@@ -77,6 +86,7 @@ export interface StandaloneRunnerOptions {
   existingRevisions?: ExistingRevisionsPolicy;
   strictTargets?: boolean;
   pairReplacements?: boolean;
+  insertionAffinity?: InsertionAffinity;
   onInfo?: (message: string) => void;
   onWarn?: (message: string) => void;
   [key: string]: unknown;

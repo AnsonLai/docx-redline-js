@@ -36,6 +36,27 @@ export function buildSurgicalTextSpans(paragraphs) {
                         fullText += processRunElement(hc, paragraph, container, fullText.length, textSpans).text;
                     }
                 }
+            } else if (isWordElement(child, 'ins')) {
+                for (let ic = child.firstChild; ic; ic = ic.nextSibling) {
+                    if (isWordElement(ic, 'r')) {
+                        fullText += processRunElement(ic, paragraph, container, fullText.length, textSpans).text;
+                    }
+                }
+            } else if (isWordElement(child, 'sdt')) {
+                const sdtContent = Array.from(child.childNodes || []).find(n => isWordElement(n, 'sdtContent'));
+                if (sdtContent) {
+                    for (let sc = sdtContent.firstChild; sc; sc = sc.nextSibling) {
+                        if (isWordElement(sc, 'r')) {
+                            fullText += processRunElement(sc, paragraph, container, fullText.length, textSpans).text;
+                        }
+                    }
+                }
+            } else if (isWordElement(child, 'smartTag')) {
+                for (let st = child.firstChild; st; st = st.nextSibling) {
+                    if (isWordElement(st, 'r')) {
+                        fullText += processRunElement(st, paragraph, container, fullText.length, textSpans).text;
+                    }
+                }
             }
         }
 
@@ -168,4 +189,32 @@ function lowerBound(values, target) {
     }
 
     return left;
+}
+
+export function describeInsertionBoundary(spanIndex, pos, fallbackParagraph = null) {
+    if (!spanIndex || !spanIndex.spans || spanIndex.spans.length === 0) {
+        return {
+            leftSpan: null,
+            rightSpan: null,
+            containingSpan: null,
+            isInterior: false,
+            fallbackParagraph
+        };
+    }
+
+    const containingSpan = findContainingSpan(spanIndex, pos);
+    const isInterior = containingSpan !== null && pos > containingSpan.charStart && pos < containingSpan.charEnd;
+
+    // leftSpan ends at or before pos
+    const leftSpan = findFirstSpanEndingAt(spanIndex, pos) || (pos > 0 ? findLastSpanEndingBeforeOrAt(spanIndex, pos) : null);
+    // rightSpan starts at or after pos
+    const rightSpan = spanIndex.spans.find(s => s.charStart === pos) || (pos === 0 ? spanIndex.spans[0] : null);
+
+    return {
+        leftSpan,
+        rightSpan,
+        containingSpan,
+        isInterior,
+        fallbackParagraph
+    };
 }

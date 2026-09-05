@@ -166,6 +166,46 @@ export function validateDocumentOperation(operation) {
         };
     }
 
+    if (normalized.insertionAffinity != null) {
+        if (!isRecord(normalized.insertionAffinity)) {
+            return {
+                valid: false,
+                error: { code: 'INVALID_OPERATION', message: 'insertionAffinity must be an object when provided.' }
+            };
+        }
+        const { formatting, hyperlink, revision, bookmark, comment } = normalized.insertionAffinity;
+        if (formatting != null && !['left', 'right', 'none'].includes(formatting)) {
+            return {
+                valid: false,
+                error: { code: 'INVALID_OPERATION', message: 'insertionAffinity.formatting must be "left", "right", or "none".' }
+            };
+        }
+        if (hyperlink != null && !['inside', 'outside', 'preserve'].includes(hyperlink)) {
+            return {
+                valid: false,
+                error: { code: 'INVALID_OPERATION', message: 'insertionAffinity.hyperlink must be "inside", "outside", or "preserve".' }
+            };
+        }
+        if (revision != null && !['coalesce_same_author', 'separate'].includes(revision)) {
+            return {
+                valid: false,
+                error: { code: 'INVALID_OPERATION', message: 'insertionAffinity.revision must be "coalesce_same_author" or "separate".' }
+            };
+        }
+        if (bookmark != null && !['inside', 'outside'].includes(bookmark)) {
+            return {
+                valid: false,
+                error: { code: 'INVALID_OPERATION', message: 'insertionAffinity.bookmark must be "inside" or "outside".' }
+            };
+        }
+        if (comment != null && !['inside', 'outside'].includes(comment)) {
+            return {
+                valid: false,
+                error: { code: 'INVALID_OPERATION', message: 'insertionAffinity.comment must be "inside" or "outside".' }
+            };
+        }
+    }
+
     if (normalized.operationKind === 'comment') {
         if (!nonEmptyString(normalized.commentContent)) {
             return {

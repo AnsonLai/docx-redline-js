@@ -76,6 +76,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
         ...(operation.existingRevisions ? { existingRevisions: operation.existingRevisions } : {}),
         ...(operation.structuredContent === true ? { structuredContent: true } : {}),
         ...(typeof operation.pairReplacements === 'boolean' ? { pairReplacements: operation.pairReplacements } : {}),
+        ...(operation.insertionAffinity ? { insertionAffinity: operation.insertionAffinity } : {}),
         targetDescriptor: operation.targetDescriptor,
         _resolutionCapture: resolutionCapture,
         _revisionIdAllocator: session.revisionIdAllocator,

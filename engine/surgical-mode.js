@@ -171,7 +171,16 @@ export function applySurgicalMode(xmlDoc, originalText, modifiedText, serializer
                 const [, nextText] = diffs[i];
                 const textWithoutNewlines = nextText.replace(/\n/g, ' ');
                 if (textWithoutNewlines.trim().length > 0) {
-                    if (processInsert(xmlDoc, spanIndex, originalPos, textWithoutNewlines, author, formatHints, newPos, generateRedlines, allParagraphs[0] || null, insMetadata)) {
+                    const insertResult = processInsert(xmlDoc, spanIndex, originalPos, textWithoutNewlines, author, formatHints, newPos, generateRedlines, allParagraphs[0] || null, insMetadata, options?.insertionAffinity || null);
+                    if (insertResult && typeof insertResult === 'object' && insertResult.error) {
+                        return withOoxmlSourceType({
+                            oxml: serializer.serializeToString(xmlDoc),
+                            hasChanges: false,
+                            status: 'error',
+                            error: insertResult.error
+                        });
+                    }
+                    if (insertResult === true) {
                         hasChanges = true;
                     }
                 }
@@ -180,7 +189,16 @@ export function applySurgicalMode(xmlDoc, originalText, modifiedText, serializer
         } else if (op === 1) {
             const textWithoutNewlines = text.replace(/\n/g, ' ');
             if (textWithoutNewlines.trim().length > 0) {
-                if (processInsert(xmlDoc, spanIndex, originalPos, textWithoutNewlines, author, formatHints, newPos, generateRedlines, allParagraphs[0] || null)) {
+                const insertResult = processInsert(xmlDoc, spanIndex, originalPos, textWithoutNewlines, author, formatHints, newPos, generateRedlines, allParagraphs[0] || null, null, options?.insertionAffinity || null);
+                if (insertResult && typeof insertResult === 'object' && insertResult.error) {
+                    return withOoxmlSourceType({
+                        oxml: serializer.serializeToString(xmlDoc),
+                        hasChanges: false,
+                        status: 'error',
+                        error: insertResult.error
+                    });
+                }
+                if (insertResult === true) {
                     hasChanges = true;
                 }
             }

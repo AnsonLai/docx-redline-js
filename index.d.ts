@@ -12,6 +12,8 @@ export interface RevisionTextSegment {
   rejectedStart: number | null;
 }
 
+import type { InsertionAffinity } from './services/standalone-operation-runner.js';
+
 export type {
   BatchOperationItemResult,
   CommentDocumentOperation,
@@ -19,6 +21,7 @@ export type {
   DocumentOperation,
   DocumentOperationBatchResult,
   HighlightDocumentOperation,
+  InsertionAffinity,
   OperationConflict,
   OperationPreflightItemResult,
   OperationPreflightResult,
@@ -36,6 +39,7 @@ export interface RedlineError {
     | 'EXISTING_REVISIONS'
     | 'DIFF_TOKEN_LIMIT'
     | 'UNSUPPORTED_REVISION_VIEW_MUTATION'
+    | 'UNSUPPORTED_INSERTION_AFFINITY'
     | 'TARGET_INDEX_MISMATCH'
     | string;
   message: string;
@@ -52,6 +56,7 @@ export interface RedlineOptions {
   sanitizeInput?: boolean;
   structuredContent?: boolean;
   pairReplacements?: boolean;
+  insertionAffinity?: InsertionAffinity;
   [key: string]: unknown;
 }
 

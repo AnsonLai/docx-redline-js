@@ -1213,10 +1213,11 @@ If internal and Word selective-author outcomes differ, keep the case refused.
 Record Word version, build, platform, displayed revision count, and screenshots.
 Do not encode “one balloon” as a cross-version API guarantee.
 
-### WP-08 — Insertion Affinity
+### WP-08 — Insertion Affinity [COMPLETED 2026-09-05]
 
 **Depends on:** WP-07  
-**Produces runtime changes:** Additive explicit option
+**Produces runtime changes:** Additive explicit option  
+**Status:** Completed — implemented `InsertionAffinity` (`formatting`, `hyperlink`, `revision`, `bookmark`, `comment`), `describeInsertionBoundary` descriptor, strict validation returning `UNSUPPORTED_INSERTION_AFFINITY` for illegal positions, exact legacy fallback when omitted, schema and type declarations, and verified by `tests/insertion_affinity_tests.mjs`.
 
 **Files to inspect/edit**
 

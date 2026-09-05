@@ -18,9 +18,12 @@ import {
     findContainingSpan,
     findFirstSpanEndingAt,
     findLastSpanEndingBeforeOrAt,
-    forEachOverlappingSpan
+    forEachOverlappingSpan,
+    describeInsertionBoundary
 } from './surgical-spans.js';
 import { extractFormatFromRPr } from './rpr-helpers.js';
+import { isWordElement } from '../core/word-xml.js';
+import { NS_W } from '../core/types.js';
 
 export function reconcileFormattingForTextSpan(xmlDoc, span, start, end, applicableHints, author, generateRedlines) {
     // Plain modified text carries no negative formatting instruction. Preserve
@@ -132,53 +135,229 @@ export function processDelete(xmlDoc, spanIndex, startPos, endPos, author, gener
     return changed;
 }
 
-export function processInsert(xmlDoc, spanIndex, pos, text, author, formatHints = [], insertOffset = 0, generateRedlines = true, fallbackParagraph = null, revisionMetadata = null) {
-    let targetSpan = findContainingSpan(spanIndex, pos);
+export function processInsert(xmlDoc, spanIndex, pos, text, author, formatHints = [], insertOffset = 0, generateRedlines = true, fallbackParagraph = null, revisionMetadata = null, affinity = null) {
+    if (!affinity) {
+        let targetSpan = findContainingSpan(spanIndex, pos);
 
-    if (!targetSpan && pos > 0) {
-        targetSpan = findFirstSpanEndingAt(spanIndex, pos);
-    }
+        if (!targetSpan && pos > 0) {
+            targetSpan = findFirstSpanEndingAt(spanIndex, pos);
+        }
 
-    if (!targetSpan && pos > 0) {
-        targetSpan = findLastSpanEndingBeforeOrAt(spanIndex, pos);
-    }
+        if (!targetSpan && pos > 0) {
+            targetSpan = findLastSpanEndingBeforeOrAt(spanIndex, pos);
+        }
 
-    if (!targetSpan && spanIndex.spans.length > 0) {
-        targetSpan = spanIndex.spans[spanIndex.spans.length - 1];
-    }
+        if (!targetSpan && spanIndex.spans.length > 0) {
+            targetSpan = spanIndex.spans[spanIndex.spans.length - 1];
+        }
 
-    if (!targetSpan) {
-        if (!fallbackParagraph) return false;
-        insertTextRuns(xmlDoc, fallbackParagraph, null, text, null, author, formatHints, insertOffset, generateRedlines, revisionMetadata);
+        if (!targetSpan) {
+            if (!fallbackParagraph) return false;
+            insertTextRuns(xmlDoc, fallbackParagraph, null, text, null, author, formatHints, insertOffset, generateRedlines, revisionMetadata);
+            return true;
+        }
+
+        const parent = targetSpan.runElement.parentNode;
+        if (!parent) {
+            if (!fallbackParagraph) return false;
+            insertTextRuns(xmlDoc, fallbackParagraph, null, text, targetSpan.rPr, author, formatHints, insertOffset, generateRedlines, revisionMetadata);
+            return true;
+        }
+
+        const pieces = getRunContentPieces(targetSpan.runElement);
+        const targetPiece = pieces.find(piece => piece.node === targetSpan.textElement);
+        const localInsertPos = targetPiece
+            ? targetPiece.start + Math.max(0, Math.min(pos - targetSpan.charStart, targetSpan.charEnd - targetSpan.charStart))
+            : (pos <= targetSpan.charStart ? 0 : getRunTextLength(pieces));
+
+        if (localInsertPos > 0 && localInsertPos < getRunTextLength(pieces)) {
+            const beforePieces = sliceRunPieces(xmlDoc, pieces, 0, localInsertPos, false);
+            const afterPieces = sliceRunPieces(xmlDoc, pieces, localInsertPos, getRunTextLength(pieces), false);
+
+            insertRunPiecesBefore(xmlDoc, parent, targetSpan.runElement, beforePieces, targetSpan.rPr);
+            insertTextRuns(xmlDoc, parent, targetSpan.runElement, text, targetSpan.rPr, author, formatHints, insertOffset, generateRedlines, revisionMetadata);
+            insertRunPiecesBefore(xmlDoc, parent, targetSpan.runElement, afterPieces, targetSpan.rPr);
+            parent.removeChild(targetSpan.runElement);
+            return true;
+        }
+
+        const referenceNode = pos <= targetSpan.charStart ? targetSpan.runElement : targetSpan.runElement.nextSibling;
+        insertTextRuns(xmlDoc, parent, referenceNode, text, targetSpan.rPr, author, formatHints, insertOffset, generateRedlines, revisionMetadata);
         return true;
     }
 
-    const parent = targetSpan.runElement.parentNode;
+    const boundary = describeInsertionBoundary(spanIndex, pos, fallbackParagraph);
+
+    // Validate hyperlink affinity
+    const isLeftInHyperlink = boundary.leftSpan && isWordElement(boundary.leftSpan.runElement?.parentNode, 'hyperlink');
+    const isRightInHyperlink = boundary.rightSpan && isWordElement(boundary.rightSpan.runElement?.parentNode, 'hyperlink');
+    const isContainingInHyperlink = boundary.containingSpan && isWordElement(boundary.containingSpan.runElement?.parentNode, 'hyperlink');
+
+    if (affinity.hyperlink === 'outside') {
+        if (boundary.isInterior && isContainingInHyperlink) {
+            return {
+                error: {
+                    code: 'UNSUPPORTED_INSERTION_AFFINITY',
+                    message: 'Cannot place insertion outside hyperlink from strictly interior position.'
+                }
+            };
+        }
+    } else if (affinity.hyperlink === 'inside') {
+        if (!isLeftInHyperlink && !isRightInHyperlink && !isContainingInHyperlink) {
+            return {
+                error: {
+                    code: 'UNSUPPORTED_INSERTION_AFFINITY',
+                    message: 'Cannot place insertion inside hyperlink when no hyperlink is present at boundary.'
+                }
+            };
+        }
+    }
+
+    // Determine formatting (baseRPr)
+    let baseRPr = null;
+    if (affinity.formatting === 'none') {
+        baseRPr = null;
+    } else if (affinity.formatting === 'right') {
+        baseRPr = boundary.rightSpan?.rPr || null;
+    } else if (affinity.formatting === 'left') {
+        baseRPr = boundary.leftSpan?.rPr || null;
+    } else {
+        baseRPr = (boundary.containingSpan || boundary.leftSpan || boundary.rightSpan)?.rPr || null;
+    }
+
+    // Check interior of a run
+    if (boundary.isInterior) {
+        const targetSpan = boundary.containingSpan;
+        const parent = targetSpan.runElement.parentNode || fallbackParagraph;
+        if (!parent) return false;
+
+        const pieces = getRunContentPieces(targetSpan.runElement);
+        const targetPiece = pieces.find(piece => piece.node === targetSpan.textElement);
+        const localInsertPos = targetPiece
+            ? targetPiece.start + Math.max(0, Math.min(pos - targetSpan.charStart, targetSpan.charEnd - targetSpan.charStart))
+            : (pos <= targetSpan.charStart ? 0 : getRunTextLength(pieces));
+
+        if (localInsertPos > 0 && localInsertPos < getRunTextLength(pieces)) {
+            const beforePieces = sliceRunPieces(xmlDoc, pieces, 0, localInsertPos, false);
+            const afterPieces = sliceRunPieces(xmlDoc, pieces, localInsertPos, getRunTextLength(pieces), false);
+
+            insertRunPiecesBefore(xmlDoc, parent, targetSpan.runElement, beforePieces, targetSpan.rPr);
+            insertTextRuns(xmlDoc, parent, targetSpan.runElement, text, baseRPr, author, formatHints, insertOffset, generateRedlines, revisionMetadata);
+            insertRunPiecesBefore(xmlDoc, parent, targetSpan.runElement, afterPieces, targetSpan.rPr);
+            parent.removeChild(targetSpan.runElement);
+            return true;
+        }
+    }
+
+    // Boundary between runs or at start/end of paragraph
+    let parent = null;
+    let referenceNode = null;
+
+    if (affinity.hyperlink === 'outside') {
+        if (isRightInHyperlink) {
+            const hyperlinkNode = boundary.rightSpan.runElement.parentNode;
+            parent = hyperlinkNode.parentNode || fallbackParagraph;
+            referenceNode = hyperlinkNode;
+        } else if (isLeftInHyperlink) {
+            const hyperlinkNode = boundary.leftSpan.runElement.parentNode;
+            parent = hyperlinkNode.parentNode || fallbackParagraph;
+            referenceNode = hyperlinkNode.nextSibling;
+        }
+    } else if (affinity.hyperlink === 'inside') {
+        if (isRightInHyperlink) {
+            parent = boundary.rightSpan.runElement.parentNode;
+            referenceNode = boundary.rightSpan.runElement;
+        } else if (isLeftInHyperlink) {
+            parent = boundary.leftSpan.runElement.parentNode;
+            referenceNode = boundary.leftSpan.runElement.nextSibling;
+        }
+    }
+
     if (!parent) {
-        if (!fallbackParagraph) return false;
-        insertTextRuns(xmlDoc, fallbackParagraph, null, text, targetSpan.rPr, author, formatHints, insertOffset, generateRedlines, revisionMetadata);
-        return true;
+        if (boundary.rightSpan) {
+            parent = boundary.rightSpan.runElement.parentNode || fallbackParagraph;
+            referenceNode = boundary.rightSpan.runElement;
+        } else if (boundary.leftSpan) {
+            parent = boundary.leftSpan.runElement.parentNode || fallbackParagraph;
+            referenceNode = boundary.leftSpan.runElement.nextSibling;
+        } else {
+            parent = fallbackParagraph;
+            referenceNode = null;
+        }
     }
 
-    const pieces = getRunContentPieces(targetSpan.runElement);
-    const targetPiece = pieces.find(piece => piece.node === targetSpan.textElement);
-    const localInsertPos = targetPiece
-        ? targetPiece.start + Math.max(0, Math.min(pos - targetSpan.charStart, targetSpan.charEnd - targetSpan.charStart))
-        : (pos <= targetSpan.charStart ? 0 : getRunTextLength(pieces));
-
-    if (localInsertPos > 0 && localInsertPos < getRunTextLength(pieces)) {
-        const beforePieces = sliceRunPieces(xmlDoc, pieces, 0, localInsertPos, false);
-        const afterPieces = sliceRunPieces(xmlDoc, pieces, localInsertPos, getRunTextLength(pieces), false);
-
-        insertRunPiecesBefore(xmlDoc, parent, targetSpan.runElement, beforePieces, targetSpan.rPr);
-        insertTextRuns(xmlDoc, parent, targetSpan.runElement, text, targetSpan.rPr, author, formatHints, insertOffset, generateRedlines, revisionMetadata);
-        insertRunPiecesBefore(xmlDoc, parent, targetSpan.runElement, afterPieces, targetSpan.rPr);
-        parent.removeChild(targetSpan.runElement);
-        return true;
+    // Check bookmark range affinity
+    if (affinity.bookmark && parent) {
+        if (affinity.bookmark === 'outside') {
+            if (referenceNode && isWordElement(referenceNode.previousSibling, 'bookmarkStart')) {
+                referenceNode = referenceNode.previousSibling;
+            }
+            if (boundary.leftSpan && isWordElement(boundary.leftSpan.runElement.nextSibling, 'bookmarkEnd')) {
+                referenceNode = boundary.leftSpan.runElement.nextSibling.nextSibling;
+            }
+        } else if (affinity.bookmark === 'inside') {
+            if (referenceNode && isWordElement(referenceNode, 'bookmarkStart')) {
+                referenceNode = referenceNode.nextSibling;
+            }
+            if (boundary.leftSpan && isWordElement(boundary.leftSpan.runElement.nextSibling, 'bookmarkEnd')) {
+                referenceNode = boundary.leftSpan.runElement.nextSibling;
+            }
+        }
     }
 
-    const referenceNode = pos <= targetSpan.charStart ? targetSpan.runElement : targetSpan.runElement.nextSibling;
-    insertTextRuns(xmlDoc, parent, referenceNode, text, targetSpan.rPr, author, formatHints, insertOffset, generateRedlines, revisionMetadata);
+    // Check comment range affinity
+    if (affinity.comment && parent) {
+        if (affinity.comment === 'outside') {
+            if (referenceNode && isWordElement(referenceNode.previousSibling, 'commentRangeStart')) {
+                referenceNode = referenceNode.previousSibling;
+            }
+            if (boundary.leftSpan && isWordElement(boundary.leftSpan.runElement.nextSibling, 'commentRangeEnd')) {
+                let afterComment = boundary.leftSpan.runElement.nextSibling.nextSibling;
+                if (afterComment && (isWordElement(afterComment, 'commentReference') || isWordElement(afterComment, 'r'))) {
+                    const hasCRef = Array.from(afterComment.childNodes || []).some(n => isWordElement(n, 'commentReference'));
+                    if (hasCRef) afterComment = afterComment.nextSibling;
+                }
+                referenceNode = afterComment;
+            }
+        } else if (affinity.comment === 'inside') {
+            if (referenceNode && isWordElement(referenceNode, 'commentRangeStart')) {
+                referenceNode = referenceNode.nextSibling;
+            }
+            if (boundary.leftSpan && isWordElement(boundary.leftSpan.runElement.nextSibling, 'commentRangeEnd')) {
+                referenceNode = boundary.leftSpan.runElement.nextSibling;
+            }
+        }
+    }
+
+    // Check revision affinity (coalesce_same_author)
+    if (generateRedlines && affinity.revision === 'coalesce_same_author') {
+        let insElem = null;
+        let insRef = null;
+
+        if (boundary.leftSpan && isWordElement(boundary.leftSpan.runElement.parentNode, 'ins')) {
+            const candidate = boundary.leftSpan.runElement.parentNode;
+            const candAuthor = candidate.getAttribute('w:author') || candidate.getAttributeNS(NS_W, 'author');
+            if (candAuthor === author) {
+                insElem = candidate;
+                insRef = boundary.leftSpan.runElement.nextSibling;
+            }
+        } else if (boundary.rightSpan && isWordElement(boundary.rightSpan.runElement.parentNode, 'ins')) {
+            const candidate = boundary.rightSpan.runElement.parentNode;
+            const candAuthor = candidate.getAttribute('w:author') || candidate.getAttributeNS(NS_W, 'author');
+            if (candAuthor === author) {
+                insElem = candidate;
+                insRef = boundary.rightSpan.runElement;
+            }
+        }
+
+        if (insElem) {
+            const insRun = createTextRun(xmlDoc, text, baseRPr, false);
+            insElem.insertBefore(insRun, insRef);
+            return true;
+        }
+    }
+
+    insertTextRuns(xmlDoc, parent, referenceNode, text, baseRPr, author, formatHints, insertOffset, generateRedlines, revisionMetadata);
     return true;
 }
 
