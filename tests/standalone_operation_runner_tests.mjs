@@ -950,6 +950,93 @@ async function testNumberedHeadingConversionKeepsBatchRevisionIdsUnique() {
     );
 }
 
+function assertNoDuplicateRevisionIds(documentXml, message) {
+    const validation = validateRedlineOoxml(documentXml);
+    assert.deepStrictEqual(
+        validation.issues.filter(issue => issue.code === 'DUPLICATE_REVISION_ID'),
+        [],
+        message
+    );
+}
+
+async function testStructuralListFallbackAfterRedlineKeepsBatchRevisionIdsUnique() {
+    const paragraphs = ['Opening text', '7. Existing numbered heading'];
+    const result = await applyOperationsToDocumentXml(
+        buildParagraphDocumentXml(paragraphs),
+        [
+            { type: 'redline', targetRef: 1, target: paragraphs[0], modified: 'Revised opening text' },
+            // Identical visible text deliberately exercises the structural-only list fallback.
+            { type: 'redline', targetRef: 2, target: paragraphs[1], modified: paragraphs[1] }
+        ],
+        'StructuralFallbackAllocatorTest',
+        { numberingIdState: createDynamicNumberingIdState() },
+        { atomic: true, strictTargets: true }
+    );
+
+    assert.notStrictEqual(result.status, 'error');
+    assert.strictEqual(result.results.every(entry => entry.status === 'applied'), true);
+    assertNoDuplicateRevisionIds(
+        result.documentXml,
+        'structural-only list fallback must reuse revision IDs allocated by earlier operations'
+    );
+}
+
+async function testNumberedHeadingBeforeRedlineAdvancesSharedAllocator() {
+    const paragraphs = ['3.4 Numbered heading', 'Closing text'];
+    const result = await applyOperationsToDocumentXml(
+        buildParagraphDocumentXml(paragraphs),
+        [
+            { type: 'redline', targetRef: 1, target: paragraphs[0], modified: '3.3 Numbered heading' },
+            { type: 'redline', targetRef: 2, target: paragraphs[1], modified: 'Revised closing text' }
+        ],
+        'AllocatorAdvanceTest',
+        { numberingIdState: createDynamicNumberingIdState() },
+        { atomic: true, strictTargets: true }
+    );
+
+    assert.notStrictEqual(result.status, 'error');
+    assert.strictEqual(result.results.every(entry => entry.status === 'applied'), true);
+    assertNoDuplicateRevisionIds(
+        result.documentXml,
+        'numbered-heading conversion must advance the allocator used by later operations'
+    );
+}
+
+async function testMixedListRoutesSeedRevisionIdsAboveExistingDocumentMaximum() {
+    const inputXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">
+  <w:body>
+    <w:p><w:ins w:id="7000" w:author="Prior" w:date="2026-01-01T00:00:00Z"><w:r><w:t>Prior accepted text</w:t></w:r></w:ins></w:p>
+    <w:p><w:r><w:t>5.6 First heading</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Middle text</w:t></w:r></w:p>
+    <w:p><w:r><w:t>9. Existing numbered heading</w:t></w:r></w:p>
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+    const result = await applyOperationsToDocumentXml(
+        inputXml,
+        [
+            { type: 'redline', targetRef: 2, target: '5.6 First heading', modified: '5.5 First heading' },
+            { type: 'redline', targetRef: 3, target: 'Middle text', modified: 'Revised middle text' },
+            { type: 'redline', targetRef: 4, target: '9. Existing numbered heading', modified: '9. Existing numbered heading' }
+        ],
+        'ExistingMaximumAllocatorTest',
+        { numberingIdState: createDynamicNumberingIdState() },
+        { atomic: true, strictTargets: true }
+    );
+
+    assert.notStrictEqual(result.status, 'error');
+    assert.strictEqual(result.results.every(entry => entry.status === 'applied'), true);
+    assertNoDuplicateRevisionIds(result.documentXml, 'mixed list routes must remain unique above existing IDs');
+    const resultDoc = parseXmlStrict(result.documentXml, 'existing maximum allocator output');
+    const generatedIds = Array.from(resultDoc.getElementsByTagNameNS(NS_W, 'del'))
+        .concat(Array.from(resultDoc.getElementsByTagNameNS(NS_W, 'ins')))
+        .filter(node => node.getAttribute('w:author') === 'ExistingMaximumAllocatorTest')
+        .map(node => Number(node.getAttribute('w:id')));
+    assert.ok(generatedIds.length > 0);
+    assert.ok(generatedIds.every(id => id > 7000), 'new revision IDs must seed above the existing document maximum');
+}
+
 async function run() {
     await testRedlineOperation();
     await testImplicitMultilineTargetReplacesWholeRange();
@@ -970,6 +1057,9 @@ async function run() {
     await testBatchAtomicRollbackAndLegacyPartialMode();
     await testOverlappingBatchAnchorFailsInsteadOfEditingWrongSpan();
     await testNumberedHeadingConversionKeepsBatchRevisionIdsUnique();
+    await testStructuralListFallbackAfterRedlineKeepsBatchRevisionIdsUnique();
+    await testNumberedHeadingBeforeRedlineAdvancesSharedAllocator();
+    await testMixedListRoutesSeedRevisionIdsAboveExistingDocumentMaximum();
     console.log('PASS: standalone operation runner tests');
 }
 
