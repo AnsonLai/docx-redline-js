@@ -5,8 +5,7 @@ import {
     applyOperationToDocumentXml
 } from '../services/standalone-operation-runner.js';
 import {
-    reconcileReceiptsAgainstOutput,
-    createEmptyReceipt
+    reconcileReceiptsAgainstOutput
 } from '../services/receipt-collector.js';
 
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';

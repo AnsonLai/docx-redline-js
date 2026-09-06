@@ -37,6 +37,9 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     -SourcesDir $sourcesPath
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+# Clean up any orphaned background Word processes from prior aborted runs
+Get-Process WINWORD -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -eq 0 } | Stop-Process -Force -ErrorAction SilentlyContinue
+
 & (Join-Path $repoRoot 'scripts\word-com-differential.ps1') `
     -FixturesDir $fixturesPath `
     -SourcesDir $sourcesPath

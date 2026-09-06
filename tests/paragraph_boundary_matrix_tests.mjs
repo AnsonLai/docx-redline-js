@@ -149,7 +149,7 @@ test('WP-09 Case 2: delete-boundary fixture proves paragraph mark ownership and 
 });
 
 test('WP-09 Case 3: delete-middle-paragraph fixture proves full paragraph deletion ownership', () => {
-    const { pendingDoc, acceptedDoc, rejectedDoc, pendingXml } = loadFixtureTriple('delete-middle-paragraph');
+    const { pendingDoc, acceptedDoc, rejectedDoc } = loadFixtureTriple('delete-middle-paragraph');
 
     const paragraphs = getWordElements(pendingDoc, 'p');
     assert.equal(paragraphs.length, 3, 'Pending paragraph deletion retains 3 paragraphs in pending state');
@@ -247,7 +247,7 @@ test('WP-09 Case 6: different-list-levels-boundary proves list numbering transit
 });
 
 test('WP-09 Case 7: section-break-boundary proves section break encapsulation', () => {
-    const { pendingDoc, acceptedDoc, rejectedDoc } = loadFixtureTriple('section-break-boundary');
+    const { pendingDoc, acceptedDoc } = loadFixtureTriple('section-break-boundary');
 
     const paragraphs = getWordElements(pendingDoc, 'p');
     assert.ok(paragraphs.length >= 1, 'Pending document has paragraphs');

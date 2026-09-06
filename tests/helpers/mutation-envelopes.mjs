@@ -2,7 +2,7 @@ import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 import { configureXmlProvider, parseOoxmlSafe } from '../../adapters/xml-adapter.js';
 import { unzipDocx } from '../../node/zip-archive.js';
 import { canonicalizeOoxml } from './canonical-ooxml.mjs';
-import { comparePackageEntries, assertPackageFidelity } from './package-fidelity.mjs';
+import { assertPackageFidelity } from './package-fidelity.mjs';
 import { getParagraphId, getParagraphText, findContainingWordElement } from '../../core/paragraph-targeting.js';
 import { acceptTrackedChangesInOoxml, rejectTrackedChangesInOoxml } from '../../services/revision-comment-management.js';
 

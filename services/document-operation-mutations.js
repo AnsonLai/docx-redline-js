@@ -23,7 +23,6 @@ import { getDefaultAuthor } from '../adapters/config.js';
 import { applyRedlineToOxml as applyRedlineToOxmlEngine } from '../engine/oxml-engine.js';
 import { applyHighlightToOoxml } from '../engine/formatting-removal.js';
 import { parseTable as parseMarkdownTable } from '../pipeline/pipeline.js';
-import { analyzeStructuredContent } from '../pipeline/structured-content.js';
 import { injectCommentsIntoOoxml } from './comment-engine.js';
 import {
     getParagraphText as getParagraphTextFromOxml,
@@ -1695,7 +1694,7 @@ export async function applyParagraphFormatToParagraphByExactText(
             error: { code: 'PARSE_ERROR', message: 'Could not parse document OOXML.' }
         };
     }
-    const revisionIdAllocator = operationSession?.revisionIdAllocator || prepareRevisionAllocator(xmlDoc, options);
+    if (!operationSession) prepareRevisionAllocator(xmlDoc, options);
     const resolved = resolveTargetParagraph(xmlDoc, targetText, targetRef, 'paragraph-format', runtimeContext, {
         ...options,
         onInfo,

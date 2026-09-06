@@ -5,11 +5,6 @@ import {
     applyOperationToDocumentXml
 } from '../services/standalone-operation-runner.js';
 import { validateDocumentOperation } from '../services/document-operation-contract.js';
-import {
-    resolveTargetParagraph,
-    buildParagraphMetadataIndex
-} from '../core/paragraph-targeting.js';
-import { parseOoxmlSafe } from '../adapters/xml-adapter.js';
 
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 

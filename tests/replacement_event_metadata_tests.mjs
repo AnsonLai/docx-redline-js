@@ -9,8 +9,7 @@ import {
 import { parseOoxmlSafe, createSerializer } from '../adapters/xml-adapter.js';
 import { applySurgicalMode } from '../engine/surgical-mode.js';
 import {
-    applyOperationsToDocumentXml,
-    applyOperationToDocumentXml
+    applyOperationsToDocumentXml
 } from '../services/standalone-operation-runner.js';
 import { validateDocumentOperation } from '../services/document-operation-contract.js';
 

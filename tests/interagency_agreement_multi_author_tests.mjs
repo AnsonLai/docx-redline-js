@@ -101,7 +101,14 @@ This Attachment 4 constitutes an integral component of the Interagency Agreement
 // 24 operations: Section headers fiddled into lists, Attachment 3 subbullets,
 // Attachment 4 appended document with tables & lists, contract terms & comments.
 // ----------------------------------------------------------------------------
-export const AUTHOR_1_OPERATIONS = [
+// ----------------------------------------------------------------------------
+// Pass 1: Author 1 (BCHD Lead Agency Counsel) Initial Proposals
+// Formal section headers are maintained as clean headers (NOT bullets).
+// Section C Term initial proposal: 36 months.
+// Section D.3 Disbursement initial proposal: 45 calendar days.
+// Section E Termination initial proposal: 90 calendar days.
+// ----------------------------------------------------------------------------
+export const AUTHOR_1_PASS_1_OPERATIONS = [
     // --- 1. Parties & Recitals ---
     {
         type: 'replace',
@@ -153,11 +160,11 @@ export const AUTHOR_1_OPERATIONS = [
         author: AUTHOR_1
     },
 
-    // --- 2. Section Headers Fiddled into Bulleted Lists ---
+    // --- 2. Formal Section Headers (Maintained as Clean Headers, NOT Bullets) ---
     {
         type: 'replace',
         target: { exactText: 'A.\tPURPOSE', index: 18 },
-        modified: '* Article A. Purpose and Interagency Alignment\n* Key Focus: Joint Street Outreach & Medical Triage',
+        modified: 'A.\tPURPOSE AND INTERAGENCY ALIGNMENT',
         author: AUTHOR_1
     },
     {
@@ -172,38 +179,29 @@ export const AUTHOR_1_OPERATIONS = [
     {
         type: 'replace',
         target: { exactText: 'B.\tSCOPE OF SERVICES', index: 22 },
-        modified: '* Article B. Scope of Coordinated Services and Responsibilities\n* Priority Areas: Mobile Healthcare Teams & Shelter Case Management',
+        modified: 'B.\tSCOPE OF COORDINATED SERVICES AND RESPONSIBILITIES',
         author: AUTHOR_1
     },
     {
         type: 'replace',
         target: { exactText: 'C.\tTERM ', index: 26 },
-        modified: '* Article C. Performance Term and Operating Period\n* Effective Duration: Multi-Year Grant Alignment',
+        modified: 'C.\tTERM AND PERFORMANCE DURATION',
         author: AUTHOR_1
     },
+    // BCHD initial proposal: 36 months (altered in Pass 1b via same-author merge)
     {
         type: 'replace',
         target: {
             exactText: 'The term of this Agreement shall be DURATION beginning on      , 20   and ending on                     , 20   , unless terminated earlier in accordance with this Agreement.',
             index: 28
         },
-        modified: 'The term of this Agreement shall be twenty-four (24) months beginning on July 1, 2026 and ending on June 30, 2028, unless terminated earlier in accordance with this Agreement.',
-        author: AUTHOR_1
-    },
-    {
-        type: 'comment',
-        target: {
-            exactText: 'The term of this Agreement shall be DURATION beginning on      , 20   and ending on                     , 20   , unless terminated earlier in accordance with this Agreement.',
-            index: 28
-        },
-        textToComment: 'DURATION',
-        commentContent: 'Two-year duration requires Board of Estimates approval calendar scheduling no later than May 15.',
+        modified: 'The term of this Agreement shall be thirty-six (36) months beginning on July 1, 2026 and ending on June 30, 2029, unless terminated earlier in accordance with this Agreement.',
         author: AUTHOR_1
     },
     {
         type: 'replace',
         target: { exactText: 'D. \tCOMPENSATION AND METHOD OF PAYMENT ', index: 30 },
-        modified: '* Article D. Compensation, Fiscal Accounting, and Invoicing\n* Standards: OMB Uniform Guidance and Quarterly Expenditure Reviews',
+        modified: 'D. \tCOMPENSATION, FISCAL ACCOUNTING, AND INVOICING',
         author: AUTHOR_1
     },
     {
@@ -215,21 +213,23 @@ export const AUTHOR_1_OPERATIONS = [
         modified: '1.\tSubject to the availability of funding, DEPARTMENT 1 shall provide funds by journal entry to the DEPARTMENT 2 for payment of coordinated outreach and stabilization services described hereunder, in an amount not to exceed TWO MILLION FOUR HUNDRED FIFTY THOUSAND DOLLARS ($2,450,000.00) for the term.',
         author: AUTHOR_1
     },
+    // BCHD initial proposal: 45 calendar days (altered in Pass 1b via same-author merge)
     {
         type: 'replace',
         target: {
             exactText: '3.\tDEPARTMENT 1 shall only pay invoices to if the required supporting documentation accompanies each invoice. ',
             index: 36
         },
-        modified: '3.\tDEPARTMENT 1 shall process journal entries and disburse funds to DEPARTMENT 2 within thirty (30) calendar days of receipt of verified invoices and required supporting documentation.',
+        modified: '3.\tDEPARTMENT 1 shall process journal entries and disburse funds to DEPARTMENT 2 within forty-five (45) calendar days of receipt of verified invoices and required supporting documentation.',
         author: AUTHOR_1
     },
     {
         type: 'replace',
         target: { exactText: 'E.\tTERMINATION', index: 38 },
-        modified: '* Article E. Early Termination Protocols and Transition\n* Safeguards: Patient Care Continuity and Records Handover',
+        modified: 'E.\tEARLY TERMINATION PROTOCOLS AND TRANSITION',
         author: AUTHOR_1
     },
+    // BCHD initial proposal on Section E: 90 calendar days
     {
         type: 'replace',
         target: {
@@ -252,13 +252,13 @@ export const AUTHOR_1_OPERATIONS = [
     {
         type: 'replace',
         target: { exactText: 'F.\tMODIFICATIONS', index: 42 },
-        modified: '* Article F. Written Modifications and Adjustments\n* Municipal Requirement: Board of Estimates Ratification',
+        modified: 'F.\tMODIFICATIONS AND WRITTEN AMENDMENTS',
         author: AUTHOR_1
     },
     {
         type: 'replace',
         target: { exactText: 'G.\tGENERAL PROVISIONS AND CONDITIONS', index: 46 },
-        modified: '* Article G. General Provisions, Statutory Assurances, and Conditions\n* Compliance: Federal, State, and Municipal Grant Directives',
+        modified: 'G.\tGENERAL PROVISIONS, STATUTORY ASSURANCES, AND CONDITIONS',
         author: AUTHOR_1
     },
 
@@ -301,11 +301,38 @@ export const AUTHOR_1_OPERATIONS = [
     }
 ];
 
+export const AUTHOR_1_OPERATIONS = AUTHOR_1_PASS_1_OPERATIONS;
+
+// ----------------------------------------------------------------------------
+// Pass 1b: Author 1 (BCHD Lead Agency Counsel) Revision Alteration
+// Demonstrates existingRevisions: 'merge-same-author' where an author alters their
+// own earlier redlines on Section C (Term: 36m -> 24m) and Section D.3 (Payment: 45d -> 30d).
+// ----------------------------------------------------------------------------
+export const AUTHOR_1_ALTERATION_OPERATIONS = [
+    {
+        type: 'replace',
+        target: {
+            exactText: 'The term of this Agreement shall be thirty-six (36) months beginning on July 1, 2026 and ending on June 30, 2029, unless terminated earlier in accordance with this Agreement.'
+        },
+        modified: 'The term of this Agreement shall be twenty-four (24) months beginning on July 1, 2026 and ending on June 30, 2028, unless terminated earlier in accordance with this Agreement.',
+        author: AUTHOR_1
+    },
+    {
+        type: 'replace',
+        target: {
+            exactText: '3.\tDEPARTMENT 1 shall process journal entries and disburse funds to DEPARTMENT 2 within forty-five (45) calendar days of receipt of verified invoices and required supporting documentation.'
+        },
+        modified: '3.\tDEPARTMENT 1 shall process journal entries and disburse funds to DEPARTMENT 2 within thirty (30) calendar days of receipt of verified invoices and required supporting documentation.',
+        author: AUTHOR_1
+    }
+];
+
 // ----------------------------------------------------------------------------
 // Pass 2: Author 2 (MOHS Counterparty Counsel)
-// 17 operations: Counterparty comments negotiating financial and termination terms,
-// 30-day cure period, pre-award cost reimbursement, annual review, MOHS notice
-// address block, MOHS signatory, Attachment 1 program scope & budget, Attachment 2.
+// Weaves the two counsels together:
+// - MOHS places counter-comments on BCHD clauses.
+// - MOHS counters on the SAME provision (Section E Termination) with accept-all-first.
+// - MOHS redlines Section G, Notices, Signatures, Attachments 1 & 2.
 // ----------------------------------------------------------------------------
 export const AUTHOR_2_OPERATIONS = [
     // --- 1. Counter-Comments on Author 1's Key Clauses ---
@@ -321,23 +348,35 @@ export const AUTHOR_2_OPERATIONS = [
     {
         type: 'comment',
         target: {
-            exactText: 'Either party may terminate this Agreement without cause by giving to the other party written notification thereof at least ninety (90) calendar days prior to termination.  DEPARTMENT 1 shall provide funding to the DEPARTMENT 2 for services under this Agreement through the date of termination.  Upon termination, the parties hereto agree that all reports, clinical care transition summaries, and supporting documentation required for services rendered shall be provided by the DEPARTMENT 2 to DEPARTMENT 1 within fifteen (15) business days.'
-        },
-        textToComment: 'ninety (90) calendar days',
-        commentContent: 'Counter-proposal: 90 days creates extended fiscal liability if federal award amounts are adjusted mid-year. MOHS proposes 45 calendar days with mutual wind-down cost reimbursement.',
-        author: AUTHOR_2
-    },
-    {
-        type: 'comment',
-        target: {
             exactText: 'The term of this Agreement shall be twenty-four (24) months beginning on July 1, 2026 and ending on June 30, 2028, unless terminated earlier in accordance with this Agreement.'
         },
         textToComment: 'twenty-four (24) months',
         commentContent: 'Agreed on 24-month base term, but MOHS requests inclusion of two optional one-year renewal terms subject to mutual written agreement and Board of Estimates approval.',
         author: AUTHOR_2
     },
+    {
+        type: 'comment',
+        target: {
+            exactText: 'Either party may terminate this Agreement without cause by giving to the other party written notification thereof at least ninety (90) calendar days prior to termination.  DEPARTMENT 1 shall provide funding to the DEPARTMENT 2 for services under this Agreement through the date of termination.  Upon termination, the parties hereto agree that all reports, clinical care transition summaries, and supporting documentation required for services rendered shall be provided by the DEPARTMENT 2 to DEPARTMENT 1 within fifteen (15) business days.'
+        },
+        textToComment: 'ninety (90) calendar days',
+        commentContent: 'Counter-proposal: 90 days creates extended fiscal liability if federal award amounts are adjusted mid-year. MOHS proposes 45 calendar days with mutual wind-down cost reimbursement.',
+        author: AUTHOR_2
+    },
 
-    // --- 2. Counterparty Redlines on General Provisions & Dispute Resolution ---
+    // --- 2. Counter-Redline on the SAME Provision (Section E Termination) ---
+    // MOHS counters on Section E by accepting BCHD's working text and proposing 45 days + wind-down costs
+    {
+        type: 'replace',
+        target: {
+            exactText: 'Either party may terminate this Agreement without cause by giving to the other party written notification thereof at least ninety (90) calendar days prior to termination.  DEPARTMENT 1 shall provide funding to the DEPARTMENT 2 for services under this Agreement through the date of termination.  Upon termination, the parties hereto agree that all reports, clinical care transition summaries, and supporting documentation required for services rendered shall be provided by the DEPARTMENT 2 to DEPARTMENT 1 within fifteen (15) business days.'
+        },
+        modified: 'Either party may terminate this Agreement without cause by giving to the other party written notification thereof at least forty-five (45) calendar days prior to termination, subject to mutual reimbursement of uncancelable wind-down costs.  DEPARTMENT 1 shall provide funding to the DEPARTMENT 2 for services under this Agreement through the date of termination.  Upon termination, the parties hereto agree that all reports, clinical care transition summaries, and supporting documentation required for services rendered shall be provided by the DEPARTMENT 2 to DEPARTMENT 1 within fifteen (15) business days.',
+        author: AUTHOR_2,
+        existingRevisions: 'accept-all-first'
+    },
+
+    // --- 3. Counterparty Redlines on General Provisions & Dispute Resolution ---
     {
         type: 'replace',
         target: {
@@ -366,7 +405,7 @@ export const AUTHOR_2_OPERATIONS = [
         author: AUTHOR_2
     },
 
-    // --- 3. Counterparty Redlines: Notices Block for Department 2 ---
+    // --- 4. Counterparty Redlines: Notices Block for Department 2 ---
     {
         type: 'replace',
         target: { exactText: '_______________________________', occurrence: 5 },
@@ -392,7 +431,7 @@ export const AUTHOR_2_OPERATIONS = [
         author: AUTHOR_2
     },
 
-    // --- 4. Counterparty Redlines: Signatory Block ---
+    // --- 5. Counterparty Redlines: Signatory Block ---
     {
         type: 'replace',
         target: { exactText: '\t\t\t\t\t\t\tSIGNATORY', occurrence: 2 },
@@ -406,7 +445,7 @@ export const AUTHOR_2_OPERATIONS = [
         author: AUTHOR_2
     },
 
-    // --- 5. Counterparty Redlines: Attachment 1 Scope and Budget ---
+    // --- 6. Counterparty Redlines: Attachment 1 Scope and Budget ---
     {
         type: 'replace',
         target: { exactText: 'Program Scope:   ' },
@@ -420,7 +459,7 @@ export const AUTHOR_2_OPERATIONS = [
         author: AUTHOR_2
     },
 
-    // --- 6. Counterparty Redlines: Attachment 2 Grant Information ---
+    // --- 7. Counterparty Redlines: Attachment 2 Grant Information ---
     {
         type: 'replace',
         target: { exactText: 'Grant Name:  ' },
@@ -442,30 +481,75 @@ export const AUTHOR_2_OPERATIONS = [
 ];
 
 // ----------------------------------------------------------------------------
+// Pass 3: Author 1 (BCHD Lead Agency Counsel) Final Compromise on Section E
+// BCHD responds back on the SAME provision (Section E Termination) to reach
+// final compromise: 60 calendar days with 45-day emergency shelter placement protocol.
+// ----------------------------------------------------------------------------
+export const AUTHOR_1_FINAL_OPERATIONS = [
+    {
+        type: 'comment',
+        target: {
+            exactText: 'Either party may terminate this Agreement without cause by giving to the other party written notification thereof at least forty-five (45) calendar days prior to termination, subject to mutual reimbursement of uncancelable wind-down costs.  DEPARTMENT 1 shall provide funding to the DEPARTMENT 2 for services under this Agreement through the date of termination.  Upon termination, the parties hereto agree that all reports, clinical care transition summaries, and supporting documentation required for services rendered shall be provided by the DEPARTMENT 2 to DEPARTMENT 1 within fifteen (15) business days.'
+        },
+        textToComment: 'forty-five (45) calendar days',
+        commentContent: 'BCHD compromise proposal: We can accept a 60-day notice with 45-day clinical transition safeguard and wind-down cost coverage.',
+        author: AUTHOR_1
+    },
+    {
+        type: 'replace',
+        target: {
+            exactText: 'Either party may terminate this Agreement without cause by giving to the other party written notification thereof at least forty-five (45) calendar days prior to termination, subject to mutual reimbursement of uncancelable wind-down costs.  DEPARTMENT 1 shall provide funding to the DEPARTMENT 2 for services under this Agreement through the date of termination.  Upon termination, the parties hereto agree that all reports, clinical care transition summaries, and supporting documentation required for services rendered shall be provided by the DEPARTMENT 2 to DEPARTMENT 1 within fifteen (15) business days.'
+        },
+        modified: 'Either party may terminate this Agreement without cause by giving to the other party written notification thereof at least sixty (60) calendar days prior to termination, with forty-five (45) days for emergency shelter placements and mutual reimbursement of uncancelable wind-down costs.  DEPARTMENT 1 shall provide funding to the DEPARTMENT 2 for services under this Agreement through the date of termination.  Upon termination, the parties hereto agree that all reports, clinical care transition summaries, and supporting documentation required for services rendered shall be provided by the DEPARTMENT 2 to DEPARTMENT 1 within fifteen (15) business days.',
+        author: AUTHOR_1,
+        existingRevisions: 'accept-all-first'
+    }
+];
+
+// ----------------------------------------------------------------------------
 // Test 1: Preflight Verification on Author 1 Operations
 // ----------------------------------------------------------------------------
 async function testPreflight(docXml) {
-    const preflight = preflightOperations(docXml, AUTHOR_1_OPERATIONS, AUTHOR_1);
+    const preflight = preflightOperations(docXml, AUTHOR_1_PASS_1_OPERATIONS, AUTHOR_1);
     assert.equal(preflight.status, 'ok', 'Author 1 preflight must pass with status ok');
     assert.equal(preflight.issues?.length ?? 0, 0, 'Author 1 preflight must report zero issues');
 }
 
 // ----------------------------------------------------------------------------
 // Test 2: Engine Sequential Multi-Author Execution
+// Tests:
+// - Pass 1: BCHD initial draft with clean headers (NO bullet lists).
+// - Pass 1b: BCHD alteration (same-author merge on Term and Payment).
+// - Multi-user conflict protection: MOHS refused without accept-all-first.
+// - Pass 2: MOHS counterparty redlines on Section E (same provision) + others.
+// - Pass 3: BCHD final compromise on Section E (same provision).
 // ----------------------------------------------------------------------------
 async function testEngineMultiAuthor(docXml) {
-    // Pass 1: Author 1 (BCHD Lead Agency Counsel)
-    const pass1 = await applyOperationsToDocumentXml(docXml, AUTHOR_1_OPERATIONS, AUTHOR_1);
+    // Pass 1: Author 1 (BCHD Lead Agency Counsel) Initial Draft
+    const pass1 = await applyOperationsToDocumentXml(docXml, AUTHOR_1_PASS_1_OPERATIONS, AUTHOR_1);
     assert.equal(pass1.rolledBack, undefined, 'Pass 1 must not be rolled back');
     assert.equal(pass1.hasChanges, true, 'Pass 1 must produce changes');
     for (const r of pass1.results) {
         assert.equal(r.status, 'applied', `Pass 1 operation ${r.index} must be applied`);
     }
 
-    // Structural checks for Pass 1
-    // Headers A-G turned into lists: verify w:numPr in XML
-    const listCount = (pass1.documentXml.match(/<w:numPr>/g) || []).length;
-    assert.ok(listCount >= 14, `Expected at least 14 list paragraphs from header conversions, found ${listCount}`);
+    // Structural checks for Pass 1:
+    // Section headers A-G must NOT be bullet lists (no numPr on header paragraphs)
+    const pass1PlainText = ingestWordOoxmlToPlainText(pass1.documentXml);
+    assert.ok(pass1PlainText.includes('PURPOSE AND INTERAGENCY ALIGNMENT'), 'Header A must have new title');
+    assert.ok(pass1PlainText.includes('SCOPE OF COORDINATED SERVICES AND RESPONSIBILITIES'), 'Header B must have new title');
+    assert.ok(pass1PlainText.includes('TERM AND PERFORMANCE DURATION'), 'Header C must have new title');
+    assert.ok(pass1PlainText.includes('COMPENSATION, FISCAL ACCOUNTING, AND INVOICING'), 'Header D must have new title');
+    assert.ok(pass1PlainText.includes('EARLY TERMINATION PROTOCOLS AND TRANSITION'), 'Header E must have new title');
+    assert.ok(pass1PlainText.includes('MODIFICATIONS AND WRITTEN AMENDMENTS'), 'Header F must have new title');
+    assert.ok(pass1PlainText.includes('GENERAL PROVISIONS, STATUTORY ASSURANCES, AND CONDITIONS'), 'Header G must have new title');
+
+    // Verify Header A paragraph is not a bullet list (numId must be 0 or absent, never positive)
+    const alignIdx = pass1.documentXml.indexOf('INTERAGENCY ALIGNMENT');
+    const headerAParaStart = pass1.documentXml.lastIndexOf('<w:p', alignIdx);
+    const headerAParaEnd = pass1.documentXml.indexOf('</w:p>', alignIdx) + 6;
+    const headerAPara = pass1.documentXml.slice(headerAParaStart, headerAParaEnd);
+    assert.ok(!headerAPara.match(/<w:numId\s+w:val="[1-9]\d*"/), 'Header A must NOT have positive numId (must remain clean header, not bullet list)');
 
     // Attachment 3 nested subbullets: verify w:ilvl w:val="1"
     const subBulletMatches = pass1.documentXml.match(/<w:ilvl\s+w:val="1"\s*\/>/g) || [];
@@ -483,23 +567,56 @@ async function testEngineMultiAuthor(docXml) {
     assert.ok(pass1.documentXml.includes('<w:pStyle w:val="Heading2"'), 'Attachment 4 section labels must be Word headings');
     assert.ok(!pass1.documentXml.includes('| Agency / Role |'), 'Attachment 4 table syntax must not remain literal pipe text');
 
-    // Pass 2: Author 2 (MOHS Counterparty Counsel)
-    const pass2 = await applyOperationsToDocumentXml(pass1.documentXml, AUTHOR_2_OPERATIONS, AUTHOR_2);
+    // Pass 1b: BCHD alters its proposals (testing same-author merge on Section C Term & Section D.3 Disbursement)
+    const pass1b = await applyOperationsToDocumentXml(pass1.documentXml, AUTHOR_1_ALTERATION_OPERATIONS, AUTHOR_1);
+    assert.equal(pass1b.rolledBack, undefined, 'Pass 1b must not be rolled back');
+    assert.equal(pass1b.hasChanges, true, 'Pass 1b must produce changes');
+    for (const r of pass1b.results) {
+        assert.equal(r.status, 'applied', `Pass 1b operation ${r.index} must be applied via same-author merge`);
+    }
+    assert.ok(pass1b.documentXml.includes('twenty-four (24) months'), 'Pass 1b merged Section C term to 24 months');
+    assert.ok(pass1b.documentXml.includes('thirty (30) calendar days'), 'Pass 1b merged Section D.3 payment to 30 days');
+
+    // Multi-user conflict protection check:
+    // If MOHS attempts to redline Section E WITHOUT existingRevisions: 'accept-all-first', it must fail with EXISTING_REVISIONS
+    const conflictAttempt = await applyOperationsToDocumentXml(pass1b.documentXml, [
+        {
+            type: 'replace',
+            target: {
+                exactText: 'Either party may terminate this Agreement without cause by giving to the other party written notification thereof at least ninety (90) calendar days prior to termination.  DEPARTMENT 1 shall provide funding to the DEPARTMENT 2 for services under this Agreement through the date of termination.  Upon termination, the parties hereto agree that all reports, clinical care transition summaries, and supporting documentation required for services rendered shall be provided by the DEPARTMENT 2 to DEPARTMENT 1 within fifteen (15) business days.'
+            },
+            modified: 'Conflicting modification attempt',
+            author: AUTHOR_2
+        }
+    ], AUTHOR_2);
+    assert.equal(conflictAttempt.results[0]?.status, 'error', 'Conflicting multi-user modification without policy must fail');
+    assert.equal(conflictAttempt.results[0]?.error?.code, 'EXISTING_REVISIONS', 'Conflict error must be EXISTING_REVISIONS');
+
+    // Pass 2: Author 2 (MOHS Counterparty Counsel) with accept-all-first on Section E
+    const pass2 = await applyOperationsToDocumentXml(pass1b.documentXml, AUTHOR_2_OPERATIONS, AUTHOR_2);
     assert.equal(pass2.rolledBack, undefined, 'Pass 2 must not be rolled back');
     assert.equal(pass2.hasChanges, true, 'Pass 2 must produce changes');
     for (const r of pass2.results) {
         assert.equal(r.status, 'applied', `Pass 2 operation ${r.index} must be applied`);
     }
 
-    // Multi-Author Revisions Verification
-    const authorMatches = [...pass2.documentXml.matchAll(/w:author="([^"]+)"/g)].map(m => m[1]);
+    // Pass 3: Author 1 (BCHD Lead Agency Counsel) counters back on the SAME provision (Section E) to reach compromise
+    const pass3 = await applyOperationsToDocumentXml(pass2.documentXml, AUTHOR_1_FINAL_OPERATIONS, AUTHOR_1);
+    assert.equal(pass3.rolledBack, undefined, 'Pass 3 must not be rolled back');
+    assert.equal(pass3.hasChanges, true, 'Pass 3 must produce changes');
+    for (const r of pass3.results) {
+        assert.equal(r.status, 'applied', `Pass 3 operation ${r.index} must be applied`);
+    }
+
+    // Multi-Author Revisions Verification on Final Negotiated Document
+    const authorMatches = [...pass3.documentXml.matchAll(/w:author="([^"]+)"/g)].map(m => m[1]);
     const authorCounts = {};
     for (const a of authorMatches) authorCounts[a] = (authorCounts[a] || 0) + 1;
 
-    assert.ok(authorCounts[AUTHOR_1] >= 100, `Author 1 must have at least 100 revision tags, found ${authorCounts[AUTHOR_1]}`);
+    assert.ok(authorCounts[AUTHOR_1] >= 90, `Author 1 must have at least 90 revision tags, found ${authorCounts[AUTHOR_1]}`);
     assert.ok(authorCounts[AUTHOR_2] >= 25, `Author 2 must have at least 25 revision tags, found ${authorCounts[AUTHOR_2]}`);
 
-    return { pass1, pass2 };
+    return { pass1, pass1b, pass2, pass3 };
 }
 
 // ----------------------------------------------------------------------------
@@ -546,6 +663,7 @@ async function testGlobalAcceptRejectAll(multiAuthorDocXml, originalDocXml) {
     assert.ok(acceptedText.includes('TWO MILLION FOUR HUNDRED FIFTY THOUSAND DOLLARS'), 'Accepted text must include $2.45M');
     assert.ok(acceptedText.includes('ATTACHMENT 4 – JOINT AGENCY PUBLIC ANNOUNCEMENT'), 'Accepted text must include Attachment 4');
     assert.ok(acceptedText.includes('thirty (30) calendar day opportunity to cure'), 'Accepted text must include 30-day cure period from Author 2');
+    assert.ok(acceptedText.includes('sixty (60) calendar days prior to termination'), 'Accepted text must include final 60-day compromise');
 
     // Reject All
     const rejectedAll = rejectTrackedChangesInOoxml(multiAuthorDocXml, { allAuthors: true });
@@ -564,28 +682,43 @@ async function testGlobalAcceptRejectAll(multiAuthorDocXml, originalDocXml) {
 
 // ----------------------------------------------------------------------------
 // Test 5: Complete Package Pipeline via openDocx
+// Executes Pass 1 -> Pass 1b (same-author merge) -> Pass 2 -> Pass 3.
 // ----------------------------------------------------------------------------
 async function testPackagePipeline(sourceBuffer) {
     const originalEntries = unzipEntries(sourceBuffer);
 
-    // Pass 1 with openDocx
+    // Pass 1 with openDocx (BCHD Initial Draft)
     const doc1 = openDocx(sourceBuffer);
-    const res1 = await doc1.applyOperations(AUTHOR_1_OPERATIONS, { author: AUTHOR_1, atomic: true });
+    const res1 = await doc1.applyOperations(AUTHOR_1_PASS_1_OPERATIONS, { author: AUTHOR_1, atomic: true });
     assert.equal(res1.written, true, 'Pass 1 package must write successfully');
     assert.equal(res1.hasChanges, true, 'Pass 1 package must report changes');
     assert.ok(res1.artifactsChanged.includes('word/document.xml'));
     assert.ok(res1.artifactsChanged.includes('word/comments.xml'));
     assert.ok(res1.artifactsChanged.includes('word/numbering.xml'));
 
-    // Pass 2 with openDocx (feeding pass 1 buffer)
+    // Pass 1b with openDocx (BCHD Alteration via same-author merge)
     const buf1 = res1.toBuffer();
-    const doc2 = openDocx(buf1);
+    const doc1b = openDocx(buf1);
+    const res1b = await doc1b.applyOperations(AUTHOR_1_ALTERATION_OPERATIONS, { author: AUTHOR_1, atomic: true });
+    assert.equal(res1b.written, true, 'Pass 1b package must write successfully');
+    assert.equal(res1b.hasChanges, true, 'Pass 1b package must report changes');
+
+    // Pass 2 with openDocx (MOHS Counterparty proposals)
+    const buf1b = res1b.toBuffer();
+    const doc2 = openDocx(buf1b);
     const res2 = await doc2.applyOperations(AUTHOR_2_OPERATIONS, { author: AUTHOR_2, atomic: true });
     assert.equal(res2.written, true, 'Pass 2 package must write successfully');
     assert.equal(res2.hasChanges, true, 'Pass 2 package must report changes');
 
+    // Pass 3 with openDocx (BCHD Final Compromise on Section E)
+    const buf2 = res2.toBuffer();
+    const doc3 = openDocx(buf2);
+    const res3 = await doc3.applyOperations(AUTHOR_1_FINAL_OPERATIONS, { author: AUTHOR_1, atomic: true });
+    assert.equal(res3.written, true, 'Pass 3 package must write successfully');
+    assert.equal(res3.hasChanges, true, 'Pass 3 package must report changes');
+
     // Package Inspection
-    const inspection = doc2.inspect();
+    const inspection = doc3.inspect();
     assert.ok(inspection.paragraphs.length >= 200, `Expected at least 200 paragraphs, found ${inspection.paragraphs.length}`);
     assert.equal(inspection.comments.length, 6, `Expected 6 comments total across both authors, found ${inspection.comments.length}`);
 
@@ -594,7 +727,7 @@ async function testPackagePipeline(sourceBuffer) {
     assert.ok(commentAuthors.includes(AUTHOR_2), 'Comment authors must include Author 2');
 
     // Structural OPC Package Validation
-    const outputBuffer = res2.toBuffer();
+    const outputBuffer = res3.toBuffer();
     const outputEntries = unzipEntries(outputBuffer);
     await validateDocxPackage(new MemoryZip(outputEntries));
 
@@ -615,7 +748,7 @@ async function testPackagePipeline(sourceBuffer) {
         }
     }
 
-    return buf1;
+    return buf1b;
 }
 
 // ----------------------------------------------------------------------------
@@ -659,14 +792,14 @@ async function main() {
     console.log('  1. Running preflight on Author 1 operations...');
     await testPreflight(docXml);
 
-    console.log('  2. Running engine sequential multi-author execution (Pass 1 & Pass 2)...');
-    const { pass2 } = await testEngineMultiAuthor(docXml);
+    console.log('  2. Running engine multi-round negotiation (Pass 1 -> 1b -> Conflict Check -> Pass 2 -> Pass 3)...');
+    const { pass3 } = await testEngineMultiAuthor(docXml);
 
     console.log('  3. Running selective author accept and reject verification...');
-    await testSelectiveRevisions(pass2.documentXml);
+    await testSelectiveRevisions(pass3.documentXml);
 
     console.log('  4. Running global accept all & reject all differential parity...');
-    await testGlobalAcceptRejectAll(pass2.documentXml, docXml);
+    await testGlobalAcceptRejectAll(pass3.documentXml, docXml);
 
     console.log('  5. Running complete package pipeline via openDocx with untouched-part preservation...');
     const pass1Buffer = await testPackagePipeline(sourceBuffer);

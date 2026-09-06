@@ -38,7 +38,7 @@ export class ReceiptCollector {
         }
     }
 
-    recordComment(id, partName = 'word/comments.xml') {
+    recordComment(id, _partName = 'word/comments.xml') {
         if (!this.activeReceipt || id == null) return;
         const strId = String(id);
         if (!this.activeReceipt.commentIds.includes(strId)) {
@@ -46,7 +46,7 @@ export class ReceiptCollector {
         }
     }
 
-    recordNumbering(id, partName = 'word/numbering.xml') {
+    recordNumbering(id, _partName = 'word/numbering.xml') {
         if (!this.activeReceipt || id == null) return;
         const strId = String(id);
         if (!this.activeReceipt.numberingIds.includes(strId)) {
@@ -54,7 +54,7 @@ export class ReceiptCollector {
         }
     }
 
-    recordRelationship(id, partName = 'word/_rels/document.xml.rels') {
+    recordRelationship(id, _partName = 'word/_rels/document.xml.rels') {
         if (!this.activeReceipt || id == null) return;
         const strId = String(id);
         if (!this.activeReceipt.relationshipIds.includes(strId)) {

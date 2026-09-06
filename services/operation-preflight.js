@@ -6,13 +6,13 @@ import { parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { getDefaultAuthor } from '../adapters/config.js';
 import { containsTrackedChanges, getTrackedChangeAuthors } from '../core/word-xml.js';
 import { NS_W } from '../core/types.js';
+import { extractCanonicalParagraphText } from '../core/paragraph-text.js';
 import {
     buildParagraphMetadataIndex,
     createParagraphFingerprint,
     findContainingWordElement,
     getDocumentParagraphNodes,
     getParagraphId,
-    getParagraphText,
     normalizeWhitespaceForTargeting,
     resolveTargetParagraph,
     validateParagraphBoundaryMutation

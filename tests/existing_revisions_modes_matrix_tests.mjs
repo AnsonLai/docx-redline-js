@@ -1,7 +1,7 @@
 import './setup-xml-provider.mjs';
 
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -13,7 +13,6 @@ import {
     reconcileMarkdownTableOoxml
 } from '../index.js';
 import {
-    applyOperationToDocumentXml,
     applyOperationsToDocumentXml
 } from '../services/standalone-operation-runner.js';
 import { preflightOperations } from '../services/operation-preflight.js';

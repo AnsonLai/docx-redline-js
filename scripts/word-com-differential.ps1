@@ -141,6 +141,62 @@ function Get-ScopeRevisionCount($document, [string]$scope) {
     return $count
 }
 
+function Close-WordDocumentSafely($doc) {
+    if ($null -eq $doc) { return }
+    for ($attempt = 1; $attempt -le 5; $attempt++) {
+        try {
+            $doc.Close(0) | Out-Null
+            break
+        }
+        catch [System.Runtime.InteropServices.COMException] {
+            $hr = $_.Exception.HResult
+            # 0x80010001 = RPC_E_CALL_REJECTED (-2147418111)
+            if ($hr -eq -2147418111 -and $attempt -lt 5) {
+                Start-Sleep -Milliseconds 200
+                continue
+            }
+            break
+        }
+        catch {
+            break
+        }
+    }
+    try {
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($doc) | Out-Null
+    } catch {}
+}
+
+function Stop-WordSafely($application) {
+    if ($null -eq $application) { return }
+    for ($attempt = 1; $attempt -le 5; $attempt++) {
+        try {
+            $application.Quit(0) | Out-Null
+            break
+        }
+        catch [System.Runtime.InteropServices.COMException] {
+            $hr = $_.Exception.HResult
+            # 0x80010001 = RPC_E_CALL_REJECTED (-2147418111)
+            # 0x80010108 = RPC_E_DISCONNECTED (-2147417848)
+            if ($hr -eq -2147417848) {
+                break
+            }
+            if ($hr -eq -2147418111 -and $attempt -lt 5) {
+                Start-Sleep -Milliseconds 300
+                continue
+            }
+            break
+        }
+        catch {
+            break
+        }
+    }
+    try {
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($application) | Out-Null
+    } catch {}
+    [System.GC]::Collect()
+    [System.GC]::WaitForPendingFinalizers()
+}
+
 try {
     $word = New-Object -ComObject Word.Application
     $word.Visible = $false
@@ -173,7 +229,8 @@ try {
                 $expectedRejected = Get-ScopeText $sourceDocument $assertionScope $fidelity
             }
             finally {
-                if ($null -ne $sourceDocument) { $sourceDocument.Close(0) | Out-Null }
+                Close-WordDocumentSafely $sourceDocument
+                $sourceDocument = $null
             }
             $replacements = if ($expected.replacements) { @($expected.replacements) } else { @(@{
                 originalTarget = $expected.originalTarget
@@ -226,7 +283,8 @@ try {
             $caseFailed = $true
         }
         finally {
-            if ($null -ne $document) { $document.Close(0) | Out-Null; $document = $null }
+            Close-WordDocumentSafely $document
+            $document = $null
         }
 
         # Phase 2: fresh open, reject-all restores the original text.
@@ -252,7 +310,8 @@ try {
                 $caseFailed = $true
             }
             finally {
-                if ($null -ne $document) { $document.Close(0) | Out-Null; $document = $null }
+                Close-WordDocumentSafely $document
+                $document = $null
             }
         }
 
@@ -267,7 +326,8 @@ try {
     }
 }
 finally {
-    if ($null -ne $word) { $word.Quit() | Out-Null }
+    Stop-WordSafely $word
+    $word = $null
 }
 
 Write-Output ""

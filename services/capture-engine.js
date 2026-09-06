@@ -17,7 +17,7 @@ function createCaptureError(code, message) {
     return error;
 }
 
-export function ensureParagraphIdsOnImportedNode(node, session) {
+export function ensureParagraphIdsOnImportedNode(_node, _session) {
     // Preserves existing paragraph attributes without injecting undeclared namespaces into the document.
 }
 
@@ -127,7 +127,7 @@ export function invalidateAffectedCaptures(captureTable, removedNodes) {
  * @param {object} options
  * @returns {{ paragraph: Element, resolvedBy: 'capture' }}
  */
-export function resolveTargetFromCapture(xmlDoc, session, targetDescriptor, opType = 'redline', options = {}) {
+export function resolveTargetFromCapture(xmlDoc, session, targetDescriptor, _opType = 'redline', _options = {}) {
     const captureRef = targetDescriptor?.captureRef;
     if (!captureRef) {
         throw createCaptureError('INVALID_OPERATION', 'Operation target is missing captureRef.');

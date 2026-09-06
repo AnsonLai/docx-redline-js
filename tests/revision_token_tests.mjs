@@ -4,11 +4,7 @@ import {
     buildRevisionTokenFraming,
     computeRevisionToken,
     computeRevisionTokenSync,
-    computeDocumentPartsRevisionToken,
-    validateRevisionToken,
-    normalizeOpcEntryName,
-    extractDocumentPartsEntries,
-    inspectDocumentParts
+    validateRevisionToken
 } from '../index.js';
 import { openDocx, computePackageRevisionToken } from '../node/index.js';
 import { zipDocx, unzipDocx } from '../node/zip-archive.js';

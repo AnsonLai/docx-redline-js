@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import './setup-xml-provider.mjs';
-import { applyRedlineToOxml, ingestWordOoxmlToPlainText } from '../index.js';
-import { validateRedlineOoxml } from '../core/redline-validation.js';
+import { ingestWordOoxmlToPlainText } from '../index.js';
 import {
     acceptTrackedChangesInOoxml,
     rejectTrackedChangesInOoxml
@@ -9,8 +8,7 @@ import {
 import { parseOoxmlSafe, createSerializer } from '../adapters/xml-adapter.js';
 import { applySurgicalMode } from '../engine/surgical-mode.js';
 import {
-    applyOperationsToDocumentXml,
-    applyOperationToDocumentXml
+    applyOperationsToDocumentXml
 } from '../services/standalone-operation-runner.js';
 import { validateDocumentOperation } from '../services/document-operation-contract.js';
 

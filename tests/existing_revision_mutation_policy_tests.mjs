@@ -2,8 +2,7 @@ import './setup-xml-provider.mjs';
 
 import assert from 'assert/strict';
 import {
-    applyOperationToDocumentXml,
-    applyOperationsToDocumentXml
+    applyOperationToDocumentXml
 } from '../services/standalone-operation-runner.js';
 import { preflightOperations } from '../services/operation-preflight.js';
 import { acceptTrackedChangesInOoxml, rejectTrackedChangesInOoxml } from '../index.js';

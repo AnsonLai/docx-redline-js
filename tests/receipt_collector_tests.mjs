@@ -3,12 +3,10 @@ import assert from 'node:assert/strict';
 import { ReceiptCollector } from '../services/receipt-collector.js';
 import { DocumentOperationSession } from '../services/document-operation-session.js';
 import {
-    applyOperationToDocumentXml,
-    applyOperationsToDocumentXml
+    applyOperationToDocumentXml
 } from '../services/standalone-operation-runner.js';
 import {
-    ensureCommentsArtifactsInZip,
-    ensureNumberingArtifactsInZip
+    ensureCommentsArtifactsInZip
 } from '../services/standalone-docx-plumbing.js';
 import JSZip from 'jszip';
 

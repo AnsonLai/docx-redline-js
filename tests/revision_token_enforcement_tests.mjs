@@ -1,18 +1,16 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-    computeDocumentPartsRevisionToken,
-    inspectDocumentParts
+    computeDocumentPartsRevisionToken
 } from '../index.js';
 import {
     applyOperationsToDocumentXml,
     applyOperationToDocumentXml
 } from '../services/standalone-operation-runner.js';
-import { openDocx, computePackageRevisionToken, executeCli } from '../node/index.js';
-import { zipDocx, unzipDocx } from '../node/zip-archive.js';
+import { openDocx, executeCli } from '../node/index.js';
+import { zipDocx } from '../node/zip-archive.js';
 
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const initialDocXml = `<w:document xmlns:w="${W}"><w:body><w:p><w:r><w:t>Hello world</w:t></w:r></w:p><w:sectPr/></w:body></w:document>`;

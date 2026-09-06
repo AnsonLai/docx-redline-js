@@ -2,7 +2,6 @@ import './setup-xml-provider.mjs';
 
 import assert from 'assert/strict';
 import {
-    applyOperationsToDocumentXml,
     applyOperationToDocumentXml
 } from '../services/standalone-operation-runner.js';
 import {

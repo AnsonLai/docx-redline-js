@@ -20,8 +20,10 @@ import {
     CORPUS_ID as INTERAGENCY_CORPUS_ID,
     AUTHOR_1 as INTERAGENCY_AUTHOR_1,
     AUTHOR_2 as INTERAGENCY_AUTHOR_2,
-    AUTHOR_1_OPERATIONS as INTERAGENCY_AUTHOR_1_OPS,
+    AUTHOR_1_PASS_1_OPERATIONS as INTERAGENCY_AUTHOR_1_PASS_1_OPS,
+    AUTHOR_1_ALTERATION_OPERATIONS as INTERAGENCY_AUTHOR_1_ALT_OPS,
     AUTHOR_2_OPERATIONS as INTERAGENCY_AUTHOR_2_OPS,
+    AUTHOR_1_FINAL_OPERATIONS as INTERAGENCY_AUTHOR_1_FINAL_OPS,
     loadSourceDocxBuffer as loadInteragencyDocxBuffer
 } from '../tests/interagency_agreement_multi_author_tests.mjs';
 
@@ -247,29 +249,52 @@ if (existsSync(bylawsPath)) {
 // ============================================================================
 console.log('Exporting Lane 1 Case: New Interagency Agreement Multi-Author Negotiation...');
 const interagencySourceBuffer = await loadInteragencyDocxBuffer();
+
+// Pass 1: BCHD Lead Agency Counsel Initial Draft (clean headers, no bullets)
 const interagencyDoc1 = openDocx(interagencySourceBuffer);
-const interagencyRes1 = await interagencyDoc1.applyOperations(INTERAGENCY_AUTHOR_1_OPS, {
+const interagencyRes1 = await interagencyDoc1.applyOperations(INTERAGENCY_AUTHOR_1_PASS_1_OPS, {
     author: INTERAGENCY_AUTHOR_1,
     atomic: true,
     validate: true
 });
-
 if (!interagencyRes1.written) {
     throw new Error(`Failed to apply interagency Pass 1 legal markup: ${interagencyRes1.error?.message}`);
 }
 
-const interagencyDoc2 = openDocx(interagencyRes1.toBuffer());
+// Pass 1b: BCHD Revision Alteration via Same-Author Merge (Term 36m -> 24m, Payment 45d -> 30d)
+const interagencyDoc1b = openDocx(interagencyRes1.toBuffer());
+const interagencyRes1b = await interagencyDoc1b.applyOperations(INTERAGENCY_AUTHOR_1_ALT_OPS, {
+    author: INTERAGENCY_AUTHOR_1,
+    atomic: true,
+    validate: true
+});
+if (!interagencyRes1b.written) {
+    throw new Error(`Failed to apply interagency Pass 1b alteration markup: ${interagencyRes1b.error?.message}`);
+}
+
+// Pass 2: MOHS Counterparty Counsel Review (counters on Section E, adds cure period, pre-award, Attachments 1 & 2)
+const interagencyDoc2 = openDocx(interagencyRes1b.toBuffer());
 const interagencyRes2 = await interagencyDoc2.applyOperations(INTERAGENCY_AUTHOR_2_OPS, {
     author: INTERAGENCY_AUTHOR_2,
     atomic: true,
     validate: true
 });
-
 if (!interagencyRes2.written) {
-    throw new Error(`Failed to apply interagency Pass 2 legal markup: ${interagencyRes2.error?.message}`);
+    throw new Error(`Failed to apply interagency Pass 2 counterparty markup: ${interagencyRes2.error?.message}`);
 }
 
-const interagencyTrackedBuffer = interagencyRes2.toBuffer();
+// Pass 3: BCHD Lead Agency Counsel Compromise on Section E (counters back on SAME provision: 60d + safeguard)
+const interagencyDoc3 = openDocx(interagencyRes2.toBuffer());
+const interagencyRes3 = await interagencyDoc3.applyOperations(INTERAGENCY_AUTHOR_1_FINAL_OPS, {
+    author: INTERAGENCY_AUTHOR_1,
+    atomic: true,
+    validate: true
+});
+if (!interagencyRes3.written) {
+    throw new Error(`Failed to apply interagency Pass 3 compromise markup: ${interagencyRes3.error?.message}`);
+}
+
+const interagencyTrackedBuffer = interagencyRes3.toBuffer();
 const interagencyTrackedEntries = unzipEntries(interagencyTrackedBuffer);
 const interagencyTrackedXml = interagencyTrackedEntries.get('word/document.xml').toString('utf8');
 
@@ -287,8 +312,10 @@ writeFileSync(join(outputDir, `${interagencyCaseName}.rejected.docx`), interagen
 writeFileSync(join(outputDir, `${interagencyCaseName}.document.xml`), interagencyTrackedXml);
 
 const allInteragencyOps = [
-    ...INTERAGENCY_AUTHOR_1_OPS.map(op => ({ ...op, author: op.author || INTERAGENCY_AUTHOR_1 })),
-    ...INTERAGENCY_AUTHOR_2_OPS.map(op => ({ ...op, author: op.author || INTERAGENCY_AUTHOR_2 }))
+    ...INTERAGENCY_AUTHOR_1_PASS_1_OPS.map(op => ({ ...op, author: op.author || INTERAGENCY_AUTHOR_1 })),
+    ...INTERAGENCY_AUTHOR_1_ALT_OPS.map(op => ({ ...op, author: op.author || INTERAGENCY_AUTHOR_1 })),
+    ...INTERAGENCY_AUTHOR_2_OPS.map(op => ({ ...op, author: op.author || INTERAGENCY_AUTHOR_2 })),
+    ...INTERAGENCY_AUTHOR_1_FINAL_OPS.map(op => ({ ...op, author: op.author || INTERAGENCY_AUTHOR_1 }))
 ];
 
 const interagencyComments = allInteragencyOps
@@ -323,7 +350,7 @@ const interagencyMeta = {
     sourceParagraphs: 173,
     authors: [INTERAGENCY_AUTHOR_1, INTERAGENCY_AUTHOR_2],
     author: `${INTERAGENCY_AUTHOR_1} & ${INTERAGENCY_AUTHOR_2}`,
-    description: 'Two-round adversarial negotiation on Baltimore City interagency healthcare & homelessness accord: Lead Agency converts section headers A-G into bulleted lists, adds Attachment 3 nested sub-bullets (HIPAA BAA, Title VI, OMB A-133), and appends Attachment 4 complete Joint Public Announcement with tables, lists, and quotes; Counterparty Counsel negotiates financial terms, adds 30-day cure period, pre-award costs, annual review, and MOHS counter-comments.',
+    description: 'Four-round woven negotiation on Baltimore City interagency healthcare & homelessness accord: (1) BCHD Lead Agency Counsel establishes clean legal section headers A-G (not bullets), programmatic terms ($2.45M), Attachment 3 sub-bullets, and Attachment 4 joint public announcement with tables & lists; (2) BCHD alters its initial redlines in a separate step (Term 36m -> 24m, Payment 45d -> 30d) via same-author merge; (3) MOHS Counterparty Counsel counters on the same termination provision (45 days + wind-down) and adds 30-day cure period, pre-award costs, annual review, and counter-comments; (4) BCHD responds back on the same termination provision reaching compromise (60 days + shelter safeguard).',
     operationsCount: allInteragencyOps.length,
     breakdown: {
         redlines: allInteragencyOps.filter(o => o.type === 'replace').length,
