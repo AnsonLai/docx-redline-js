@@ -42,6 +42,9 @@ export interface RedlineError {
     | 'UNSUPPORTED_INSERTION_AFFINITY'
     | 'UNSAFE_PARAGRAPH_BOUNDARY'
     | 'TARGET_INDEX_MISMATCH'
+    | 'REVISION_MISMATCH'
+    | 'REVISION_TOKEN_SCOPE_MISMATCH'
+    | 'INVALID_REVISION_TOKEN'
     | string;
   message: string;
   commentIds?: string[];
@@ -268,6 +271,7 @@ export function computeRevisionToken(options: { scope: string; entries?: unknown
 export function computeRevisionTokenSync(options: { scope: string; entries?: unknown; digestFn: (bytes: Uint8Array) => string }): RevisionToken;
 export function computeDocumentPartsRevisionToken(parts: unknown, options?: { digestFn?: (bytes: Uint8Array) => Promise<string> }): Promise<RevisionToken>;
 export function validateRevisionToken(token: unknown): { valid: boolean; error?: { code: string; message: string } };
+export function areRevisionTokensEqual(a: string, b: string): boolean;
 export function normalizeOpcEntryName(name: string): string;
 export function extractDocumentPartsEntries(parts: unknown): Array<{ name: string; payload: unknown }>;
 

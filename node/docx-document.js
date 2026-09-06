@@ -9,7 +9,7 @@ import { acceptTrackedChangesInOoxml, rejectTrackedChangesInOoxml, deleteComment
 import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { createHash } from 'node:crypto';
 import { MemoryZip, unzipDocx, zipDocx } from './zip-archive.js';
-import { computeRevisionTokenSync } from '../services/revision-token.js';
+import { computeRevisionTokenSync, validateRevisionToken, areRevisionTokensEqual } from '../services/revision-token.js';
 
 configureXmlProvider({ DOMParser, XMLSerializer });
 const text = (entries, path) => entries.get(path)?.toString('utf8') || null;
@@ -81,6 +81,62 @@ export class DocxDocument {
     preflight(operations, author, options = {}) { return preflightOperations(text(this.entries, 'word/document.xml'), operations, author, { ...options, _existingCommentDetails: existingCommentDetails(this.entries) }); }
     toBuffer() { return zipDocx(this.entries); }
     async applyOperations(operations, options = {}) {
+        if (options?.expectedRevision) {
+            const tokenValidation = validateRevisionToken(options.expectedRevision);
+            if (!tokenValidation.valid) {
+                return {
+                    status: 'error',
+                    hasChanges: false,
+                    written: false,
+                    rolledBack: true,
+                    results: [],
+                    artifactsChanged: [],
+                    error: {
+                        code: tokenValidation.error?.code || 'INVALID_REVISION_TOKEN',
+                        message: tokenValidation.error?.message || 'Invalid revision token.'
+                    },
+                    validation: { originalIssues: [], generatedIssues: [] },
+                    buffer: Buffer.from(this.originalBuffer),
+                    toBuffer: () => Buffer.from(this.originalBuffer)
+                };
+            }
+            if (options.expectedRevision.scope !== 'package') {
+                return {
+                    status: 'error',
+                    hasChanges: false,
+                    written: false,
+                    rolledBack: true,
+                    results: [],
+                    artifactsChanged: [],
+                    error: {
+                        code: 'REVISION_TOKEN_SCOPE_MISMATCH',
+                        message: `Revision token scope mismatch: expected 'package', got '${options.expectedRevision.scope}'.`
+                    },
+                    validation: { originalIssues: [], generatedIssues: [] },
+                    buffer: Buffer.from(this.originalBuffer),
+                    toBuffer: () => Buffer.from(this.originalBuffer)
+                };
+            }
+            const currentToken = computePackageRevisionToken(this.entries);
+            if (!areRevisionTokensEqual(currentToken.value, options.expectedRevision.value)) {
+                return {
+                    status: 'error',
+                    hasChanges: false,
+                    written: false,
+                    rolledBack: true,
+                    results: [],
+                    artifactsChanged: [],
+                    error: {
+                        code: 'REVISION_MISMATCH',
+                        message: `Document revision mismatch: expected '${options.expectedRevision.value}', current is '${currentToken.value}'.`
+                    },
+                    validation: { originalIssues: [], generatedIssues: [] },
+                    buffer: Buffer.from(this.originalBuffer),
+                    toBuffer: () => Buffer.from(this.originalBuffer)
+                };
+            }
+        }
+
         const originalEntries = this.entries; const working = cloneEntries(originalEntries); const zip = new MemoryZip(working);
         const documentXml = text(working, 'word/document.xml');
         let originalIssues = [];
@@ -91,8 +147,9 @@ export class DocxDocument {
             try { await validateDocxPackage(new MemoryZip(cloneEntries(originalEntries))); }
             catch (error) { originalIssues.push({ source: 'package', code: 'PACKAGE_VALIDATION', severity: 'error', message: error.message }); }
             const context = { numberingIdState: createDynamicNumberingIdState(text(working, 'word/numbering.xml') || undefined) };
+            const { expectedRevision: _pkgExpectedRevision, ...runnerOptions } = options;
             const result = await applyOperationsToDocumentXml(documentXml, operations, options.author, context, {
-                ...options, atomic: options.atomic !== false, strictTargets: options.strictTargets !== false,
+                ...runnerOptions, atomic: options.atomic !== false, strictTargets: options.strictTargets !== false,
                 _existingCommentDetails: existingCommentDetails(working),
                 commentIdAllocator: nextCommentId(working)
             });
@@ -112,7 +169,7 @@ export class DocxDocument {
             const output = this.toBuffer();
             this.originalBuffer = Buffer.from(output);
             const artifactsChanged = [...working].filter(([name, data]) => !originalEntries.has(name) || !data.equals(originalEntries.get(name))).map(([name]) => name);
-            return { ...result, written: true, artifactsChanged, validation: { originalIssues, generatedIssues: [] }, buffer: output, inspection: this.inspect(), toBuffer: () => Buffer.from(output) };
+            return { ...result, status: result.status || 'ok', written: true, artifactsChanged, validation: { originalIssues, generatedIssues: [] }, buffer: output, inspection: this.inspect(), toBuffer: () => Buffer.from(output) };
         } catch (error) {
             this.entries = originalEntries;
             const generatedIssues = error.issues || [{ source: 'package', code: 'PACKAGE_OPERATION_FAILED', severity: 'error', message: error.message }];

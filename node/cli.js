@@ -11,7 +11,7 @@ const commandOptions = {
     inspect: new Set(['help', 'search', 'revised', 'table', 'body', 'nonEmpty', 'index', 'indexes', 'range', 'view']),
     extract: new Set(['help', 'search', 'revised', 'table', 'body', 'nonEmpty', 'index', 'indexes', 'range', 'view']),
     preflight: new Set(['help', 'operations', 'author', 'strictTargets']),
-    apply: new Set(['help', 'operations', 'author', 'output', 'inPlace', 'force']),
+    apply: new Set(['help', 'operations', 'author', 'output', 'inPlace', 'force', 'expectedRevision']),
     accept: new Set(['help', 'author', 'allAuthors', 'output', 'inPlace', 'force']),
     reject: new Set(['help', 'author', 'allAuthors', 'output', 'inPlace', 'force']),
     'delete-comments': new Set(['help', 'author', 'allAuthors', 'output', 'inPlace', 'force']),
@@ -93,7 +93,7 @@ async function readOperations(file) {
     let parsed; try { parsed = JSON.parse(await readFile(file, 'utf8')); } catch (error) { throw Object.assign(new Error(`Could not read operations JSON: ${error.message}`), { code: 'INVALID_OPERATIONS_FILE' }); }
     const operations = Array.isArray(parsed) ? parsed : (parsed?.operations || parsed?.changes);
     if (!Array.isArray(operations)) throw Object.assign(new Error('Operations JSON must be an array or an object with an operations or changes array.'), { code: 'INVALID_OPERATIONS_FILE' });
-    return operations;
+    return { operations, expectedRevision: parsed?.expectedRevision || null };
 }
 function outputPath(command, input, flags) {
     if (flags.inPlace) return input;
@@ -140,12 +140,42 @@ export async function executeCli(argv) {
             try { await validateDocxPackage(new MemoryZip(entries)); } catch (error) { issues.push({ code: 'PACKAGE_VALIDATION', severity: 'error', message: error.message }); }
             return { status: issues.some(issue => issue.severity === 'error') ? 'error' : 'ok', command, input, valid: !issues.some(issue => issue.severity === 'error'), issues };
         }
-        const operations = command === 'preflight' || command === 'apply' ? await readOperations(flags.operations) : null;
+        const opsData = command === 'preflight' || command === 'apply' ? await readOperations(flags.operations) : null;
+        const operations = opsData?.operations || null;
+        let expectedRevision = opsData?.expectedRevision || null;
+        if (flags.expectedRevision) {
+            if (typeof flags.expectedRevision === 'string') {
+                try {
+                    expectedRevision = JSON.parse(flags.expectedRevision);
+                } catch {
+                    expectedRevision = {
+                        algorithm: 'sha256',
+                        version: 1,
+                        scope: 'package',
+                        value: flags.expectedRevision.trim()
+                    };
+                }
+            } else if (typeof flags.expectedRevision === 'object') {
+                expectedRevision = flags.expectedRevision;
+            }
+        }
         if (command === 'preflight') return { ...document.preflight(operations, flags.author, { strictTargets: flags.strictTargets !== 'false' }), command, input };
         if (command === 'apply') {
             if (!flags.author && operations.some(operation => !operation?.author)) return cliError('AUTHOR_REQUIRED', 'Use --author or set author on every operation.');
-            const result = await document.applyOperations(operations, { author: flags.author, atomic: true, validate: true, strictTargets: true });
-            return { command, input, ...serializable(await writeMutation(command, input, flags, result)) };
+            const result = await document.applyOperations(operations, {
+                author: flags.author,
+                atomic: true,
+                validate: true,
+                strictTargets: true,
+                ...(expectedRevision ? { expectedRevision } : {})
+            });
+            const mutationResult = await writeMutation(command, input, flags, result);
+            return {
+                command,
+                input,
+                ...serializable(mutationResult),
+                ...(result.status === 'error' || result.error ? { exitCode: 2 } : {})
+            };
         }
         const filter = flags.allAuthors ? { allAuthors: true } : flags.author ? { author: String(flags.author) } : null;
         if (!filter) return cliError('AUTHOR_REQUIRED', 'Use --author <name> or --all-authors.');

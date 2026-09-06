@@ -246,6 +246,7 @@ export {
     computeRevisionTokenSync,
     computeDocumentPartsRevisionToken,
     validateRevisionToken,
+    areRevisionTokensEqual,
     normalizeOpcEntryName,
     extractDocumentPartsEntries
 } from './services/revision-token.js';

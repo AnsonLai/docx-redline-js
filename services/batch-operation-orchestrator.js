@@ -13,6 +13,11 @@ import {
     commitBatchRuntimeContext,
     DocumentOperationSession
 } from './document-operation-session.js';
+import {
+    validateRevisionToken,
+    computeDocumentPartsRevisionToken,
+    areRevisionTokensEqual
+} from './revision-token.js';
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
@@ -24,24 +29,22 @@ export function orderOperationsForStableTargets(operations = []) {
     return (Array.isArray(operations) ? operations : [])
         .map((operation, index) => ({ operation, index }))
         .sort((a, b) => operationTargetPriority(a.operation) - operationTargetPriority(b.operation) || a.index - b.index)
-        .map(entry => entry.operation);
+        .map(item => item.operation);
 }
 
 function mergeCommentsXml(existingXml, incomingXml) {
-    if (!incomingXml) return existingXml || null;
+    if (!incomingXml) return existingXml;
     if (!existingXml) return incomingXml;
-
-    const serializer = createSerializer();
-    const existingDoc = parseOoxmlSafe(existingXml, 'application/xml').doc;
-    const incomingDoc = parseOoxmlSafe(incomingXml, 'application/xml').doc;
+    const existingDoc = parseOoxmlSafe(existingXml, 'application/xml')?.doc;
+    const incomingDoc = parseOoxmlSafe(incomingXml, 'application/xml')?.doc;
     if (!existingDoc || !incomingDoc) return existingXml;
+    const serializer = createSerializer();
     const existingRoot = existingDoc.documentElement;
     const existingIds = new Set(
-        Array.from(existingRoot.getElementsByTagNameNS(NS_W, 'comment'))
-            .map(comment => comment.getAttribute('w:id') || comment.getAttribute('id'))
+        Array.from(existingDoc.getElementsByTagNameNS(NS_W, 'comment'))
+            .map(node => node.getAttribute('w:id') || node.getAttribute('id'))
             .filter(Boolean)
     );
-
     for (const comment of Array.from(incomingDoc.getElementsByTagNameNS(NS_W, 'comment'))) {
         const id = comment.getAttribute('w:id') || comment.getAttribute('id');
         if (id && existingIds.has(id)) continue;
@@ -52,6 +55,64 @@ function mergeCommentsXml(existingXml, incomingXml) {
 }
 
 export async function applyOperationsToDocumentXml(documentXml, operations, author, runtimeContext = null, options = {}) {
+    if (options?.expectedRevision) {
+        const tokenValidation = validateRevisionToken(options.expectedRevision);
+        if (!tokenValidation.valid) {
+            return {
+                documentXml,
+                hasChanges: false,
+                commentsXml: null,
+                numberingXmlParts: [],
+                results: [],
+                executionOrder: [],
+                authorsUsed: [],
+                status: 'error',
+                error: {
+                    code: tokenValidation.error?.code || 'INVALID_REVISION_TOKEN',
+                    message: tokenValidation.error?.message || 'Invalid revision token.'
+                }
+            };
+        }
+        if (options.expectedRevision.scope !== 'document-parts') {
+            return {
+                documentXml,
+                hasChanges: false,
+                commentsXml: null,
+                numberingXmlParts: [],
+                results: [],
+                executionOrder: [],
+                authorsUsed: [],
+                status: 'error',
+                error: {
+                    code: 'REVISION_TOKEN_SCOPE_MISMATCH',
+                    message: `Revision token scope mismatch: expected 'document-parts', got '${options.expectedRevision.scope}'.`
+                }
+            };
+        }
+        const currentToken = await computeDocumentPartsRevisionToken({
+            documentXml,
+            commentsXml: runtimeContext?.commentsXml || options.commentsXml,
+            numberingXml: runtimeContext?.numberingXml || options.numberingXml,
+            stylesXml: runtimeContext?.stylesXml || options.stylesXml
+        }, options);
+        if (!areRevisionTokensEqual(currentToken.value, options.expectedRevision.value)) {
+            return {
+                documentXml,
+                hasChanges: false,
+                commentsXml: null,
+                numberingXmlParts: [],
+                results: [],
+                executionOrder: [],
+                authorsUsed: [],
+                status: 'error',
+                error: {
+                    code: 'REVISION_MISMATCH',
+                    message: `Document revision mismatch: expected '${options.expectedRevision.value}', current is '${currentToken.value}'.`
+                }
+            };
+        }
+    }
+
     const session = new DocumentOperationSession(documentXml, {
         ...options,
         _deferDocumentSerialization: true

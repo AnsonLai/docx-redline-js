@@ -264,3 +264,24 @@ export function validateRevisionToken(token) {
     }
     return { valid: true };
 }
+
+/**
+ * Compares two revision token values using timing-safe byte comparison.
+ *
+ * @param {string} a
+ * @param {string} b
+ * @returns {boolean}
+ */
+export function areRevisionTokensEqual(a, b) {
+    if (typeof a !== 'string' || typeof b !== 'string') return false;
+    const aNorm = a.trim().toLowerCase();
+    const bNorm = b.trim().toLowerCase();
+    if (aNorm.length !== bNorm.length) return false;
+    const aBuf = textEncoder.encode(aNorm);
+    const bBuf = textEncoder.encode(bNorm);
+    let diff = 0;
+    for (let i = 0; i < aBuf.length; i++) {
+        diff |= aBuf[i] ^ bBuf[i];
+    }
+    return diff === 0;
+}

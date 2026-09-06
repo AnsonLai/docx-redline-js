@@ -7,11 +7,26 @@
     {
       "type": "object",
       "required": ["operations"],
-      "properties": { "operations": { "$ref": "#/$defs/operationArray" } },
+      "properties": {
+        "operations": { "$ref": "#/$defs/operationArray" },
+        "expectedRevision": { "$ref": "#/$defs/revisionToken" }
+      },
       "additionalProperties": false
     }
   ],
   "$defs": {
+    "revisionToken": {
+      "type": "object",
+      "required": ["algorithm", "version", "scope", "value"],
+      "properties": {
+        "algorithm": { "type": "string", "enum": ["sha256"] },
+        "version": { "type": "integer", "enum": [1] },
+        "scope": { "type": "string", "enum": ["document-parts", "package"] },
+        "value": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+        "coveredParts": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
     "operationArray": { "type": "array", "items": { "$ref": "#/$defs/operation" } },
     "target": {
       "oneOf": [

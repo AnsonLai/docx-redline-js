@@ -1424,10 +1424,11 @@ graph.
 - Different scope or version produces a different token.
 - Binary zero bytes and non-ASCII entry names frame correctly.
 
-### WP-13 — Revision Token Enforcement
+### WP-13 — Revision Token Enforcement [COMPLETED 2026-09-05]
 
 **Depends on:** WP-12  
-**Produces runtime changes:** Additive apply precondition
+**Produces runtime changes:** Additive apply precondition  
+**Status:** Completed — added `expectedRevision` precondition support across package facade (`DocxDocument.prototype.applyOperations`), batch runner (`applyOperationsToDocumentXml`), single-op runner (`applyOperationToDocumentXml`), CLI (`--expected-revision` and JSON file wrapper), and document-operations schema. Validates token syntax, enforces scope isolation (`REVISION_TOKEN_SCOPE_MISMATCH`), timing-safe token equality comparison with `areRevisionTokensEqual`, structured rejection with `REVISION_MISMATCH` before mutating state or creating artifacts in both atomic and non-atomic modes. Verified in `tests/revision_token_enforcement_tests.mjs` and all 80 test suites.
 
 **Steps**
 

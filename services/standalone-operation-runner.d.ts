@@ -1,4 +1,4 @@
-import type { ExistingRevisionsPolicy, RedlineError, RedlineStatus } from '../index.js';
+import type { ExistingRevisionsPolicy, RedlineError, RedlineStatus, RevisionToken } from '../index.js';
 
 export interface ParagraphTargetDescriptor {
   text?: string;
@@ -119,6 +119,7 @@ export interface StandaloneRunnerOptions {
   generateRedlines?: boolean;
   existingRevisions?: ExistingRevisionsPolicy;
   strictTargets?: boolean;
+  expectedRevision?: RevisionToken;
   pairReplacements?: boolean;
   insertionAffinity?: InsertionAffinity;
   onInfo?: (message: string) => void;

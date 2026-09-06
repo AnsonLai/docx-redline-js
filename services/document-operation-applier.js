@@ -6,6 +6,11 @@ import {
 } from './document-operation-contract.js';
 import { DocumentOperationSession } from './document-operation-session.js';
 import {
+    validateRevisionToken,
+    computeDocumentPartsRevisionToken,
+    areRevisionTokensEqual
+} from './revision-token.js';
+import {
     applyCommentToParagraphByExactText,
     applyFormattingToParagraphByExactText,
     applyHighlightToParagraphByExactText,
@@ -55,6 +60,56 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
             authorUsed
         };
     }
+
+    if (!options?._documentOperationSession && options?.expectedRevision) {
+        const tokenValidation = validateRevisionToken(options.expectedRevision);
+        if (!tokenValidation.valid) {
+            return {
+                documentXml,
+                hasChanges: false,
+                status: 'error',
+                error: {
+                    code: tokenValidation.error?.code || 'INVALID_REVISION_TOKEN',
+                    message: tokenValidation.error?.message || 'Invalid revision token.'
+                },
+                operationType: operation.operationKind,
+                authorUsed
+            };
+        }
+        if (options.expectedRevision.scope !== 'document-parts') {
+            return {
+                documentXml,
+                hasChanges: false,
+                status: 'error',
+                error: {
+                    code: 'REVISION_TOKEN_SCOPE_MISMATCH',
+                    message: `Revision token scope mismatch: expected 'document-parts', got '${options.expectedRevision.scope}'.`
+                },
+                operationType: operation.operationKind,
+                authorUsed
+            };
+        }
+        const currentToken = await computeDocumentPartsRevisionToken({
+            documentXml,
+            commentsXml: runtimeContext?.commentsXml || options.commentsXml,
+            numberingXml: runtimeContext?.numberingXml || options.numberingXml,
+            stylesXml: runtimeContext?.stylesXml || options.stylesXml
+        }, options);
+        if (!areRevisionTokensEqual(currentToken.value, options.expectedRevision.value)) {
+            return {
+                documentXml,
+                hasChanges: false,
+                status: 'error',
+                error: {
+                    code: 'REVISION_MISMATCH',
+                    message: `Document revision mismatch: expected '${options.expectedRevision.value}', current is '${currentToken.value}'.`
+                },
+                operationType: operation.operationKind,
+                authorUsed
+            };
+        }
+    }
+
     const session = options?._documentOperationSession instanceof DocumentOperationSession
         ? options._documentOperationSession
         : new DocumentOperationSession(documentXml, options);
