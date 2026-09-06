@@ -183,9 +183,13 @@ See [the agent workflow in AGENTS.md](./AGENTS.md#agent-document-workflow-cli) a
 | `structuredContent` | `boolean` | `true` | Auto-detects Markdown tables, headings (`#`), and lists in replacement text and renders them as native Word elements (`w:tbl`, `w:pStyle`, `w:numPr`). Pass `false` to treat replacement text strictly as plain text. |
 | `pairReplacements` | `boolean` | `true` | Links adjacent `<w:del>` and `<w:ins>` revisions with matching timestamps so Word groups them as a single replacement in the Reviewing Pane. |
 | `strictTargets` | `boolean` | `true` (CLI/facade) | Requires exact target descriptors (`exactText`, `paragraphId`, `index`, `occurrence`, `fingerprint`) and forbids ambiguous matching. Defaults to `false` in low-level runner for backwards compatibility. |
-| `existingRevisions` | `string` | `'accept-all-first'` | How to handle paragraphs with existing tracked changes. `'accept-all-first'` automatically normalizes prior revisions before generating clean, new redlines. Pass `'reject-input'` to refuse editing revised paragraphs. |
+| `existingRevisions` | `string` | `'merge-same-author'` | How to handle paragraphs with existing tracked changes. `'merge-same-author'` automatically merges subsequent edits from the same author against the pre-revision baseline while protecting different authors' revisions with `EXISTING_REVISIONS`. Pass `'accept-all-first'` to normalize prior revisions or `'reject-input'` to refuse editing revised paragraphs. |
 | `removeFormatting` | `boolean` | `false` | When `true` and the text is unchanged with no Markdown hints, strips existing bold/italic/underline/strikethrough formatting. |
 | `sanitizeInput` | `boolean` | `false` | Opt-in removal of standalone leading assistant-preface lines. Literal dollar signs and `\n` sequences are always preserved. |
+
+Same-author revision merging refuses paragraphs containing comment anchors with
+`COMMENTED_CONTENT_MERGE`; resolve those comments first so the merge cannot
+remove or orphan their anchors.
 
 Common result fields:
 

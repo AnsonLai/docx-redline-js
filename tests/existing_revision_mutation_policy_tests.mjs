@@ -197,14 +197,34 @@ function createDocumentXml(bodyInner) {
     assert.equal(applyReject.status, 'error');
     assert.equal(applyReject.error.code, 'EXISTING_REVISIONS');
 
-    // Under default: normalizes prior insertion and redlines (accept-all-first is now default)
-    const applyDefault = await applyOperationToDocumentXml(docXml, {
+    // Under default merge-same-author: different author (Bob vs Alice) is refused
+    const applyDiffAuthor = await applyOperationToDocumentXml(docXml, {
         type: 'replace',
         target: 'Pending inserted text.',
         modified: 'Attempted replacement text.'
     }, 'Bob');
-    assert.equal(applyDefault.hasChanges, true);
-    assert.ok(applyDefault.documentXml.includes('w:author="Bob"'));
+    assert.equal(applyDiffAuthor.hasChanges, false);
+    assert.equal(applyDiffAuthor.status, 'error');
+    assert.equal(applyDiffAuthor.error.code, 'EXISTING_REVISIONS');
+
+    // Under default merge-same-author: same author (Alice) merges against baseline
+    const applySameAuthor = await applyOperationToDocumentXml(docXml, {
+        type: 'replace',
+        target: 'Pending inserted text.',
+        modified: 'Merged replacement text.'
+    }, 'Alice');
+    assert.equal(applySameAuthor.hasChanges, true);
+    assert.ok(applySameAuthor.documentXml.includes('w:author="Alice"'));
+
+    // Under explicit accept-all-first: normalizes prior insertion and redlines under Bob
+    const applyAcceptAll = await applyOperationToDocumentXml(docXml, {
+        type: 'replace',
+        target: 'Pending inserted text.',
+        modified: 'Attempted replacement text.',
+        existingRevisions: 'accept-all-first'
+    }, 'Bob');
+    assert.equal(applyAcceptAll.hasChanges, true);
+    assert.ok(applyAcceptAll.documentXml.includes('w:author="Bob"'));
 }
 
 // ---------------------------------------------------------------------------
@@ -278,14 +298,34 @@ function createDocumentXml(bodyInner) {
     assert.equal(apply.status, 'error');
     assert.equal(apply.error.code, 'UNSAFE_REVISION_NESTING');
 
-    // Under default: normalizes prior deletion and redlines (accept-all-first is now default)
-    const applyDefault = await applyOperationToDocumentXml(docXml, {
+    // Under default merge-same-author: different author (Bob vs Alice) is refused
+    const applyDiffAuthor = await applyOperationToDocumentXml(docXml, {
         type: 'replace',
         target: 'Surviving text.',
         modified: 'Replaced text.'
     }, 'Bob');
-    assert.equal(applyDefault.hasChanges, true);
-    assert.ok(applyDefault.documentXml.includes('w:author="Bob"'));
+    assert.equal(applyDiffAuthor.hasChanges, false);
+    assert.equal(applyDiffAuthor.status, 'error');
+    assert.equal(applyDiffAuthor.error.code, 'EXISTING_REVISIONS');
+
+    // Under default merge-same-author: same author (Alice) merges against baseline
+    const applySameAuthor = await applyOperationToDocumentXml(docXml, {
+        type: 'replace',
+        target: 'Surviving text.',
+        modified: 'Replaced text.'
+    }, 'Alice');
+    assert.equal(applySameAuthor.hasChanges, true);
+    assert.ok(applySameAuthor.documentXml.includes('w:author="Alice"'));
+
+    // Under explicit accept-all-first: normalizes prior deletion and redlines under Bob
+    const applyAcceptAll = await applyOperationToDocumentXml(docXml, {
+        type: 'replace',
+        target: 'Surviving text.',
+        modified: 'Replaced text.',
+        existingRevisions: 'accept-all-first'
+    }, 'Bob');
+    assert.equal(applyAcceptAll.hasChanges, true);
+    assert.ok(applyAcceptAll.documentXml.includes('w:author="Bob"'));
 }
 
 // ---------------------------------------------------------------------------
@@ -358,14 +398,34 @@ function createDocumentXml(bodyInner) {
     assert.equal(applyMoveTo.status, 'error');
     assert.equal(applyMoveTo.error.code, 'UNSAFE_REVISION_NESTING');
 
-    // Move destination: replaces under default accept-all-first
-    const applyMoveToDefault = await applyOperationToDocumentXml(moveDestXml, {
+    // Under default merge-same-author: different author (Bob vs Alice) is refused
+    const applyMoveToDiffAuthor = await applyOperationToDocumentXml(moveDestXml, {
         type: 'replace',
         target: 'Moved destination text.',
         modified: 'Replacement.'
     }, 'Bob');
-    assert.equal(applyMoveToDefault.hasChanges, true);
-    assert.ok(applyMoveToDefault.documentXml.includes('w:author="Bob"'));
+    assert.equal(applyMoveToDiffAuthor.hasChanges, false);
+    assert.equal(applyMoveToDiffAuthor.status, 'error');
+    assert.equal(applyMoveToDiffAuthor.error.code, 'EXISTING_REVISIONS');
+
+    // Under default merge-same-author: same author (Alice) merges against baseline
+    const applyMoveToSameAuthor = await applyOperationToDocumentXml(moveDestXml, {
+        type: 'replace',
+        target: 'Moved destination text.',
+        modified: 'Replacement.'
+    }, 'Alice');
+    assert.equal(applyMoveToSameAuthor.hasChanges, true);
+    assert.ok(applyMoveToSameAuthor.documentXml.includes('w:author="Alice"'));
+
+    // Under explicit accept-all-first: replaces under Bob
+    const applyMoveToAcceptAll = await applyOperationToDocumentXml(moveDestXml, {
+        type: 'replace',
+        target: 'Moved destination text.',
+        modified: 'Replacement.',
+        existingRevisions: 'accept-all-first'
+    }, 'Bob');
+    assert.equal(applyMoveToAcceptAll.hasChanges, true);
+    assert.ok(applyMoveToAcceptAll.documentXml.includes('w:author="Bob"'));
 }
 
 console.log('existing revision mutation policy tests passed');

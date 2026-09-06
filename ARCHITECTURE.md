@@ -206,8 +206,14 @@ still be re-exported from `index.js`.
   ordinary formatting. When a run containing `w:rPrChange` is split or cloned,
   preserve an existing revision ID on at most one output run and allocate a
   fresh document-scoped ID for every additional copy.
-- Use `containsTrackedChanges(xmlDoc)` before redlining existing revisions unless
-  the caller explicitly chooses the `existingRevisions: 'accept-all-first'` policy.
+- Use `containsTrackedChanges(xmlDoc)` and `getTrackedChangeAuthors(xmlDoc)`
+  to inspect existing revisions. By default (`existingRevisions: 'merge-same-author'`),
+  subsequent edits from the same author are merged against the pre-revision baseline
+  while revisions from different authors fail closed with `EXISTING_REVISIONS`.
+  Revised paragraphs containing comment anchors fail closed with
+  `COMMENTED_CONTENT_MERGE`; never discard anchors as a side effect of restoring
+  the pre-revision baseline.
+  Pass `existingRevisions: 'accept-all-first'` to normalize prior revisions explicitly.
 - Do not write unknown `result.oxml` payloads directly into `word/document.xml`;
   normalize with `extractReplacementNodesFromOoxml(...)` or use
   `applyOperationToDocumentXml(...).documentXml` for full-document replacement.

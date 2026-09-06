@@ -33,6 +33,27 @@ function wordElementsByLocalName(xmlDoc, localName) {
     return Array.from(xmlDoc?.getElementsByTagName?.('*') || []).filter(node => isWordElement(node, localName));
 }
 
+// Keep revision discovery and author discovery on the same taxonomy. Cell
+// markers are included for fail-closed detection even though selective
+// acceptance/rejection of those structural revisions is not yet supported.
+const TRACKED_CHANGE_NAMES = [
+    'ins',
+    'del',
+    'moveFrom',
+    'moveTo',
+    'moveFromRangeStart',
+    'moveFromRangeEnd',
+    'moveToRangeStart',
+    'moveToRangeEnd',
+    'rPrChange',
+    'pPrChange',
+    'tblPrChange',
+    'trPrChange',
+    'tcPrChange',
+    'cellIns',
+    'cellDel'
+];
+
 /**
  * Returns true if a document or fragment contains Word tracked-change markup.
  *
@@ -40,22 +61,29 @@ function wordElementsByLocalName(xmlDoc, localName) {
  * @returns {boolean}
  */
 export function containsTrackedChanges(xmlDoc) {
-    const trackedChangeNames = [
-        'ins',
-        'del',
-        'moveFrom',
-        'moveTo',
-        'moveFromRangeStart',
-        'moveFromRangeEnd',
-        'moveToRangeStart',
-        'moveToRangeEnd',
-        'rPrChange',
-        'pPrChange',
-        'cellIns',
-        'cellDel'
-    ];
+    return TRACKED_CHANGE_NAMES.some(localName => wordElementsByLocalName(xmlDoc, localName).length > 0);
+}
 
-    return trackedChangeNames.some(localName => wordElementsByLocalName(xmlDoc, localName).length > 0);
+/**
+ * Collects all distinct author names from tracked changes in the given XML document or element.
+ *
+ * @param {Document|Element|null|undefined} xmlDocOrElement
+ * @returns {string[]} Sorted unique list of author names.
+ */
+export function getTrackedChangeAuthors(xmlDocOrElement) {
+    if (!xmlDocOrElement) return [];
+    const authors = new Set();
+    for (const localName of TRACKED_CHANGE_NAMES) {
+        for (const node of wordElementsByLocalName(xmlDocOrElement, localName)) {
+            const author = node.getAttribute?.('w:author')
+                || node.getAttribute?.('author')
+                || (typeof node.getAttributeNS === 'function' ? node.getAttributeNS(NS_W, 'author') : null);
+            if (author && typeof author === 'string' && author.trim()) {
+                authors.add(author.trim());
+            }
+        }
+    }
+    return [...authors].sort();
 }
 
 /**

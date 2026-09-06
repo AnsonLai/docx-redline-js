@@ -5,7 +5,9 @@ import assert from 'assert/strict';
 import {
     applyRedlineToOxml,
     containsTrackedChanges,
-    ingestWordOoxmlToPlainText
+    ingestWordOoxmlToPlainText,
+    acceptTrackedChangesInOoxml,
+    rejectTrackedChangesInOoxml
 } from '../index.js';
 import { assertRoundTrip } from './helpers/roundtrip.mjs';
 
@@ -31,9 +33,40 @@ function revisionParagraph() {
     ].join(''));
 }
 
-async function testDefaultNormalizesBeforeRedlining() {
+async function testDefaultMergesSameAuthor() {
     const source = revisionParagraph();
-    const result = await assertRoundTrip(source, 'A new end', 'A newer end');
+    const result = await applyRedlineToOxml(source, 'A new end', 'A newer end', {
+        generateRedlines: true,
+        author: 'Human'
+    });
+
+    assert.equal(result.hasChanges, true);
+    assert.ok(result.oxml.includes('w:author="Human"'));
+    const accepted = acceptTrackedChangesInOoxml(result.oxml, { author: 'Human' });
+    const rejected = rejectTrackedChangesInOoxml(result.oxml, { author: 'Human' });
+    assert.equal(ingestWordOoxmlToPlainText(accepted.oxml), 'A newer end');
+    assert.equal(ingestWordOoxmlToPlainText(rejected.oxml), 'A old end');
+}
+
+async function testDefaultRejectsDifferentAuthor() {
+    const source = revisionParagraph();
+    const result = await applyRedlineToOxml(source, 'A new end', 'A newer end', {
+        generateRedlines: true,
+        author: 'Agent'
+    });
+
+    assert.equal(result.status, 'error');
+    assert.equal(result.error?.code, 'EXISTING_REVISIONS');
+    assert.equal(result.hasChanges, false);
+    assert.equal(result.oxml, source);
+}
+
+async function testExplicitAcceptAllFirstNormalizesBeforeRedlining() {
+    const source = revisionParagraph();
+    const result = await assertRoundTrip(source, 'A new end', 'A newer end', {
+        author: 'RoundTrip',
+        existingRevisions: 'accept-all-first'
+    });
 
     assert.equal(result.redlined.hasChanges, true);
     assert.ok(!result.redlined.oxml.includes('w:author="Human"'), 'input revisions should be normalized before new redlines are generated');
@@ -94,7 +127,9 @@ function testContainsTrackedChangesNegativeMarkers() {
 }
 
 async function run() {
-    await testDefaultNormalizesBeforeRedlining();
+    await testDefaultMergesSameAuthor();
+    await testDefaultRejectsDifferentAuthor();
+    await testExplicitAcceptAllFirstNormalizesBeforeRedlining();
     await testExplicitRejectInputRejectsExistingRevisions();
     testPlainTextTreatsExistingRevisionsLikeAcceptedView();
     testContainsTrackedChangesPositiveMarkers();

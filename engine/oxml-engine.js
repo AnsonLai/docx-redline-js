@@ -28,16 +28,29 @@ import { applySurgicalMode } from './surgical-mode.js';
 import { applyReconstructionMode } from './reconstruction-mode.js';
 import { applyTableReconciliation, applyTextToTableTransformation } from './table-mode.js';
 import { getDefaultAuthor } from '../adapters/config.js';
-import { containsTrackedChanges, withOoxmlSourceType } from '../core/word-xml.js';
+import { containsTrackedChanges, getTrackedChangeAuthors, withOoxmlSourceType } from '../core/word-xml.js';
 import {
     NS_W,
     RevisionIdAllocator,
     seedRevisionIdsFromDocument
 } from '../core/types.js';
-import { acceptTrackedChangesInOoxml } from '../services/revision-comment-management.js';
+import { acceptTrackedChangesInOoxml, rejectTrackedChangesInOoxml } from '../services/revision-comment-management.js';
+import { extractCanonicalParagraphText } from '../core/paragraph-text.js';
+import { getDocumentParagraphs } from './format-extraction.js';
 import { isDiffTokenLimitError } from '../pipeline/diff-engine.js';
 import { NumberingService } from '../services/numbering-service.js';
 import { recordRouteSelection } from './route-selection.js';
+
+function getCommentIdsInOoxml(node) {
+    const ids = new Set();
+    for (const localName of ['commentRangeStart', 'commentRangeEnd', 'commentReference']) {
+        for (const marker of getElementsByTagNSOrTag(node, NS_W, localName)) {
+            const id = marker.getAttribute?.('w:id') || marker.getAttribute?.('id');
+            if (id !== '') ids.add(id);
+        }
+    }
+    return [...ids].sort((a, b) => Number(a) - Number(b) || a.localeCompare(b));
+}
 
 /**
  * Applies redline track changes to OOXML by modifying the DOM in-place.
@@ -48,7 +61,7 @@ import { recordRouteSelection } from './route-selection.js';
  * @param {Object} [options={}] - Options
  * @param {string} [options.author='AI'] - Author for track changes
  * @param {string|null} [options.targetParagraphId=null] - Preferred paragraph identity for table wrappers
- * @param {'reject-input'|'accept-all-first'|'accept-all-first-keep-normalized'} [options.existingRevisions='accept-all-first'] - Policy for source OOXML with tracked changes
+ * @param {'merge-same-author'|'reject-input'|'accept-all-first'|'accept-all-first-keep-normalized'} [options.existingRevisions='merge-same-author'] - Policy for source OOXML with tracked changes
  * @param {boolean} [options.removeFormatting=false] - Remove existing core formatting when text is otherwise unchanged
  * @param {boolean} [options.sanitizeInput=false] - Strip a standalone leading assistant preface line
  * @returns {Promise<{ oxml: string, hasChanges: boolean, sourceType?: 'package'|'document'|'fragment', status?: 'ok'|'no-op'|'error', error?: { code: string, message: string } }>}
@@ -64,11 +77,19 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
     let parseWarnings = [];
     const operationWarnings = [];
     let normalizedExistingRevisions = false;
-    const keepNormalizedNoOp = options.existingRevisions === 'accept-all-first-keep-normalized';
+    const existingRevisionsPolicy = options.existingRevisions || 'merge-same-author';
+    const keepNormalizedNoOp = existingRevisionsPolicy === 'accept-all-first-keep-normalized';
     const finalize = result => {
         const withStatus = { ...result };
         if (normalizedExistingRevisions && withStatus.hasChanges === false && withStatus.status !== 'error') {
-            if (keepNormalizedNoOp) {
+            if (existingRevisionsPolicy === 'merge-same-author') {
+                withStatus.oxml = workingOoxml;
+                withStatus.hasChanges = true;
+                withStatus.warnings = [
+                    ...(Array.isArray(withStatus.warnings) ? withStatus.warnings : []),
+                    'Previous revisions by the same author were reverted to baseline.'
+                ];
+            } else if (keepNormalizedNoOp) {
                 withStatus.oxml = workingOoxml;
                 withStatus.hasChanges = true;
                 withStatus.warnings = [
@@ -120,8 +141,80 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
     seedRevisionIdsFromDocument(xmlDoc, revisionIdAllocator);
 
     if (containsTrackedChanges(xmlDoc)) {
-        const existingRevisionsPolicy = options.existingRevisions || 'accept-all-first';
-        if (existingRevisionsPolicy === 'accept-all-first' || existingRevisionsPolicy === 'accept-all-first-keep-normalized') {
+        if (existingRevisionsPolicy === 'merge-same-author') {
+            const authors = getTrackedChangeAuthors(xmlDoc);
+            const currentAuthor = String(author || '').trim().toLowerCase();
+            const isSameAuthor = authors.length > 0 && authors.every(a => a.trim().toLowerCase() === currentAuthor);
+            if (isSameAuthor) {
+                const commentIds = getCommentIdsInOoxml(xmlDoc);
+                if (commentIds.length > 0) {
+                    return finalize({
+                        oxml: inputOoxml,
+                        hasChanges: false,
+                        status: 'error',
+                        error: {
+                            code: 'COMMENTED_CONTENT_MERGE',
+                            message: 'Refusing to merge existing revisions in commented content because reverting the prior revisions could remove or orphan comment anchors.',
+                            commentIds
+                        }
+                    });
+                }
+                log('[OxmlEngine] Existing revisions from same author detected; rejecting previous changes to merge against baseline');
+                const rejected = rejectTrackedChangesInOoxml(inputOoxml, { author });
+                if (rejected.status === 'error') return finalize(rejected);
+                workingOoxml = rejected.oxml;
+                normalizedExistingRevisions = true;
+                const rejectedParsed = parseOoxmlSafe(workingOoxml, 'text/xml');
+                parseWarnings.push(...rejectedParsed.warnings);
+                xmlDoc = rejectedParsed.doc;
+                const rejectedParseError = xmlDoc ? getXmlParseError(xmlDoc) : null;
+                if (rejectedParsed.error || rejectedParseError) {
+                    const message = rejectedParsed.error?.message || rejectedParseError?.textContent || 'Could not parse OOXML after rejecting same-author revisions.';
+                    error('[OxmlEngine] XML parse error after rejecting same-author revisions:', message);
+                    return finalize({
+                        oxml: inputOoxml,
+                        hasChanges: false,
+                        status: 'error',
+                        error: {
+                            code: 'PARSE_ERROR',
+                            message
+                        }
+                    });
+                }
+                if (containsTrackedChanges(xmlDoc)) {
+                    return finalize({
+                        oxml: inputOoxml,
+                        hasChanges: false,
+                        status: 'error',
+                        error: {
+                            code: 'UNSAFE_REVISION_NESTING',
+                            message: 'Existing same-author revisions could not be completely restored to baseline; refusing to layer new revisions over unsupported revision markup.'
+                        }
+                    });
+                }
+                seedRevisionIdsFromDocument(xmlDoc, revisionIdAllocator);
+
+                // Re-derive baseline text from the restored baseline OOXML:
+                const paragraphsInDoc = xmlDoc.documentElement && String(xmlDoc.documentElement.localName || '').toLowerCase() === 'p'
+                    ? [xmlDoc.documentElement]
+                    : getDocumentParagraphs(xmlDoc);
+                const baselineText = paragraphsInDoc.length > 0
+                    ? paragraphsInDoc.map(p => extractCanonicalParagraphText(p)).join('\n')
+                    : '';
+                originalText = baselineText;
+            } else {
+                log('[OxmlEngine] Existing revisions detected from another/unattributed author; refusing per merge-same-author policy');
+                return finalize({
+                    oxml: inputOoxml,
+                    hasChanges: false,
+                    status: 'error',
+                    error: {
+                        code: 'EXISTING_REVISIONS',
+                        message: `Input OOXML contains tracked changes from another author (${authors.length ? authors.join(', ') : 'unattributed'}). Pass existingRevisions: "accept-all-first" or resolve revisions first.`
+                    }
+                });
+            }
+        } else if (existingRevisionsPolicy === 'accept-all-first' || existingRevisionsPolicy === 'accept-all-first-keep-normalized') {
             log('[OxmlEngine] Existing revisions detected; accepting all input revisions before redlining');
             const accepted = acceptTrackedChangesInOoxml(inputOoxml, { allAuthors: true });
             if (accepted.status === 'error') return finalize(accepted);
@@ -153,7 +246,7 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
                 status: 'error',
                 error: {
                     code: 'EXISTING_REVISIONS',
-                    message: 'Input OOXML contains existing tracked changes. Pass existingRevisions: "accept-all-first" to normalize before redlining.'
+                    message: 'Input OOXML contains existing tracked changes and existingRevisions is "reject-input".'
                 }
             });
         }

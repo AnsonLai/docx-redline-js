@@ -5,7 +5,7 @@
 import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { findReconstructionParagraphRange } from '../engine/reconstruction-mapper.js';
 import { createRevisionMetadata } from '../core/types.js';
-import { containsTrackedChanges, createWordElement, withOoxmlSourceType } from '../core/word-xml.js';
+import { containsTrackedChanges, getTrackedChangeAuthors, createWordElement, withOoxmlSourceType } from '../core/word-xml.js';
 import {
     markParagraphMarkInserted,
     markParagraphMarkDeleted,
@@ -854,7 +854,90 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
             }
         };
     }
-    if (modifiedText === '' && currentParagraphText === '') {
+    const hasRevisions = containsTrackedChanges(targetParagraph);
+    const existingPolicy = options.existingRevisions || 'merge-same-author';
+    if (
+        hasRevisions
+        && existingPolicy !== 'accept-all-first'
+        && existingPolicy !== 'accept-all-first-keep-normalized'
+    ) {
+        if (existingPolicy === 'merge-same-author') {
+            const authors = getTrackedChangeAuthors(targetParagraph);
+            const opAuthor = String(author || '').trim().toLowerCase();
+            const allSame = authors.length > 0 && authors.every(a => a.trim().toLowerCase() === opAuthor);
+            if (!allSame) {
+                return {
+                    documentXml,
+                    hasChanges: false,
+                    numberingXml: null,
+                    status: 'error',
+                    error: {
+                        code: 'EXISTING_REVISIONS',
+                        message: `Target paragraph contains tracked changes from another author (${authors.length ? authors.join(', ') : 'unattributed'}). Pass existingRevisions: "accept-all-first" or resolve revisions first.`
+                    }
+                };
+            }
+            const mergeCommentIds = getCommentIdsInElement(targetParagraph);
+            if (mergeCommentIds.length > 0) {
+                const comments = commentDetailsForIds(mergeCommentIds, options._existingCommentDetails);
+                return {
+                    documentXml,
+                    hasChanges: false,
+                    numberingXml: null,
+                    status: 'error',
+                    error: {
+                        code: 'COMMENTED_CONTENT_MERGE',
+                        message: 'Refusing to merge existing revisions in commented content because reverting the prior revisions could remove or orphan comment anchors.',
+                        commentIds: mergeCommentIds,
+                        ...(comments.length > 0 ? { comments } : {})
+                    }
+                };
+            }
+        } else {
+            const hasDel = targetParagraph.getElementsByTagNameNS(NS_W, 'del').length > 0;
+            const hasMove = targetParagraph.getElementsByTagNameNS(NS_W, 'moveFrom').length > 0
+                || targetParagraph.getElementsByTagNameNS(NS_W, 'moveTo').length > 0;
+            if (hasDel) {
+                return {
+                    documentXml,
+                    hasChanges: false,
+                    numberingXml: null,
+                    status: 'error',
+                    error: {
+                        code: 'UNSAFE_REVISION_NESTING',
+                        message: 'Refusing to replace content with pending deletions; nesting revisions is unsafe.'
+                    }
+                };
+            }
+            if (hasMove) {
+                return {
+                    documentXml,
+                    hasChanges: false,
+                    numberingXml: null,
+                    status: 'error',
+                    error: {
+                        code: 'UNSAFE_REVISION_NESTING',
+                        message: 'Refusing to mutate content with move revisions until move lifecycle is designed.'
+                    }
+                };
+            }
+            return {
+                documentXml,
+                hasChanges: false,
+                numberingXml: null,
+                status: 'error',
+                error: {
+                    code: 'EXISTING_REVISIONS',
+                    message: 'Target paragraph contains tracked changes and existingRevisions is "reject-input".'
+                }
+            };
+        }
+    }
+    if (
+        modifiedText === ''
+        && currentParagraphText === ''
+        && !(hasRevisions && existingPolicy === 'merge-same-author')
+    ) {
         if (generateRedlines) {
             markParagraphMarkDeleted(xmlDoc, targetParagraph, author, createRevisionMetadata(author, xmlDoc));
             options?._mutationLiveNodes?.push(targetParagraph);
@@ -868,41 +951,6 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
             hasChanges: true,
             numberingXml: null
         };
-    }
-    const hasRevisions = containsTrackedChanges(targetParagraph);
-    const existingPolicy = options.existingRevisions || 'accept-all-first';
-    if (
-        hasRevisions
-        && existingPolicy !== 'accept-all-first'
-        && existingPolicy !== 'accept-all-first-keep-normalized'
-    ) {
-        const hasDel = targetParagraph.getElementsByTagNameNS(NS_W, 'del').length > 0;
-        const hasMove = targetParagraph.getElementsByTagNameNS(NS_W, 'moveFrom').length > 0
-            || targetParagraph.getElementsByTagNameNS(NS_W, 'moveTo').length > 0;
-        if (hasDel) {
-            return {
-                documentXml,
-                hasChanges: false,
-                numberingXml: null,
-                status: 'error',
-                error: {
-                    code: 'UNSAFE_REVISION_NESTING',
-                    message: 'Refusing to replace content with pending deletions; nesting revisions is unsafe.'
-                }
-            };
-        }
-        if (hasMove) {
-            return {
-                documentXml,
-                hasChanges: false,
-                numberingXml: null,
-                status: 'error',
-                error: {
-                    code: 'UNSAFE_REVISION_NESTING',
-                    message: 'Refusing to mutate content with move revisions until move lifecycle is designed.'
-                }
-            };
-        }
     }
     const containingTable = findContainingWordElement(targetParagraph, 'tbl');
     const rawTableStructuralCandidate = !!containingTable
@@ -1192,7 +1240,7 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         ? await reconcileMarkdownTableOoxml(scopedXml, originalTextForApply, effectiveModifiedText, {
             author,
             generateRedlines,
-            existingRevisions: options.existingRevisions || 'accept-all-first',
+            existingRevisions: options.existingRevisions || 'merge-same-author',
             structuredContent: options.structuredContent !== false,
             explicitStructuredContent: options.explicitStructuredContent === true,
             _revisionIdAllocator: revisionIdAllocator,
@@ -1201,7 +1249,7 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         : await applyRedlineToOxml(scopedXml, originalTextForApply, effectiveModifiedText, {
             author,
             generateRedlines,
-            existingRevisions: options.existingRevisions || 'accept-all-first',
+            existingRevisions: options.existingRevisions || 'merge-same-author',
             structuredContent: options.structuredContent !== false,
             explicitStructuredContent: options.explicitStructuredContent === true,
             pairReplacements: options.pairReplacements === true,

@@ -51,12 +51,19 @@ const result = await applyRedlineToOxml(oxml, originalText, modifiedText, {
 });
 ```
 
-`existingRevisions` defaults to `'accept-all-first'`, which automatically normalizes
-prior revisions in that paragraph before generating a clean, new tracked change under
-the current author. Pass `existingRevisions: 'reject-input'` (or
-`--existing-revisions reject-input` via CLI) if you want to refuse edits to paragraphs
-with open revisions. Use `'accept-all-first-keep-normalized'` only when accepted
-revisions should be returned as a real change even on a no-op edit.
+`existingRevisions` defaults to `'merge-same-author'`. When a target paragraph
+contains tracked changes from the same author, prior revisions by that author are
+reverted to the pre-revision baseline and re-diffed to the new text, cleanly
+merging the edits without accumulating intermediate revisions or nesting markup.
+If the paragraph contains revisions from a different reviewer, the edit fails
+with `EXISTING_REVISIONS` to safeguard third-party marks. Pass
+`existingRevisions: 'accept-all-first'` (or `--existing-revisions accept-all-first`
+via CLI) to normalize all prior revisions first, or `'reject-input'` to refuse any
+paragraph with open revisions. Use `'accept-all-first-keep-normalized'` only when
+accepted revisions should be returned as a real change even on a no-op edit.
+Same-author merging also fails with `COMMENTED_CONTENT_MERGE` when the revised
+paragraph contains comment anchors, because reverting the prior revision could
+remove or orphan those comments. Resolve the comments before re-editing.
 
 ### Apply a text edit without tracked changes (Direct Edits)
 
@@ -468,7 +475,7 @@ orchestration/
 | `structuredContent` | `boolean` | `true` | Auto-detects Markdown tables, headings (`#`), and lists in replacement text and renders them as native Word elements (`w:tbl`, `w:pStyle`, `w:numPr`). Pass `false` to treat replacement text strictly as plain text. |
 | `pairReplacements` | `boolean` | `true` | Links adjacent `<w:del>` and `<w:ins>` revisions with matching timestamps so Word groups them as a single replacement in the Reviewing Pane. |
 | `strictTargets` | `boolean` | `true` (CLI/facade) | Requires exact target descriptors (`exactText`, `paragraphId`, `index`, `occurrence`, `fingerprint`) and forbids ambiguous matching. Defaults to `false` in low-level runner for backwards compatibility. |
-| `existingRevisions` | `string` | `'accept-all-first'` | How to handle paragraphs with existing tracked changes. `'accept-all-first'` automatically normalizes prior revisions before generating clean, new redlines. Pass `'reject-input'` to refuse editing revised paragraphs. |
+| `existingRevisions` | `string` | `'merge-same-author'` | How to handle paragraphs with existing tracked changes. `'merge-same-author'` automatically merges subsequent edits from the same author against the pre-revision baseline while protecting different authors' revisions with `EXISTING_REVISIONS`. Pass `'accept-all-first'` to normalize prior revisions or `'reject-input'` to refuse editing revised paragraphs. |
 | `removeFormatting` | `boolean` | `false` | When `true` and the text is unchanged with no Markdown hints, strips existing bold/italic/underline/strikethrough formatting. |
 | `sanitizeInput` | `boolean` | `false` | Opt-in removal of standalone leading assistant-preface lines. Literal dollar signs and `\n` sequences are always preserved. |
 
@@ -481,7 +488,7 @@ orchestration/
   atomic: false,
   structuredContent: true,
   pairReplacements: true,
-  existingRevisions: 'accept-all-first',
+  existingRevisions: 'merge-same-author',
   removeFormatting: false,
   sanitizeInput: false
 }
@@ -502,7 +509,7 @@ orchestration/
 ```
 
 Known error codes include `PARSE_ERROR`, `TARGET_NOT_FOUND`, `PARTIAL_TARGET`,
-`EXISTING_REVISIONS`, `UNSAFE_REVISION_NESTING`, `UNSUPPORTED_REVISION_VIEW_MUTATION`,
+`EXISTING_REVISIONS`, `COMMENTED_CONTENT_MERGE`, `UNSAFE_REVISION_NESTING`, `UNSUPPORTED_REVISION_VIEW_MUTATION`,
 `UNSAFE_PARAGRAPH_BOUNDARY`, `DIFF_TOKEN_LIMIT`, and `BATCH_OPERATION_FAILED`.
 
 For ingestion that must distinguish an empty document from malformed OOXML,
@@ -554,7 +561,7 @@ directly into `word/document.xml`.
 5. `useNativeApi: true` means standalone mode cannot fully handle that operation path.
 6. `deleteCommentsByAuthorInOoxml` removes definitions and linked anchors only when they are present in the same OOXML payload. In a real `.docx`, `word/comments.xml` and `word/document.xml` are separate parts and must both be updated by the package integration layer.
 7. If output begins with `<pkg:package`, treat it as package-level OOXML and normalize it before writing anything back to `word/document.xml`.
-8. Existing revisions are normalized by default (`accept-all-first`); pass `reject-input` to refuse edits to revised paragraphs. `accept-all-first` preserves the original OOXML on no-op, while `accept-all-first-keep-normalized` explicitly returns normalization as a change.
+8. Existing revisions from the same author are merged by default against the pre-revision baseline (`merge-same-author`), while third-party revisions fail closed with `EXISTING_REVISIONS`. Pass `existingRevisions: 'accept-all-first'` to normalize all prior revisions first, or `'reject-input'` to refuse any revised paragraph.
 9. Caller content is not sanitized by default. Pass `sanitizeInput: true` only for raw assistant output; literal dollar delimiters and `\\n` sequences are never rewritten.
 10. Hyperlinks, bookmarks, comment markers, tabs/breaks, and footnote/endnote references are structural OOXML and should survive adjacent redline edits.
 11. Internally, create Word elements through `createWordElement` and tracked-change metadata through `createRevisionMetadata`.

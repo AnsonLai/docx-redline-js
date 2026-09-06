@@ -1,6 +1,6 @@
 export type OoxmlSourceType = 'package' | 'document' | 'fragment';
 export type RedlineStatus = 'ok' | 'no-op' | 'error';
-export type ExistingRevisionsPolicy = 'reject-input' | 'accept-all-first' | 'accept-all-first-keep-normalized';
+export type ExistingRevisionsPolicy = 'merge-same-author' | 'reject-input' | 'accept-all-first' | 'accept-all-first-keep-normalized';
 export type RevisionView = 'accepted' | 'rejected';
 
 export interface RevisionTextSegment {
@@ -244,6 +244,8 @@ export function extractCanonicalParagraphText(paragraph: Element | null | undefi
 export function extractParagraphRevisionSegments(paragraph: Element | null | undefined, options?: { mergeRuns?: boolean; [key: string]: unknown }): RevisionTextSegment[];
 export function readCanonicalRunText(run: Element, options?: { revisionView?: 'accepted' | 'rejected' | 'current'; boundary?: Element | null }): string;
 export function isNodeVisibleInRevisionView(node: Node, boundary?: Node | null, revisionView?: 'accepted' | 'rejected' | 'current'): boolean;
+export function containsTrackedChanges(xmlDoc: Document | Element | null | undefined): boolean;
+export function getTrackedChangeAuthors(xmlDocOrElement: Document | Element | null | undefined): string[];
 
 export interface InspectedParagraph {
   index: number; ref: string; paragraphId: string | null; fingerprint: string | null;

@@ -4,7 +4,7 @@
 
 import { parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { getDefaultAuthor } from '../adapters/config.js';
-import { containsTrackedChanges } from '../core/word-xml.js';
+import { containsTrackedChanges, getTrackedChangeAuthors } from '../core/word-xml.js';
 import { NS_W } from '../core/types.js';
 import {
     buildParagraphMetadataIndex,
@@ -202,7 +202,7 @@ export function preflightOperations(documentXml, operations, author, options = {
             const hasRevisions = containsTrackedChanges(paragraph);
             const existingPolicy = operation.existingRevisions
                 || options.existingRevisions
-                || 'accept-all-first';
+                || 'merge-same-author';
             const deletingWholeParagraph = operation.operationKind === 'redline' && operation.modified === '';
             const commentIds = deletingWholeParagraph ? getCommentIdsInParagraph(paragraph) : [];
 
@@ -225,26 +225,52 @@ export function preflightOperations(documentXml, operations, author, options = {
             } else if (
                 operation.operationKind === 'redline'
                 && hasRevisions
-                && existingPolicy === 'reject-input'
+                && existingPolicy !== 'accept-all-first'
+                && existingPolicy !== 'accept-all-first-keep-normalized'
             ) {
-                const hasDel = paragraph.getElementsByTagNameNS(NS_W, 'del').length > 0;
-                const hasMove = paragraph.getElementsByTagNameNS(NS_W, 'moveFrom').length > 0
-                    || paragraph.getElementsByTagNameNS(NS_W, 'moveTo').length > 0;
-                if (hasDel) {
-                    error = {
-                        code: 'UNSAFE_REVISION_NESTING',
-                        message: 'Refusing to replace content with pending deletions; nesting revisions is unsafe.'
-                    };
-                } else if (hasMove) {
-                    error = {
-                        code: 'UNSAFE_REVISION_NESTING',
-                        message: 'Refusing to mutate content with move revisions until move lifecycle is designed.'
-                    };
+                if (existingPolicy === 'merge-same-author') {
+                    const authors = getTrackedChangeAuthors(paragraph);
+                    const opAuthor = String(authorUsed || '').trim().toLowerCase();
+                    const allSame = authors.length > 0 && authors.every(a => a.trim().toLowerCase() === opAuthor);
+                    if (!allSame) {
+                        error = {
+                            code: 'EXISTING_REVISIONS',
+                            message: `Target paragraph contains tracked changes from another author (${authors.length ? authors.join(', ') : 'unattributed'}). Pass existingRevisions: "accept-all-first" or resolve revisions first.`
+                        };
+                    } else {
+                        const mergeCommentIds = getCommentIdsInParagraph(paragraph);
+                        if (mergeCommentIds.length > 0) {
+                            const comments = mergeCommentIds
+                                .map(id => options._existingCommentDetails?.[id])
+                                .filter(Boolean);
+                            error = {
+                                code: 'COMMENTED_CONTENT_MERGE',
+                                message: 'Refusing to merge existing revisions in commented content because reverting the prior revisions could remove or orphan comment anchors.',
+                                commentIds: mergeCommentIds,
+                                ...(comments.length > 0 ? { comments } : {})
+                            };
+                        }
+                    }
                 } else {
-                    error = {
-                        code: 'EXISTING_REVISIONS',
-                        message: 'Target paragraph contains tracked changes and existingRevisions is "reject-input".'
-                    };
+                    const hasDel = paragraph.getElementsByTagNameNS(NS_W, 'del').length > 0;
+                    const hasMove = paragraph.getElementsByTagNameNS(NS_W, 'moveFrom').length > 0
+                        || paragraph.getElementsByTagNameNS(NS_W, 'moveTo').length > 0;
+                    if (hasDel) {
+                        error = {
+                            code: 'UNSAFE_REVISION_NESTING',
+                            message: 'Refusing to replace content with pending deletions; nesting revisions is unsafe.'
+                        };
+                    } else if (hasMove) {
+                        error = {
+                            code: 'UNSAFE_REVISION_NESTING',
+                            message: 'Refusing to mutate content with move revisions until move lifecycle is designed.'
+                        };
+                    } else {
+                        error = {
+                            code: 'EXISTING_REVISIONS',
+                            message: 'Target paragraph contains tracked changes and existingRevisions is "reject-input".'
+                        };
+                    }
                 }
             }
 
