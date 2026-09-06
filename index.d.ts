@@ -245,14 +245,32 @@ export interface InspectedParagraph {
   hasRevisions: boolean; revisionAuthors: string[]; commentIds: string[];
   segments: RevisionTextSegment[];
 }
+export interface RevisionToken {
+  algorithm: 'sha256';
+  version: 1;
+  scope: 'document-parts' | 'package';
+  value: string;
+  coveredParts?: string[];
+}
+
 export interface InspectedComment { id: string; author: string | null; date: string | null; text: string; paragraphIndex?: number; targetRef?: string; anchoredText?: string; }
-export interface DocumentInspectionOptions { revisionView?: 'accepted' | 'rejected' | 'current'; excerptLength?: number; revisedOnly?: boolean; inTable?: boolean; skipEmpty?: boolean; search?: string; indexes?: number[]; range?: { start: number; end: number } | [number, number]; }
+export interface DocumentInspectionOptions { revisionView?: 'accepted' | 'rejected' | 'current'; excerptLength?: number; revisedOnly?: boolean; inTable?: boolean; skipEmpty?: boolean; search?: string; indexes?: number[]; range?: { start: number; end: number } | [number, number]; digestFn?: (bytes: Uint8Array) => string; }
 export interface DocumentInspectionResult {
   status: 'ok' | 'error'; paragraphs: InspectedParagraph[]; comments: InspectedComment[];
   revisionAuthors?: string[]; commentAuthors?: string[]; counts?: { paragraphs: number; comments: number; revisedParagraphs: number };
+  revisionToken?: RevisionToken | null;
+  coveredParts?: string[];
   warnings: string[]; error?: RedlineError;
 }
-export function inspectDocumentParts(parts: { documentXml: string; commentsXml?: string | null; numberingXml?: string | null; stylesXml?: string | null }, options?: DocumentInspectionOptions): DocumentInspectionResult;
+export function inspectDocumentParts(parts: { documentXml: string; commentsXml?: string | null; numberingXml?: string | null; stylesXml?: string | null; parts?: Map<string, unknown>; additionalParts?: Record<string, unknown> }, options?: DocumentInspectionOptions): DocumentInspectionResult;
+export function buildRevisionTokenFraming(options: { scope: string; entries?: unknown }): { framing: Uint8Array; scope: string; version: number; coveredParts: string[] };
+export function computeRevisionToken(options: { scope: string; entries?: unknown; digestFn?: (bytes: Uint8Array) => Promise<string> }): Promise<RevisionToken>;
+export function computeRevisionTokenSync(options: { scope: string; entries?: unknown; digestFn: (bytes: Uint8Array) => string }): RevisionToken;
+export function computeDocumentPartsRevisionToken(parts: unknown, options?: { digestFn?: (bytes: Uint8Array) => Promise<string> }): Promise<RevisionToken>;
+export function validateRevisionToken(token: unknown): { valid: boolean; error?: { code: string; message: string } };
+export function normalizeOpcEntryName(name: string): string;
+export function extractDocumentPartsEntries(parts: unknown): Array<{ name: string; payload: unknown }>;
+
 export function ingestOoxml(oxml: string): unknown;
 export function preprocessMarkdown(text: string): { cleanText: string; formatHints: unknown[] };
 export function serializeToOoxml(runModel: unknown[], pPrXml?: string | null, formatHints?: unknown[], options?: Record<string, unknown>): string;

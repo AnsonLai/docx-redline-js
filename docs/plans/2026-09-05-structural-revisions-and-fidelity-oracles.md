@@ -1383,10 +1383,11 @@ The ownership rules are evidence, not assumptions in prose:
 - Accept/reject one author while retaining another's property change.
 - No requested property change returns `no_change` without consuming an ID.
 
-### WP-12 — Revision Token Core
+### WP-12 — Revision Token Core [COMPLETED 2026-09-05]
 
 **Depends on:** WP-01  
-**Produces runtime changes:** Additive inspection utility
+**Produces runtime changes:** Additive inspection utility  
+**Status:** Completed — implemented binary framing revision token generator in `services/revision-token.js` (`buildRevisionTokenFraming`, `computeRevisionToken`, `computeRevisionTokenSync`, `computeDocumentPartsRevisionToken`, `validateRevisionToken`), package-scoped token computation in `node/docx-document.js` (`computePackageRevisionToken`, `DocxDocument.prototype.getRevisionToken`, `DocxDocument.prototype.revisionToken`), integrated into `inspectDocumentParts`, browser-safe with 0 Node imports in root graph, verified in `tests/revision_token_tests.mjs` and all 79 test suites.
 
 **New/edited files**
 

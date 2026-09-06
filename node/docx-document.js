@@ -7,11 +7,39 @@ import { ensureCommentsArtifactsInZip, ensureNumberingArtifactsInZip, validateDo
 import { validateRedlineOoxml } from '../core/redline-validation.js';
 import { acceptTrackedChangesInOoxml, rejectTrackedChangesInOoxml, deleteCommentsByAuthorInOoxml } from '../services/revision-comment-management.js';
 import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
+import { createHash } from 'node:crypto';
 import { MemoryZip, unzipDocx, zipDocx } from './zip-archive.js';
+import { computeRevisionTokenSync } from '../services/revision-token.js';
 
 configureXmlProvider({ DOMParser, XMLSerializer });
 const text = (entries, path) => entries.get(path)?.toString('utf8') || null;
 const cloneEntries = entries => new Map([...entries].map(([name, data]) => [name, Buffer.from(data)]));
+
+/**
+ * Computes a package-scoped revision token over all uncompressed entries in a DOCX archive.
+ *
+ * @param {Buffer|Uint8Array|Map<string, Buffer>|DocxDocument|object} input
+ * @returns {{ algorithm: 'sha256', version: number, scope: 'package', value: string, coveredParts: string[] }}
+ */
+export function computePackageRevisionToken(input) {
+    let entries;
+    if (Buffer.isBuffer(input) || input instanceof Uint8Array) {
+        entries = unzipDocx(input);
+    } else if (input instanceof Map) {
+        entries = input;
+    } else if (input?.entries instanceof Map) {
+        entries = input.entries;
+    } else if (typeof input?.toBuffer === 'function') {
+        entries = unzipDocx(input.toBuffer());
+    } else {
+        throw new TypeError('computePackageRevisionToken requires a Buffer, Uint8Array, Map of entries, or DocxDocument.');
+    }
+    return computeRevisionTokenSync({
+        scope: 'package',
+        entries,
+        digestFn: bytes => createHash('sha256').update(bytes).digest('hex')
+    });
+}
 
 function nextCommentId(entries) {
     const ids = `${text(entries, 'word/document.xml') || ''} ${text(entries, 'word/comments.xml') || ''}`.match(/(?:w:)?id=["'](\d+)["']/g) || [];
@@ -39,7 +67,17 @@ function existingCommentDetails(entries) {
 
 export class DocxDocument {
     constructor(buffer) { this.originalBuffer = Buffer.from(buffer); this.entries = unzipDocx(this.originalBuffer); }
-    inspect(options = {}) { return inspectDocumentParts({ documentXml: text(this.entries, 'word/document.xml'), commentsXml: text(this.entries, 'word/comments.xml'), numberingXml: text(this.entries, 'word/numbering.xml'), stylesXml: text(this.entries, 'word/styles.xml') }, options); }
+    inspect(options = {}) {
+        const digestFn = options.digestFn || (bytes => createHash('sha256').update(bytes).digest('hex'));
+        return inspectDocumentParts({
+            documentXml: text(this.entries, 'word/document.xml'),
+            commentsXml: text(this.entries, 'word/comments.xml'),
+            numberingXml: text(this.entries, 'word/numbering.xml'),
+            stylesXml: text(this.entries, 'word/styles.xml')
+        }, { ...options, digestFn });
+    }
+    getRevisionToken() { return computePackageRevisionToken(this.entries); }
+    get revisionToken() { return this.getRevisionToken(); }
     preflight(operations, author, options = {}) { return preflightOperations(text(this.entries, 'word/document.xml'), operations, author, { ...options, _existingCommentDetails: existingCommentDetails(this.entries) }); }
     toBuffer() { return zipDocx(this.entries); }
     async applyOperations(operations, options = {}) {

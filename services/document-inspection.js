@@ -2,6 +2,7 @@ import { parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { NS_W } from '../core/types.js';
 import { extractCanonicalParagraphText, readCanonicalRunText, extractParagraphRevisionSegments } from '../core/paragraph-text.js';
 import { createParagraphFingerprint, getDocumentParagraphNodes, getParagraphId } from '../core/paragraph-targeting.js';
+import { extractDocumentPartsEntries, computeRevisionTokenSync } from './revision-token.js';
 
 const attr = (node, name) => node?.getAttribute?.(`w:${name}`) || node?.getAttribute?.(name) || '';
 const descendants = (node, name) => Array.from(node?.getElementsByTagNameNS?.(NS_W, name) || []);
@@ -210,7 +211,25 @@ export function inspectDocumentParts(parts, options = {}) {
     if (Array.isArray(options.indexes)) { const indexes = new Set(options.indexes); paragraphs = paragraphs.filter(item => indexes.has(item.index)); }
     if (options.range) { const start = Number(options.range.start ?? options.range[0]); const end = Number(options.range.end ?? options.range[1]); paragraphs = paragraphs.filter(item => item.index >= start && item.index <= end); }
     const allRevisionAuthors = [...new Set(paragraphs.flatMap(item => item.revisionAuthors))].sort();
-    return { status: 'ok', paragraphs, comments: [...comments.values()], revisionAuthors: allRevisionAuthors,
+    const coveredEntries = extractDocumentPartsEntries(parts);
+    const coveredParts = coveredEntries.map(e => e.name).sort();
+    let revisionToken = null;
+    if (typeof options.digestFn === 'function') {
+        revisionToken = computeRevisionTokenSync({
+            scope: 'document-parts',
+            entries: coveredEntries,
+            digestFn: options.digestFn
+        });
+    }
+    return {
+        status: 'ok',
+        revisionToken,
+        coveredParts,
+        paragraphs,
+        comments: [...comments.values()],
+        revisionAuthors: allRevisionAuthors,
         commentAuthors: [...new Set([...comments.values()].map(item => item.author).filter(Boolean))].sort(),
-        counts: { paragraphs: paragraphs.length, comments: comments.size, revisedParagraphs: paragraphs.filter(item => item.hasRevisions).length }, warnings };
+        counts: { paragraphs: paragraphs.length, comments: comments.size, revisedParagraphs: paragraphs.filter(item => item.hasRevisions).length },
+        warnings
+    };
 }
