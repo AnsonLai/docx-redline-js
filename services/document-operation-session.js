@@ -36,6 +36,8 @@ export class DocumentOperationSession {
         this.results = [];
         this.executionOrder = [];
         this.authorsUsed = new Set();
+        this.captureTable = new Map();
+        this.nextCaptureParaId = 1;
 
         if (this.document) {
             this.instrumentation?.onDocumentParse?.(this.originalDocumentXml);
@@ -80,6 +82,10 @@ export class DocumentOperationSession {
         this.invalidateParagraphIndex();
     }
 
+    generateParagraphId() {
+        return (0x40000000 + (this.nextCaptureParaId++)).toString(16).toUpperCase();
+    }
+
     createSavepoint() {
         if (!this.document) return null;
         return {
@@ -89,7 +95,9 @@ export class DocumentOperationSession {
                 ? new Set(this.revisionIdAllocator.occupiedIds)
                 : null,
             hasChanges: this.hasChanges,
-            currentDocumentXml: this.currentDocumentXml
+            currentDocumentXml: this.currentDocumentXml,
+            captureTable: cloneCaptureTable(this.captureTable),
+            nextCaptureParaId: this.nextCaptureParaId
         };
     }
 
@@ -98,6 +106,10 @@ export class DocumentOperationSession {
         this.document = savepoint.document;
         this.hasChanges = savepoint.hasChanges;
         this.currentDocumentXml = savepoint.currentDocumentXml;
+        this.captureTable = savepoint.captureTable ? cloneCaptureTable(savepoint.captureTable) : new Map();
+        if (typeof savepoint.nextCaptureParaId === 'number') {
+            this.nextCaptureParaId = savepoint.nextCaptureParaId;
+        }
         if (this.revisionIdAllocator) {
             this.revisionIdAllocator.nextId = savepoint.allocatorNextId;
             if (savepoint.allocatorOccupiedIds instanceof Set) {
@@ -122,8 +134,19 @@ export class DocumentOperationSession {
     rollback() {
         this.currentDocumentXml = this.originalDocumentXml;
         this.hasChanges = false;
+        this.captureTable.clear();
         return this.originalDocumentXml;
     }
+}
+
+function cloneCaptureTable(table) {
+    const cloned = new Map();
+    if (table instanceof Map) {
+        for (const [k, v] of table.entries()) {
+            cloned.set(k, JSON.parse(JSON.stringify(v)));
+        }
+    }
+    return cloned;
 }
 
 export function prepareRevisionAllocator(xmlDoc, options = {}) {

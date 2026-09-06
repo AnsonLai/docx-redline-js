@@ -70,6 +70,7 @@ import {
     deriveSingleParagraphListAdjacencyInsertion,
     deriveSingleParagraphPlainAdjacencyInsertion
 } from './operation-heuristics.js';
+import { resolveTargetFromCapture, ensureParagraphIdsOnImportedNode } from './capture-engine.js';
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
@@ -156,7 +157,37 @@ function getParagraphText(paragraph) {
 function resolveTargetParagraph(xmlDoc, targetText, targetRef, opType, runtimeContext = null, options = {}) {
     const onInfo = typeof options?.onInfo === 'function' ? options.onInfo : () => { };
     const onWarn = typeof options?.onWarn === 'function' ? options.onWarn : () => { };
-    const paragraphMetadataIndex = options?._documentOperationSession?.getParagraphMetadataIndex?.() || null;
+    const session = options?._documentOperationSession || null;
+    const paragraphMetadataIndex = session?.getParagraphMetadataIndex?.() || null;
+
+    if (options?.targetDescriptor?.captureRef) {
+        try {
+            const resolved = resolveTargetFromCapture(xmlDoc, session, options.targetDescriptor, opType, options);
+            if (options?._resolutionCapture && resolved?.paragraph) {
+                const paragraph = resolved.paragraph;
+                const metadata = paragraphMetadataIndex?.byParagraph?.get(paragraph) || null;
+                Object.assign(options._resolutionCapture, {
+                    resolvedBy: resolved.resolvedBy,
+                    resolvedTarget: {
+                        index: metadata?.index ?? Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p')).indexOf(paragraph) + 1,
+                        paragraphId: metadata?.paragraphId ?? getParagraphId(paragraph),
+                        text: metadata?.text ?? getParagraphText(paragraph),
+                        fingerprint: metadata?.fingerprint ?? createParagraphFingerprint(paragraph),
+                        inTable: metadata?.inTable ?? !!findContainingWordElement(paragraph, 'tbl')
+                    }
+                });
+            }
+            return resolved;
+        } catch (error) {
+            return {
+                error: {
+                    code: typeof error?.code === 'string' && error.code ? error.code : 'TARGET_NOT_FOUND',
+                    message: error?.message || String(error)
+                }
+            };
+        }
+    }
+
     const resolved = resolveTargetParagraphWithSnapshotShared(xmlDoc, {
         targetText,
         targetRef,
@@ -484,7 +515,8 @@ async function tryExplicitDecimalHeaderListConversion({
     author,
     runtimeContext,
     generateRedlines = true,
-    onInfo = () => { }
+    onInfo = () => { },
+    options = {}
 }) {
     if (!targetParagraph) return null;
     const scopedParagraphOxml = serializer.serializeToString(targetParagraph);
@@ -577,7 +609,13 @@ async function tryExplicitDecimalHeaderListConversion({
 
     const parent = targetParagraph.parentNode;
     if (!parent) return null;
-    for (const node of replacementNodes) parent.insertBefore(xmlDoc.importNode(node, true), targetParagraph);
+    for (const node of replacementNodes) {
+        const imported = xmlDoc.importNode(node, true);
+        ensureParagraphIdsOnImportedNode(imported, operationSession);
+        const inserted = parent.insertBefore(imported, targetParagraph);
+        options?._mutationLiveNodes?.push(inserted);
+    }
+    options?._mutationRemovedNodes?.push(targetParagraph);
     parent.removeChild(targetParagraph);
     normalizeBodySectionOrder(xmlDoc);
     return {
@@ -598,7 +636,8 @@ async function trySingleParagraphListStructuralFallback({
     author,
     runtimeContext,
     generateRedlines = true,
-    onInfo = () => { }
+    onInfo = () => { },
+    options = {}
 }) {
     if (!targetParagraph) return null;
 
@@ -713,7 +752,13 @@ async function trySingleParagraphListStructuralFallback({
 
     const parent = targetParagraph.parentNode;
     if (!parent) return null;
-    for (const node of replacementNodes) parent.insertBefore(xmlDoc.importNode(node, true), targetParagraph);
+    for (const node of replacementNodes) {
+        const imported = xmlDoc.importNode(node, true);
+        ensureParagraphIdsOnImportedNode(imported, operationSession);
+        const inserted = parent.insertBefore(imported, targetParagraph);
+        options?._mutationLiveNodes?.push(inserted);
+    }
+    options?._mutationRemovedNodes?.push(targetParagraph);
     parent.removeChild(targetParagraph);
     normalizeBodySectionOrder(xmlDoc);
     return {
@@ -735,6 +780,15 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         onInfo,
         onWarn
     });
+    if (resolved?.error || !resolved?.paragraph) {
+        return {
+            documentXml,
+            hasChanges: false,
+            numberingXml: null,
+            status: 'error',
+            error: resolved?.error || { code: 'TARGET_NOT_FOUND', message: 'Target paragraph not found.' }
+        };
+    }
     const targetParagraph = resolved.paragraph;
     preprocessRedlineTargetParagraph(targetParagraph);
     const currentParagraphText = getParagraphText(targetParagraph);
@@ -772,7 +826,9 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
     if (modifiedText === '' && currentParagraphText === '') {
         if (generateRedlines) {
             markParagraphMarkDeleted(xmlDoc, targetParagraph, author, createRevisionMetadata(author, xmlDoc));
+            options?._mutationLiveNodes?.push(targetParagraph);
         } else {
+            options?._mutationRemovedNodes?.push(targetParagraph);
             targetParagraph.parentNode?.removeChild(targetParagraph);
         }
         normalizeBodySectionOrder(xmlDoc);
@@ -937,7 +993,9 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         const insertionPoint = adjacencyInsertionCandidate.position === 'before'
             ? targetParagraph
             : targetParagraph.nextSibling;
+        ensureParagraphIdsOnImportedNode(listParagraph, operationSession);
         parent.insertBefore(listParagraph, insertionPoint);
+        options?._mutationLiveNodes?.push(listParagraph);
         normalizeBodySectionOrder(xmlDoc);
         return {
             documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
@@ -975,7 +1033,10 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
                 author,
                 { generateRedlines }
             );
-            parent.insertBefore(xmlDoc.importNode(plainParagraph, true), insertionPoint);
+            const imported = xmlDoc.importNode(plainParagraph, true);
+            ensureParagraphIdsOnImportedNode(imported, operationSession);
+            const inserted = parent.insertBefore(imported, insertionPoint);
+            options?._mutationLiveNodes?.push(inserted);
         }
 
         normalizeBodySectionOrder(xmlDoc);
@@ -1010,7 +1071,9 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
                 author,
                 { generateRedlines }
             );
+            ensureParagraphIdsOnImportedNode(listParagraph, operationSession);
             parent.insertBefore(listParagraph, insertionPoint);
+            options?._mutationLiveNodes?.push(listParagraph);
         }
         normalizeBodySectionOrder(xmlDoc);
         return {
@@ -1044,7 +1107,8 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
             author,
             runtimeContext,
             generateRedlines,
-            onInfo
+            onInfo,
+            options
         });
         if (explicitHeaderListConversion) return explicitHeaderListConversion;
 
@@ -1059,7 +1123,8 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
             author,
             runtimeContext,
             generateRedlines,
-            onInfo
+            onInfo,
+            options
         });
         if (listFallback) return listFallback;
     }
@@ -1144,9 +1209,17 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         );
     const anchorNode = scopeNodes[0];
     const parent = anchorNode.parentNode;
-    for (const node of replacementNodes) parent.insertBefore(xmlDoc.importNode(node, true), anchorNode);
+    for (const node of replacementNodes) {
+        const imported = xmlDoc.importNode(node, true);
+        ensureParagraphIdsOnImportedNode(imported, operationSession);
+        const inserted = parent.insertBefore(imported, anchorNode);
+        options?._mutationLiveNodes?.push(inserted);
+    }
     for (const scopeNode of scopeNodes) {
-        if (scopeNode && scopeNode.parentNode === parent) parent.removeChild(scopeNode);
+        if (scopeNode && scopeNode.parentNode === parent) {
+            options?._mutationRemovedNodes?.push(scopeNode);
+            parent.removeChild(scopeNode);
+        }
     }
     normalizeBodySectionOrder(xmlDoc);
     if (rawTableStructuralDedupeKey && tableStructuralDedupes && (useTableScope || containingTable)) {
@@ -1173,6 +1246,9 @@ export async function applyHighlightToParagraphByExactText(documentXml, targetTe
         onInfo,
         onWarn
     });
+    if (resolved?.error || !resolved?.paragraph) {
+        return { documentXml, hasChanges: false, status: 'error', error: resolved?.error || { code: 'TARGET_NOT_FOUND', message: 'Target paragraph not found.' } };
+    }
     const targetParagraph = resolved.paragraph;
     const paragraphXml = serializer.serializeToString(targetParagraph);
     const highlightedXml = applyHighlightToOoxml(paragraphXml, textToHighlight, color, {
@@ -1183,7 +1259,13 @@ export async function applyHighlightToParagraphByExactText(documentXml, targetTe
     if (!highlightedXml || highlightedXml === paragraphXml) return { documentXml, hasChanges: false };
     const { replacementNodes } = extractReplacementNodes(highlightedXml);
     const parent = targetParagraph.parentNode;
-    for (const node of replacementNodes) parent.insertBefore(xmlDoc.importNode(node, true), targetParagraph);
+    for (const node of replacementNodes) {
+        const imported = xmlDoc.importNode(node, true);
+        ensureParagraphIdsOnImportedNode(imported, operationSession);
+        const inserted = parent.insertBefore(imported, targetParagraph);
+        options?._mutationLiveNodes?.push(inserted);
+    }
+    options?._mutationRemovedNodes?.push(targetParagraph);
     parent.removeChild(targetParagraph);
     normalizeBodySectionOrder(xmlDoc);
     return {
@@ -1203,6 +1285,9 @@ export async function applyCommentToParagraphByExactText(documentXml, targetText
         onInfo,
         onWarn
     });
+    if (resolved?.error || !resolved?.paragraph) {
+        return { documentXml, hasChanges: false, commentsXml: null, status: 'error', error: resolved?.error || { code: 'TARGET_NOT_FOUND', message: 'Target paragraph not found.' } };
+    }
     const targetParagraph = resolved.paragraph;
     const paragraphXml = serializer.serializeToString(targetParagraph);
     const commentAnchor = typeof textToComment === 'string' && textToComment.length > 0
@@ -1228,7 +1313,13 @@ export async function applyCommentToParagraphByExactText(documentXml, targetText
     }
     const { replacementNodes } = extractReplacementNodes(commentResult.oxml);
     const parent = targetParagraph.parentNode;
-    for (const node of replacementNodes) parent.insertBefore(xmlDoc.importNode(node, true), targetParagraph);
+    for (const node of replacementNodes) {
+        const imported = xmlDoc.importNode(node, true);
+        ensureParagraphIdsOnImportedNode(imported, operationSession);
+        const inserted = parent.insertBefore(imported, targetParagraph);
+        options?._mutationLiveNodes?.push(inserted);
+    }
+    options?._mutationRemovedNodes?.push(targetParagraph);
     parent.removeChild(targetParagraph);
     normalizeBodySectionOrder(xmlDoc);
     return {
@@ -1325,8 +1416,8 @@ export async function applyFormattingToParagraphByExactText(
         onInfo,
         onWarn
     });
-    if (resolved?.error) {
-        return { documentXml, hasChanges: false, status: 'error', error: resolved.error };
+    if (resolved?.error || !resolved?.paragraph) {
+        return { documentXml, hasChanges: false, status: 'error', error: resolved?.error || { code: 'TARGET_NOT_FOUND', message: 'Target paragraph not found.' } };
     }
     const targetParagraph = resolved.paragraph;
 
@@ -1476,6 +1567,8 @@ export async function applyFormattingToParagraphByExactText(
     }
 
     normalizeBodySectionOrder(xmlDoc);
+    ensureParagraphIdsOnImportedNode(targetParagraph, operationSession);
+    options?._mutationLiveNodes?.push(targetParagraph);
 
     return {
         documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
@@ -1511,8 +1604,8 @@ export async function applyParagraphFormatToParagraphByExactText(
         onInfo,
         onWarn
     });
-    if (resolved?.error) {
-        return { documentXml, hasChanges: false, status: 'error', error: resolved.error };
+    if (resolved?.error || !resolved?.paragraph) {
+        return { documentXml, hasChanges: false, status: 'error', error: resolved?.error || { code: 'TARGET_NOT_FOUND', message: 'Target paragraph not found.' } };
     }
     const targetParagraph = resolved.paragraph;
 
@@ -1533,6 +1626,8 @@ export async function applyParagraphFormatToParagraphByExactText(
 
     applyParagraphPropertiesToPPr(xmlDoc, pPr, properties);
     normalizeBodySectionOrder(xmlDoc);
+    ensureParagraphIdsOnImportedNode(targetParagraph, operationSession);
+    options?._mutationLiveNodes?.push(targetParagraph);
 
     return {
         documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),

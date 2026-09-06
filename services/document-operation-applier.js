@@ -17,6 +17,10 @@ import {
     applyParagraphFormatToParagraphByExactText,
     applyToParagraphByExactText
 } from './document-operation-mutations.js';
+import {
+    deriveCapturedEntity,
+    invalidateAffectedCaptures
+} from './capture-engine.js';
 
 export function normalizeOperationError(error) {
     return {
@@ -138,7 +142,9 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
         targetDescriptor: operation.targetDescriptor,
         _resolutionCapture: resolutionCapture,
         _revisionIdAllocator: session.revisionIdAllocator,
-        _documentOperationSession: session
+        _documentOperationSession: session,
+        _mutationLiveNodes: [],
+        _mutationRemovedNodes: []
     };
 
     try {
@@ -218,6 +224,15 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
             session.restoreSavepoint(savepoint);
         } else {
             session.markMutationCommitted();
+            if (operation.captureKey && session.captureTable) {
+                session.captureTable.set(
+                    operation.captureKey,
+                    deriveCapturedEntity(session, operation, operationOptions._mutationLiveNodes)
+                );
+            }
+            if (operationOptions._mutationRemovedNodes?.length > 0 && session.captureTable) {
+                invalidateAffectedCaptures(session.captureTable, operationOptions._mutationRemovedNodes);
+            }
             result.documentXml = session.deferSerialization
                 ? session.currentDocumentXml
                 : session.serializeCurrent();

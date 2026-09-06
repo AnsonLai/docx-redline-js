@@ -1486,10 +1486,11 @@ graph.
   execution.
 - Batches without capture fields preserve current scheduling exactly.
 
-### WP-15 — Capture Storage, Resolution, and Savepoints
+### WP-15 — Capture Storage, Resolution, and Savepoints [COMPLETED 2026-09-05]
 
 **Depends on:** WP-14  
-**Produces runtime changes:** Capture execution
+**Produces runtime changes:** Capture execution  
+**Status:** Completed — added `captureTable` to `DocumentOperationSession` with savepoint clone/restore and atomic rollback clearing. Implemented `deriveCapturedEntity`, `invalidateAffectedCaptures`, and `resolveTargetFromCapture` in `services/capture-engine.js`. Wired capture resolution and live/removed mutation node tracking into `services/document-operation-mutations.js` and `services/document-operation-applier.js`. Verified all 10 required routes (plain paragraph, structured content, lists, tables, producer no-ops, producer failures, consumer rollback, staleness detection, ambiguous selection, non-atomic isolation) in `tests/capture_resolution_tests.mjs` and all 82 test suites.
 
 **Files to inspect/edit**
 
