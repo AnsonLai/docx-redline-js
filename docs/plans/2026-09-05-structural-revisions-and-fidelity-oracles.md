@@ -1523,10 +1523,11 @@ graph.
 - Producer no-op, producer failure, consumer failure, stale capture, ambiguous
   selection, and later replacement of captured content.
 
-### WP-16 — Receipt Collector
+### WP-16 — Receipt Collector [COMPLETED 2026-09-05]
 
 **Depends on:** WP-03  
-**Produces runtime changes:** Internal telemetry collector
+**Produces runtime changes:** Internal telemetry collector  
+**Status:** Completed — added `ReceiptCollector` in `services/receipt-collector.js` owned by `DocumentOperationSession` with savepoint snapshots and restore. Instrumented `core/types.js` (`createRevisionMetadata`, `createReplacementRevisionEvent`), `engine/run-builders.js` (`createTrackChange`, `markParagraphMark`, `snapshotAndAttachRPrChange`, `snapshotAndAttachPPrChange`), `engine/reconstruction-writer.js`, `engine/table-mode.js`, `pipeline/serialization.js`, `services/comment-engine.js`, `services/document-operation-mutations.js`, `services/batch-operation-orchestrator.js`, and `services/standalone-docx-plumbing.js` to record revisions, comments, numbering, relationships, and targets directly at point of allocation/attachment. Verified via `tests/receipt_collector_tests.mjs` and all 83 test suites.
 
 **Files to inspect/edit**
 

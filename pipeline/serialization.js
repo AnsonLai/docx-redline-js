@@ -232,7 +232,8 @@ function buildSimpleRun(text, rPrXml) {
 function buildDeletionXml(item, options = {}) {
     const metadata = createRevisionMetadata(
         options.author ?? getDefaultAuthor(),
-        options.revisionIdAllocator
+        options.revisionIdAllocator,
+        'del'
     );
     const font = options.font ?? null;
     let rPr = item.rPrXml ? stripNamespaceDeclarations(item.rPrXml) : '';
@@ -257,7 +258,8 @@ function buildDeletionXml(item, options = {}) {
 function buildInsertionXml(item, formatHints, options = {}) {
     const metadata = createRevisionMetadata(
         options.author ?? getDefaultAuthor(),
-        options.revisionIdAllocator
+        options.revisionIdAllocator,
+        'ins'
     );
     const font = options.font ?? null;
 

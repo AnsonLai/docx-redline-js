@@ -295,7 +295,7 @@ export function getRevisionTimestamp(date = new Date()) {
  * @param {RevisionIdAllocator|Document|Element|null} [allocatorOrNode] - Scoped allocator or registered OOXML node
  * @returns {{ id: number, author: string, date: string }}
  */
-export function createRevisionMetadata(author, allocatorOrNode = null) {
+export function createRevisionMetadata(author, allocatorOrNode = null, kind = null) {
     const resolvedAuthor = typeof author === 'string' && author.trim()
         ? author.trim()
         : getDefaultAuthor();
@@ -303,8 +303,13 @@ export function createRevisionMetadata(author, allocatorOrNode = null) {
         ? allocatorOrNode
         : (getRevisionIdAllocatorForDocument(allocatorOrNode) || defaultRevisionIdAllocator);
 
+    const id = allocator.next();
+    if (allocator._receiptCollector) {
+        allocator._receiptCollector.recordRevision(id, kind || 'structural');
+    }
+
     return {
-        id: allocator.next(),
+        id,
         author: resolvedAuthor,
         date: getRevisionTimestamp()
     };
@@ -334,9 +339,17 @@ export function createReplacementRevisionEvent(author, allocatorOrNode = null) {
         ? allocatorOrNode
         : (getRevisionIdAllocatorForDocument(allocatorOrNode) || defaultRevisionIdAllocator);
     const date = getRevisionTimestamp();
+    const deletionId = allocator.next();
+    const insertionId = allocator.next();
+
+    if (allocator._receiptCollector) {
+        allocator._receiptCollector.recordRevision(deletionId, 'del');
+        allocator._receiptCollector.recordRevision(insertionId, 'ins');
+    }
+
     return {
-        deletionId: allocator.next(),
-        insertionId: allocator.next(),
+        deletionId,
+        insertionId,
         author: resolvedAuthor,
         date
     };

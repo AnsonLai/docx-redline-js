@@ -206,7 +206,7 @@ function upsertContentTypeOverride(ctDoc, partName, contentType) {
     return true;
 }
 
-function upsertDocumentRelationship(relsDoc, relType, target) {
+function upsertDocumentRelationship(relsDoc, relType, target, options = {}) {
     const relsRoot = relsDoc.getElementsByTagNameNS('*', 'Relationships')[0] || relsDoc.documentElement;
     const rels = Array.from(relsRoot.getElementsByTagNameNS('*', 'Relationship'));
     const hasRel = rels.some(rel => (rel.getAttribute('Type') || '') === relType);
@@ -221,11 +221,17 @@ function upsertDocumentRelationship(relsDoc, relType, target) {
         }
     }
 
+    const newId = `rId${maxId + 1}`;
     const rel = relsDoc.createElementNS(NS_RELS, 'Relationship');
-    rel.setAttribute('Id', `rId${maxId + 1}`);
+    rel.setAttribute('Id', newId);
     rel.setAttribute('Type', relType);
     rel.setAttribute('Target', target);
     relsRoot.appendChild(rel);
+    if (options?._receiptCollector) {
+        options._receiptCollector.recordRelationship(newId);
+    } else if (options?._documentOperationSession?.receiptCollector) {
+        options._documentOperationSession.receiptCollector.recordRelationship(newId);
+    }
     return true;
 }
 
@@ -289,7 +295,7 @@ export async function ensureNumberingArtifactsInZip(zip, numberingXmlList, optio
     const relsText = await readZipText(zip, DOCUMENT_RELS_PATH);
     if (relsText) {
         const relsDoc = parseXmlStrictStandalone(relsText, DOCUMENT_RELS_PATH);
-        if (upsertDocumentRelationship(relsDoc, NUMBERING_REL_TYPE, 'numbering.xml')) {
+        if (upsertDocumentRelationship(relsDoc, NUMBERING_REL_TYPE, 'numbering.xml', options)) {
             zip.file(DOCUMENT_RELS_PATH, serializer.serializeToString(relsDoc));
         }
     }
@@ -341,7 +347,7 @@ export async function ensureCommentsArtifactsInZip(zip, commentsXml, options = {
     const relsText = await readZipText(zip, DOCUMENT_RELS_PATH);
     if (relsText) {
         const relsDoc = parseXmlStrictStandalone(relsText, DOCUMENT_RELS_PATH);
-        if (upsertDocumentRelationship(relsDoc, COMMENTS_REL_TYPE, 'comments.xml')) {
+        if (upsertDocumentRelationship(relsDoc, COMMENTS_REL_TYPE, 'comments.xml', options)) {
             zip.file(DOCUMENT_RELS_PATH, serializer.serializeToString(relsDoc));
         }
     }

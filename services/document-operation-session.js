@@ -8,6 +8,7 @@ import {
     buildParagraphMetadataIndex,
     buildTargetReferenceSnapshot
 } from '../core/paragraph-targeting.js';
+import { ReceiptCollector } from './receipt-collector.js';
 
 /**
  * Owns the document state used by one standalone operation or batch.
@@ -38,12 +39,14 @@ export class DocumentOperationSession {
         this.authorsUsed = new Set();
         this.captureTable = new Map();
         this.nextCaptureParaId = 1;
+        this.receiptCollector = new ReceiptCollector();
 
         if (this.document) {
             this.instrumentation?.onDocumentParse?.(this.originalDocumentXml);
             this.revisionIdAllocator = options?._revisionIdAllocator instanceof RevisionIdAllocator
                 ? options._revisionIdAllocator
                 : new RevisionIdAllocator();
+            this.revisionIdAllocator._receiptCollector = this.receiptCollector;
             seedRevisionIdsFromDocument(this.document, this.revisionIdAllocator);
             setRevisionIdAllocatorForDocument(this.document, this.revisionIdAllocator);
             const paragraphIndex = this.getParagraphMetadataIndex();
@@ -97,7 +100,8 @@ export class DocumentOperationSession {
             hasChanges: this.hasChanges,
             currentDocumentXml: this.currentDocumentXml,
             captureTable: cloneCaptureTable(this.captureTable),
-            nextCaptureParaId: this.nextCaptureParaId
+            nextCaptureParaId: this.nextCaptureParaId,
+            receiptCollector: this.receiptCollector ? this.receiptCollector.createSavepoint() : null
         };
     }
 
@@ -115,7 +119,11 @@ export class DocumentOperationSession {
             if (savepoint.allocatorOccupiedIds instanceof Set) {
                 this.revisionIdAllocator.occupiedIds = new Set(savepoint.allocatorOccupiedIds);
             }
+            this.revisionIdAllocator._receiptCollector = this.receiptCollector;
             setRevisionIdAllocatorForDocument(this.document, this.revisionIdAllocator);
+        }
+        if (savepoint.receiptCollector && this.receiptCollector) {
+            this.receiptCollector.restoreSavepoint(savepoint.receiptCollector);
         }
         this.invalidateParagraphIndex();
     }
@@ -135,6 +143,7 @@ export class DocumentOperationSession {
         this.currentDocumentXml = this.originalDocumentXml;
         this.hasChanges = false;
         this.captureTable.clear();
+        this.receiptCollector?.clear();
         return this.originalDocumentXml;
     }
 }
@@ -153,6 +162,9 @@ export function prepareRevisionAllocator(xmlDoc, options = {}) {
     const allocator = options?._revisionIdAllocator instanceof RevisionIdAllocator
         ? options._revisionIdAllocator
         : new RevisionIdAllocator();
+    if (options?._documentOperationSession?.receiptCollector) {
+        allocator._receiptCollector = options._documentOperationSession.receiptCollector;
+    }
     seedRevisionIdsFromDocument(xmlDoc, allocator);
     setRevisionIdAllocatorForDocument(xmlDoc, allocator);
     return allocator;

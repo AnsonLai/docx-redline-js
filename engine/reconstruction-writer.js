@@ -361,7 +361,7 @@ function appendTextToCurrent(
 
             if (generateRedlines) {
                 const metadata = replacementEvent ? {
-                    id: createRevisionMetadata(author, xmlDoc).id,
+                    id: createRevisionMetadata(author, xmlDoc, 'del').id,
                     author: replacementEvent.author,
                     date: replacementEvent.date
                 } : null;
@@ -374,7 +374,7 @@ function appendTextToCurrent(
 
             if (type === 'insert' && generateRedlines) {
                 const metadata = replacementEvent ? {
-                    id: createRevisionMetadata(author, xmlDoc).id,
+                    id: createRevisionMetadata(author, xmlDoc, 'ins').id,
                     author: replacementEvent.author,
                     date: replacementEvent.date
                 } : null;

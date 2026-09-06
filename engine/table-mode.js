@@ -165,7 +165,7 @@ export function applyTextToTableTransformation(xmlDoc, modifiedText, serializer,
                 });
 
                 const del = createWordElement(workingDoc, 'w:del');
-                const metadata = createRevisionMetadata(author, workingDoc);
+                const metadata = createRevisionMetadata(author, workingDoc, 'del');
                 del.setAttribute('w:id', String(metadata.id));
                 del.setAttribute('w:author', metadata.author);
                 del.setAttribute('w:date', metadata.date);

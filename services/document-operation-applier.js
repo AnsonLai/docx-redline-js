@@ -131,6 +131,12 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
 
     const resolutionCapture = {};
     const savepoint = session.createSavepoint();
+    const operationIndex = typeof options._operationIndex === 'number' ? options._operationIndex : 1;
+    session.receiptCollector?.beginOperation(
+        operationIndex,
+        operation.operationId,
+        authorUsed
+    );
     const operationOptions = {
         ...options,
         ...(typeof operation.generateRedlines === 'boolean' ? { generateRedlines: operation.generateRedlines } : {}),
@@ -233,6 +239,15 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
             if (operationOptions._mutationRemovedNodes?.length > 0 && session.captureTable) {
                 invalidateAffectedCaptures(session.captureTable, operationOptions._mutationRemovedNodes);
             }
+            if (resolutionCapture.resolvedTarget) {
+                session.receiptCollector?.recordAffectedTarget(resolutionCapture.resolvedTarget);
+            }
+            if (Array.isArray(result.warnings)) {
+                for (const w of result.warnings) {
+                    session.receiptCollector?.recordWarning(w);
+                }
+            }
+            session.receiptCollector?.commitOperation('applied');
             result.documentXml = session.deferSerialization
                 ? session.currentDocumentXml
                 : session.serializeCurrent();

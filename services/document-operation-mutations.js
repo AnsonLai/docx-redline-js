@@ -504,6 +504,20 @@ async function buildInsertedPlainParagraph(xmlDoc, anchorParagraph, text, revisi
     return wrapParagraphContentInInsertion(xmlDoc, sourceParagraph, revisionMetadata, author);
 }
 
+function collectNumberingIdsFromNodes(nodes) {
+    const ids = new Set();
+    for (const node of nodes || []) {
+        const numIdNodes = Array.from(node?.getElementsByTagNameNS?.('*', 'numId') || []);
+        for (const numIdNode of numIdNodes) {
+            const val = numIdNode.getAttribute('w:val') || numIdNode.getAttribute('val');
+            if (val != null && val !== '') {
+                ids.add(String(val));
+            }
+        }
+    }
+    return Array.from(ids);
+}
+
 async function tryExplicitDecimalHeaderListConversion({
     xmlDoc,
     serializer,
@@ -618,6 +632,12 @@ async function tryExplicitDecimalHeaderListConversion({
     options?._mutationRemovedNodes?.push(targetParagraph);
     parent.removeChild(targetParagraph);
     normalizeBodySectionOrder(xmlDoc);
+    if (operationSession?.receiptCollector && numberingXml) {
+        const numIds = collectNumberingIdsFromNodes(options?._mutationLiveNodes);
+        for (const id of numIds) {
+            operationSession.receiptCollector.recordNumbering(id);
+        }
+    }
     return {
         documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
         hasChanges: true,
@@ -761,6 +781,12 @@ async function trySingleParagraphListStructuralFallback({
     options?._mutationRemovedNodes?.push(targetParagraph);
     parent.removeChild(targetParagraph);
     normalizeBodySectionOrder(xmlDoc);
+    if (operationSession?.receiptCollector && numberingXml) {
+        const numIds = collectNumberingIdsFromNodes(options?._mutationLiveNodes);
+        for (const id of numIds) {
+            operationSession.receiptCollector.recordNumbering(id);
+        }
+    }
     return {
         documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
         hasChanges: true,
@@ -1225,6 +1251,12 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
     if (rawTableStructuralDedupeKey && tableStructuralDedupes && (useTableScope || containingTable)) {
         tableStructuralDedupes.add(rawTableStructuralDedupeKey);
     }
+    if (operationSession?.receiptCollector && numberingXml) {
+        const numIds = collectNumberingIdsFromNodes(options?._mutationLiveNodes);
+        for (const id of numIds) {
+            operationSession.receiptCollector.recordNumbering(id);
+        }
+    }
     return {
         documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
         hasChanges: true,
@@ -1322,6 +1354,11 @@ export async function applyCommentToParagraphByExactText(documentXml, targetText
     options?._mutationRemovedNodes?.push(targetParagraph);
     parent.removeChild(targetParagraph);
     normalizeBodySectionOrder(xmlDoc);
+    if (operationSession?.receiptCollector && Array.isArray(commentResult.placedComments)) {
+        for (const c of commentResult.placedComments) {
+            operationSession.receiptCollector.recordComment(c.id);
+        }
+    }
     return {
         documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
         hasChanges: true,

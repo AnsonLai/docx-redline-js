@@ -238,10 +238,12 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
         }
     }
 
-    const session = new DocumentOperationSession(documentXml, {
-        ...options,
-        _deferDocumentSerialization: true
-    });
+    const session = options?._documentOperationSession instanceof DocumentOperationSession
+        ? options._documentOperationSession
+        : new DocumentOperationSession(documentXml, {
+            ...options,
+            _deferDocumentSerialization: true
+        });
     if (!session.valid) {
         return {
             documentXml,
@@ -298,7 +300,8 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
                 {
                     ...options,
                     _documentOperationSession: session,
-                    _deferDocumentSerialization: true
+                    _deferDocumentSerialization: true,
+                    _operationIndex: index + 1
                 }
             );
             hasChanges = hasChanges || result.hasChanges === true;

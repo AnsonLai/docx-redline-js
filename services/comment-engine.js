@@ -218,6 +218,7 @@ export function injectCommentsIntoOoxml(oxml, comments, options = {}) {
         hasChanges: true,
         commentsXml: buildCommentsPartXml(placedComments),
         commentsApplied: placedComments.length,
+        placedComments,
         warnings,
         resolvedAnchors,
         ...(errors.length > 0 ? { status: 'error', error: errors[0], errors } : {})
