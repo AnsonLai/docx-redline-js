@@ -9,5 +9,6 @@ export { preflightOperations } from './operation-preflight.js';
 export { applyOperationToDocumentXml } from './document-operation-applier.js';
 export {
     applyOperationsToDocumentXml,
-    orderOperationsForStableTargets
+    orderOperationsForStableTargets,
+    buildOperationDependencyPlan
 } from './batch-operation-orchestrator.js';

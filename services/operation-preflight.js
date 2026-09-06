@@ -23,6 +23,7 @@ import {
     resolveDocumentOperationAuthor,
     validateDocumentOperation
 } from './document-operation-contract.js';
+import { buildOperationDependencyPlan } from './batch-operation-orchestrator.js';
 
 function normalizedError(error) {
     return {
@@ -98,6 +99,19 @@ export function preflightOperations(documentXml, operations, author, options = {
         rejected: null
     };
     const sourceOperations = Array.isArray(operations) ? operations : [];
+    const dependencyPlan = buildOperationDependencyPlan(sourceOperations);
+    if (!dependencyPlan.valid) {
+        return {
+            valid: false,
+            status: 'error',
+            error: dependencyPlan.error,
+            results: [],
+            conflicts: [],
+            authorsUsed: [],
+            requiredArtifacts: { comments: false, numbering: false }
+        };
+    }
+
     const strictTargets = options.strictTargets !== false;
     const results = [];
     const authorsUsed = new Set();
@@ -126,6 +140,20 @@ export function preflightOperations(documentXml, operations, author, options = {
 
         commentsRequired = commentsRequired || operation.operationKind === 'comment';
         numberingRequired = numberingRequired || operationNeedsNumbering(operation);
+
+        if (operation.targetDescriptor?.captureRef) {
+            results.push({
+                index: index + 1,
+                type: sourceOperation?.type || 'redline',
+                operationType: operation.operationKind,
+                status: 'deferred',
+                authorUsed,
+                resolvedBy: 'capture',
+                captureRef: operation.targetDescriptor.captureRef,
+                ...(operation.targetDescriptor.select ? { select: operation.targetDescriptor.select } : {})
+            });
+            continue;
+        }
 
         const targetView = operation.targetDescriptor?.revisionView === 'rejected' ? 'rejected' : 'accepted';
         let currentMetadataIndex = targetView === 'rejected'

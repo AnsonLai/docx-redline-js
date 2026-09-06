@@ -1451,10 +1451,11 @@ graph.
 - No operation result or artifact is partially produced.
 - Omitting the option follows the byte-for-byte legacy path.
 
-### WP-14 — Capture Contract and Dependency Graph
+### WP-14 — Capture Contract and Dependency Graph [COMPLETED 2026-09-05]
 
 **Depends on:** WP-05  
-**Produces runtime changes:** Validation and scheduling for capture batches
+**Produces runtime changes:** Validation and scheduling for capture batches  
+**Status:** Completed — added `operationId`, `captureKey`, `target.captureRef`, and `target.select` to document operation contract, TypeScript declarations, and JSON schema. Implemented `buildOperationDependencyPlan` performing Kahn topological sort with comment priority among ready nodes, duplicate key detection (`DUPLICATE_CAPTURE_KEY`), missing producer detection (`CAPTURE_NOT_FOUND`), and cycle detection (`CAPTURE_DEPENDENCY_CYCLE`). Integrated dependency graph planning into `applyOperationsToDocumentXml` and `orderOperationsForStableTargets`. Updated `preflightOperations` to validate dependency graph and mark capture consumers as `status: 'deferred'` without searching static DOM. Ensured batch `results` remain sorted by original operation index while `executionOrder` reports actual execution order. Verified in `tests/capture_dependency_graph_tests.mjs` and all 81 test suites.
 
 **Files to inspect/edit**
 

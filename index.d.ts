@@ -23,6 +23,7 @@ export type {
   HighlightDocumentOperation,
   InsertionAffinity,
   OperationConflict,
+  OperationDependencyPlan,
   OperationPreflightItemResult,
   OperationPreflightResult,
   ParagraphTargetDescriptor,
@@ -45,6 +46,11 @@ export interface RedlineError {
     | 'REVISION_MISMATCH'
     | 'REVISION_TOKEN_SCOPE_MISMATCH'
     | 'INVALID_REVISION_TOKEN'
+    | 'DUPLICATE_CAPTURE_KEY'
+    | 'CAPTURE_NOT_FOUND'
+    | 'CAPTURE_DEPENDENCY_CYCLE'
+    | 'AMBIGUOUS_CAPTURE_SELECTION'
+    | 'CAPTURE_STALE'
     | string;
   message: string;
   commentIds?: string[];

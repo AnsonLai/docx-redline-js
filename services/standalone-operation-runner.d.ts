@@ -11,6 +11,8 @@ export interface ParagraphTargetDescriptor {
   fingerprint?: string;
   sourceFingerprint?: string;
   revisionView?: 'accepted' | 'rejected';
+  captureRef?: string;
+  select?: string;
 }
 
 export interface InsertionAffinity {
@@ -22,6 +24,8 @@ export interface InsertionAffinity {
 }
 
 export interface DocumentOperationBase {
+  operationId?: string;
+  captureKey?: string;
   target?: string | ParagraphTargetDescriptor;
   targetRef?: number | string | null;
   author?: string;
@@ -174,9 +178,11 @@ export interface OperationPreflightItemResult {
   index: number;
   type: string;
   operationType: 'redline' | 'comment' | 'highlight' | 'format' | 'paragraph-format';
-  status: 'ready' | 'error';
+  status: 'ready' | 'deferred' | 'error';
   authorUsed: string;
   resolvedBy?: string;
+  captureRef?: string;
+  select?: string;
   resolvedTarget?: ResolvedDocumentTarget;
   matchDiagnostics?: {
     exactTextMatch: boolean;
@@ -213,6 +219,15 @@ export interface OperationPreflightResult {
   requiredArtifacts: { comments: boolean; numbering: boolean };
   error?: RedlineError;
 }
+
+export interface OperationDependencyPlan {
+  valid: boolean;
+  scheduled?: Array<{ operation: DocumentOperation; index: number }>;
+  captureProducers?: Map<string, number>;
+  error?: RedlineError;
+}
+
+export function buildOperationDependencyPlan(operations?: DocumentOperation[]): OperationDependencyPlan;
 
 export function orderOperationsForStableTargets(operations?: DocumentOperation[]): DocumentOperation[];
 

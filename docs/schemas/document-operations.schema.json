@@ -38,10 +38,12 @@
             "index": { "type": ["integer", "string"] }, "paragraphIndex": { "type": ["integer", "string"] },
             "paragraphId": { "type": "string" }, "occurrence": { "type": "integer", "minimum": 1 },
             "inTable": { "type": "boolean" }, "fingerprint": { "type": "string" }, "sourceFingerprint": { "type": "string" },
-            "revisionView": { "type": "string", "enum": ["accepted", "rejected"] }
+            "revisionView": { "type": "string", "enum": ["accepted", "rejected"] },
+            "captureRef": { "type": "string", "minLength": 1, "maxLength": 256 },
+            "select": { "type": "string", "minLength": 1 }
           },
           "additionalProperties": false,
-          "anyOf": [ { "required": ["exactText"] }, { "required": ["text"] }, { "required": ["index"] }, { "required": ["paragraphIndex"] }, { "required": ["paragraphId"] }, { "required": ["fingerprint"] }, { "required": ["sourceFingerprint"] } ]
+          "anyOf": [ { "required": ["exactText"] }, { "required": ["text"] }, { "required": ["index"] }, { "required": ["paragraphIndex"] }, { "required": ["paragraphId"] }, { "required": ["fingerprint"] }, { "required": ["sourceFingerprint"] }, { "required": ["captureRef"] } ]
         }
       ]
     },
@@ -49,6 +51,8 @@
       "type": "object",
       "required": ["type", "target"],
       "properties": {
+        "operationId": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "captureKey": { "type": "string", "minLength": 1, "maxLength": 256 },
         "target": { "$ref": "#/$defs/target" }, "targetRef": { "type": ["integer", "string", "null"] },
         "author": { "type": "string", "minLength": 1 }, "generateRedlines": { "type": "boolean" },
         "existingRevisions": { "enum": ["reject-input", "accept-all-first", "accept-all-first-keep-normalized"] },

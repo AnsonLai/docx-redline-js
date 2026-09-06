@@ -61,7 +61,9 @@ export function normalizeTargetDescriptor(target, legacyTargetRef = null) {
         fingerprint: nonEmptyString(target.fingerprint)
             ? target.fingerprint.trim()
             : (nonEmptyString(target.sourceFingerprint) ? target.sourceFingerprint.trim() : null),
-        revisionView: target.revisionView === 'rejected' ? 'rejected' : 'accepted'
+        revisionView: target.revisionView === 'rejected' ? 'rejected' : 'accepted',
+        captureRef: nonEmptyString(target.captureRef) ? target.captureRef.trim() : null,
+        select: typeof target.select === 'string' ? target.select : null
     };
 }
 
@@ -75,6 +77,8 @@ export function normalizeDocumentOperation(operation) {
 
     return {
         ...source,
+        operationId: nonEmptyString(source.operationId) ? source.operationId.trim() : null,
+        captureKey: nonEmptyString(source.captureKey) ? source.captureKey.trim() : null,
         operationKind: kind,
         targetDescriptor,
         target: targetDescriptor.text,
@@ -128,13 +132,41 @@ export function validateDocumentOperation(operation) {
         }
     }
 
+    if (operation.operationId != null && (!nonEmptyString(operation.operationId) || operation.operationId.trim().length > 256)) {
+        return {
+            valid: false,
+            error: { code: 'INVALID_OPERATION', message: 'operationId must be a non-empty string under 256 characters when provided.' }
+        };
+    }
+
+    if (operation.captureKey != null && (!nonEmptyString(operation.captureKey) || operation.captureKey.trim().length > 256)) {
+        return {
+            valid: false,
+            error: { code: 'INVALID_OPERATION', message: 'captureKey must be a non-empty string under 256 characters when provided.' }
+        };
+    }
+
+    if (isRecord(operation.target) && operation.target.captureRef != null && (!nonEmptyString(operation.target.captureRef) || operation.target.captureRef.trim().length > 256)) {
+        return {
+            valid: false,
+            error: { code: 'INVALID_OPERATION', message: 'target.captureRef must be a non-empty string under 256 characters when provided.' }
+        };
+    }
+
+    if (isRecord(operation.target) && operation.target.select != null && typeof operation.target.select !== 'string') {
+        return {
+            valid: false,
+            error: { code: 'INVALID_OPERATION', message: 'target.select must be a string when provided.' }
+        };
+    }
+
     const target = normalized.targetDescriptor;
-    if (!nonEmptyString(target.text) && target.index == null && !target.paragraphId) {
+    if (!nonEmptyString(target.text) && target.index == null && !target.paragraphId && !target.captureRef) {
         return {
             valid: false,
             error: {
                 code: 'INVALID_OPERATION',
-                message: 'Operation target must provide text, a paragraph index, or a paragraphId.'
+                message: 'Operation target must provide text, a paragraph index, a paragraphId, or a captureRef.'
             }
         };
     }

@@ -25,11 +25,136 @@ function operationTargetPriority(op) {
     return op?.type === 'comment' ? 0 : 1;
 }
 
+/**
+ * Builds a dependency graph and topological execution plan for a batch of operations.
+ *
+ * @param {Array<object>} operations
+ * @returns {{ valid: boolean, scheduled?: Array<{ operation: object, index: number }>, captureProducers?: Map<string, number>, error?: { code: string, message: string } }}
+ */
+export function buildOperationDependencyPlan(operations = []) {
+    const list = Array.isArray(operations) ? operations : [];
+    const captureProducers = new Map();
+
+    // 1. Collect and validate capture keys
+    for (let i = 0; i < list.length; i++) {
+        const op = list[i];
+        const captureKey = op?.captureKey ?? op?.targetDescriptor?.captureKey;
+        if (captureKey != null) {
+            if (typeof captureKey !== 'string' || !captureKey.trim() || captureKey.trim().length > 256) {
+                return {
+                    valid: false,
+                    error: {
+                        code: 'INVALID_OPERATION',
+                        message: `Operation ${i + 1} declared an invalid captureKey: must be a non-empty string under 256 characters.`
+                    }
+                };
+            }
+            const key = captureKey.trim();
+            if (captureProducers.has(key)) {
+                const priorIndex = captureProducers.get(key);
+                return {
+                    valid: false,
+                    error: {
+                        code: 'DUPLICATE_CAPTURE_KEY',
+                        message: `Duplicate capture key "${key}" declared by operations at indices ${priorIndex + 1} and ${i + 1}.`
+                    }
+                };
+            }
+            captureProducers.set(key, i);
+        }
+    }
+
+    // 2. Build dependency edges
+    const inDegrees = new Array(list.length).fill(0);
+    const dependents = Array.from({ length: list.length }, () => new Set());
+    const dependencies = Array.from({ length: list.length }, () => new Set());
+
+    for (let i = 0; i < list.length; i++) {
+        const op = list[i];
+        const captureRef = op?.target?.captureRef ?? op?.targetDescriptor?.captureRef;
+        if (captureRef != null) {
+            if (typeof captureRef !== 'string' || !captureRef.trim() || captureRef.trim().length > 256) {
+                return {
+                    valid: false,
+                    error: {
+                        code: 'INVALID_OPERATION',
+                        message: `Operation ${i + 1} referenced an invalid captureRef: must be a non-empty string under 256 characters.`
+                    }
+                };
+            }
+            const ref = captureRef.trim();
+            if (!captureProducers.has(ref)) {
+                return {
+                    valid: false,
+                    error: {
+                        code: 'CAPTURE_NOT_FOUND',
+                        message: `Capture "${ref}" referenced by operation ${i + 1} was not found in the batch.`
+                    }
+                };
+            }
+            const producerIndex = captureProducers.get(ref);
+            if (producerIndex === i) {
+                return {
+                    valid: false,
+                    error: {
+                        code: 'CAPTURE_DEPENDENCY_CYCLE',
+                        message: `Capture dependency cycle detected: operation ${i + 1} references its own capture "${ref}".`
+                    }
+                };
+            }
+            if (!dependencies[i].has(producerIndex)) {
+                dependencies[i].add(producerIndex);
+                dependents[producerIndex].add(i);
+                inDegrees[i]++;
+            }
+        }
+    }
+
+    // 3. Stable topological sort with comment priority among ready nodes
+    const ready = [];
+    for (let i = 0; i < list.length; i++) {
+        if (inDegrees[i] === 0) {
+            ready.push({ operation: list[i], index: i });
+        }
+    }
+
+    const scheduled = [];
+    while (ready.length > 0) {
+        ready.sort((a, b) => operationTargetPriority(a.operation) - operationTargetPriority(b.operation) || a.index - b.index);
+        const next = ready.shift();
+        scheduled.push(next);
+
+        for (const depIndex of dependents[next.index]) {
+            inDegrees[depIndex]--;
+            if (inDegrees[depIndex] === 0) {
+                ready.push({ operation: list[depIndex], index: depIndex });
+            }
+        }
+    }
+
+    if (scheduled.length < list.length) {
+        return {
+            valid: false,
+            error: {
+                code: 'CAPTURE_DEPENDENCY_CYCLE',
+                message: 'Capture dependency cycle detected among batch operations.'
+            }
+        };
+    }
+
+    return {
+        valid: true,
+        scheduled,
+        captureProducers
+    };
+}
+
 export function orderOperationsForStableTargets(operations = []) {
-    return (Array.isArray(operations) ? operations : [])
-        .map((operation, index) => ({ operation, index }))
-        .sort((a, b) => operationTargetPriority(a.operation) - operationTargetPriority(b.operation) || a.index - b.index)
-        .map(item => item.operation);
+    const plan = buildOperationDependencyPlan(operations);
+    if (!plan.valid) {
+        throw Object.assign(new Error(plan.error.message), { code: plan.error.code });
+    }
+    return plan.scheduled.map(item => item.operation);
 }
 
 function mergeCommentsXml(existingXml, incomingXml) {
@@ -132,9 +257,21 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
         };
     }
     const sourceOperations = Array.isArray(operations) ? operations : [];
-    const scheduled = sourceOperations
-        .map((operation, index) => ({ operation, index }))
-        .sort((a, b) => operationTargetPriority(a.operation) - operationTargetPriority(b.operation) || a.index - b.index);
+    const dependencyPlan = buildOperationDependencyPlan(sourceOperations);
+    if (!dependencyPlan.valid) {
+        return {
+            documentXml,
+            hasChanges: false,
+            commentsXml: null,
+            numberingXmlParts: [],
+            results: [],
+            executionOrder: [],
+            authorsUsed: [],
+            status: 'error',
+            error: dependencyPlan.error
+        };
+    }
+    const scheduled = dependencyPlan.scheduled;
 
     const atomic = options.atomic !== false;
     const continueOnError = options.continueOnError !== false;
@@ -219,7 +356,7 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
         hasChanges: rolledBack ? false : hasChanges,
         commentsXml: rolledBack ? null : session.commentsXml,
         numberingXmlParts: rolledBack ? [] : session.numberingXmlParts,
-        results,
+        results: [...results].sort((a, b) => (a.index || 0) - (b.index || 0)),
         executionOrder,
         authorsUsed: rolledBack ? [] : Array.from(authorsUsed),
         ...(rolledBack ? {
