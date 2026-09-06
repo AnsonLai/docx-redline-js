@@ -4,6 +4,15 @@
 
 import { NS_W, escapeXml } from '../core/types.js';
 
+export const NS_W14 = 'http://schemas.microsoft.com/office/word/2010/wordml';
+export const NS_W15 = 'http://schemas.microsoft.com/office/word/2012/wordml';
+
+export function createCommentParaId(commentId) {
+    const numeric = Number.parseInt(String(commentId), 10);
+    const value = Number.isFinite(numeric) ? (0x70000000 + (numeric >>> 0)) >>> 0 : 0x70000000;
+    return value.toString(16).toUpperCase().padStart(8, '0').slice(-8);
+}
+
 /**
  * Builds a single w:comment element.
  *
@@ -13,13 +22,13 @@ import { NS_W, escapeXml } from '../core/types.js';
  * @param {string} date - ISO date string
  * @returns {string}
  */
-export function buildCommentElement(commentId, author, content, date) {
+export function buildCommentElement(commentId, author, content, date, paraId = createCommentParaId(commentId)) {
     const initials = author.split(' ').map(word => word[0]).join('').toUpperCase() || 'AI';
     const escapedContent = escapeXml(content);
     const escapedAuthor = escapeXml(author);
 
     return `<w:comment w:id="${commentId}" w:author="${escapedAuthor}" w:date="${date}" w:initials="${initials}">
-      <w:p>
+      <w:p w14:paraId="${escapeXml(paraId)}" xmlns:w14="${NS_W14}">
         <w:r><w:t>${escapedContent}</w:t></w:r>
       </w:p>
     </w:comment>`;
@@ -37,12 +46,20 @@ export function buildCommentsPartXml(comments) {
     }
 
     const commentElements = comments.map(comment =>
-        buildCommentElement(comment.id, comment.author, comment.content, comment.date)
+        buildCommentElement(comment.id, comment.author, comment.content, comment.date, comment.paraId)
     ).join('\n    ');
 
     return `<w:comments xmlns:w="${NS_W}">
     ${commentElements}
   </w:comments>`;
+}
+
+export function buildCommentsExtendedPartXml(entries) {
+    const body = (entries || []).map(entry => {
+        const parent = entry.paraIdParent ? ` w15:paraIdParent="${escapeXml(entry.paraIdParent)}"` : '';
+        return `<w15:commentEx w15:paraId="${escapeXml(entry.paraId)}"${parent} w15:done="${entry.done ? '1' : '0'}"/>`;
+    }).join('');
+    return `<w15:commentsEx xmlns:w15="${NS_W15}">${body}</w15:commentsEx>`;
 }
 
 /**

@@ -17,6 +17,7 @@ import {
     applyParagraphFormatToParagraphByExactText,
     applyToParagraphByExactText
 } from './document-operation-mutations.js';
+import { applyCommentReplyToParts } from './comment-replies.js';
 import {
     deriveCapturedEntity,
     invalidateAffectedCaptures
@@ -57,7 +58,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
     const operation = validation.operation || normalizeDocumentOperation(op);
     const authorUsed = resolveDocumentOperationAuthor(operation, author, getDefaultAuthor());
 
-    if (operation.targetDescriptor?.revisionView === 'rejected') {
+    if (operation.operationKind !== 'comment_reply' && operation.targetDescriptor?.revisionView === 'rejected') {
         return {
             documentXml,
             hasChanges: false,
@@ -105,6 +106,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
         const currentToken = await computeDocumentPartsRevisionToken({
             documentXml,
             commentsXml: runtimeContext?.commentsXml || options.commentsXml,
+            commentsExtendedXml: runtimeContext?.commentsExtendedXml || options.commentsExtendedXml,
             numberingXml: runtimeContext?.numberingXml || options.numberingXml,
             stylesXml: runtimeContext?.stylesXml || options.stylesXml
         }, options);
@@ -173,7 +175,30 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
 
     try {
         let result;
-        if (operation.operationKind === 'highlight') {
+        if (operation.operationKind === 'comment_reply') {
+            const existingCommentsXml = session.commentsXml || runtimeContext?.commentsXml || options.commentsXml;
+            const existingExtendedXml = session.commentsExtendedXml || runtimeContext?.commentsExtendedXml || options.commentsExtendedXml;
+            let commentId = typeof options.commentIdAllocator === 'function' ? options.commentIdAllocator() : null;
+            if (commentId == null && existingCommentsXml) {
+                const ids = [...existingCommentsXml.matchAll(/<(?:w:)?comment\b[^>]*\b(?:w:)?id=["'](\d+)["']/g)].map(match => Number(match[1]));
+                commentId = (ids.length ? Math.max(...ids) : -1) + 1;
+            }
+            if (commentId == null) {
+                result = { documentXml, hasChanges: false, status: 'error', error: { code: 'COMMENTS_PART_MISSING', message: 'A comment reply requires an existing comments part.' } };
+            } else {
+                result = applyCommentReplyToParts({
+                    commentsXml: existingCommentsXml,
+                    commentsExtendedXml: existingExtendedXml,
+                    parentCommentId: operation.parentCommentId,
+                    commentId,
+                    commentContent: operation.commentContent,
+                    author: authorUsed,
+                    date: operation.date || new Date().toISOString()
+                });
+                result.documentXml = documentXml;
+                if (result.hasChanges && session.receiptCollector) session.receiptCollector.recordComment(commentId);
+            }
+        } else if (operation.operationKind === 'highlight') {
             result = await applyHighlightToParagraphByExactText(
                 documentXml,
                 operation.target,
@@ -229,7 +254,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
             );
         }
         if (
-            operation.operationKind === 'comment'
+            (operation.operationKind === 'comment' || operation.operationKind === 'comment_reply')
             && result?.hasChanges !== true
             && result?.status !== 'error'
             && !result?.error
@@ -267,7 +292,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                 }
             }
         } else {
-            session.markMutationCommitted();
+            session.markMutationCommitted(operation.operationKind !== 'comment_reply');
             if (operation.captureKey && session.captureTable) {
                 session.captureTable.set(
                     operation.captureKey,

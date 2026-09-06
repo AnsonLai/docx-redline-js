@@ -3,7 +3,7 @@ import { configureXmlProvider } from '../adapters/xml-adapter.js';
 import { inspectDocumentParts } from '../services/document-inspection.js';
 import { applyOperationsToDocumentXml, preflightOperations } from '../services/standalone-operation-runner.js';
 import { createDynamicNumberingIdState, mergeNumberingXmlBySchemaOrder } from '../services/numbering-helpers.js';
-import { ensureCommentsArtifactsInZip, ensureNumberingArtifactsInZip, validateDocxPackage } from '../services/standalone-docx-plumbing.js';
+import { ensureCommentsArtifactsInZip, ensureCommentsExtendedArtifactsInZip, ensureNumberingArtifactsInZip, validateDocxPackage } from '../services/standalone-docx-plumbing.js';
 import { validateRedlineOoxml } from '../core/redline-validation.js';
 import { acceptTrackedChangesInOoxml, rejectTrackedChangesInOoxml, deleteCommentsByAuthorInOoxml } from '../services/revision-comment-management.js';
 import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
@@ -59,7 +59,8 @@ function existingCommentDetails(entries) {
         details[id] = {
             id,
             author: comment.getAttribute('w:author') || comment.getAttribute('author') || '',
-            text: String(comment.textContent || '').trim()
+            text: String(comment.textContent || '').trim(),
+            paraId: Array.from(comment.getElementsByTagNameNS('*', 'p'))[0]?.getAttribute('w14:paraId') || null
         };
     }
     return details;
@@ -72,6 +73,7 @@ export class DocxDocument {
         return inspectDocumentParts({
             documentXml: text(this.entries, 'word/document.xml'),
             commentsXml: text(this.entries, 'word/comments.xml'),
+            commentsExtendedXml: text(this.entries, 'word/commentsExtended.xml'),
             numberingXml: text(this.entries, 'word/numbering.xml'),
             stylesXml: text(this.entries, 'word/styles.xml')
         }, { ...options, digestFn });
@@ -146,7 +148,11 @@ export class DocxDocument {
             originalIssues = baseline.issues.map(issue => ({ source: 'word/document.xml', ...issue }));
             try { await validateDocxPackage(new MemoryZip(cloneEntries(originalEntries))); }
             catch (error) { originalIssues.push({ source: 'package', code: 'PACKAGE_VALIDATION', severity: 'error', message: error.message }); }
-            const context = { numberingIdState: createDynamicNumberingIdState(text(working, 'word/numbering.xml') || undefined) };
+            const context = {
+                numberingIdState: createDynamicNumberingIdState(text(working, 'word/numbering.xml') || undefined),
+                commentsXml: text(working, 'word/comments.xml'),
+                commentsExtendedXml: text(working, 'word/commentsExtended.xml')
+            };
             const { expectedRevision: _pkgExpectedRevision, ...runnerOptions } = options;
             const result = await applyOperationsToDocumentXml(documentXml, operations, options.author, context, {
                 ...runnerOptions, atomic: options.atomic !== false, strictTargets: options.strictTargets !== false,
@@ -157,7 +163,8 @@ export class DocxDocument {
             if (!result.hasChanges) return { ...result, status: result.status || 'ok', written: false, artifactsChanged: [], validation: { originalIssues, generatedIssues: [] }, buffer: Buffer.from(this.originalBuffer), toBuffer: () => Buffer.from(this.originalBuffer) };
             working.set('word/document.xml', Buffer.from(result.documentXml));
             await ensureNumberingArtifactsInZip(zip, result.numberingXmlParts, { mergeNumberingXml: mergeNumberingXmlBySchemaOrder });
-            await ensureCommentsArtifactsInZip(zip, result.commentsXml);
+            await ensureCommentsArtifactsInZip(zip, result.commentsXml, { replaceExisting: result.commentsXmlMode === 'replace' });
+            await ensureCommentsExtendedArtifactsInZip(zip, result.commentsExtendedXml, { replaceExisting: result.commentsExtendedXmlMode === 'replace' });
             if (options.validate !== false) {
                 const generated = validateRedlineOoxml(result.documentXml);
                 const baselineErrors = new Set(baseline.issues.filter(i => i.severity === 'error').map(i => `${i.code}:${i.message}`));
@@ -199,7 +206,39 @@ export class DocxDocument {
         const matches = comment => options.allAuthors === true || (comment.getAttribute('w:author') || comment.getAttribute('author')) === options.author;
         const ids = new Set(Array.from(parsed.doc.getElementsByTagNameNS('*', 'comment')).filter(matches).map(node => node.getAttribute('w:id') || node.getAttribute('id')).filter(Boolean));
         if (!ids.size) return { status: 'ok', hasChanges: false, written: false, commentsRemoved: 0, referencesRemoved: 0, artifactsChanged: [], buffer: source, toBuffer: () => Buffer.from(source) };
+        const commentsExtendedXml = text(working, 'word/commentsExtended.xml');
+        let extendedParsed = null;
+        const removedParaIds = new Set();
+        if (commentsExtendedXml) {
+            extendedParsed = parseOoxmlSafe(commentsExtendedXml, 'application/xml');
+            if (!extendedParsed.doc || extendedParsed.error) return packageFailure(source, 'PARSE_ERROR', extendedParsed.error?.message || 'Could not parse commentsExtended.xml.');
+            const idByParaId = new Map();
+            for (const comment of Array.from(parsed.doc.getElementsByTagNameNS('*', 'comment'))) {
+                const id = comment.getAttribute('w:id') || comment.getAttribute('id');
+                const paragraph = Array.from(comment.getElementsByTagNameNS('*', 'p'))[0];
+                const paraId = paragraph?.getAttribute('w14:paraId') || paragraph?.getAttribute('paraId');
+                if (paraId) idByParaId.set(paraId.toUpperCase(), id);
+            }
+            for (const [paraId, id] of idByParaId) if (ids.has(id)) removedParaIds.add(paraId);
+            let expanded = true;
+            while (expanded) {
+                expanded = false;
+                for (const entry of Array.from(extendedParsed.doc.getElementsByTagNameNS('*', 'commentEx'))) {
+                    const paraId = (entry.getAttribute('w15:paraId') || entry.getAttribute('paraId') || '').toUpperCase();
+                    const parentParaId = (entry.getAttribute('w15:paraIdParent') || entry.getAttribute('paraIdParent') || '').toUpperCase();
+                    if (parentParaId && removedParaIds.has(parentParaId) && !removedParaIds.has(paraId)) {
+                        removedParaIds.add(paraId); if (idByParaId.has(paraId)) ids.add(idByParaId.get(paraId)); expanded = true;
+                    }
+                }
+            }
+        }
         const commentsResult = deleteCommentsByAuthorInOoxml(commentsXml, { author: options.author, allAuthors: options.allAuthors === true });
+        const remainingParsed = parseOoxmlSafe(commentsResult.oxml, 'application/xml');
+        if (!remainingParsed.doc || remainingParsed.error) return packageFailure(source, 'PARSE_ERROR', remainingParsed.error?.message || 'Could not parse updated comments.xml.');
+        for (const comment of Array.from(remainingParsed.doc.getElementsByTagNameNS('*', 'comment'))) {
+            const id = comment.getAttribute('w:id') || comment.getAttribute('id');
+            if (ids.has(id)) comment.parentNode?.removeChild(comment);
+        }
         const documentParsed = parseOoxmlSafe(text(working, 'word/document.xml'), 'application/xml');
         if (!documentParsed.doc || documentParsed.error) return packageFailure(source, 'PARSE_ERROR', documentParsed.error?.message || 'Could not parse document.xml.');
         let referencesRemoved = 0;
@@ -208,12 +247,20 @@ export class DocxDocument {
             const parent = node.parentNode; parent.removeChild(node); referencesRemoved += 1;
             if (name === 'commentReference' && parent.localName === 'r' && !Array.from(parent.childNodes || []).some(child => child.nodeType === 1 && child.localName !== 'rPr')) parent.parentNode?.removeChild(parent);
         }
-        working.set('word/comments.xml', Buffer.from(commentsResult.oxml));
-        working.set('word/document.xml', Buffer.from(createSerializer().serializeToString(documentParsed.doc)));
+        const serializer = createSerializer();
+        working.set('word/comments.xml', Buffer.from(serializer.serializeToString(remainingParsed.doc)));
+        if (extendedParsed?.doc) {
+            for (const entry of Array.from(extendedParsed.doc.getElementsByTagNameNS('*', 'commentEx'))) {
+                const paraId = (entry.getAttribute('w15:paraId') || entry.getAttribute('paraId') || '').toUpperCase();
+                if (removedParaIds.has(paraId)) entry.parentNode?.removeChild(entry);
+            }
+            working.set('word/commentsExtended.xml', Buffer.from(serializer.serializeToString(extendedParsed.doc)));
+        }
+        working.set('word/document.xml', Buffer.from(serializer.serializeToString(documentParsed.doc)));
         try { if (options.validate !== false) await validateDocxPackage(new MemoryZip(working)); }
         catch (error) { return packageFailure(source, 'PACKAGE_VALIDATION', error.message); }
         this.entries = working; const output = this.toBuffer(); this.originalBuffer = Buffer.from(output);
-        return { status: 'ok', hasChanges: true, written: true, commentsRemoved: commentsResult.commentsRemoved, referencesRemoved, artifactsChanged: ['word/document.xml', 'word/comments.xml'], buffer: output, toBuffer: () => Buffer.from(output) };
+        return { status: 'ok', hasChanges: true, written: true, commentsRemoved: ids.size, referencesRemoved, artifactsChanged: ['word/document.xml', 'word/comments.xml', ...(extendedParsed?.doc ? ['word/commentsExtended.xml'] : [])], buffer: output, toBuffer: () => Buffer.from(output) };
     }
 }
 

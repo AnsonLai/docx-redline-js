@@ -12,10 +12,13 @@ const NUMBERING_REL_TYPE = 'http://schemas.openxmlformats.org/officeDocument/200
 const NUMBERING_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml';
 const COMMENTS_REL_TYPE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments';
 const COMMENTS_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml';
+const COMMENTS_EXTENDED_REL_TYPE = 'http://schemas.microsoft.com/office/2011/relationships/commentsExtended';
+const COMMENTS_EXTENDED_CONTENT_TYPE = 'application/vnd.ms-word.commentsExtended+xml';
 
 const DOCUMENT_PATH = 'word/document.xml';
 const NUMBERING_PATH = 'word/numbering.xml';
 const COMMENTS_PATH = 'word/comments.xml';
+const COMMENTS_EXTENDED_PATH = 'word/commentsExtended.xml';
 const CONTENT_TYPES_PATH = '[Content_Types].xml';
 const DOCUMENT_RELS_PATH = 'word/_rels/document.xml.rels';
 
@@ -314,7 +317,7 @@ export async function ensureCommentsArtifactsInZip(zip, commentsXml, options = {
 
     const serializer = createSerializer();
     const existingText = await readZipText(zip, COMMENTS_PATH);
-    if (!existingText) {
+    if (!existingText || options.replaceExisting === true) {
         onInfo('[Demo] Adding comments.xml');
         zip.file(COMMENTS_PATH, commentsXml);
     } else {
@@ -348,6 +351,28 @@ export async function ensureCommentsArtifactsInZip(zip, commentsXml, options = {
     if (relsText) {
         const relsDoc = parseXmlStrictStandalone(relsText, DOCUMENT_RELS_PATH);
         if (upsertDocumentRelationship(relsDoc, COMMENTS_REL_TYPE, 'comments.xml', options)) {
+            zip.file(DOCUMENT_RELS_PATH, serializer.serializeToString(relsDoc));
+        }
+    }
+}
+
+/** Ensures the modern Word comment-threading part and package metadata exist. */
+export async function ensureCommentsExtendedArtifactsInZip(zip, commentsExtendedXml, options = {}) {
+    if (!commentsExtendedXml) return;
+    parseXmlStrictStandalone(commentsExtendedXml, 'word/commentsExtended.xml');
+    zip.file(COMMENTS_EXTENDED_PATH, commentsExtendedXml);
+    const serializer = createSerializer();
+    const ctText = await readZipText(zip, CONTENT_TYPES_PATH);
+    if (ctText) {
+        const ctDoc = parseXmlStrictStandalone(ctText, CONTENT_TYPES_PATH);
+        if (upsertContentTypeOverride(ctDoc, '/word/commentsExtended.xml', COMMENTS_EXTENDED_CONTENT_TYPE)) {
+            zip.file(CONTENT_TYPES_PATH, serializer.serializeToString(ctDoc));
+        }
+    }
+    const relsText = await readZipText(zip, DOCUMENT_RELS_PATH);
+    if (relsText) {
+        const relsDoc = parseXmlStrictStandalone(relsText, DOCUMENT_RELS_PATH);
+        if (upsertDocumentRelationship(relsDoc, COMMENTS_EXTENDED_REL_TYPE, 'commentsExtended.xml', options)) {
             zip.file(DOCUMENT_RELS_PATH, serializer.serializeToString(relsDoc));
         }
     }
@@ -406,6 +431,10 @@ export async function validateDocxPackage(zip) {
 
     const numberingXml = await readZipText(zip, NUMBERING_PATH);
     const commentsXml = await readZipText(zip, COMMENTS_PATH);
+    const commentsExtendedXml = await readZipText(zip, COMMENTS_EXTENDED_PATH);
+    if (commentsExtendedXml && !commentsXml) {
+        throw new Error('Validation failed: commentsExtended part exists but comments part is missing');
+    }
 
     if (numberingXml) {
         parseXmlStrictStandalone(numberingXml, NUMBERING_PATH);
@@ -446,7 +475,31 @@ export async function validateDocxPackage(zip) {
         if (usagesWithoutDefinitions.length > 0) {
             throw new Error(`Validation failed: comment usage has no definition for id(s): ${usagesWithoutDefinitions.join(', ')}`);
         }
-        const definitionsWithoutReferences = difference(definitions, references);
+        const replyCommentIds = new Set();
+        if (commentsExtendedXml) {
+            const extendedDoc = parseXmlStrictStandalone(commentsExtendedXml, COMMENTS_EXTENDED_PATH);
+            const paraIdToCommentId = new Map();
+            for (const comment of Array.from(commentsDoc.getElementsByTagNameNS('*', 'comment'))) {
+                const id = comment.getAttribute('w:id') || comment.getAttribute('id');
+                const paragraph = Array.from(comment.getElementsByTagNameNS('*', 'p'))[0];
+                const paraId = paragraph?.getAttribute('w14:paraId') || paragraph?.getAttribute('paraId');
+                if (paraId) paraIdToCommentId.set(paraId.toUpperCase(), id);
+            }
+            const knownParaIds = new Set(paraIdToCommentId.keys());
+            const extendedParaIds = new Set();
+            for (const entry of Array.from(extendedDoc.getElementsByTagNameNS('*', 'commentEx'))) {
+                const paraId = entry.getAttribute('w15:paraId') || entry.getAttribute('paraId');
+                const parentParaId = entry.getAttribute('w15:paraIdParent') || entry.getAttribute('paraIdParent');
+                if (!paraId || !knownParaIds.has(paraId.toUpperCase())) throw new Error(`Validation failed: commentsExtended entry has no matching comment paragraph: ${paraId || '(missing)'}`);
+                if (extendedParaIds.has(paraId.toUpperCase())) throw new Error(`Validation failed: duplicate commentsExtended entry for paraId: ${paraId}`);
+                extendedParaIds.add(paraId.toUpperCase());
+                if (parentParaId) {
+                    if (!knownParaIds.has(parentParaId.toUpperCase())) throw new Error(`Validation failed: commentsExtended parent paragraph was not found: ${parentParaId}`);
+                    replyCommentIds.add(paraIdToCommentId.get(paraId.toUpperCase()));
+                }
+            }
+        }
+        const definitionsWithoutReferences = difference(new Set([...definitions].filter(id => !replyCommentIds.has(id))), references);
         if (definitionsWithoutReferences.length > 0) {
             throw new Error(`Validation failed: comment definition has no document reference for id(s): ${definitionsWithoutReferences.join(', ')}`);
         }
@@ -496,5 +549,17 @@ export async function validateDocxPackage(zip) {
         if (!hasCommentsRel) {
             throw new Error('Validation failed: comments rel missing');
         }
+    }
+
+    if (commentsExtendedXml) {
+        const hasContentType = Array.from(ctDoc.getElementsByTagNameNS('*', 'Override')).some(override =>
+            (override.getAttribute('PartName') || '').toLowerCase() === '/word/commentsextended.xml'
+            && (override.getAttribute('ContentType') || '') === COMMENTS_EXTENDED_CONTENT_TYPE
+        );
+        const hasRelationship = Array.from(relsDoc.getElementsByTagNameNS('*', 'Relationship')).some(rel =>
+            (rel.getAttribute('Type') || '') === COMMENTS_EXTENDED_REL_TYPE
+        );
+        if (!hasContentType) throw new Error('Validation failed: commentsExtended CT override missing');
+        if (!hasRelationship) throw new Error('Validation failed: commentsExtended rel missing');
     }
 }

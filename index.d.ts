@@ -17,6 +17,7 @@ import type { InsertionAffinity } from './services/standalone-operation-runner.j
 export type {
   BatchOperationItemResult,
   CommentDocumentOperation,
+  CommentReplyDocumentOperation,
   DeleteDocumentOperation,
   DocumentOperation,
   DocumentOperationBatchResult,
@@ -169,6 +170,7 @@ export interface DocumentOperationResult {
   hasChanges: boolean;
   numberingXml?: string | null;
   commentsXml?: string | null;
+  commentsExtendedXml?: string | null;
   warnings?: string[];
   status?: RedlineStatus;
   error?: RedlineError;
@@ -262,7 +264,7 @@ export interface RevisionToken {
   coveredParts?: string[];
 }
 
-export interface InspectedComment { id: string; author: string | null; date: string | null; text: string; paragraphIndex?: number; targetRef?: string; anchoredText?: string; }
+export interface InspectedComment { id: string; author: string | null; date: string | null; text: string; paraId?: string | null; parentParaId?: string; parentCommentId?: string | null; done?: boolean; paragraphIndex?: number; targetRef?: string; anchoredText?: string; }
 export interface DocumentInspectionOptions { revisionView?: 'accepted' | 'rejected' | 'current'; excerptLength?: number; revisedOnly?: boolean; inTable?: boolean; skipEmpty?: boolean; search?: string; indexes?: number[]; range?: { start: number; end: number } | [number, number]; digestFn?: (bytes: Uint8Array) => string; }
 export interface DocumentInspectionResult {
   status: 'ok' | 'error'; paragraphs: InspectedParagraph[]; comments: InspectedComment[];
@@ -271,7 +273,7 @@ export interface DocumentInspectionResult {
   coveredParts?: string[];
   warnings: string[]; error?: RedlineError;
 }
-export function inspectDocumentParts(parts: { documentXml: string; commentsXml?: string | null; numberingXml?: string | null; stylesXml?: string | null; parts?: Map<string, unknown>; additionalParts?: Record<string, unknown> }, options?: DocumentInspectionOptions): DocumentInspectionResult;
+export function inspectDocumentParts(parts: { documentXml: string; commentsXml?: string | null; commentsExtendedXml?: string | null; numberingXml?: string | null; stylesXml?: string | null; parts?: Map<string, unknown>; additionalParts?: Record<string, unknown> }, options?: DocumentInspectionOptions): DocumentInspectionResult;
 export function buildRevisionTokenFraming(options: { scope: string; entries?: unknown }): { framing: Uint8Array; scope: string; version: number; coveredParts: string[] };
 export function computeRevisionToken(options: { scope: string; entries?: unknown; digestFn?: (bytes: Uint8Array) => Promise<string> }): Promise<RevisionToken>;
 export function computeRevisionTokenSync(options: { scope: string; entries?: unknown; digestFn: (bytes: Uint8Array) => string }): RevisionToken;
@@ -288,6 +290,7 @@ export function wrapInDocumentFragment(rawOoxml: string, options?: Record<string
 
 export function injectCommentsIntoOoxml(oxml: string, comments: unknown[], options?: Record<string, unknown>): unknown;
 export function injectCommentsIntoPackage(packageXml: string, comments: unknown[], options?: Record<string, unknown>): unknown;
+export function applyCommentReplyToParts(options: { commentsXml: string; commentsExtendedXml?: string | null; parentCommentId: string | number; commentId: string | number; commentContent: string; author: string; date?: string }): { status: 'ok' | 'error'; hasChanges?: boolean; commentsXml?: string; commentsExtendedXml?: string; commentsXmlMode?: 'replace'; commentsExtendedXmlMode?: 'replace'; parentCommentId?: string; paraId?: string; parentParaId?: string; error?: RedlineError };
 export function acceptTrackedChangesInOoxml(oxml: string, options?: RevisionFilterOptions): AcceptTrackedChangesResult;
 export function rejectTrackedChangesInOoxml(oxml: string, options?: RevisionFilterOptions): RejectTrackedChangesResult;
 export function deleteCommentsByAuthorInOoxml(oxml: string, options?: RevisionFilterOptions): DeleteCommentsResult;
@@ -323,6 +326,7 @@ export function extractReplacementNodesFromOoxml(oxml: string): unknown;
 export function validateDocxPackage(zip: unknown): Promise<unknown> | unknown;
 export function ensureNumberingArtifactsInZip(zip: unknown, numberingXml: string): Promise<unknown> | unknown;
 export function ensureCommentsArtifactsInZip(zip: unknown, commentsXml: string): Promise<unknown> | unknown;
+export function ensureCommentsExtendedArtifactsInZip(zip: unknown, commentsExtendedXml: string): Promise<unknown> | unknown;
 export function createDynamicNumberingIdState(numberingXml?: string): unknown;
 
 export function parseOoxml(ooxml: string): Document | null;

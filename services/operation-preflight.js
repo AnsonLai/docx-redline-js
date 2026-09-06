@@ -138,8 +138,22 @@ export function preflightOperations(documentXml, operations, author, options = {
             continue;
         }
 
-        commentsRequired = commentsRequired || operation.operationKind === 'comment';
+        commentsRequired = commentsRequired || operation.operationKind === 'comment' || operation.operationKind === 'comment_reply';
         numberingRequired = numberingRequired || operationNeedsNumbering(operation);
+
+        if (operation.operationKind === 'comment_reply') {
+            const parentId = String(operation.parentCommentId);
+            const parent = options._existingCommentDetails?.[parentId];
+            results.push(parent ? {
+                index: index + 1, type: sourceOperation.type, operationType: operation.operationKind,
+                status: 'ready', authorUsed, resolvedBy: 'parent_comment', parentCommentId: parentId
+            } : {
+                index: index + 1, type: sourceOperation.type, operationType: operation.operationKind,
+                status: 'error', authorUsed,
+                error: { code: 'PARENT_COMMENT_NOT_FOUND', message: `Parent comment '${parentId}' was not found.` }
+            });
+            continue;
+        }
 
         if (operation.targetDescriptor?.captureRef) {
             results.push({

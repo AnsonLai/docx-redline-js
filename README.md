@@ -293,6 +293,7 @@ an earlier block has already replaced.
 | Function | Purpose |
 |----------|---------|
 | `injectCommentsIntoOoxml(oxml, comments, options)` | Add comments anchored to text ranges. |
+| `applyCommentReplyToParts(options)` | Build a threaded reply in `comments.xml` and `commentsExtended.xml` without adding a document-body anchor. |
 | `acceptTrackedChangesInOoxml(oxml, { author?, allAuthors? })` | Accept `w:ins` / `w:del` / `w:moveFrom` / `w:moveTo` / `*PrChange` revisions for one author or all authors. |
 | `rejectTrackedChangesInOoxml(oxml, { author?, allAuthors? })` | Reject `w:ins` / `w:del` / `w:moveFrom` / `w:moveTo` / `*PrChange` revisions for one author or all authors. |
 | `deleteCommentsByAuthorInOoxml(oxml, { author?, allAuthors? })` | Delete matching comment definitions and anchors present in the supplied OOXML payload. Real `.docx` packages require updating both `word/comments.xml` and `word/document.xml`. |
@@ -300,6 +301,7 @@ an earlier block has already replaced.
 | `createDynamicNumberingIdState(numberingXml)` | Allocate numbering IDs without collisions. |
 | `ensureNumberingArtifactsInZip(zip, numberingXml, options)` | Add numbering artifacts to a `.docx` package. Replacement of existing numbering without `mergeNumberingXmlBySchemaOrder` is deprecated and will throw in the next major version. |
 | `ensureCommentsArtifactsInZip(zip, commentsXml)` | Merge comments artifacts into a `.docx` package. |
+| `ensureCommentsExtendedArtifactsInZip(zip, commentsExtendedXml)` | Add or replace modern Word comment-thread metadata in a `.docx` package. |
 | `validateDocxPackage(zip)` | Validate `.docx` structural consistency. |
 
 Malformed OOXML never escapes these public transform APIs as a raw parser
@@ -323,6 +325,17 @@ import { getParagraphText } from '@ansonlai/docx-redline-js/core/paragraph-targe
 ```
 
 Use `applyOperationsToDocumentXml(...)` for mixed batches. It stably runs comments before text-changing operations so replacements cannot invalidate their original anchors. Other operation types retain their relative order. Batch results retain each operation's original 1-based index and expose the actual `executionOrder`.
+
+Threaded replies use a comment operation with no body target:
+
+```js
+{ type: 'comment_reply', parentCommentId: 8, commentContent: 'Agreed; I revised this.', author: 'Editor' }
+```
+
+For complete `.docx` files, use `openDocx(...).applyOperations(...)`; it reads
+the existing comments parts and writes the required `commentsExtended.xml`
+relationship and content type. Inspection reports `paraId` and
+`parentCommentId` so callers can discover and verify the thread hierarchy.
 
 A whole-paragraph `delete` that targets existing comment markup fails with
 `COMMENTED_CONTENT_DELETE`. In the Node facade and CLI, the error also includes

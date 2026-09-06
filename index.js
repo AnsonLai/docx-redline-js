@@ -260,6 +260,7 @@ export {
     buildCommentElement,
     buildCommentsPartXml
 } from './services/comment-engine.js';
+export { applyCommentReplyToParts } from './services/comment-replies.js';
 export {
     acceptTrackedChangesInOoxml,
     rejectTrackedChangesInOoxml,
@@ -285,6 +286,7 @@ export {
     extractReplacementNodesFromOoxml,
     ensureNumberingArtifactsInZip,
     ensureCommentsArtifactsInZip,
+    ensureCommentsExtendedArtifactsInZip,
     validateDocxPackage
 } from './services/standalone-docx-plumbing.js';
 export { buildReconciliationPlan, RoutePlanKind, normalizeContentEscapesForRouting } from './orchestration/route-plan.js';

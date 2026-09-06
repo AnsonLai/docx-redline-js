@@ -16,6 +16,7 @@ const SUPPORTED_OPERATION_TYPES = new Set([
     'insert',
     'delete',
     'comment',
+    'comment_reply',
     'highlight'
 ]);
 
@@ -29,7 +30,7 @@ function nonEmptyString(value) {
 
 export function getCanonicalOperationType(operation) {
     const type = operation?.type;
-    if (type === 'comment' || type === 'highlight') return type;
+    if (type === 'comment' || type === 'comment_reply' || type === 'highlight') return type;
     if (type === 'paragraph-format') return 'paragraph-format';
     if (type === 'character-format' || (type === 'format' && (operation?.textToFormat != null || operation?.properties != null))) return 'format';
     return 'redline';
@@ -161,7 +162,7 @@ export function validateDocumentOperation(operation) {
     }
 
     const target = normalized.targetDescriptor;
-    if (!nonEmptyString(target.text) && target.index == null && !target.paragraphId && !target.captureRef) {
+    if (normalized.operationKind !== 'comment_reply' && !nonEmptyString(target.text) && target.index == null && !target.paragraphId && !target.captureRef) {
         return {
             valid: false,
             error: {
@@ -248,6 +249,15 @@ export function validateDocumentOperation(operation) {
                 valid: false,
                 error: { code: 'INVALID_OPERATION', message: 'Comment operations require a non-empty "commentContent" field.' }
             };
+        }
+    }
+
+    if (normalized.operationKind === 'comment_reply') {
+        if (!nonEmptyString(String(normalized.parentCommentId ?? ''))) {
+            return { valid: false, error: { code: 'INVALID_OPERATION', message: 'Comment reply operations require a "parentCommentId".' } };
+        }
+        if (!nonEmptyString(normalized.commentContent)) {
+            return { valid: false, error: { code: 'INVALID_OPERATION', message: 'Comment reply operations require a non-empty "commentContent" field.' } };
         }
     }
 

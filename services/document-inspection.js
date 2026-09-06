@@ -137,11 +137,31 @@ function revisionAuthors(paragraph) {
 
 function readCommentDefinitions(commentsDoc) {
     const result = new Map();
-    for (const comment of descendants(commentsDoc, 'comment')) result.set(attr(comment, 'id'), {
-        id: attr(comment, 'id'), author: attr(comment, 'author') || null, date: attr(comment, 'date') || null,
-        text: descendants(comment, 'p').map(p => extractCanonicalParagraphText(p)).join('\n')
-    });
+    for (const comment of descendants(commentsDoc, 'comment')) {
+        const paragraphs = descendants(comment, 'p');
+        result.set(attr(comment, 'id'), {
+            id: attr(comment, 'id'), author: attr(comment, 'author') || null, date: attr(comment, 'date') || null,
+            text: paragraphs.map(p => extractCanonicalParagraphText(p)).join('\n'),
+            paraId: paragraphs[0]?.getAttribute?.('w14:paraId') || paragraphs[0]?.getAttribute?.('paraId') || null
+        });
+    }
     return result;
+}
+
+function attachCommentThreadMetadata(comments, commentsExtendedDoc) {
+    if (!commentsExtendedDoc) return;
+    const byParaId = new Map([...comments.values()].filter(c => c.paraId).map(c => [c.paraId.toUpperCase(), c]));
+    for (const entry of Array.from(commentsExtendedDoc.getElementsByTagNameNS('*', 'commentEx'))) {
+        const paraId = entry.getAttribute('w15:paraId') || entry.getAttribute('paraId') || '';
+        const parentParaId = entry.getAttribute('w15:paraIdParent') || entry.getAttribute('paraIdParent') || '';
+        const comment = byParaId.get(paraId.toUpperCase());
+        if (!comment) continue;
+        comment.done = (entry.getAttribute('w15:done') || entry.getAttribute('done')) === '1';
+        if (parentParaId) {
+            comment.parentParaId = parentParaId;
+            comment.parentCommentId = byParaId.get(parentParaId.toUpperCase())?.id || null;
+        }
+    }
 }
 
 function collectDocumentCommentAnchors(paragraphNodes, revisionView) {
@@ -168,11 +188,14 @@ export function inspectDocumentParts(parts, options = {}) {
     const documentPart = parseXml(parts?.documentXml, 'word/document.xml', true);
     if (documentPart.error) return { status: 'error', error: documentPart.error, paragraphs: [], comments: [], warnings: [] };
     const commentsPart = parseXml(parts?.commentsXml, 'word/comments.xml');
+    const commentsExtendedPart = parseXml(parts?.commentsExtendedXml, 'word/commentsExtended.xml');
     const numberingPart = parseXml(parts?.numberingXml, 'word/numbering.xml');
     const warnings = [...(documentPart.warnings || [])];
     if (commentsPart.error) warnings.push(commentsPart.error.message);
+    if (commentsExtendedPart.error) warnings.push(commentsExtendedPart.error.message);
     if (numberingPart.error) warnings.push(numberingPart.error.message);
     const comments = readCommentDefinitions(commentsPart.doc);
+    attachCommentThreadMetadata(comments, commentsExtendedPart.doc);
     const resolveNumbering = createNumberingResolver(numberingPart.doc);
     let nearestHeading = null;
     const paragraphNodes = getDocumentParagraphNodes(documentPart.doc);

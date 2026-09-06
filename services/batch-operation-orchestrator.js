@@ -26,7 +26,7 @@ import {
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
 function operationTargetPriority(op) {
-    return op?.type === 'comment' ? 0 : 1;
+    return op?.type === 'comment' || op?.type === 'comment_reply' ? 0 : 1;
 }
 
 /**
@@ -232,6 +232,7 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
         const currentToken = await computeDocumentPartsRevisionToken({
             documentXml,
             commentsXml: runtimeContext?.commentsXml || options.commentsXml,
+            commentsExtendedXml: runtimeContext?.commentsExtendedXml || options.commentsExtendedXml,
             numberingXml: runtimeContext?.numberingXml || options.numberingXml,
             stylesXml: runtimeContext?.stylesXml || options.stylesXml
         }, options);
@@ -299,6 +300,12 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
         context.targetRefSnapshot = session.initialTargetReferenceSnapshot;
     }
     session.runtimeContext = context;
+    if (sourceOperations.some(op => op?.type === 'comment_reply')) {
+        session.commentsXml = context.commentsXml || options.commentsXml || null;
+        session.commentsExtendedXml = context.commentsExtendedXml || options.commentsExtendedXml || null;
+        session.commentsXmlMode = 'replace';
+        session.commentsExtendedXmlMode = 'replace';
+    }
 
     let hasChanges = false;
     const results = session.results;
@@ -322,7 +329,14 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
                 }
             );
             hasChanges = hasChanges || result.hasChanges === true;
-            session.commentsXml = mergeCommentsXml(session.commentsXml, result.commentsXml || null);
+            session.commentsXml = result.commentsXmlMode === 'replace'
+                ? (result.commentsXml || session.commentsXml)
+                : mergeCommentsXml(session.commentsXml, result.commentsXml || null);
+            session.commentsExtendedXml = result.commentsExtendedXmlMode === 'replace'
+                ? (result.commentsExtendedXml || session.commentsExtendedXml)
+                : (result.commentsExtendedXml || session.commentsExtendedXml);
+            if (result.commentsXmlMode === 'replace') session.commentsXmlMode = 'replace';
+            if (result.commentsExtendedXmlMode === 'replace') session.commentsExtendedXmlMode = 'replace';
             if (result.numberingXml) session.numberingXmlParts.push(result.numberingXml);
             const isError = result.status === 'error' || !!result.error;
             operationFailed = operationFailed || isError;
@@ -402,6 +416,7 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
         const reconciliation = reconcileReceiptsAgainstOutput({
             documentXml: outputDocumentXml,
             commentsXml: session.commentsXml,
+            commentsExtendedXml: session.commentsExtendedXml,
             numberingXmlParts: session.numberingXmlParts
         }, allReceipts);
         if (!reconciliation.valid) {
@@ -446,6 +461,9 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
         documentXml: rolledBack ? session.rollback() : outputDocumentXml,
         hasChanges: rolledBack ? false : hasChanges,
         commentsXml: rolledBack ? null : session.commentsXml,
+        commentsExtendedXml: rolledBack ? null : session.commentsExtendedXml,
+        commentsXmlMode: session.commentsXmlMode,
+        commentsExtendedXmlMode: session.commentsExtendedXmlMode,
         numberingXmlParts: rolledBack ? [] : session.numberingXmlParts,
         results: [...results].sort((a, b) => (a.index || 0) - (b.index || 0)),
         receipts: allReceipts.sort((a, b) => a.operationIndex - b.operationIndex),

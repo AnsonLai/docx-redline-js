@@ -47,6 +47,16 @@ Missing or repeated comment anchors are errors rather than no-ops. Explicit
 anchors match exact text first and then a unique ordinary-space/NBSP equivalent;
 omit `textToComment` to comment the entire resolved paragraph.
 
+To reply inside an existing Word comment thread, use the comment ID returned by
+`inspect` and do not supply a paragraph target:
+
+```json
+{ "type": "comment_reply", "parentCommentId": "8", "commentContent": "Agreed; updated.", "author": "Editor" }
+```
+
+Replies are represented in `word/commentsExtended.xml` and deliberately add no
+new `commentRangeStart`, `commentRangeEnd`, or `commentReference` to the body.
+
 ## Legacy skill wrapper migration
 
 Older skills that invoke `scripts/extract_text.mjs` and

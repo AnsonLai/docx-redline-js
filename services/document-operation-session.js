@@ -29,10 +29,14 @@ export class DocumentOperationSession {
         this.paragraphIndex = null;
         this.invalidated = false;
         this.hasChanges = false;
+        this.documentHasChanges = false;
         this.deferSerialization = options?._deferDocumentSerialization === true;
         this.instrumentation = options?._sessionInstrumentation || null;
         this.runtimeContext = null;
         this.commentsXml = null;
+        this.commentsExtendedXml = null;
+        this.commentsXmlMode = 'merge';
+        this.commentsExtendedXmlMode = 'merge';
         this.numberingXmlParts = [];
         this.results = [];
         this.executionOrder = [];
@@ -76,13 +80,15 @@ export class DocumentOperationSession {
 
     serializeCurrent() {
         if (!this.hasChanges) return this.originalDocumentXml;
+        if (!this.documentHasChanges) return this.currentDocumentXml;
         this.currentDocumentXml = this.serialize();
         return this.currentDocumentXml;
     }
 
-    markMutationCommitted() {
+    markMutationCommitted(documentChanged = true) {
         this.hasChanges = true;
-        this.invalidateParagraphIndex();
+        this.documentHasChanges = this.documentHasChanges || documentChanged;
+        if (documentChanged) this.invalidateParagraphIndex();
     }
 
     generateParagraphId() {
@@ -98,7 +104,12 @@ export class DocumentOperationSession {
                 ? new Set(this.revisionIdAllocator.occupiedIds)
                 : null,
             hasChanges: this.hasChanges,
+            documentHasChanges: this.documentHasChanges,
             currentDocumentXml: this.currentDocumentXml,
+            commentsXml: this.commentsXml,
+            commentsExtendedXml: this.commentsExtendedXml,
+            commentsXmlMode: this.commentsXmlMode,
+            commentsExtendedXmlMode: this.commentsExtendedXmlMode,
             captureTable: cloneCaptureTable(this.captureTable),
             nextCaptureParaId: this.nextCaptureParaId,
             receiptCollector: this.receiptCollector ? this.receiptCollector.createSavepoint() : null
@@ -109,7 +120,12 @@ export class DocumentOperationSession {
         if (!savepoint?.document) return;
         this.document = savepoint.document;
         this.hasChanges = savepoint.hasChanges;
+        this.documentHasChanges = savepoint.documentHasChanges === true;
         this.currentDocumentXml = savepoint.currentDocumentXml;
+        this.commentsXml = savepoint.commentsXml;
+        this.commentsExtendedXml = savepoint.commentsExtendedXml;
+        this.commentsXmlMode = savepoint.commentsXmlMode || 'merge';
+        this.commentsExtendedXmlMode = savepoint.commentsExtendedXmlMode || 'merge';
         this.captureTable = savepoint.captureTable ? cloneCaptureTable(savepoint.captureTable) : new Map();
         if (typeof savepoint.nextCaptureParaId === 'number') {
             this.nextCaptureParaId = savepoint.nextCaptureParaId;
@@ -142,6 +158,7 @@ export class DocumentOperationSession {
     rollback() {
         this.currentDocumentXml = this.originalDocumentXml;
         this.hasChanges = false;
+        this.documentHasChanges = false;
         this.captureTable.clear();
         this.receiptCollector?.clear();
         return this.originalDocumentXml;

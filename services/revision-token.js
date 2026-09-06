@@ -206,6 +206,9 @@ export function extractDocumentPartsEntries(parts) {
     if (parts?.commentsXml) {
         entries.push({ name: 'word/comments.xml', payload: parts.commentsXml });
     }
+    if (parts?.commentsExtendedXml) {
+        entries.push({ name: 'word/commentsExtended.xml', payload: parts.commentsExtendedXml });
+    }
     if (parts?.numberingXml) {
         entries.push({ name: 'word/numbering.xml', payload: parts.numberingXml });
     }

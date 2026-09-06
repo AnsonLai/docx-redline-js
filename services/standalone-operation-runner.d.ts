@@ -54,6 +54,15 @@ export interface CommentDocumentOperation extends DocumentOperationBase {
   commentContent: string;
 }
 
+export interface CommentReplyDocumentOperation {
+  type: 'comment_reply';
+  operationId?: string;
+  parentCommentId: number | string;
+  commentContent: string;
+  author?: string;
+  date?: string;
+}
+
 export interface CharacterFormatProperties {
   bold?: boolean;
   italic?: boolean;
@@ -96,6 +105,7 @@ export type DocumentOperation =
   | RedlineDocumentOperation
   | DeleteDocumentOperation
   | CommentDocumentOperation
+  | CommentReplyDocumentOperation
   | HighlightDocumentOperation
   | CharacterFormatDocumentOperation
   | ParagraphFormatDocumentOperation;
@@ -157,10 +167,13 @@ export interface DocumentOperationResult {
   hasChanges: boolean;
   numberingXml?: string | null;
   commentsXml?: string | null;
+  commentsExtendedXml?: string | null;
+  commentsXmlMode?: 'merge' | 'replace';
+  commentsExtendedXmlMode?: 'merge' | 'replace';
   warnings?: string[];
   status?: RedlineStatus;
   error?: RedlineError;
-  operationType: 'redline' | 'comment' | 'highlight' | 'format' | 'paragraph-format';
+  operationType: 'redline' | 'comment' | 'comment_reply' | 'highlight' | 'format' | 'paragraph-format';
   authorUsed: string;
   resolvedBy?: string;
   resolvedTarget?: ResolvedDocumentTarget;
@@ -171,7 +184,7 @@ export interface DocumentOperationResult {
 export interface BatchOperationItemResult {
   index: number;
   type: string;
-  operationType: 'redline' | 'comment' | 'highlight' | 'format' | 'paragraph-format';
+  operationType: 'redline' | 'comment' | 'comment_reply' | 'highlight' | 'format' | 'paragraph-format';
   status: 'applied' | 'no_change' | 'error';
   authorUsed: string;
   resolvedBy?: string;
@@ -186,6 +199,9 @@ export interface DocumentOperationBatchResult {
   documentXml: string;
   hasChanges: boolean;
   commentsXml: string | null;
+  commentsExtendedXml?: string | null;
+  commentsXmlMode?: 'merge' | 'replace';
+  commentsExtendedXmlMode?: 'merge' | 'replace';
   numberingXmlParts: string[];
   results: BatchOperationItemResult[];
   receipts?: MutationReceipt[];
@@ -201,7 +217,7 @@ export interface DocumentOperationBatchResult {
 export interface OperationPreflightItemResult {
   index: number;
   type: string;
-  operationType: 'redline' | 'comment' | 'highlight' | 'format' | 'paragraph-format';
+  operationType: 'redline' | 'comment' | 'comment_reply' | 'highlight' | 'format' | 'paragraph-format';
   status: 'ready' | 'deferred' | 'error';
   authorUsed: string;
   resolvedBy?: string;
