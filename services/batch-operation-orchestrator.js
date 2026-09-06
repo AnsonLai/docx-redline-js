@@ -18,6 +18,10 @@ import {
     computeDocumentPartsRevisionToken,
     areRevisionTokensEqual
 } from './revision-token.js';
+import {
+    createEmptyReceipt,
+    reconcileReceiptsAgainstOutput
+} from './receipt-collector.js';
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
@@ -180,6 +184,15 @@ function mergeCommentsXml(existingXml, incomingXml) {
 }
 
 export async function applyOperationsToDocumentXml(documentXml, operations, author, runtimeContext = null, options = {}) {
+    const sourceOperations = Array.isArray(operations) ? operations : [];
+    const defaultAuthor = getDefaultAuthor();
+    const emptyReceipts = () => sourceOperations.map((op, i) => createEmptyReceipt(
+        i + 1,
+        op?.operationId,
+        resolveDocumentOperationAuthor(op, author, defaultAuthor),
+        'not_attempted'
+    ));
+
     if (options?.expectedRevision) {
         const tokenValidation = validateRevisionToken(options.expectedRevision);
         if (!tokenValidation.valid) {
@@ -189,6 +202,7 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
                 commentsXml: null,
                 numberingXmlParts: [],
                 results: [],
+                receipts: emptyReceipts(),
                 executionOrder: [],
                 authorsUsed: [],
                 status: 'error',
@@ -205,6 +219,7 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
                 commentsXml: null,
                 numberingXmlParts: [],
                 results: [],
+                receipts: emptyReceipts(),
                 executionOrder: [],
                 authorsUsed: [],
                 status: 'error',
@@ -227,6 +242,7 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
                 commentsXml: null,
                 numberingXmlParts: [],
                 results: [],
+                receipts: emptyReceipts(),
                 executionOrder: [],
                 authorsUsed: [],
                 status: 'error',
@@ -251,6 +267,7 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
             commentsXml: null,
             numberingXmlParts: [],
             results: [],
+            receipts: emptyReceipts(),
             executionOrder: [],
             authorsUsed: [],
             status: 'error',
@@ -258,7 +275,6 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
             warnings: session.parseResult.warnings
         };
     }
-    const sourceOperations = Array.isArray(operations) ? operations : [];
     const dependencyPlan = buildOperationDependencyPlan(sourceOperations);
     if (!dependencyPlan.valid) {
         return {
@@ -267,6 +283,7 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
             commentsXml: null,
             numberingXmlParts: [],
             results: [],
+            receipts: emptyReceipts(),
             executionOrder: [],
             authorsUsed: [],
             status: 'error',
@@ -320,13 +337,21 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
                 ...(result.resolvedTarget ? { resolvedTarget: result.resolvedTarget } : {}),
                 ...(result.resolvedAnchor ? { resolvedAnchor: result.resolvedAnchor } : {}),
                 ...(Array.isArray(result.warnings) && result.warnings.length > 0 ? { warnings: result.warnings } : {}),
-                ...(result.error ? { error: result.error } : {})
+                ...(result.error ? { error: result.error } : {}),
+                ...(result.receipt ? { receipt: result.receipt } : {})
             });
             if (isError && !continueOnError) break;
         } catch (error) {
             const normalizedError = normalizeOperationError(error);
             operationFailed = true;
             const authorUsed = resolveDocumentOperationAuthor(operation, author, getDefaultAuthor());
+            const errorReceipt = createEmptyReceipt(
+                index + 1,
+                operation?.operationId,
+                authorUsed,
+                'refused'
+            );
+            errorReceipt.warnings.push(normalizedError.message);
             results.push({
                 index: index + 1,
                 type: operation?.type || 'redline',
@@ -334,13 +359,32 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
                 operationType: normalizeDocumentOperation(operation).operationKind,
                 authorUsed,
                 warnings: [normalizedError.message],
-                error: normalizedError
+                error: normalizedError,
+                receipt: errorReceipt
             });
             if (!continueOnError) break;
         }
     }
 
     results.sort((a, b) => a.index - b.index);
+
+    const allReceipts = [];
+    for (let i = 0; i < sourceOperations.length; i++) {
+        const opIndex = i + 1;
+        const executed = results.find(r => r.index === opIndex);
+        if (executed?.receipt) {
+            allReceipts.push(executed.receipt);
+        } else {
+            const unattemptedReceipt = createEmptyReceipt(
+                opIndex,
+                sourceOperations[i]?.operationId,
+                resolveDocumentOperationAuthor(sourceOperations[i], author, defaultAuthor),
+                'not_attempted'
+            );
+            allReceipts.push(unattemptedReceipt);
+        }
+    }
+
     let rolledBack = atomic && operationFailed;
     let outputDocumentXml = documentXml;
     let serializationError = null;
@@ -352,6 +396,50 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
             rolledBack = true;
         }
     }
+
+    let reconciliationError = null;
+    if (!rolledBack && hasChanges) {
+        const reconciliation = reconcileReceiptsAgainstOutput({
+            documentXml: outputDocumentXml,
+            commentsXml: session.commentsXml,
+            numberingXmlParts: session.numberingXmlParts
+        }, allReceipts);
+        if (!reconciliation.valid) {
+            reconciliationError = reconciliation.error;
+            if (atomic) {
+                rolledBack = true;
+            }
+        }
+    }
+
+    if (rolledBack) {
+        for (const r of results) {
+            if (r.receipt && r.receipt.attemptedDisposition === 'applied') {
+                r.receipt.finalDisposition = 'rolled_back';
+                r.receipt.committed = false;
+            }
+        }
+        for (const receipt of allReceipts) {
+            if (receipt.attemptedDisposition === 'applied') {
+                receipt.finalDisposition = 'rolled_back';
+                receipt.committed = false;
+            }
+        }
+    } else {
+        for (const r of results) {
+            if (r.receipt && r.receipt.attemptedDisposition === 'applied') {
+                r.receipt.committed = true;
+                r.receipt.finalDisposition = 'applied';
+            }
+        }
+        for (const receipt of allReceipts) {
+            if (receipt.attemptedDisposition === 'applied') {
+                receipt.committed = true;
+                receipt.finalDisposition = 'applied';
+            }
+        }
+    }
+
     if (!rolledBack) commitBatchRuntimeContext(runtimeContext, context);
 
     return {
@@ -360,16 +448,21 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
         commentsXml: rolledBack ? null : session.commentsXml,
         numberingXmlParts: rolledBack ? [] : session.numberingXmlParts,
         results: [...results].sort((a, b) => (a.index || 0) - (b.index || 0)),
+        receipts: allReceipts.sort((a, b) => a.operationIndex - b.operationIndex),
         executionOrder,
         authorsUsed: rolledBack ? [] : Array.from(authorsUsed),
         ...(rolledBack ? {
             rolledBack: true,
             status: 'error',
             error: {
-                code: serializationError ? 'DOCUMENT_SERIALIZATION_FAILED' : 'BATCH_OPERATION_FAILED',
-                message: serializationError?.message
+                code: reconciliationError ? reconciliationError.code : (serializationError ? 'DOCUMENT_SERIALIZATION_FAILED' : 'BATCH_OPERATION_FAILED'),
+                message: reconciliationError?.message
+                    || serializationError?.message
                     || 'Atomic batch rolled back because one or more operations failed.'
             }
-        } : {})
+        } : (reconciliationError ? {
+            status: 'error',
+            error: reconciliationError
+        } : {}))
     };
 }

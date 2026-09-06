@@ -1559,7 +1559,8 @@ graph.
 ### WP-17 — Public Commit-Aware Receipts
 
 **Depends on:** WP-16  
-**Produces runtime changes:** Additive result field
+**Produces runtime changes:** Additive result field  
+**Status:** Completed — added `MutationReceipt` and `MutationReceiptRevisionItem` interfaces to types/index. Instrumented batch orchestrator and single-operation applier to attach receipts to every item result and top-level batch results (`receipts`). Implemented output reconciliation via `reconcileReceiptsAgainstOutput` verifying all committed IDs are present in serialized XML or failing the transaction. Supported atomic rollback marking prior items `rolled_back` with `committed: false`. Added `tests/mutation_receipt_tests.mjs` verifying all required test cases. All 84 test suites pass.
 
 **Steps**
 

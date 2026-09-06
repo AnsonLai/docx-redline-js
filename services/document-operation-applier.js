@@ -21,6 +21,10 @@ import {
     deriveCapturedEntity,
     invalidateAffectedCaptures
 } from './capture-engine.js';
+import {
+    createEmptyReceipt,
+    reconcileReceiptsAgainstOutput
+} from './receipt-collector.js';
 
 export function normalizeOperationError(error) {
     return {
@@ -33,18 +37,20 @@ export function normalizeOperationError(error) {
 /**
  * Validates and dispatches one structured operation against full document XML.
  * Result metadata is assembled here so every mutation path exposes the same
- * operation type, author, and target-resolution audit fields.
- */
+ * */
 export async function applyOperationToDocumentXml(documentXml, op, author, runtimeContext = null, options = {}) {
+    const operationIndex = typeof options._operationIndex === 'number' ? options._operationIndex : 1;
     const validation = validateDocumentOperation(op);
     if (!validation.valid) {
+        const authorUsed = resolveDocumentOperationAuthor(op, author, getDefaultAuthor());
         return {
             documentXml,
             hasChanges: false,
             status: 'error',
             error: validation.error,
             operationType: normalizeDocumentOperation(op).operationKind,
-            authorUsed: resolveDocumentOperationAuthor(op, author, getDefaultAuthor())
+            authorUsed,
+            receipt: createEmptyReceipt(operationIndex, op?.operationId, authorUsed, 'refused')
         };
     }
 
@@ -61,7 +67,8 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                 message: 'Targeting rejected revision view for mutation is not supported yet.'
             },
             operationType: operation.operationKind,
-            authorUsed
+            authorUsed,
+            receipt: createEmptyReceipt(operationIndex, operation.operationId, authorUsed, 'refused')
         };
     }
 
@@ -77,7 +84,8 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                     message: tokenValidation.error?.message || 'Invalid revision token.'
                 },
                 operationType: operation.operationKind,
-                authorUsed
+                authorUsed,
+                receipt: createEmptyReceipt(operationIndex, operation.operationId, authorUsed, 'refused')
             };
         }
         if (options.expectedRevision.scope !== 'document-parts') {
@@ -90,7 +98,8 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                     message: `Revision token scope mismatch: expected 'document-parts', got '${options.expectedRevision.scope}'.`
                 },
                 operationType: operation.operationKind,
-                authorUsed
+                authorUsed,
+                receipt: createEmptyReceipt(operationIndex, operation.operationId, authorUsed, 'refused')
             };
         }
         const currentToken = await computeDocumentPartsRevisionToken({
@@ -109,7 +118,8 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                     message: `Document revision mismatch: expected '${options.expectedRevision.value}', current is '${currentToken.value}'.`
                 },
                 operationType: operation.operationKind,
-                authorUsed
+                authorUsed,
+                receipt: createEmptyReceipt(operationIndex, operation.operationId, authorUsed, 'refused')
             };
         }
     }
@@ -125,13 +135,13 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
             error: session.parseResult.error,
             warnings: session.parseResult.warnings,
             operationType: operation.operationKind,
-            authorUsed
+            authorUsed,
+            receipt: createEmptyReceipt(operationIndex, operation.operationId, authorUsed, 'refused')
         };
     }
 
     const resolutionCapture = {};
     const savepoint = session.createSavepoint();
-    const operationIndex = typeof options._operationIndex === 'number' ? options._operationIndex : 1;
     session.receiptCollector?.beginOperation(
         operationIndex,
         operation.operationId,
@@ -226,8 +236,21 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
             };
         }
         const isError = result?.status === 'error' || !!result?.error;
+        let operationReceipt = null;
         if (isError || result?.hasChanges !== true) {
             session.restoreSavepoint(savepoint);
+            const disposition = isError ? 'refused' : 'no_change';
+            operationReceipt = createEmptyReceipt(
+                operationIndex,
+                operation.operationId,
+                authorUsed,
+                disposition
+            );
+            if (Array.isArray(result?.warnings)) {
+                for (const w of result.warnings) {
+                    operationReceipt.warnings.push(String(w));
+                }
+            }
         } else {
             session.markMutationCommitted();
             if (operation.captureKey && session.captureTable) {
@@ -247,20 +270,52 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                     session.receiptCollector?.recordWarning(w);
                 }
             }
-            session.receiptCollector?.commitOperation('applied');
+            operationReceipt = session.receiptCollector?.commitOperation('applied');
             result.documentXml = session.deferSerialization
                 ? session.currentDocumentXml
                 : session.serializeCurrent();
+
+            if (!session.deferSerialization && operationReceipt) {
+                const reconciliation = reconcileReceiptsAgainstOutput({
+                    documentXml: result.documentXml,
+                    commentsXml: result.commentsXml || null,
+                    numberingXml: result.numberingXml || null
+                }, [operationReceipt]);
+                if (!reconciliation.valid) {
+                    session.restoreSavepoint(savepoint);
+                    operationReceipt.finalDisposition = 'rolled_back';
+                    operationReceipt.committed = false;
+                    return {
+                        documentXml,
+                        hasChanges: false,
+                        status: 'error',
+                        error: reconciliation.error,
+                        warnings: [reconciliation.error.message],
+                        operationType: operation.operationKind,
+                        authorUsed,
+                        receipt: operationReceipt,
+                        ...resolutionCapture
+                    };
+                }
+            }
         }
         return {
             ...result,
             operationType: operation.operationKind,
             authorUsed,
+            receipt: operationReceipt,
             ...resolutionCapture
         };
     } catch (error) {
         session.restoreSavepoint(savepoint);
         const normalizedError = normalizeOperationError(error);
+        const operationReceipt = createEmptyReceipt(
+            operationIndex,
+            operation.operationId,
+            authorUsed,
+            'refused'
+        );
+        operationReceipt.warnings.push(normalizedError.message);
         return {
             documentXml,
             hasChanges: false,
@@ -269,6 +324,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
             warnings: [normalizedError.message],
             operationType: operation.operationKind,
             authorUsed,
+            receipt: operationReceipt,
             ...resolutionCapture
         };
     }

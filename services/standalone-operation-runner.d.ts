@@ -131,6 +131,27 @@ export interface StandaloneRunnerOptions {
   [key: string]: unknown;
 }
 
+export interface MutationReceiptRevisionItem {
+  id: string;
+  kind: 'ins' | 'del' | 'move_from' | 'move_to' | 'rPrChange' | 'pPrChange' | 'structural';
+  partName: string;
+}
+
+export interface MutationReceipt {
+  operationIndex: number;
+  operationId?: string;
+  attemptedDisposition: 'applied' | 'no_change' | 'refused' | 'not_attempted';
+  finalDisposition: 'applied' | 'no_change' | 'refused' | 'rolled_back' | 'not_attempted';
+  committed: boolean;
+  authorUsed?: string;
+  revisionItems: MutationReceiptRevisionItem[];
+  commentIds: string[];
+  numberingIds: string[];
+  relationshipIds: string[];
+  affectedTargets: ResolvedDocumentTarget[];
+  warnings: string[];
+}
+
 export interface DocumentOperationResult {
   documentXml: string;
   hasChanges: boolean;
@@ -144,6 +165,7 @@ export interface DocumentOperationResult {
   resolvedBy?: string;
   resolvedTarget?: ResolvedDocumentTarget;
   resolvedAnchor?: ResolvedCommentAnchor;
+  receipt?: MutationReceipt;
 }
 
 export interface BatchOperationItemResult {
@@ -157,6 +179,7 @@ export interface BatchOperationItemResult {
   resolvedAnchor?: ResolvedCommentAnchor;
   warnings?: string[];
   error?: RedlineError;
+  receipt?: MutationReceipt;
 }
 
 export interface DocumentOperationBatchResult {
@@ -165,6 +188,7 @@ export interface DocumentOperationBatchResult {
   commentsXml: string | null;
   numberingXmlParts: string[];
   results: BatchOperationItemResult[];
+  receipts?: MutationReceipt[];
   executionOrder: number[];
   /** Authors attached to committed changes. Empty when an atomic batch rolls back. */
   authorsUsed: string[];

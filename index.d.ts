@@ -426,3 +426,61 @@ export function insertBodyElementBeforeSectPr(body: Element, element: Element): 
 export function normalizeBodySectionOrderStandalone(documentXml: string): string;
 export function sanitizeNestedParagraphsInTables(documentXml: string): string;
 export function getPackagePartName(part: unknown): string | null;
+
+export interface MutationReceiptRevisionItem {
+  id: string;
+  kind: 'ins' | 'del' | 'move_from' | 'move_to' | 'rPrChange' | 'pPrChange' | 'structural';
+  partName: string;
+}
+
+export interface MutationReceipt {
+  operationIndex: number;
+  operationId?: string;
+  attemptedDisposition: 'applied' | 'no_change' | 'refused' | 'not_attempted';
+  finalDisposition: 'applied' | 'no_change' | 'refused' | 'rolled_back' | 'not_attempted';
+  committed: boolean;
+  authorUsed?: string;
+  revisionItems: MutationReceiptRevisionItem[];
+  commentIds: string[];
+  numberingIds: string[];
+  relationshipIds: string[];
+  affectedTargets: unknown[];
+  warnings: string[];
+}
+
+export class ReceiptCollector {
+  constructor();
+  beginOperation(operationIndex: number, operationId?: string | null, authorUsed?: string | null): void;
+  recordRevision(id: string | number, kind?: string, partName?: string): void;
+  recordComment(id: string | number, partName?: string): void;
+  recordNumbering(id: string | number, partName?: string): void;
+  recordRelationship(id: string | number, partName?: string): void;
+  recordAffectedTarget(target: unknown): void;
+  recordWarning(warning: unknown): void;
+  commitOperation(disposition?: string): MutationReceipt | null;
+  abortOperation(disposition?: string): MutationReceipt | null;
+  createSavepoint(): unknown;
+  restoreSavepoint(savepoint: unknown): void;
+  clear(): void;
+  markRolledBack(): void;
+  getReceipts(): MutationReceipt[];
+  getCurrentReceipt(): MutationReceipt | null;
+}
+
+export function createEmptyReceipt(
+  operationIndex: number,
+  operationId?: string | null,
+  authorUsed?: string | null,
+  disposition?: 'applied' | 'no_change' | 'refused' | 'not_attempted'
+): MutationReceipt;
+
+export function reconcileReceiptsAgainstOutput(
+  parts: {
+    documentXml: string;
+    commentsXml?: string | null;
+    numberingXml?: string | null;
+    numberingXmlParts?: string[];
+    relationshipsXml?: string | null;
+  },
+  receipts: MutationReceipt[]
+): { valid: boolean; error?: { code: string; message: string } };

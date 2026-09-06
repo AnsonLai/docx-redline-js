@@ -331,3 +331,8 @@ export {
     planListInsertionOnlyEdit,
     stripRedundantLeadingListMarkers
 } from './core/list-targeting.js';
+export {
+    ReceiptCollector,
+    createEmptyReceipt,
+    reconcileReceiptsAgainstOutput
+} from './services/receipt-collector.js';

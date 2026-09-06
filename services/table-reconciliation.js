@@ -25,7 +25,7 @@ export function generateTableOoxml(tableData, options = {}) {
         revisionIdAllocator = null,
         trackAsBlock = false
     } = options;
-    const tableInsertMeta = generateRedlines ? createRevisionMetadata(author, revisionIdAllocator) : null;
+    const tableInsertMeta = generateRedlines && trackAsBlock ? createRevisionMetadata(author, revisionIdAllocator) : null;
 
     // Determine number of columns
     const numCols = tableData.headers?.length || (tableData.rows?.[0]?.length || 1);

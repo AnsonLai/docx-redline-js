@@ -68,7 +68,8 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
     let pendingReplacementEvent = null;
     const emittedCommentMarkers = new WeakSet();
 
-    for (const [op, text] of diffs) {
+    for (let diffIndex = 0; diffIndex < diffs.length; diffIndex++) {
+        const [op, text] = diffs[diffIndex];
         if (op === 0 || op === -1) {
             const type = op === 0 ? 'equal' : 'delete';
             if (op === 0) {
@@ -76,7 +77,12 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
                 pendingReplacementEvent = null;
             } else if (pendingReplacementStart === null) {
                 pendingReplacementStart = currentOriginalIndex;
-                if (pairReplacements) {
+                let hasInsert = false;
+                for (let k = diffIndex + 1; k < diffs.length; k++) {
+                    if (diffs[k][0] === 1) { hasInsert = true; break; }
+                    if (diffs[k][0] === 0) break;
+                }
+                if (pairReplacements && hasInsert) {
                     pendingReplacementEvent = createReplacementRevisionEvent(author, xmlDoc);
                 }
             }
@@ -360,11 +366,18 @@ function appendTextToCurrent(
             run.appendChild(delText);
 
             if (generateRedlines) {
-                const metadata = replacementEvent ? {
-                    id: createRevisionMetadata(author, xmlDoc, 'del').id,
-                    author: replacementEvent.author,
-                    date: replacementEvent.date
-                } : null;
+                let metadata = null;
+                if (replacementEvent) {
+                    const id = replacementEvent.usedDeletionId
+                        ? createRevisionMetadata(author, xmlDoc, 'del').id
+                        : replacementEvent.deletionId;
+                    replacementEvent.usedDeletionId = true;
+                    metadata = {
+                        id,
+                        author: replacementEvent.author,
+                        date: replacementEvent.date
+                    };
+                }
                 const del = createTrackChange(xmlDoc, 'del', run, author, metadata);
                 parent.appendChild(del);
             }
@@ -373,11 +386,18 @@ function appendTextToCurrent(
             const runs = createFormattedRuns(xmlDoc, part, rPr, applicableHints, localInsertOffset, author, generateRedlines);
 
             if (type === 'insert' && generateRedlines) {
-                const metadata = replacementEvent ? {
-                    id: createRevisionMetadata(author, xmlDoc, 'ins').id,
-                    author: replacementEvent.author,
-                    date: replacementEvent.date
-                } : null;
+                let metadata = null;
+                if (replacementEvent) {
+                    const id = replacementEvent.usedInsertionId
+                        ? createRevisionMetadata(author, xmlDoc, 'ins').id
+                        : replacementEvent.insertionId;
+                    replacementEvent.usedInsertionId = true;
+                    metadata = {
+                        id,
+                        author: replacementEvent.author,
+                        date: replacementEvent.date
+                    };
+                }
                 const ins = createTrackChange(xmlDoc, 'ins', null, author, metadata);
                 runs.forEach(run => ins.appendChild(run));
                 parent.appendChild(ins);
