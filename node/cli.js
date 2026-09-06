@@ -15,18 +15,29 @@ const commandOptions = {
     accept: new Set(['help', 'author', 'allAuthors', 'output', 'inPlace', 'force']),
     reject: new Set(['help', 'author', 'allAuthors', 'output', 'inPlace', 'force']),
     'delete-comments': new Set(['help', 'author', 'allAuthors', 'output', 'inPlace', 'force']),
-    validate: new Set(['help'])
+    validate: new Set(['help', 'baseline'])
 };
 
 function cliError(code, message, exitCode = 2, details) { return { status: 'error', error: { code, message, ...(details ? { details } : {}) }, exitCode }; }
+const optionAliases = new Map([
+    ['operationsFile', 'operations'],
+    ['o', 'output'],
+    ['a', 'author'],
+    ['i', 'inPlace'],
+    ['f', 'force'],
+    ['h', 'help']
+]);
 function parseArgs(argv) {
     const positionals = []; const flags = {};
     for (let index = 0; index < argv.length; index++) {
         const token = argv[index];
-        if (!token.startsWith('--')) { positionals.push(token); continue; }
-        const [rawKey, inline] = token.slice(2).split(/=(.*)/s); const key = rawKey.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+        if (!token.startsWith('-') || token === '-') { positionals.push(token); continue; }
+        const prefixLength = token.startsWith('--') ? 2 : 1;
+        const [rawKey, inline] = token.slice(prefixLength).split(/=(.*)/s);
+        const normalizedKey = rawKey.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+        const key = optionAliases.get(normalizedKey) || normalizedKey;
         if (inline !== undefined) flags[key] = inline;
-        else if (argv[index + 1] && !argv[index + 1].startsWith('--')) flags[key] = argv[++index];
+        else if (argv[index + 1] && (!argv[index + 1].startsWith('-') || /^-\d/.test(argv[index + 1]))) flags[key] = argv[++index];
         else flags[key] = true;
     }
     return { command: positionals[0], input: positionals[1], extraPositionals: positionals.slice(2), flags };
@@ -112,6 +123,38 @@ function serializable(value) {
     return rest;
 }
 
+async function collectValidationIssues(buffer) {
+    const entries = unzipDocx(buffer);
+    const documentXml = entries.get('word/document.xml')?.toString('utf8') || '';
+    const revision = validateRedlineOoxml(documentXml);
+    const issues = revision.issues.map(issue => ({ source: 'word/document.xml', ...issue }));
+    try {
+        await validateDocxPackage(new MemoryZip(entries));
+    } catch (error) {
+        issues.push({ source: 'package', code: 'PACKAGE_VALIDATION', severity: 'error', message: error.message });
+    }
+    return issues;
+}
+
+function validationIssueKey(issue) {
+    return `${issue.source || ''}:${issue.code}:${issue.message}`;
+}
+
+function subtractValidationIssues(issues, baselineIssues) {
+    const remainingBaseline = new Map();
+    for (const issue of baselineIssues) {
+        const key = validationIssueKey(issue);
+        remainingBaseline.set(key, (remainingBaseline.get(key) || 0) + 1);
+    }
+    return issues.filter(issue => {
+        const key = validationIssueKey(issue);
+        const remaining = remainingBaseline.get(key) || 0;
+        if (remaining === 0) return true;
+        remainingBaseline.set(key, remaining - 1);
+        return false;
+    });
+}
+
 export async function executeCli(argv) {
     const { command, input: rawInput, extraPositionals, flags } = parseArgs(argv);
     if (command === 'help' || flags.help) return { status: 'ok', command: 'help', usage: 'docx-redline <inspect|extract|preflight|apply|accept|reject|delete-comments|validate> <file.docx> [options]' };
@@ -135,10 +178,28 @@ export async function executeCli(argv) {
             return { status: inspected.status, command, input, indexBase: 1, paragraphs: inspected.paragraphs.map(({ index, ref, paragraphId, fingerprint, exactText, inTable, list, nearestHeading }) => ({ index, ref, paragraphId, fingerprint, exactText, inTable, list, nearestHeading })), warnings: inspected.warnings };
         }
         if (command === 'validate') {
-            const entries = unzipDocx(buffer); const documentXml = entries.get('word/document.xml')?.toString('utf8') || '';
-            const revision = validateRedlineOoxml(documentXml); const issues = [...revision.issues];
-            try { await validateDocxPackage(new MemoryZip(entries)); } catch (error) { issues.push({ code: 'PACKAGE_VALIDATION', severity: 'error', message: error.message }); }
-            return { status: issues.some(issue => issue.severity === 'error') ? 'error' : 'ok', command, input, valid: !issues.some(issue => issue.severity === 'error'), issues };
+            const issues = await collectValidationIssues(buffer);
+            if (flags.baseline) {
+                const baseline = path.resolve(String(flags.baseline));
+                let baselineBuffer;
+                try { baselineBuffer = await readFile(baseline); }
+                catch (error) { return cliError('BASELINE_READ_FAILED', error.message); }
+                const baselineIssues = await collectValidationIssues(baselineBuffer);
+                const introducedIssues = subtractValidationIssues(issues, baselineIssues);
+                const hasIntroducedErrors = introducedIssues.some(issue => issue.severity === 'error');
+                return {
+                    status: hasIntroducedErrors ? 'error' : 'ok',
+                    command,
+                    input,
+                    baseline,
+                    valid: !hasIntroducedErrors,
+                    issues,
+                    baselineIssues,
+                    introducedIssues
+                };
+            }
+            const hasErrors = issues.some(issue => issue.severity === 'error');
+            return { status: hasErrors ? 'error' : 'ok', command, input, valid: !hasErrors, issues };
         }
         const opsData = command === 'preflight' || command === 'apply' ? await readOperations(flags.operations) : null;
         const operations = opsData?.operations || null;

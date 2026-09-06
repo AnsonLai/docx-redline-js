@@ -90,6 +90,28 @@ try {
     const forced = await executeCli(['apply', input, '--operations', validOps, '--output', defaultResult.outputPath, '--force']);
     assert.equal(forced.written, true); assert.deepEqual(await readFile(defaultResult.outputPath), originalDefault);
 
+    const aliasOutput = path.join(directory, 'aliases.docx');
+    const aliased = await executeCli(['apply', input, '--operations-file', validOps, '-a', 'Editor', '-o', aliasOutput]);
+    assert.equal(aliased.written, true);
+    assert.equal(aliased.outputPath, aliasOutput);
+    const baselineValidation = await executeCli(['validate', aliasOutput, '--baseline', input]);
+    assert.equal(baselineValidation.status, 'ok');
+    assert.equal(baselineValidation.valid, true);
+    assert.deepEqual(baselineValidation.introducedIssues, []);
+    assert.equal(baselineValidation.baseline, input);
+    assert.equal((await executeCli(['validate', aliasOutput, '--baseline', path.join(directory, 'absent.docx')])).error.code, 'BASELINE_READ_FAILED');
+
+    const invalidOnceXml = xml.replace('>Body<', '> Body<');
+    const invalidTwiceXml = invalidOnceXml.replace('>Table Needle<', '> Table Needle<');
+    const invalidOnce = path.join(directory, 'invalid-once.docx');
+    const invalidTwice = path.join(directory, 'invalid-twice.docx');
+    await writeFile(invalidOnce, buildZip([{name:'[Content_Types].xml',data:types},{name:'word/document.xml',data:invalidOnceXml},{name:'word/_rels/document.xml.rels',data:rels}]));
+    await writeFile(invalidTwice, buildZip([{name:'[Content_Types].xml',data:types},{name:'word/document.xml',data:invalidTwiceXml},{name:'word/_rels/document.xml.rels',data:rels}]));
+    const introducedValidation = await executeCli(['validate', invalidTwice, '--baseline', invalidOnce]);
+    assert.equal(introducedValidation.status, 'error');
+    assert.equal(introducedValidation.valid, false);
+    assert.equal(introducedValidation.introducedIssues.filter(issue => issue.code === 'MISSING_SPACE_PRESERVE').length, 1);
+
     const inPlace = path.join(directory, 'in-place.docx'); await writeFile(inPlace, fixture);
     const inPlaceResult = await executeCli(['apply', inPlace, '--operations', validOps, '--in-place']);
     assert.equal(inPlaceResult.outputPath, inPlace); assert.notDeepEqual(await readFile(inPlace), fixture);

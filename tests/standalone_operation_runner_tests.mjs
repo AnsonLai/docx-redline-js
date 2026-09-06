@@ -13,6 +13,8 @@ import {
     applyOperationsToDocumentXml,
     orderOperationsForStableTargets
 } from '../services/standalone-operation-runner.js';
+import { validateRedlineOoxml } from '../core/redline-validation.js';
+import { createDynamicNumberingIdState } from '../services/numbering-helpers.js';
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
@@ -41,7 +43,7 @@ function buildParagraphDocumentXml(paragraphs) {
         .map(text => `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`)
         .join('');
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="${NS_W}">
+<w:document xmlns:w="${NS_W}" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">
   <w:body>${paragraphXml}<w:sectPr/></w:body>
 </w:document>`;
 }
@@ -912,6 +914,42 @@ async function testOverlappingBatchAnchorFailsInsteadOfEditingWrongSpan() {
         'failed overlapping operation must not silently edit the stale paragraph');
 }
 
+async function testNumberedHeadingConversionKeepsBatchRevisionIdsUnique() {
+    const paragraphs = [
+        'Document title',
+        'Opening recital',
+        'Second recital',
+        'Service description',
+        '2.3 Customer Responsibilities'
+    ];
+    const inputXml = buildParagraphDocumentXml(paragraphs);
+    const operations = [
+        { type: 'redline', targetRef: 1, target: paragraphs[0], modified: 'Standalone document' },
+        { type: 'redline', targetRef: 2, target: paragraphs[1], modified: 'Revised opening recital' },
+        { type: 'redline', targetRef: 3, target: paragraphs[2], modified: 'Revised second recital' },
+        { type: 'redline', targetRef: 4, target: paragraphs[3], modified: 'Revised service description' },
+        { type: 'redline', targetRef: 5, target: paragraphs[4], modified: '2.2 Customer Responsibilities' }
+    ];
+
+    const result = await applyOperationsToDocumentXml(
+        inputXml,
+        operations,
+        'BatchAllocatorTest',
+        { numberingIdState: createDynamicNumberingIdState() },
+        { atomic: true, strictTargets: true }
+    );
+
+    assert.notStrictEqual(result.status, 'error');
+    assert.strictEqual(result.error, undefined);
+    assert.strictEqual(result.hasChanges, true);
+    const validation = validateRedlineOoxml(result.documentXml);
+    assert.deepStrictEqual(
+        validation.issues.filter(issue => issue.code === 'DUPLICATE_REVISION_ID'),
+        [],
+        'numbered-heading routing must reuse the document-scoped batch allocator'
+    );
+}
+
 async function run() {
     await testRedlineOperation();
     await testImplicitMultilineTargetReplacesWholeRange();
@@ -931,6 +969,7 @@ async function run() {
     await testBatchRunsCommentsBeforeTextEditsOnSameParagraph();
     await testBatchAtomicRollbackAndLegacyPartialMode();
     await testOverlappingBatchAnchorFailsInsteadOfEditingWrongSpan();
+    await testNumberedHeadingConversionKeepsBatchRevisionIdsUnique();
     console.log('PASS: standalone operation runner tests');
 }
 

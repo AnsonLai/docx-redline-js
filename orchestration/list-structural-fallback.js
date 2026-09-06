@@ -434,6 +434,7 @@ export function buildSingleLineListStructuralFallbackPlan(options = {}) {
  * @param {{
  *   author?: string,
  *   generateRedlines?: boolean,
+ *   revisionIdAllocator?: import('../core/types.js').RevisionIdAllocator|null,
  *   pipeline?: import('../pipeline/pipeline.js').ReconciliationPipeline,
  *   setAbstractStartOverride?: boolean
  * }} [options={}] - Execution options
@@ -476,6 +477,7 @@ export async function executeSingleLineListStructuralFallback(plan, options = {}
             originalText: String(plan.originalText || ''),
             generateRedlines,
             author,
+            revisionIdAllocator: options.revisionIdAllocator || null,
             numberingService: new NumberingService()
         });
 

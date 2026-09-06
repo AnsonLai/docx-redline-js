@@ -528,6 +528,7 @@ async function tryExplicitDecimalHeaderListConversion({
     modifiedText,
     author,
     runtimeContext,
+    revisionIdAllocator,
     generateRedlines = true,
     onInfo = () => { },
     options = {}
@@ -559,7 +560,8 @@ async function tryExplicitDecimalHeaderListConversion({
         strippedContent,
         {
             author,
-            generateRedlines
+            generateRedlines,
+            _revisionIdAllocator: revisionIdAllocator
         }
     );
     if (!redlineResult?.hasChanges || typeof redlineResult?.oxml !== 'string') return null;
@@ -655,6 +657,7 @@ async function trySingleParagraphListStructuralFallback({
     modifiedText,
     author,
     runtimeContext,
+    revisionIdAllocator,
     generateRedlines = true,
     onInfo = () => { },
     options = {}
@@ -674,6 +677,7 @@ async function trySingleParagraphListStructuralFallback({
     const fallbackResult = await executeSingleLineListStructuralFallback(fallbackPlan, {
         author,
         generateRedlines,
+        revisionIdAllocator,
         setAbstractStartOverride: false
     });
     if (!fallbackResult?.hasChanges || !fallbackResult?.oxml) {
@@ -1132,6 +1136,7 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
             modifiedText: effectiveModifiedText,
             author,
             runtimeContext,
+            revisionIdAllocator,
             generateRedlines,
             onInfo,
             options
@@ -1148,6 +1153,7 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
             modifiedText: effectiveModifiedText,
             author,
             runtimeContext,
+            revisionIdAllocator,
             generateRedlines,
             onInfo,
             options
@@ -1672,4 +1678,3 @@ export async function applyParagraphFormatToParagraphByExactText(
         status: 'ok'
     };
 }
-

@@ -142,6 +142,7 @@ export class DocxDocument {
         const originalEntries = this.entries; const working = cloneEntries(originalEntries); const zip = new MemoryZip(working);
         const documentXml = text(working, 'word/document.xml');
         let originalIssues = [];
+        let operationResult = null;
         try {
             if (!documentXml) throw new Error('Missing word/document.xml.');
             const baseline = validateRedlineOoxml(documentXml);
@@ -154,7 +155,7 @@ export class DocxDocument {
                 commentsExtendedXml: text(working, 'word/commentsExtended.xml')
             };
             const { expectedRevision: _pkgExpectedRevision, ...runnerOptions } = options;
-            const result = await applyOperationsToDocumentXml(documentXml, operations, options.author, context, {
+            const result = operationResult = await applyOperationsToDocumentXml(documentXml, operations, options.author, context, {
                 ...runnerOptions, atomic: options.atomic !== false, strictTargets: options.strictTargets !== false,
                 _existingCommentDetails: existingCommentDetails(working),
                 commentIdAllocator: nextCommentId(working)
@@ -163,13 +164,27 @@ export class DocxDocument {
             if (!result.hasChanges) return { ...result, status: result.status || 'ok', written: false, artifactsChanged: [], validation: { originalIssues, generatedIssues: [] }, buffer: Buffer.from(this.originalBuffer), toBuffer: () => Buffer.from(this.originalBuffer) };
             working.set('word/document.xml', Buffer.from(result.documentXml));
             await ensureNumberingArtifactsInZip(zip, result.numberingXmlParts, { mergeNumberingXml: mergeNumberingXmlBySchemaOrder });
-            await ensureCommentsArtifactsInZip(zip, result.commentsXml, { replaceExisting: result.commentsXmlMode === 'replace' });
-            await ensureCommentsExtendedArtifactsInZip(zip, result.commentsExtendedXml, { replaceExisting: result.commentsExtendedXmlMode === 'replace' });
+            const existingCommentsXml = text(working, 'word/comments.xml');
+            const commentsXmlForPackaging = result.commentsXml || existingCommentsXml;
+            await ensureCommentsArtifactsInZip(zip, commentsXmlForPackaging, {
+                replaceExisting: result.commentsXmlMode === 'replace' || (!result.commentsXml && !!existingCommentsXml)
+            });
+            const existingCommentsExtendedXml = text(working, 'word/commentsExtended.xml');
+            const commentsExtendedXmlForPackaging = result.commentsExtendedXml || existingCommentsExtendedXml;
+            await ensureCommentsExtendedArtifactsInZip(zip, commentsExtendedXmlForPackaging, {
+                replaceExisting: result.commentsExtendedXmlMode === 'replace' || (!result.commentsExtendedXml && !!existingCommentsExtendedXml)
+            });
             if (options.validate !== false) {
                 const generated = validateRedlineOoxml(result.documentXml);
                 const baselineErrors = new Set(baseline.issues.filter(i => i.severity === 'error').map(i => `${i.code}:${i.message}`));
                 const introduced = generated.issues.filter(i => i.severity === 'error' && !baselineErrors.has(`${i.code}:${i.message}`));
-                if (introduced.length) throw Object.assign(new Error('Generated document introduced invalid revision markup.'), { issues: introduced });
+                if (introduced.length) {
+                    const codes = [...new Set(introduced.map(issue => issue.code))].join(', ');
+                    throw Object.assign(
+                        new Error(`Applied operations introduced invalid revision markup (${codes}); these are generated-output issues, not pre-existing input issues.`),
+                        { issues: introduced }
+                    );
+                }
                 await validateDocxPackage(zip);
             }
             this.entries = working;
@@ -180,7 +195,24 @@ export class DocxDocument {
         } catch (error) {
             this.entries = originalEntries;
             const generatedIssues = error.issues || [{ source: 'package', code: 'PACKAGE_OPERATION_FAILED', severity: 'error', message: error.message }];
-            return { status: 'error', hasChanges: false, written: false, rolledBack: true, results: [], artifactsChanged: [], error: { code: 'PACKAGE_OPERATION_FAILED', message: error.message }, validation: { originalIssues, generatedIssues }, issues: generatedIssues, buffer: Buffer.from(this.originalBuffer), toBuffer: () => Buffer.from(this.originalBuffer) };
+            return {
+                ...(operationResult ? {
+                    results: operationResult.results || [],
+                    receipts: operationResult.receipts || [],
+                    executionOrder: operationResult.executionOrder || [],
+                    authorsUsed: operationResult.authorsUsed || []
+                } : { results: [] }),
+                status: 'error',
+                hasChanges: false,
+                written: false,
+                rolledBack: true,
+                artifactsChanged: [],
+                error: { code: 'PACKAGE_OPERATION_FAILED', message: error.message },
+                validation: { originalIssues, generatedIssues },
+                issues: generatedIssues,
+                buffer: Buffer.from(this.originalBuffer),
+                toBuffer: () => Buffer.from(this.originalBuffer)
+            };
         }
     }
 

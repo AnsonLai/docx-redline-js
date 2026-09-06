@@ -197,10 +197,14 @@ export function extractReplacementNodesFromOoxml(outputOxml) {
 
 function upsertContentTypeOverride(ctDoc, partName, contentType) {
     const overrides = Array.from(ctDoc.getElementsByTagNameNS('*', 'Override'));
-    const hasOverride = overrides.some(
+    const existingOverride = overrides.find(
         override => (override.getAttribute('PartName') || '').toLowerCase() === String(partName).toLowerCase()
     );
-    if (hasOverride) return false;
+    if (existingOverride) {
+        if ((existingOverride.getAttribute('ContentType') || '') === contentType) return false;
+        existingOverride.setAttribute('ContentType', contentType);
+        return true;
+    }
 
     const override = ctDoc.createElementNS(NS_CT, 'Override');
     override.setAttribute('PartName', partName);

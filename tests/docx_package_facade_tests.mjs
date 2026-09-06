@@ -54,4 +54,25 @@ const numberedDoc = openDocx(numberedInput);
 const listResult = await numberedDoc.applyOperations([{ type:'replace', target:{ exactText:'Hello world' }, modified:'1. Hello world' }], { author:'Agent', atomic:true });
 assert.equal(listResult.written, true);
 assert.match(unzipEntries(listResult.toBuffer()).get('word/numbering.xml').toString(), /abstractNumId="41"/);
+
+const legacyExtendedContentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml';
+const extendedTypes = contentTypes.replace('</Types>', `<Override PartName="/word/commentsExtended.xml" ContentType="${legacyExtendedContentType}"/></Types>`);
+const extendedRels = rels.replace('</Relationships>', '<Relationship Id="rId2" Type="http://schemas.microsoft.com/office/2011/relationships/commentsExtended" Target="commentsExtended.xml"/></Relationships>');
+const threadedComments = `<w:comments xmlns:w="${W}" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:comment w:id="5000" w:author="Prior"><w:p w14:paraId="ABCDEF12"><w:r><w:t>Old</w:t></w:r></w:p></w:comment></w:comments>`;
+const commentsExtended = '<w15:commentsEx xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml"><w15:commentEx w15:paraId="ABCDEF12" w15:done="0"/></w15:commentsEx>';
+const legacyExtendedInput = buildZip([
+    {name:'[Content_Types].xml',data:extendedTypes},
+    {name:'word/document.xml',data:documentXml},
+    {name:'word/_rels/document.xml.rels',data:extendedRels},
+    {name:'word/comments.xml',data:threadedComments},
+    {name:'word/commentsExtended.xml',data:commentsExtended}
+]);
+const normalizedExtended = await openDocx(legacyExtendedInput).applyOperations(
+    [{ type:'replace', target:{ exactText:'Hello world' }, modified:'Hello reliable world' }],
+    { author:'Agent', atomic:true }
+);
+assert.equal(normalizedExtended.written, true, 'safe package metadata normalization should not block unrelated redlines');
+const normalizedTypes = unzipEntries(normalizedExtended.toBuffer()).get('[Content_Types].xml').toString();
+assert.match(normalizedTypes, /application\/vnd\.ms-word\.commentsExtended\+xml/);
+assert.doesNotMatch(normalizedTypes, /application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.commentsExtended\+xml/);
 console.log('docx package facade tests passed');
