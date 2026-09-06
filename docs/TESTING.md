@@ -20,7 +20,7 @@ fixtures rarely contain.
 | Visual evidence inspection | `npm run test:visual:inspect` | Automated inspection of rendered Word PDFs across synthetic and SuperDoc suites (page counts, PDF integrity, anomaly detection) | Human visual sign-off |
 | Visual failure regressions | `node tests/visual_failure_regression_tests.mjs` | Semantic OOXML guards against visual failures (formatting leaks, font resets, ghost bullets, table cell destruction) | Visual rendering proof in Word |
 | Multimodal LLM visual spot check | On-demand / sampled | Evaluates rendered real-document pages with vision models for layout, table alignment, and typography regressions | Full-corpus automated coverage (intentionally decoupled and sampled due to cost/time) |
-| XSD and LibreOffice | See `docs/VALIDATION.md` | Schema conformance and acceptance by a second consumer | Word-specific revision semantics |
+| XSD and LibreOffice | See [Release validation and independent oracles](#release-validation-and-independent-oracles) | Schema conformance and acceptance by a second consumer | Word-specific revision semantics |
 | Agent inspection and package facade | `node tests/document_inspection_tests.mjs`, `node tests/docx_package_facade_tests.mjs` | Canonical text, comment/list resolution, package-scoped IDs, untouched-part preservation, and atomic rollback | Desktop Word rendering |
 | Agent CLI | `node tests/agent_cli_tests.mjs` | JSON contracts, exact-text extraction, author requirements, safe output behavior, all command families, and operation-schema readability | Cross-platform CI beyond the current runner |
 | Agent edge cases | `node tests/canonical_paragraph_text_tests.mjs`, `node tests/document_inspection_edge_tests.mjs`, `node tests/docx_package_transaction_edge_tests.mjs`, `node tests/node_zip_archive_tests.mjs`, `node tests/agent_cli_edge_tests.mjs` | Revision-view semantics, cross-paragraph anchors, nested numbering, transaction reuse, multi-author cleanup, malformed ZIP handling, and destructive CLI safeguards | Desktop Word rendering and non-Windows CI |
@@ -548,11 +548,12 @@ alignment, font substitution, changed list indentation, clipped headers,
 visually stale fields, or a comment/footnote marker that is technically present
 but poorly placed.
 
-### Human Word visual review
+### Microsoft Word visual review guide
 
-Human visual review complements—not replaces—the automated differential. Use
-the checklist and report template in
-[`WORD-MANUAL-REVIEW.md`](./WORD-MANUAL-REVIEW.md).
+Human visual review complements—not replaces—the automated differential. The
+automated differential proves Word revision semantics by comparing text after
+Accept All and Reject All, but this review checks the layout, typography, and
+interaction details that `Document.Content.Text` cannot see.
 
 Review is required for:
 
@@ -563,19 +564,131 @@ Review is required for:
 - any case that needs normalized rather than exact text comparison; and
 - any automated Word failure whose cause is not immediately textual.
 
-Before a release, review all new/changed cases plus a rotating sample of at
-least 20% of the unchanged synthetic catalogue. The sample must include legal
-and administrative content and at least one list, table, formatted-run, and
-structural-anchor case. Also review at least one legal and one administrative
-SuperDoc result. Rotate the sample so every retained synthetic case receives a
-human review over five release cycles. A major release or a change to package
-assembly requires a full visual sweep of affected structure families.
+#### Prepare the review set
 
-The reviewer inspects three states in Word: tracked changes with **All Markup**,
-the result after **Accept All**, and a fresh copy after **Reject All**. Record
-the reviewer, date, Word version/build, cases selected, pass/fail result, and
-notes. A visual failure becomes a regression case or a documented harness gap;
-do not waive it merely because the COM text differential passed.
+Run the automated lanes first:
+
+```powershell
+npm run test:word
+npm run test:corpus:word
+npm run report:word:coverage
+npm run review:word:prepare -- --cycle=0
+```
+
+The last command writes a pending review manifest under ignored
+`tmp/word-manual-review/` containing changed catalogue families, the rotating
+20% synthetic release sample, and legal/administrative corpus representatives.
+It only prepares the selection: it never records a visual pass or human
+sign-off. Use a new cycle number for each release rotation.
+
+Synthetic documents are generated under `tmp/word-validation/`; reviewed
+SuperDoc results are under `tmp/superdoc-word-fixtures/`. Do not commit generated
+or downloaded `.docx` files.
+
+Selection rules:
+- every new or changed case;
+- every case required by the triggers above;
+- at least 20% of unchanged synthetic cases, rotating from the prior release (so
+  every retained synthetic case receives a human review over five release cycles);
+- at least one legal and one administrative SuperDoc result; and
+- representative list, table, formatted-run, and anchor/field/content-control
+  structures.
+
+A major release or a change to package assembly requires a full visual sweep of
+affected structure families.
+
+Record the installed Word version and build from **File → Account → About Word**.
+Differences in rendering can be version-specific.
+
+#### Configure Word
+
+For the tracked-change inspection:
+
+1. Open the generated fixture directly in desktop Word.
+2. On **Review**, select **All Markup**.
+3. Under **Show Markup**, enable insertions/deletions, formatting, comments, and
+   all reviewers relevant to the case.
+4. Use the expected balloons/inline display for the document and enable
+   paragraph marks when checking whitespace, tabs, breaks, lists, and empty
+   paragraphs.
+5. Do not overwrite the generated fixture. Work on disposable copies if a
+   saved accepted or rejected view is useful.
+
+#### Inspect each case (3-view checklist)
+
+##### 1. Tracked-change view
+
+- The document opens without a repair, conversion, or unreadable-content prompt.
+- Word shows the expected revision count and author attribution.
+- Insertions and deletions are anchored at the intended words or paragraph
+  marks; a small edit has not become an unexplained whole-paragraph rewrite.
+- Untargeted text and surrounding revisions remain unchanged.
+- Existing bold, italic, underline, highlighting, fonts, styles, and language
+  settings remain visually consistent.
+- Spaces, tabs, manual breaks, paragraph spacing, indentation, and alignment
+  look intentional with formatting marks visible.
+- Lists retain numbering, levels, continuation, indentation, and marker style.
+- Tables retain widths, borders, merged cells, row heights, and alignment.
+- Bookmarks, hyperlinks, fields, content controls, comments, and note references
+  remain in the correct visible location and still behave when activated.
+- Headers, footers, section boundaries, page breaks, and pagination remain
+  stable around the edit.
+- Revision balloons and comment balloons point to the correct content and do
+  not obscure or displace unrelated layout unexpectedly.
+
+##### 2. Accept All view
+
+On a disposable copy, choose **Accept All Changes** and verify:
+
+- The resulting visible text expresses the intended edit.
+- No deletion residue, empty revision wrapper, unexpected blank line, or stale
+  formatting remains.
+- Lists, tables, fields, links, comments, notes, and page layout still work.
+- Untargeted content is visually unchanged.
+
+Close the copy without replacing the generated fixture.
+
+##### 3. Reject All view
+
+Reopen a fresh copy, choose **Reject All Changes**, and verify:
+
+- The original visible text and formatting are restored.
+- Original list numbering, table layout, fields, anchors, and pagination return.
+- No content introduced by the edit remains.
+
+#### Record the visual review result
+
+Keep the review report with release-validation artifacts. Screenshots may be
+stored under ignored `tmp/word-manual-review/<date>/` when useful, but do not
+commit corpus document images or document contents without checking rights and
+sensitivity.
+
+Suggested report template:
+
+```markdown
+# Word visual review — <release/date>
+
+- Reviewer:
+- Review date:
+- Word version/build:
+- Automated synthetic result:
+- Automated corpus result:
+- Review type: Human sign-off | AI visual preflight
+
+| Case | Why selected | All Markup | Accept All | Reject All | Result | Notes |
+|---|---|---|---|---|---|---|
+| example-case | New table structure | Pass | Pass | Pass | Pass | No layout shift |
+
+## Failures or follow-ups
+
+- None.
+```
+
+A **Pass** requires all three views to pass. Record **Fail** if rendering or
+interaction is wrong even when automated text comparison passes. Turn a failure
+into a fixed regression case when possible; otherwise record the exact harness
+or Word-version limitation in the active reliability plan.
+
 
 ### AI-assisted Word visual preflight
 
@@ -755,7 +868,128 @@ revision part (`word/document.xml` by default, or a named header part), and
 verifies every untouched ZIP part byte-for-byte before Word opens the result.
 The Word oracle derives multi-change expectations by applying each independently
 declared replacement to Word's source text and reads header-story text separately
-for header cases.
+## Release validation and independent oracles
+
+This package works on OOXML strings and intentionally leaves `.docx` zip
+packaging to consumers (release *tooling* assembles minimal `.docx` fixtures
+with a script-local zip writer; the published library has no zip dependency).
+
+The test suite verifies the accept/reject round-trip invariant using the
+library's own transforms. Because a shared misconception between the
+generator and the resolver would pass those tests silently, release
+validation adds **independent oracles**: Microsoft Word, LibreOffice, and
+the ECMA-376 schemas.
+
+### Pre-release automated check sequence
+
+```bash
+npm test              # includes tests/roundtrip_fuzz_tests.mjs (seeded, deterministic)
+npm run test:isolation
+npm run check:types
+npm run lint
+```
+
+The fuzz harness generates random paragraph structures and edits, asserting the
+round-trip invariant plus `validateRedlineOoxml` on each case. Tune or reproduce with:
+
+```bash
+FUZZ_SEED=<seed> FUZZ_ITERATIONS=<n> node tests/roundtrip_fuzz_tests.mjs
+```
+
+A failing case prints its exact reproduction command.
+
+### Runtime guardrail
+
+`validateRedlineOoxml(oxml)` (exported from `index.js`) runs structural
+invariants at runtime and returns `{ valid, issues }`. Downstream packagers
+should call it before writing engine output into `word/document.xml`.
+
+### Export fixtures
+
+```bash
+node scripts/export-validation-fixtures.mjs
+```
+
+Writes to `tmp/validation-docx/`, per case:
+
+- `<name>.document.xml` — generated `word/document.xml` payload
+- `<name>.docx` — minimal assembled package
+- `<name>.expected.json` — expected accept-all / reject-all plain text,
+  derived from edit *intent* (not from this library's transforms), so
+  external consumers act as independent oracles.
+
+### Schema validation (ECMA-376 transitional XSD)
+
+```bash
+node scripts/export-validation-fixtures.mjs
+bash scripts/validate-fixtures-xsd.sh
+```
+
+Downloads (and caches in `.cache/ooxml-schemas/`) the transitional
+wordprocessingml schemas from ECMA-376 Part 4, patches the `xml:` namespace
+import to resolve offline, and validates every `*.document.xml` fixture with
+`xmllint`. Requires `curl`, `unzip`, and `xmllint` (`libxml2-utils` on
+Debian/Ubuntu; available on Windows via conda/msys).
+
+### LibreOffice consumer check
+
+```bash
+cd tmp/validation-docx
+soffice --headless --convert-to pdf --outdir converted *.docx
+```
+
+Verifies that a second independent OOXML consumer parses and converts the
+fixtures without error.
+
+### Continuous validation
+
+`.github/workflows/validation.yml` runs nightly (and on demand via
+`workflow_dispatch`):
+
+1. **xsd-schema** — exports fixtures and validates them against the
+   ECMA-376 transitional `wml.xsd`.
+2. **libreoffice** — exports fixtures and converts them with headless
+   LibreOffice.
+3. **fuzz-extended** — 20,000 fuzz round-trip cases with a date-derived
+   seed, so every night explores new inputs. A failure log includes the
+   exact `FUZZ_SEED` reproduction command.
+
+The Word differential check stays manual because it requires desktop Word;
+run it before tagging a release.
+
+### JavaScript coverage baselines
+
+```bash
+npm run test:coverage
+```
+
+The command runs the complete JavaScript test suite under c8 and prints a
+per-file report. Coverage answers "which implementation paths did the automated
+JavaScript tests execute?" It does not prove that executed paths are correct,
+that generated OOXML opens in Word, or that the real-document corpus is broad
+enough. Treat it as a map for finding thinly tested code; Word, schema,
+LibreOffice, fuzz, and corpus checks provide different evidence.
+
+Historical reference snapshots:
+
+- **Initial Phase 7 baseline (2026-08-29)**:
+  | Metric | Coverage |
+  |---|---:|
+  | Lines / statements | 79.57% |
+  | Functions | 80.07% |
+  | Branches | 69.22% |
+
+- **Post-Phase-5 snapshot (2026-08-30)**:
+  79.96% lines/statements, 80.95% functions, and 69.52% branches.
+
+- **Post-Phase-5 snapshot (2026-09-04)**:
+  89.81% statements/lines, 93.04% functions, and 77.34% branches repo-wide.
+  The Node surface reports 99.61% statements/lines; `document-inspection.js`
+  reports 97.64% statements/lines and 100% functions; `paragraph-text.js` reports
+  100% statements/lines/functions.
+
+Preserve snapshots so progress is visible over time rather than presenting
+coverage as a single pass/fail quality score.
 
 ## Choosing where a new test belongs
 

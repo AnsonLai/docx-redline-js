@@ -260,7 +260,7 @@ Validation entry points:
 - Word (differential accept/reject): \`npm run smoke:word:diff\`
 - LibreOffice parse check: \`soffice --headless --convert-to pdf *.docx\`
 - Schema check: \`xmllint --noout --schema wml.xsd *.document.xml\`
-  (transitional schemas from ECMA-376 Part 4; see docs/VALIDATION.md)
+  (transitional schemas from ECMA-376 Part 4; see docs/TESTING.md)
 `, 'utf8');
 
 if (failures > 0) {

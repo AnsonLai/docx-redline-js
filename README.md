@@ -18,7 +18,15 @@ Converts AI-generated or programmatic text/markdown edits into valid Office Open
 - Status/error result fields for parse, targeting, and existing-revision failures
 - Package plumbing helpers for numbering.xml, comments.xml, content types, and relationships
 - Zero host dependencies: works in Node.js, browsers, Deno, and similar JS runtimes with DOM parsing support
-- TypeScript declarations included via `index.d.ts`
+## Documentation Index
+
+| Document | Description |
+|---|---|
+| **[README.md](./README.md)** | Library overview, installation, quick start, and public API reference |
+| **[AGENTS.md](./AGENTS.md)** | AI coding agent quick reference, targeting rules, and complete CLI workflow |
+| **[ARCHITECTURE.md](./ARCHITECTURE.md)** | Contributor architecture, module responsibilities, end-to-end data flow, and contracts |
+| **[docs/TESTING.md](./docs/TESTING.md)** | Complete testing guide, test lanes, independent oracle validation, and Word visual review checklist |
+| **[CHANGELOG.md](./CHANGELOG.md)** | Release history, breaking changes, and migration notes |
 
 ## Install
 
@@ -158,7 +166,7 @@ return nonzero and do not create or overwrite output files.
 
 All commands emit JSON. Mutations require explicit authors and preserve the
 input unless `--in-place` is supplied. Existing output paths are refused unless
-`--force` is supplied. See [the agent workflow](docs/AGENT-WORKFLOW.md) and the
+`--force` is supplied. See [the agent workflow in AGENTS.md](./AGENTS.md#agent-document-workflow-cli) and the
 [operation JSON Schema](docs/schemas/document-operations.schema.json).
 
 ### Configuration (call once at startup)
@@ -563,25 +571,20 @@ Use `npm run report:word:coverage` to print the validated task-by-structure
 matrix across all 33 synthetic and 31 SuperDoc scenarios. Before a release,
 `npm run review:word:prepare -- --cycle=0` creates a pending human-review
 manifest with changed cases, a rotating 20% synthetic sample, and legal plus
-administrative corpus representatives. See [docs/TESTING.md](./docs/TESTING.md)
-and [docs/WORD-MANUAL-REVIEW.md](./docs/WORD-MANUAL-REVIEW.md); preparation and
-AI preflight never count as human sign-off.
+administrative corpus representatives. See the [Word visual review guide in docs/TESTING.md](./docs/TESTING.md#microsoft-word-visual-review-guide);
+preparation and AI preflight never count as human sign-off.
 
 A nightly GitHub Actions workflow additionally validates generated fixtures
 against the ECMA-376 transitional schemas (`xmllint`), opens them with
 LibreOffice, and runs an extended fuzz sweep of the accept/reject round-trip
-invariant with a fresh seed. See [docs/VALIDATION.md](./docs/VALIDATION.md).
+invariant with a fresh seed. See [Release validation in docs/TESTING.md](./docs/TESTING.md#release-validation-and-independent-oracles).
 
-## Architecture
+## Architecture & Contributing
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for module layout, data flow, and contributor guidance.
-
-See [AGENTS.md](./AGENTS.md) for a concise reference for AI coding agents.
-
-See [docs/VALIDATION.md](./docs/VALIDATION.md) for release-time validation steps.
-
-See [docs/TESTING.md](./docs/TESTING.md) for how the test lanes work and how to
-add new cases.
+- **[ARCHITECTURE.md](./ARCHITECTURE.md)**: Detailed module layout, end-to-end reconciliation flow, and contributor fast orientation.
+- **[AGENTS.md](./AGENTS.md)**: Concise quick reference for AI coding agents and CLI automation.
+- **[docs/TESTING.md](./docs/TESTING.md)**: Comprehensive testing model, test lanes, independent oracle checks, and visual review checklist.
+- **[CHANGELOG.md](./CHANGELOG.md)**: Version history, migration guides, and deprecation schedules.
 
 ## Test Corpus Attribution
 

@@ -370,7 +370,7 @@ The bundle inlines `diff-match-patch` and keeps `@xmldom/xmldom` external.
   - Nightly independent-oracle validation: XSD schema check, LibreOffice
     conversion, and an extended 20k-case fuzz sweep with a fresh seed.
 
-Use these checks before publishing or tagging. See `docs/VALIDATION.md`.
+Use these checks before publishing or tagging. See [docs/TESTING.md](./docs/TESTING.md#release-validation-and-independent-oracles).
 
 ## Fast Orientation For Contributors
 
