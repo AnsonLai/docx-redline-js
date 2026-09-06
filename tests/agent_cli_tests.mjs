@@ -25,7 +25,8 @@ try {
     const preflight = await executeCli(['preflight', input, '--operations', operationsFile, '--author', 'CLI Editor']);
     assert.equal(preflight.valid, true);
     const missingAuthor = await executeCli(['apply', input, '--operations', authorlessFile]);
-    assert.equal(missingAuthor.error.code, 'AUTHOR_REQUIRED');
+    assert.equal(missingAuthor.status, 'ok');
+    assert.equal(missingAuthor.authorsUsed[0], 'AI Redliner');
 
     const output = path.join(directory, 'output.docx');
     const applied = await executeCli(['apply', input, '--operations', operationsFile, '--output', output]);
@@ -43,8 +44,16 @@ try {
     assert.equal(commentResult.written, true);
     const removed = await executeCli(['delete-comments', commented, '--author', 'Reviewer']);
     assert.equal(removed.written, true); assert.equal(removed.commentsRemoved, 1);
-    const refused = await executeCli(['apply', input, '--operations', operationsFile, '--output', output]);
+    const refused = await executeCli(['apply', input, '--operations', operationsFile, '--output', output, '--no-overwrite']);
     assert.equal(refused.error.code, 'OUTPUT_EXISTS');
+
+    // Inline one-liner test
+    const inlineOutput = path.join(directory, 'inline_output.docx');
+    const inlineApplied = await executeCli(['apply', input, '--target', '  Exact\ttext  ', '--modified', 'Inline Replaced', '--author', 'Inline Author', '--output', inlineOutput]);
+    assert.equal(inlineApplied.status, 'ok');
+    assert.equal(inlineApplied.written, true);
+    const inlineExtracted = await executeCli(['extract', inlineOutput]);
+    assert.ok(inlineExtracted.paragraphs[0].exactText.includes('Inline Replaced'));
 
     let stdout = '';
     const exitCode = await runCli(['extract', input, '--range', '1:1'], { stdout: { write: value => { stdout += value; } } });

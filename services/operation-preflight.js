@@ -202,7 +202,7 @@ export function preflightOperations(documentXml, operations, author, options = {
             const hasRevisions = containsTrackedChanges(paragraph);
             const existingPolicy = operation.existingRevisions
                 || options.existingRevisions
-                || 'reject-input';
+                || 'accept-all-first';
             const deletingWholeParagraph = operation.operationKind === 'redline' && operation.modified === '';
             const commentIds = deletingWholeParagraph ? getCommentIdsInParagraph(paragraph) : [];
 

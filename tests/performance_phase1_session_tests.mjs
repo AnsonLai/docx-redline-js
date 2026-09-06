@@ -194,6 +194,7 @@ const rollback = await applyOperationsToDocumentXml(SOURCE, [
         modified: 'Never applied.'
     }
 ], 'Rollback', null, {
+    atomic: true,
     _sessionInstrumentation: {
         onDocumentSerialize: () => { counters.sessionSerializations += 1; }
     }

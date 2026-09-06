@@ -1,5 +1,6 @@
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 import { configureXmlProvider } from '../adapters/xml-adapter.js';
+import { getDefaultAuthor } from '../adapters/config.js';
 import { inspectDocumentParts } from '../services/document-inspection.js';
 import { applyOperationsToDocumentXml, preflightOperations } from '../services/standalone-operation-runner.js';
 import { createDynamicNumberingIdState, mergeNumberingXmlBySchemaOrder } from '../services/numbering-helpers.js';
@@ -80,7 +81,7 @@ export class DocxDocument {
     }
     getRevisionToken() { return computePackageRevisionToken(this.entries); }
     get revisionToken() { return this.getRevisionToken(); }
-    preflight(operations, author, options = {}) { return preflightOperations(text(this.entries, 'word/document.xml'), operations, author, { ...options, _existingCommentDetails: existingCommentDetails(this.entries) }); }
+    preflight(operations, author = getDefaultAuthor(), options = {}) { return preflightOperations(text(this.entries, 'word/document.xml'), operations, author || getDefaultAuthor(), { ...options, _existingCommentDetails: existingCommentDetails(this.entries) }); }
     toBuffer() { return zipDocx(this.entries); }
     async applyOperations(operations, options = {}) {
         if (options?.expectedRevision) {
@@ -155,8 +156,9 @@ export class DocxDocument {
                 commentsExtendedXml: text(working, 'word/commentsExtended.xml')
             };
             const { expectedRevision: _pkgExpectedRevision, ...runnerOptions } = options;
-            const result = operationResult = await applyOperationsToDocumentXml(documentXml, operations, options.author, context, {
-                ...runnerOptions, atomic: options.atomic !== false, strictTargets: options.strictTargets !== false,
+            const author = options.author || getDefaultAuthor();
+            const result = operationResult = await applyOperationsToDocumentXml(documentXml, operations, author, context, {
+                ...runnerOptions, atomic: options.atomic === true, strictTargets: options.strictTargets !== false,
                 _existingCommentDetails: existingCommentDetails(working),
                 commentIdAllocator: nextCommentId(working)
             });

@@ -20,7 +20,7 @@ assert.equal(first.written, true);
 const committed = first.toBuffer();
 const afterCommitNoOp = await sequential.applyOperations([], { author:'Editor' });
 assert.equal(afterCommitNoOp.written, false); assert.deepEqual(afterCommitNoOp.toBuffer(), committed);
-const second = await sequential.applyOperations([{ type:'replace', target:{ exactText:'Missing' }, modified:'Never' }], { author:'Editor' });
+const second = await sequential.applyOperations([{ type:'replace', target:{ exactText:'Missing' }, modified:'Never' }], { author:'Editor', atomic: true });
 assert.equal(second.rolledBack, true); assert.deepEqual(second.toBuffer(), committed);
 assert.equal(sequential.inspect().paragraphs[0].text, 'Beta');
 
@@ -37,7 +37,7 @@ assert.equal(protectedPreflight.results[0].error.code, 'COMMENTED_CONTENT_DELETE
 assert.deepEqual(protectedPreflight.results[0].error.commentIds, ['1']);
 assert.equal(protectedPreflight.results[0].error.comments[0].author, 'Alice');
 assert.equal(protectedPreflight.results[0].error.comments[0].text, 'A');
-const protectedDelete = await protectedDoc.applyOperations([{ type:'delete', target:{ exactText:'A' } }], { author:'Editor' });
+const protectedDelete = await protectedDoc.applyOperations([{ type:'delete', target:{ exactText:'A' } }], { author:'Editor', atomic: true });
 assert.equal(protectedDelete.written, false);
 assert.equal(protectedDelete.rolledBack, true);
 assert.equal(protectedDelete.results[0].error.code, 'COMMENTED_CONTENT_DELETE');

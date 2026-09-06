@@ -20,5 +20,8 @@ delegatedArgs.push(...legacyArgs);
 if (!legacyArgs.some(argument => argument === '--author' || argument.startsWith('--author='))) {
     delegatedArgs.push('--author', process.env.DOCX_REDLINE_AUTHOR || 'Agent');
 }
+if (!legacyArgs.some(argument => argument === '--atomic' || argument === '--no-atomic')) {
+    delegatedArgs.push('--atomic');
+}
 
 process.exitCode = await runCli(delegatedArgs);

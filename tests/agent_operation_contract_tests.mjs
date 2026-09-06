@@ -69,7 +69,9 @@ async function testRuntimeOperationValidation() {
     const batch = await applyOperationsToDocumentXml(
         input,
         [{ type: 'comment', target: 'Untouched.', commentContent: '' }],
-        'Validator'
+        'Validator',
+        null,
+        { atomic: true }
     );
     assert.equal(batch.rolledBack, true);
     assert.equal(batch.results[0].error.code, 'INVALID_OPERATION');
@@ -192,7 +194,7 @@ function testPreflightDiagnosticsAndConflicts() {
     const operations = [
         { type: 'replace', target: 'Repeated clause.', modified: 'Ambiguous edit.', author: 'Editor A' },
         { type: 'comment', target: { paragraphId: 'DDD00003' }, textToComment: 'missing', commentContent: 'Check.', author: 'Reviewer' },
-        { type: 'replace', target: { paragraphId: 'DDD00003' }, modified: 'Changed revised clause.', author: 'Editor B' },
+        { type: 'replace', target: { paragraphId: 'DDD00003' }, modified: 'Changed revised clause.', author: 'Editor B', existingRevisions: 'reject-input' },
         { type: 'replace', target: { paragraphId: 'DDD00004' }, modified: '1. First item', author: 'Editor B' },
         { type: 'highlight', target: { paragraphId: 'DDD00004' }, textToHighlight: 'List source.', color: 'yellow', author: 'Reviewer' }
     ];

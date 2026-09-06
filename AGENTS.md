@@ -47,18 +47,21 @@ Browsers have native DOM APIs, so no provider injection is typically needed.
 ```js
 const result = await applyRedlineToOxml(oxml, originalText, modifiedText, {
   generateRedlines: true,
-  author: 'Agent Name',
-  existingRevisions: 'reject-input'
+  author: 'Agent Name'
 });
 ```
 
-`existingRevisions` defaults to `'reject-input'`. Use `'accept-all-first'` only
-when the caller intentionally wants to accept prior tracked changes before
-applying a new edit. A no-op still returns the untouched input; use
-`'accept-all-first-keep-normalized'` only when accepted revisions should be
-returned as a real change even without a new redline.
+`existingRevisions` defaults to `'accept-all-first'`, which automatically normalizes
+prior revisions in that paragraph before generating a clean, new tracked change under
+the current author. Pass `existingRevisions: 'reject-input'` (or
+`--existing-revisions reject-input` via CLI) if you want to refuse edits to paragraphs
+with open revisions. Use `'accept-all-first-keep-normalized'` only when accepted
+revisions should be returned as a real change even on a no-op edit.
 
-### Apply a text edit without tracked changes
+### Apply a text edit without tracked changes (Direct Edits)
+
+> [!IMPORTANT]
+> **Tracked redlines are not always the preferred method.** When finalizing execution copies of contracts, restructuring documents, correcting minor typos, or whenever the user specifically desires clean document text without tracked changes markup clutter, pass `generateRedlines: false` (or `--no-redlines` via CLI).
 
 ```js
 const result = await applyRedlineToOxml(oxml, originalText, modifiedText, {
@@ -160,13 +163,14 @@ For safer targeting, `target` may be a descriptor:
 }
 ```
 
-Call `preflightOperations(documentXml, operations, author)` before applying an
-agent-generated batch. Preflight is read-only and strict by default: duplicate
-exact text returns `AMBIGUOUS_TARGET`, approximate text is not selected, and
-the result reports candidate targets, missing anchors, existing revisions,
-authors, required artifacts, and same-paragraph conflicts. Application keeps
-legacy permissive targeting unless `{ strictTargets: true }` is passed. When
-permissive resolution encounters duplicate candidate paragraphs, it emits an
+Call `preflightOperations(documentXml, operations, author)` when you want a
+read-only inspection of an agent-generated batch before applying it. Preflight is
+read-only and strict by default: duplicate exact text returns `AMBIGUOUS_TARGET`,
+approximate text is not selected, and the result reports candidate targets,
+missing anchors, existing revisions, authors, required artifacts, and
+same-paragraph conflicts. For direct execution, `applyOperationsToDocumentXml` is
+already transactional and atomic by default. When permissive resolution
+encounters duplicate candidate paragraphs, it emits an
 `AMBIGUOUS_TARGET_HEURISTIC_USED` warning; migrate to `{ strictTargets: true }`
 with strict descriptors (`paragraphId`, `index`, `occurrence`, or `fingerprint`)
 before v1.0.0.
@@ -178,12 +182,9 @@ Use `result.documentXml` from these APIs when replacing full `word/document.xml`
 For mixed batches, prefer `applyOperationsToDocumentXml(...)`; it applies comments
 before replacements so earlier edits cannot invalidate their anchors.
 
-Batches are atomic by default. If any operation fails, the batch returns the
-original `documentXml`, `hasChanges: false`, no comment/numbering artifacts, and
-`rolledBack: true`; `results` still describes every attempted operation because
-`continueOnError` defaults to `true`. Pass `{ atomic: false }` only when a
-partially applied document is intentional. Pass `{ continueOnError: false }` to
-stop attempting operations after the first error.
+Batches default to `atomic: false` for maximum speed and progressive execution: valid operations are applied directly, while problematic operations report structured errors in `results` (with `continueOnError: true` by default).
+
+When all-or-nothing transactional protection is desired (e.g. in high-stakes legal contracts, large automated migrations, or strict CI pipelines where partial edits are inadmissible), pass `{ atomic: true }` (or `--atomic` on the CLI). In atomic mode, if any operation fails or yields invalid markup, the entire batch is rolled back to the original untouched document (`rolledBack: true`, `hasChanges: false`, `documentXml: original`).
 
 Internally, a batch uses one live document DOM and one revision allocator, then
 serializes the full document once. Every operation has a DOM/allocator savepoint;
@@ -241,32 +242,63 @@ Use the `docx-redline` CLI for complete `.docx` files. It emits JSON on stdout,
 keeps exact text intact, and never overwrites the source unless `--in-place` is
 explicitly supplied.
 
-#### Recommended sequence
+#### Standard Workflow (Fast & Direct)
+
+`apply` is fast, progressive, and self-validating by default. It supports inline one-liners as well as batch operations files:
+
+```bash
+# 1. Inline one-liner edit (fastest for 1–2 edits; no JSON file needed)
+docx-redline apply contract.docx --target "Original clause" --modified "New clause" --output reviewed.docx
+
+# 2. Direct edit without tracked changes (clean text, no revision clutter)
+docx-redline apply contract.docx --target "Typo fix" --modified "Fixed typo" --no-redlines --output clean.docx
+
+# 3. Batch operations with ops.json
+docx-redline apply contract.docx --operations operations.json --output reviewed.docx
+```
+
+Key CLI defaults and behaviors:
+- **Author**: Automatically defaults to `'AI Redliner'` (overridable via `--author` or `DOCX_REDLINE_AUTHOR` environment variable).
+- **Overwrite behavior**: Destination files provided via `--output` overwrite by default. To protect existing destination files, pass `--no-overwrite` or `--no-clobber`. The source document is never overwritten unless `--in-place` is specified.
+- **Tracked changes**: Defaults to `generateRedlines: true`. When clean direct text is needed, pass `--no-redlines`.
+- **Atomic rollback (optional)**: Operations apply progressively by default (`atomic: false`). For all-or-nothing transactional rollback where any error halts and reverts all changes, pass `--atomic`.
+- Check `written: true` on stdout. If an error occurs, inspect `error.code` or `results[i].error.code` (e.g. `TARGET_NOT_FOUND`, `ANCHOR_NOT_FOUND`) to correct the target text and re-apply.
+
+For multi-clause or multi-page reviews, apply edits **section-by-section** or clause-by-clause (e.g., using `--in-place` on a working copy) rather than bundling dozens of edits into one massive batch. This keeps context compact, simplifies error diagnosis, and prevents cascading anchor drift.
+
+#### High-Assurance / Staged Verification Workflow (Optional)
+
+For high-stakes legal contracts, large automated batch migrations, or workflows
+requiring explicit non-mutating pre-checks and an independent baseline audit
+report, use the extended verification cycle:
 
 ```bash
 docx-redline inspect contract.docx --non-empty
 docx-redline extract contract.docx --range 10:30 > paragraphs.json
 docx-redline preflight contract.docx --operations operations.json --author "Editor"
 docx-redline apply contract.docx --operations operations.json --author "Editor" --output reviewed.docx
-docx-redline validate reviewed.docx
+docx-redline validate reviewed.docx --baseline contract.docx
 ```
 
 Copy `exactText`, `paragraphId`, and `fingerprint` from `extract` into operation
-targets. Never normalize or reconstruct `exactText`. Operation files follow
+targets. For most unique clauses, `"target": "exact paragraph text"` is
+sufficient; use discriminators (`paragraphId`, `fingerprint`, `index`, or
+`occurrence`) when duplicate paragraph text appears in the document. Never
+normalize or reconstruct `exactText`. Operation files follow
 [`docs/schemas/document-operations.schema.json`](docs/schemas/document-operations.schema.json).
 
 #### Commands
 
 - `inspect` returns the structured inventory, comments, authors, and counts.
 - `extract` returns a compact target inventory with exact text.
-- `preflight` checks targets, anchors, revisions, conflicts, authors, and needed artifacts without mutation.
-- `apply` applies an operation file transactionally.
+- `preflight` checks targets, anchors, revisions, conflicts, authors, and needed artifacts without mutation (read-only).
+- `apply` applies an operation file transactionally with automatic rollback and internal markup validation.
 - `accept` and `reject` resolve revisions selected by `--author` or `--all-authors`.
 - `delete-comments` removes matching definitions and document anchors together.
 - A whole-paragraph delete stops with `COMMENTED_CONTENT_DELETE` when the
   paragraph has an existing comment. Surface the returned reviewer and comment
   text for human follow-up; do not silently convert this into comment removal.
-- `validate` checks revision markup and DOCX package wiring.
+- `validate` audits revision markup and DOCX package wiring, optionally comparing against a `--baseline`.
 
 Paragraph indexes are 1-based. Inspection filters are `--index 12`,
 `--range 10:30`, `--indexes 2,5,8`, `--search text`, `--revised`, `--table`,
@@ -426,13 +458,30 @@ orchestration/
 
 ## Common Patterns
 
+### Options and Defaults Reference
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `generateRedlines` | `boolean` | `true` | When `true`, emits Word-native tracked changes (`w:ins`/`w:del`). When `false`, applies direct text edits without revision markup. **Note: Redlines are not always the preferred method** — pass `generateRedlines: false` (or `--no-redlines` via CLI) when producing clean execution drafts, restructuring documents, or when revision clutter is unwanted. |
+| `author` | `string` | `'AI Redliner'` | Reviewer/author name stamped on generated tracked changes and comments. Overridable via `DOCX_REDLINE_AUTHOR` environment variable. |
+| `atomic` | `boolean` | `false` | Batch transaction mode. By default (`false`), valid edits are applied directly and failing operations report errors. When `true`, any operation failure rolls back the entire batch to the original document state (`rolledBack: true`, `hasChanges: false`). Use `atomic: true` (or `--atomic` in CLI) for high-assurance workflows. |
+| `structuredContent` | `boolean` | `true` | Auto-detects Markdown tables, headings (`#`), and lists in replacement text and renders them as native Word elements (`w:tbl`, `w:pStyle`, `w:numPr`). Pass `false` to treat replacement text strictly as plain text. |
+| `pairReplacements` | `boolean` | `true` | Links adjacent `<w:del>` and `<w:ins>` revisions with matching timestamps so Word groups them as a single replacement in the Reviewing Pane. |
+| `strictTargets` | `boolean` | `true` (CLI/facade) | Requires exact target descriptors (`exactText`, `paragraphId`, `index`, `occurrence`, `fingerprint`) and forbids ambiguous matching. Defaults to `false` in low-level runner for backwards compatibility. |
+| `existingRevisions` | `string` | `'accept-all-first'` | How to handle paragraphs with existing tracked changes. `'accept-all-first'` automatically normalizes prior revisions before generating clean, new redlines. Pass `'reject-input'` to refuse editing revised paragraphs. |
+| `removeFormatting` | `boolean` | `false` | When `true` and the text is unchanged with no Markdown hints, strips existing bold/italic/underline/strikethrough formatting. |
+| `sanitizeInput` | `boolean` | `false` | Opt-in removal of standalone leading assistant-preface lines. Literal dollar signs and `\n` sequences are always preserved. |
+
 ### Options shape
 
 ```js
 {
   generateRedlines: true,
-  author: 'Name',
-  existingRevisions: 'reject-input',
+  author: 'AI Redliner',
+  atomic: false,
+  structuredContent: true,
+  pairReplacements: true,
+  existingRevisions: 'accept-all-first',
   removeFormatting: false,
   sanitizeInput: false
 }
@@ -505,7 +554,7 @@ directly into `word/document.xml`.
 5. `useNativeApi: true` means standalone mode cannot fully handle that operation path.
 6. `deleteCommentsByAuthorInOoxml` removes definitions and linked anchors only when they are present in the same OOXML payload. In a real `.docx`, `word/comments.xml` and `word/document.xml` are separate parts and must both be updated by the package integration layer.
 7. If output begins with `<pkg:package`, treat it as package-level OOXML and normalize it before writing anything back to `word/document.xml`.
-8. Existing revisions are rejected by default; `accept-all-first` preserves the original OOXML on no-op, while `accept-all-first-keep-normalized` explicitly returns normalization as a change.
+8. Existing revisions are normalized by default (`accept-all-first`); pass `reject-input` to refuse edits to revised paragraphs. `accept-all-first` preserves the original OOXML on no-op, while `accept-all-first-keep-normalized` explicitly returns normalization as a change.
 9. Caller content is not sanitized by default. Pass `sanitizeInput: true` only for raw assistant output; literal dollar delimiters and `\\n` sequences are never rewritten.
 10. Hyperlinks, bookmarks, comment markers, tabs/breaks, and footnote/endnote references are structural OOXML and should survive adjacent redline edits.
 11. Internally, create Word elements through `createWordElement` and tracked-change metadata through `createRevisionMetadata`.

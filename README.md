@@ -143,30 +143,25 @@ docx-redline extract contract.docx --range 10:30
 docx-redline preflight contract.docx --operations operations.json --author "Editor"
 docx-redline apply contract.docx --operations operations.json --author "Editor" --output reviewed.docx
 docx-redline validate reviewed.docx
-```
-
-Paragraph indexes are 1-based. Use `--index 12` for one paragraph,
-`--indexes 2,5,8` for a set, or `--range 10:30` for an inclusive range.
-Malformed filters and unknown options return an error instead of silently
-falling back to an unfiltered extraction.
-
-Legacy skill installations can migrate without retaining their own document
-logic by invoking the published compatibility entrypoints:
-
 ```bash
-node scripts/extract_text.mjs contract.docx --index 12
-node scripts/apply_changes.mjs contract.docx changes.json reviewed.docx --author "Editor"
+# Inline one-liner edit (no operations file needed)
+docx-redline apply contract.docx --target "Original clause text" --modified "New clause text" --output reviewed.docx
+
+# Direct edit without tracked changes
+docx-redline apply contract.docx --target "Typo fix" --modified "Fixed typo" --no-redlines --output clean.docx
+
+# High-assurance atomic batch
+docx-redline apply contract.docx --operations operations.json --atomic --output reviewed.docx
 ```
 
-The apply wrapper accepts an array, `{ "operations": [...] }`, or the legacy
-`{ "changes": [...] }` shape and delegates to the strict, atomic, validated
-CLI. It uses `DOCX_REDLINE_AUTHOR` or `Agent` only as a compatibility fallback
-when `--author` and operation-level authors are absent. Failed transactions
-return nonzero and do not create or overwrite output files.
+All commands emit JSON on stdout. `apply` defaults:
+- **Author**: Defaults to `'AI Redliner'` (or `DOCX_REDLINE_AUTHOR` environment variable).
+- **Output overwrite**: Destination files provided via `--output` overwrite by default. Pass `--no-overwrite` or `--no-clobber` to safeguard existing destination files. The source input is never overwritten unless `--in-place` is specified.
+- **Transactionality**: Defaults to `atomic: false` (applies valid operations and reports any failures). Pass `--atomic` for all-or-nothing rollback on any operation error.
+- **Tracked changes**: Defaults to `generateRedlines: true`. Pass `--no-redlines` when clean direct text edits are desired.
+- **Inline edits**: Use `--target <text>` with `--modified <text>` or `--comment <text>` for quick one-liners without creating a JSON file.
 
-All commands emit JSON. Mutations require explicit authors and preserve the
-input unless `--in-place` is supplied. Existing output paths are refused unless
-`--force` is supplied. See [the agent workflow in AGENTS.md](./AGENTS.md#agent-document-workflow-cli) and the
+See [the agent workflow in AGENTS.md](./AGENTS.md#agent-document-workflow-cli) and the
 [operation JSON Schema](docs/schemas/document-operations.schema.json).
 
 ### Configuration (call once at startup)
@@ -175,33 +170,31 @@ input unless `--in-place` is supplied. Existing output paths are refused unless
 |----------|---------|
 | `configureXmlProvider({ DOMParser, XMLSerializer })` | Inject XML parser. Required in Node.js; browsers usually provide native support. |
 | `configureLogger({ log, warn, error })` | Replace default console logger. |
-| `setDefaultAuthor(name)` | Set fallback track-change author (default: `'Author'`). |
+| `setDefaultAuthor(name)` | Set fallback track-change author (default: `'AI Redliner'`, configurable via `DOCX_REDLINE_AUTHOR` environment variable). |
 | `setPlatform(label)` | Set platform label for diagnostics (default: `'Unknown'`). |
 
-### Engine (primary reconciliation APIs)
+### Options and Defaults Reference
 
-| Function | Purpose |
-|----------|---------|
-| `applyRedlineToOxml(oxml, original, modified, options)` | Core engine entry point for text/markdown reconciliation with optional redlines. |
-| `applyRedlineToOxmlWithListFallback(oxml, original, modified, options)` | Core engine with automatic single-line list structural fallback. |
-| `reconcileMarkdownTableOoxml(oxml, original, markdownTable, options)` | Table-specific reconciliation helper. |
-
-Common `applyRedlineToOxml` options:
-
-| Option | Purpose |
-|--------|---------|
-| `generateRedlines` | When `true`, emit Word-native tracked changes; when `false`, apply clean text changes. |
-| `author` | Track-change author used for generated revisions. |
-| `existingRevisions` | Existing-revision policy. `'reject-input'` is the default. `'accept-all-first'` normalizes before a real edit but returns the untouched input on no-op. `'accept-all-first-keep-normalized'` explicitly returns accepted revisions as a change even on no-op. |
-| `removeFormatting` | When `true` and the text is unchanged with no Markdown hints, explicitly remove existing bold/italic/underline/strikethrough formatting. Defaults to `false`. |
-| `sanitizeInput` | Opt-in removal of a standalone leading assistant-preface line. Defaults to `false`; dollar-delimited text and literal `\\n` sequences are always preserved. |
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `generateRedlines` | `boolean` | `true` | When `true`, emit Word-native tracked changes (`w:ins`/`w:del`). When `false`, apply clean direct edits without revision markup. **Note: Redlines are not always the preferred method** — pass `generateRedlines: false` (or `--no-redlines` via CLI) when producing clean execution drafts, restructuring documents, or when revision clutter is unwanted. |
+| `author` | `string` | `'AI Redliner'` | Reviewer/author name stamped on generated tracked changes and comments. Overridable via `DOCX_REDLINE_AUTHOR` env variable. |
+| `atomic` | `boolean` | `false` | Batch transaction mode. By default (`false`), valid edits are applied and failing operations report errors. When `true`, any operation failure rolls back the entire batch to the original document state (`rolledBack: true`, `hasChanges: false`). Feature prominently in high-assurance workflows. |
+| `structuredContent` | `boolean` | `true` | Auto-detects Markdown tables, headings (`#`), and lists in replacement text and renders them as native Word elements (`w:tbl`, `w:pStyle`, `w:numPr`). Pass `false` to treat replacement text strictly as plain text. |
+| `pairReplacements` | `boolean` | `true` | Links adjacent `<w:del>` and `<w:ins>` revisions with matching timestamps so Word groups them as a single replacement in the Reviewing Pane. |
+| `strictTargets` | `boolean` | `true` (CLI/facade) | Requires exact target descriptors (`exactText`, `paragraphId`, `index`, `occurrence`, `fingerprint`) and forbids ambiguous matching. Defaults to `false` in low-level runner for backwards compatibility. |
+| `existingRevisions` | `string` | `'accept-all-first'` | How to handle paragraphs with existing tracked changes. `'accept-all-first'` automatically normalizes prior revisions before generating clean, new redlines. Pass `'reject-input'` to refuse editing revised paragraphs. |
+| `removeFormatting` | `boolean` | `false` | When `true` and the text is unchanged with no Markdown hints, strips existing bold/italic/underline/strikethrough formatting. |
+| `sanitizeInput` | `boolean` | `false` | Opt-in removal of standalone leading assistant-preface lines. Literal dollar signs and `\n` sequences are always preserved. |
 
 Common result fields:
 
 | Field | Purpose |
 |-------|---------|
-| `status` | Optional non-breaking status: `'ok'`, `'no-op'`, or `'error'`. |
-| `error` | Present when `status === 'error'`; includes a stable `code` such as `PARSE_ERROR`, `TARGET_NOT_FOUND`, `PARTIAL_TARGET`, `EXISTING_REVISIONS`, `DIFF_TOKEN_LIMIT`, or `BATCH_OPERATION_FAILED`. |
+| `status` | Operation status: `'ok'`, `'partial'`, `'no-op'`, or `'error'`. |
+| `error` | Present on failure; includes a stable `code` such as `PARSE_ERROR`, `TARGET_NOT_FOUND`, `PARTIAL_TARGET`, `EXISTING_REVISIONS`, `DIFF_TOKEN_LIMIT`, or `BATCH_OPERATION_FAILED`. |
+| `written` | CLI/facade boolean indicating whether the output file was successfully written to disk. |
+| `rolledBack` | Present and `true` when an atomic batch encountered an error and rolled back all changes. |
 
 Word diffs are deterministic by default (no wall-clock timeout). Inputs above
 the safe ceiling of 262,144 unique diff tokens return `DIFF_TOKEN_LIMIT` with

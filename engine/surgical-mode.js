@@ -145,7 +145,7 @@ export function applySurgicalMode(xmlDoc, originalText, modifiedText, serializer
             let delMetadata = null;
             let insMetadata = null;
 
-            if (pairReplacements && hasNextInsert) {
+            if (pairReplacements && generateRedlines && hasNextInsert) {
                 const nextText = diffs[i + 1][1];
                 const textWithoutNewlines = nextText.replace(/\n/g, ' ');
                 if (textWithoutNewlines.trim().length > 0) {

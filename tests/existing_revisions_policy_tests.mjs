@@ -31,28 +31,27 @@ function revisionParagraph() {
     ].join(''));
 }
 
-async function testDefaultRejectsExistingRevisions() {
+async function testDefaultNormalizesBeforeRedlining() {
+    const source = revisionParagraph();
+    const result = await assertRoundTrip(source, 'A new end', 'A newer end');
+
+    assert.equal(result.redlined.hasChanges, true);
+    assert.ok(!result.redlined.oxml.includes('w:author="Human"'), 'input revisions should be normalized before new redlines are generated');
+    assert.ok(result.redlined.oxml.includes('w:author="RoundTrip"'), 'new revisions should use the caller author');
+}
+
+async function testExplicitRejectInputRejectsExistingRevisions() {
     const source = revisionParagraph();
     const result = await applyRedlineToOxml(source, 'A new end', 'A newer end', {
         generateRedlines: true,
-        author: 'Agent'
+        author: 'Agent',
+        existingRevisions: 'reject-input'
     });
 
     assert.equal(result.status, 'error');
     assert.equal(result.error?.code, 'EXISTING_REVISIONS');
     assert.equal(result.hasChanges, false);
     assert.equal(result.oxml, source);
-}
-
-async function testAcceptAllFirstNormalizesBeforeRedlining() {
-    const source = revisionParagraph();
-    const result = await assertRoundTrip(source, 'A new end', 'A newer end', {
-        existingRevisions: 'accept-all-first'
-    });
-
-    assert.equal(result.redlined.hasChanges, true);
-    assert.ok(!result.redlined.oxml.includes('w:author="Human"'), 'input revisions should be normalized before new redlines are generated');
-    assert.ok(result.redlined.oxml.includes('w:author="RoundTrip"'), 'new revisions should use the caller author');
 }
 
 function testPlainTextTreatsExistingRevisionsLikeAcceptedView() {
@@ -95,8 +94,8 @@ function testContainsTrackedChangesNegativeMarkers() {
 }
 
 async function run() {
-    await testDefaultRejectsExistingRevisions();
-    await testAcceptAllFirstNormalizesBeforeRedlining();
+    await testDefaultNormalizesBeforeRedlining();
+    await testExplicitRejectInputRejectsExistingRevisions();
     testPlainTextTreatsExistingRevisionsLikeAcceptedView();
     testContainsTrackedChangesPositiveMarkers();
     testContainsTrackedChangesNegativeMarkers();

@@ -411,7 +411,6 @@ async function testPackagePipeline(sourceBuffer) {
         atomic: true,
         validate: true
     });
-
     assert.equal(result.written, true, 'Package operation must succeed and be written');
     assert.ok(!result.rolledBack, 'Successful package operation must not roll back');
 

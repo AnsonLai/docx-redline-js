@@ -47,6 +47,7 @@ const operations = [
     { type: 'replace', target: 'Second operation target.', modified: 'Should not run.' }
 ];
 const atomic = await applyOperationsToDocumentXml(documentXml, operations, 'Phase 3', {}, {
+    atomic: true,
     generateRedlines: false,
     continueOnError: false
 });

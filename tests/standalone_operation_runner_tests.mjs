@@ -844,11 +844,11 @@ async function testBatchAtomicRollbackAndLegacyPartialMode() {
         operations,
         'AtomicBatchTest',
         atomicContext,
-        { generateRedlines: false }
+        { atomic: true, generateRedlines: false }
     );
 
     assert.strictEqual(atomicResult.documentXml, inputXml,
-        'default atomic batch must return the byte-identical original document');
+        'atomic batch must return the byte-identical original document');
     assert.strictEqual(atomicResult.hasChanges, false);
     assert.strictEqual(atomicResult.rolledBack, true);
     assert.strictEqual(atomicResult.error?.code, 'BATCH_OPERATION_FAILED');
@@ -869,7 +869,7 @@ async function testBatchAtomicRollbackAndLegacyPartialMode() {
         operations,
         'AtomicBatchTest',
         partialContext,
-        { generateRedlines: false, atomic: false }
+        { generateRedlines: false }
     );
 
     assert.strictEqual(partialResult.hasChanges, true,
@@ -1037,6 +1037,47 @@ async function testMixedListRoutesSeedRevisionIdsAboveExistingDocumentMaximum() 
     assert.ok(generatedIds.every(id => id > 7000), 'new revision IDs must seed above the existing document maximum');
 }
 
+async function testParagraphSplitBeforeNumberedHeadingKeepsRevisionIdsUnique() {
+    const paragraphs = [
+        'SALARY.AI Amendment',
+        'Opening agreement recital',
+        'Second agreement recital',
+        'Salary provides the service. 2. USE OF SERVICE',
+        '2.3 Customer Responsibilities'
+    ];
+    const result = await applyOperationsToDocumentXml(
+        buildParagraphDocumentXml(paragraphs),
+        [
+            { type: 'redline', targetRef: 1, target: paragraphs[0], modified: 'SALARY.AI AGREEMENT' },
+            { type: 'redline', targetRef: 2, target: paragraphs[1], modified: 'Rewritten opening agreement recital' },
+            { type: 'redline', targetRef: 3, target: paragraphs[2], modified: 'Rewritten second agreement recital' },
+            {
+                type: 'redline',
+                targetRef: 4,
+                target: paragraphs[3],
+                modified: 'Salary provides the service.\n2. USE OF SERVICE'
+            },
+            { type: 'redline', targetRef: 5, target: paragraphs[4], modified: '2.2 Customer Responsibilities' }
+        ],
+        'SplitThenHeadingAllocatorTest',
+        { numberingIdState: createDynamicNumberingIdState() },
+        { atomic: true, strictTargets: true }
+    );
+
+    assert.notStrictEqual(result.status, 'error');
+    assert.strictEqual(result.results.every(entry => entry.status === 'applied'), true);
+    assertNoDuplicateRevisionIds(
+        result.documentXml,
+        'a paragraph split followed by numbered-heading conversion must share one revision allocator'
+    );
+    const resultDoc = parseXmlStrict(result.documentXml, 'split then heading allocator output');
+    assert.ok(
+        resultDoc.getElementsByTagNameNS(NS_W, 'p').length > paragraphs.length,
+        'the multiline replacement should create additional tracked paragraph structure'
+    );
+    assert.match(result.documentXml, /USE OF SERVICE/, 'the split heading text should remain in generated OOXML');
+}
+
 async function run() {
     await testRedlineOperation();
     await testImplicitMultilineTargetReplacesWholeRange();
@@ -1060,6 +1101,7 @@ async function run() {
     await testStructuralListFallbackAfterRedlineKeepsBatchRevisionIdsUnique();
     await testNumberedHeadingBeforeRedlineAdvancesSharedAllocator();
     await testMixedListRoutesSeedRevisionIdsAboveExistingDocumentMaximum();
+    await testParagraphSplitBeforeNumberedHeadingKeepsRevisionIdsUnique();
     console.log('PASS: standalone operation runner tests');
 }
 

@@ -23,6 +23,7 @@ import { getDefaultAuthor } from '../adapters/config.js';
 import { applyRedlineToOxml as applyRedlineToOxmlEngine } from '../engine/oxml-engine.js';
 import { applyHighlightToOoxml } from '../engine/formatting-removal.js';
 import { parseTable as parseMarkdownTable } from '../pipeline/pipeline.js';
+import { analyzeStructuredContent } from '../pipeline/structured-content.js';
 import { injectCommentsIntoOoxml } from './comment-engine.js';
 import {
     getParagraphText as getParagraphTextFromOxml,
@@ -869,10 +870,11 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         };
     }
     const hasRevisions = containsTrackedChanges(targetParagraph);
+    const existingPolicy = options.existingRevisions || 'accept-all-first';
     if (
         hasRevisions
-        && options.existingRevisions !== 'accept-all-first'
-        && options.existingRevisions !== 'accept-all-first-keep-normalized'
+        && existingPolicy !== 'accept-all-first'
+        && existingPolicy !== 'accept-all-first-keep-normalized'
     ) {
         const hasDel = targetParagraph.getElementsByTagNameNS(NS_W, 'del').length > 0;
         const hasMove = targetParagraph.getElementsByTagNameNS(NS_W, 'moveFrom').length > 0
@@ -993,8 +995,10 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         onInfo('[Table] Markdown table edit detected in table cell target; applying reconciliation at table scope.');
     }
 
+    const bypassSingleParagraphHeuristics = options.explicitStructuredContent === true;
+
     const adjacencyInsertionCandidate = (
-        options.structuredContent !== true
+        !bypassSingleParagraphHeuristics
         && !useTableScope
         && !hasExplicitRangeScope
         && targetListInfo
@@ -1035,7 +1039,7 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
     }
 
     const plainAdjacencyInsertionCandidate = (
-        options.structuredContent !== true
+        !bypassSingleParagraphHeuristics
         && !useTableScope
         && !hasExplicitRangeScope
         && !targetListInfo
@@ -1077,7 +1081,7 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         };
     }
 
-    const insertionOnlyPlan = (options.structuredContent !== true && !useTableScope && !hasExplicitRangeScope)
+    const insertionOnlyPlan = (!bypassSingleParagraphHeuristics && !useTableScope && !hasExplicitRangeScope)
         ? planListInsertionOnlyEdit(targetParagraph, effectiveModifiedText, {
             currentParagraphText,
             onInfo,
@@ -1113,7 +1117,7 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         };
     }
 
-    const listScopeEdit = (options.structuredContent !== true && !useTableScope && !hasExplicitRangeScope)
+    const listScopeEdit = (!bypassSingleParagraphHeuristics && !useTableScope && !hasExplicitRangeScope)
         ? synthesizeExpandedListScopeEdit(targetParagraph, effectiveModifiedText, {
             currentParagraphText,
             onInfo,
@@ -1125,7 +1129,7 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         effectiveModifiedText = listScopeEdit.modifiedText;
     }
 
-    if (options.structuredContent !== true && !useTableScope && !useListScope && !hasExplicitRangeScope) {
+    if (!bypassSingleParagraphHeuristics && !useTableScope && !useListScope && !hasExplicitRangeScope) {
         const explicitHeaderListConversion = await tryExplicitDecimalHeaderListConversion({
             xmlDoc,
             serializer,
@@ -1188,16 +1192,18 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         ? await reconcileMarkdownTableOoxml(scopedXml, originalTextForApply, effectiveModifiedText, {
             author,
             generateRedlines,
-            existingRevisions: options.existingRevisions,
-            structuredContent: options.structuredContent === true,
+            existingRevisions: options.existingRevisions || 'accept-all-first',
+            structuredContent: options.structuredContent !== false,
+            explicitStructuredContent: options.explicitStructuredContent === true,
             _revisionIdAllocator: revisionIdAllocator,
             _isolatedTableCell: useTableScope
         })
         : await applyRedlineToOxml(scopedXml, originalTextForApply, effectiveModifiedText, {
             author,
             generateRedlines,
-            existingRevisions: options.existingRevisions,
-            structuredContent: options.structuredContent === true,
+            existingRevisions: options.existingRevisions || 'accept-all-first',
+            structuredContent: options.structuredContent !== false,
+            explicitStructuredContent: options.explicitStructuredContent === true,
             pairReplacements: options.pairReplacements === true,
             insertionAffinity: options.insertionAffinity || null,
             _revisionIdAllocator: revisionIdAllocator,

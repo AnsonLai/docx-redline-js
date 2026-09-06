@@ -3,7 +3,9 @@
  * Callers can set these during bootstrap.
  */
 
-let _defaultAuthor = 'Author';
+const fallbackAuthor = () => (typeof process !== 'undefined' && process.env?.DOCX_REDLINE_AUTHOR) || 'AI Redliner';
+
+let _defaultAuthor = fallbackAuthor();
 let _platform = 'Unknown';
 
 /**
@@ -12,7 +14,7 @@ let _platform = 'Unknown';
  * @param {string} author
  */
 export function setDefaultAuthor(author) {
-    _defaultAuthor = typeof author === 'string' && author.trim() ? author.trim() : 'Author';
+    _defaultAuthor = typeof author === 'string' && author.trim() ? author.trim() : fallbackAuthor();
 }
 
 /**

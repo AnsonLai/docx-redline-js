@@ -293,7 +293,7 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
     }
     const scheduled = dependencyPlan.scheduled;
 
-    const atomic = options.atomic !== false;
+    const atomic = options.atomic === true;
     const continueOnError = options.continueOnError !== false;
     const context = cloneBatchRuntimeContext(runtimeContext);
     if (!(context.targetRefSnapshot instanceof Map)) {
@@ -481,6 +481,14 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
         } : (reconciliationError ? {
             status: 'error',
             error: reconciliationError
-        } : {}))
+        } : (operationFailed ? {
+            status: hasChanges ? 'partial' : 'error',
+            error: {
+                code: 'BATCH_OPERATION_FAILED',
+                message: 'One or more operations failed.'
+            }
+        } : {
+            status: 'ok'
+        })))
     };
 }

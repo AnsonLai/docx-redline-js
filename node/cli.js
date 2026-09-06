@@ -7,14 +7,21 @@ import { validateRedlineOoxml } from '../core/redline-validation.js';
 import { configureLogger } from '../adapters/logger.js';
 
 const suffixes = { apply: 'redlined', accept: 'accepted', reject: 'rejected', 'delete-comments': 'comments-removed' };
+const CLI_CONTRACT_VERSION = 2;
+const CLI_CAPABILITIES = [
+    'atomic-batch-results-on-package-failure',
+    'baseline-aware-validation',
+    'document-scoped-list-revision-ids'
+];
 const commandOptions = {
+    version: new Set(['help']),
     inspect: new Set(['help', 'search', 'revised', 'table', 'body', 'nonEmpty', 'index', 'indexes', 'range', 'view']),
     extract: new Set(['help', 'search', 'revised', 'table', 'body', 'nonEmpty', 'index', 'indexes', 'range', 'view']),
-    preflight: new Set(['help', 'operations', 'author', 'strictTargets']),
-    apply: new Set(['help', 'operations', 'author', 'output', 'inPlace', 'force', 'expectedRevision']),
-    accept: new Set(['help', 'author', 'allAuthors', 'output', 'inPlace', 'force']),
-    reject: new Set(['help', 'author', 'allAuthors', 'output', 'inPlace', 'force']),
-    'delete-comments': new Set(['help', 'author', 'allAuthors', 'output', 'inPlace', 'force']),
+    preflight: new Set(['help', 'operations', 'author', 'strictTargets', 'target', 'modified', 'comment', 'textToComment', 'targetRef', 'existingRevisions']),
+    apply: new Set(['help', 'operations', 'author', 'output', 'inPlace', 'force', 'noOverwrite', 'noClobber', 'expectedRevision', 'target', 'modified', 'comment', 'textToComment', 'targetRef', 'existingRevisions', 'atomic', 'generateRedlines', 'noRedlines']),
+    accept: new Set(['help', 'author', 'allAuthors', 'output', 'inPlace', 'force', 'noOverwrite', 'noClobber']),
+    reject: new Set(['help', 'author', 'allAuthors', 'output', 'inPlace', 'force', 'noOverwrite', 'noClobber']),
+    'delete-comments': new Set(['help', 'author', 'allAuthors', 'output', 'inPlace', 'force', 'noOverwrite', 'noClobber']),
     validate: new Set(['help', 'baseline'])
 };
 
@@ -25,7 +32,11 @@ const optionAliases = new Map([
     ['a', 'author'],
     ['i', 'inPlace'],
     ['f', 'force'],
-    ['h', 'help']
+    ['h', 'help'],
+    ['no-overwrite', 'noOverwrite'],
+    ['no-clobber', 'noClobber'],
+    ['no-redlines', 'noRedlines'],
+    ['generate-redlines', 'generateRedlines']
 ]);
 function parseArgs(argv) {
     const positionals = []; const flags = {};
@@ -99,8 +110,31 @@ function inspectionOptions(flags) {
     }
     return options;
 }
-async function readOperations(file) {
-    if (!file) throw Object.assign(new Error('Use --operations <file.json>.'), { code: 'OPERATIONS_REQUIRED' });
+async function readOperations(file, flags = {}) {
+    if (!file && flags?.target) {
+        let op;
+        if (flags.comment) {
+            op = {
+                type: 'comment',
+                target: String(flags.target),
+                commentContent: String(flags.comment),
+                ...(flags.textToComment ? { textToComment: String(flags.textToComment) } : {}),
+                ...(flags.targetRef ? { targetRef: positiveInteger(flags.targetRef) } : {}),
+                ...(flags.author ? { author: String(flags.author) } : {})
+            };
+        } else {
+            op = {
+                type: 'replace',
+                target: String(flags.target),
+                modified: flags.modified !== undefined ? String(flags.modified) : '',
+                ...(flags.targetRef ? { targetRef: positiveInteger(flags.targetRef) } : {}),
+                ...(flags.author ? { author: String(flags.author) } : {}),
+                ...(flags.existingRevisions ? { existingRevisions: String(flags.existingRevisions) } : {})
+            };
+        }
+        return { operations: [op], expectedRevision: null };
+    }
+    if (!file) throw Object.assign(new Error('Use --operations <file.json> or --target <text>.'), { code: 'OPERATIONS_REQUIRED' });
     let parsed; try { parsed = JSON.parse(await readFile(file, 'utf8')); } catch (error) { throw Object.assign(new Error(`Could not read operations JSON: ${error.message}`), { code: 'INVALID_OPERATIONS_FILE' }); }
     const operations = Array.isArray(parsed) ? parsed : (parsed?.operations || parsed?.changes);
     if (!Array.isArray(operations)) throw Object.assign(new Error('Operations JSON must be an array or an object with an operations or changes array.'), { code: 'INVALID_OPERATIONS_FILE' });
@@ -114,7 +148,15 @@ function outputPath(command, input, flags) {
 async function writeMutation(command, input, flags, result) {
     if (!result.written) return { status: result.status || 'ok', ...result, outputPath: null };
     const destination = outputPath(command, input, flags);
-    if (!flags.inPlace && !flags.force) { try { await access(destination); throw Object.assign(new Error(`Output already exists: ${destination}`), { code: 'OUTPUT_EXISTS' }); } catch (error) { if (error.code !== 'ENOENT') throw error; } }
+    const protectExisting = Boolean(flags.noOverwrite || flags.noClobber) && !flags.force;
+    if (!flags.inPlace && protectExisting) {
+        try {
+            await access(destination);
+            throw Object.assign(new Error(`Output already exists: ${destination}`), { code: 'OUTPUT_EXISTS' });
+        } catch (error) {
+            if (error.code !== 'ENOENT') throw error;
+        }
+    }
     await writeFile(destination, result.toBuffer());
     return { status: result.status || 'ok', ...result, outputPath: destination };
 }
@@ -157,9 +199,20 @@ function subtractValidationIssues(issues, baselineIssues) {
 
 export async function executeCli(argv) {
     const { command, input: rawInput, extraPositionals, flags } = parseArgs(argv);
-    if (command === 'help' || flags.help) return { status: 'ok', command: 'help', usage: 'docx-redline <inspect|extract|preflight|apply|accept|reject|delete-comments|validate> <file.docx> [options]' };
+    if (command === 'help' || flags.help) return { status: 'ok', command: 'help', usage: 'docx-redline <version|inspect|extract|preflight|apply|accept|reject|delete-comments|validate> [file.docx] [options]' };
     if (!command) return cliError('COMMAND_REQUIRED', 'A command is required.');
-    if (!['inspect','extract','preflight','apply','accept','reject','delete-comments','validate'].includes(command)) return cliError('UNKNOWN_COMMAND', `Unknown command: ${command}`);
+    if (!['version','inspect','extract','preflight','apply','accept','reject','delete-comments','validate'].includes(command)) return cliError('UNKNOWN_COMMAND', `Unknown command: ${command}`);
+    if (command === 'version') {
+        if (rawInput || extraPositionals.length > 0) return cliError('UNEXPECTED_ARGUMENT', `Unexpected argument: ${rawInput || extraPositionals[0]}`);
+        const optionError = validateCommandOptions(command, flags, []);
+        if (optionError) return optionError;
+        return {
+            status: 'ok',
+            command,
+            contractVersion: CLI_CONTRACT_VERSION,
+            capabilities: CLI_CAPABILITIES
+        };
+    }
     if (!rawInput) return cliError('INPUT_REQUIRED', 'An input .docx path is required.');
     const optionError = validateCommandOptions(command, flags, extraPositionals);
     if (optionError) return optionError;
@@ -201,7 +254,7 @@ export async function executeCli(argv) {
             const hasErrors = issues.some(issue => issue.severity === 'error');
             return { status: hasErrors ? 'error' : 'ok', command, input, valid: !hasErrors, issues };
         }
-        const opsData = command === 'preflight' || command === 'apply' ? await readOperations(flags.operations) : null;
+        const opsData = command === 'preflight' || command === 'apply' ? await readOperations(flags.operations, flags) : null;
         const operations = opsData?.operations || null;
         let expectedRevision = opsData?.expectedRevision || null;
         if (flags.expectedRevision) {
@@ -220,14 +273,26 @@ export async function executeCli(argv) {
                 expectedRevision = flags.expectedRevision;
             }
         }
-        if (command === 'preflight') return { ...document.preflight(operations, flags.author, { strictTargets: flags.strictTargets !== 'false' }), command, input };
+        if (command === 'preflight') return {
+            ...document.preflight(operations, flags.author, {
+                strictTargets: flags.strictTargets !== 'false',
+                ...(flags.existingRevisions ? { existingRevisions: flags.existingRevisions } : {})
+            }),
+            command,
+            input
+        };
         if (command === 'apply') {
-            if (!flags.author && operations.some(operation => !operation?.author)) return cliError('AUTHOR_REQUIRED', 'Use --author or set author on every operation.');
+            const author = flags.author || process.env.DOCX_REDLINE_AUTHOR || 'AI Redliner';
+            const generateRedlines = flags.generateRedlines !== undefined
+                ? (flags.generateRedlines !== 'false' && flags.generateRedlines !== false)
+                : (!flags.noRedlines);
             const result = await document.applyOperations(operations, {
-                author: flags.author,
-                atomic: true,
+                author,
+                atomic: flags.atomic === true || flags.atomic === 'true',
                 validate: true,
                 strictTargets: true,
+                generateRedlines,
+                ...(flags.existingRevisions ? { existingRevisions: flags.existingRevisions } : {}),
                 ...(expectedRevision ? { expectedRevision } : {})
             });
             const mutationResult = await writeMutation(command, input, flags, result);

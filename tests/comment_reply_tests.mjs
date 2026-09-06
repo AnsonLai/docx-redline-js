@@ -50,7 +50,7 @@ const reply = inspection.comments.find(comment => comment.id === '9');
 assert.equal(reply.parentCommentId, '8');
 assert.equal(reply.author, 'Anson');
 
-const missing = await doc.applyOperations([{ type: 'comment_reply', parentCommentId: 999, commentContent: 'No parent.' }], { author: 'Anson' });
+const missing = await doc.applyOperations([{ type: 'comment_reply', parentCommentId: 999, commentContent: 'No parent.' }], { author: 'Anson', atomic: true });
 assert.equal(missing.status, 'error');
 assert.equal(missing.rolledBack, true);
 assert.equal(missing.results[0].error.code, 'PARENT_COMMENT_NOT_FOUND');

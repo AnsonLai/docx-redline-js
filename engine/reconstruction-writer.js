@@ -82,7 +82,7 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
                     if (diffs[k][0] === 1) { hasInsert = true; break; }
                     if (diffs[k][0] === 0) break;
                 }
-                if (pairReplacements && hasInsert) {
+                if (pairReplacements && generateRedlines && hasInsert) {
                     pendingReplacementEvent = createReplacementRevisionEvent(author, xmlDoc);
                 }
             }

@@ -515,7 +515,7 @@ const WORD_TASK_CASE_DEFINITIONS = [
                 modified: 'This operation must fail.'
             }
         ],
-        operationOptions: { existingRevisions: 'accept-all-first' },
+        operationOptions: { existingRevisions: 'accept-all-first', atomic: true },
         expectAtomicRollback: true,
         expectedAcceptedText: 'A new end',
         expectedRejectedText: 'A old end'

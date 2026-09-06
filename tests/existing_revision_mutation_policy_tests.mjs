@@ -177,33 +177,34 @@ function createDocumentXml(bodyInner) {
         </w:p>
     `);
 
-    // Under default 'reject-input': refused with EXISTING_REVISIONS
+    // Under explicit 'reject-input': refused with EXISTING_REVISIONS
     const preflight = preflightOperations(docXml, [{
         type: 'replace',
         target: 'Pending inserted text.',
-        modified: 'Attempted replacement text.'
+        modified: 'Attempted replacement text.',
+        existingRevisions: 'reject-input'
     }], 'Bob');
     assert.equal(preflight.valid, false);
     assert.equal(preflight.results[0].error.code, 'EXISTING_REVISIONS');
 
+    const applyReject = await applyOperationToDocumentXml(docXml, {
+        type: 'replace',
+        target: 'Pending inserted text.',
+        modified: 'Attempted replacement text.',
+        existingRevisions: 'reject-input'
+    }, 'Bob');
+    assert.equal(applyReject.hasChanges, false);
+    assert.equal(applyReject.status, 'error');
+    assert.equal(applyReject.error.code, 'EXISTING_REVISIONS');
+
+    // Under default: normalizes prior insertion and redlines (accept-all-first is now default)
     const applyDefault = await applyOperationToDocumentXml(docXml, {
         type: 'replace',
         target: 'Pending inserted text.',
         modified: 'Attempted replacement text.'
     }, 'Bob');
-    assert.equal(applyDefault.hasChanges, false);
-    assert.equal(applyDefault.status, 'error');
-    assert.equal(applyDefault.error.code, 'EXISTING_REVISIONS');
-
-    // Opt-in 'accept-all-first': normalizes prior insertion and redlines
-    const applyOptIn = await applyOperationToDocumentXml(docXml, {
-        type: 'replace',
-        target: 'Pending inserted text.',
-        modified: 'Attempted replacement text.',
-        existingRevisions: 'accept-all-first'
-    }, 'Bob');
-    assert.equal(applyOptIn.hasChanges, true);
-    assert.ok(applyOptIn.documentXml.includes('w:author="Bob"'));
+    assert.equal(applyDefault.hasChanges, true);
+    assert.ok(applyDefault.documentXml.includes('w:author="Bob"'));
 }
 
 // ---------------------------------------------------------------------------
@@ -245,7 +246,7 @@ function createDocumentXml(bodyInner) {
 }
 
 // ---------------------------------------------------------------------------
-// 5. Pending deletion, text replacement: Refused with UNSAFE_REVISION_NESTING
+// 5. Pending deletion, text replacement: Refused with UNSAFE_REVISION_NESTING under reject-input
 // ---------------------------------------------------------------------------
 {
     const docXml = createDocumentXml(`
@@ -257,10 +258,12 @@ function createDocumentXml(bodyInner) {
         </w:p>
     `);
 
+    // Under explicit 'reject-input': refused with UNSAFE_REVISION_NESTING
     const preflight = preflightOperations(docXml, [{
         type: 'replace',
         target: 'Surviving text.',
-        modified: 'Replaced text.'
+        modified: 'Replaced text.',
+        existingRevisions: 'reject-input'
     }], 'Bob');
     assert.equal(preflight.valid, false);
     assert.equal(preflight.results[0].error.code, 'UNSAFE_REVISION_NESTING');
@@ -268,11 +271,21 @@ function createDocumentXml(bodyInner) {
     const apply = await applyOperationToDocumentXml(docXml, {
         type: 'replace',
         target: 'Surviving text.',
-        modified: 'Replaced text.'
+        modified: 'Replaced text.',
+        existingRevisions: 'reject-input'
     }, 'Bob');
     assert.equal(apply.hasChanges, false);
     assert.equal(apply.status, 'error');
     assert.equal(apply.error.code, 'UNSAFE_REVISION_NESTING');
+
+    // Under default: normalizes prior deletion and redlines (accept-all-first is now default)
+    const applyDefault = await applyOperationToDocumentXml(docXml, {
+        type: 'replace',
+        target: 'Surviving text.',
+        modified: 'Replaced text.'
+    }, 'Bob');
+    assert.equal(applyDefault.hasChanges, true);
+    assert.ok(applyDefault.documentXml.includes('w:author="Bob"'));
 }
 
 // ---------------------------------------------------------------------------
@@ -297,11 +310,12 @@ function createDocumentXml(bodyInner) {
     assert.equal(commentMoveFrom.valid, false);
     assert.equal(commentMoveFrom.results[0].error.code, 'UNSAFE_REVISION_NESTING');
 
-    // Move source: replace refused
+    // Move source: replace refused under explicit 'reject-input'
     const replaceMoveFrom = preflightOperations(moveSourceXml, [{
         type: 'replace',
         target: { exactText: 'Moved source text.', revisionView: 'rejected' },
-        modified: 'Replacement.'
+        modified: 'Replacement.',
+        existingRevisions: 'reject-input'
     }], 'Bob');
     assert.equal(replaceMoveFrom.valid, false);
     assert.equal(replaceMoveFrom.results[0].error.code, 'UNSAFE_REVISION_NESTING');
@@ -324,11 +338,12 @@ function createDocumentXml(bodyInner) {
     assert.equal(commentMoveTo.valid, false);
     assert.equal(commentMoveTo.results[0].error.code, 'UNSAFE_REVISION_NESTING');
 
-    // Move destination: replace refused
+    // Move destination: replace refused under explicit 'reject-input'
     const replaceMoveTo = preflightOperations(moveDestXml, [{
         type: 'replace',
         target: 'Moved destination text.',
-        modified: 'Replacement.'
+        modified: 'Replacement.',
+        existingRevisions: 'reject-input'
     }], 'Bob');
     assert.equal(replaceMoveTo.valid, false);
     assert.equal(replaceMoveTo.results[0].error.code, 'UNSAFE_REVISION_NESTING');
@@ -336,11 +351,21 @@ function createDocumentXml(bodyInner) {
     const applyMoveTo = await applyOperationToDocumentXml(moveDestXml, {
         type: 'replace',
         target: 'Moved destination text.',
-        modified: 'Replacement.'
+        modified: 'Replacement.',
+        existingRevisions: 'reject-input'
     }, 'Bob');
     assert.equal(applyMoveTo.hasChanges, false);
     assert.equal(applyMoveTo.status, 'error');
     assert.equal(applyMoveTo.error.code, 'UNSAFE_REVISION_NESTING');
+
+    // Move destination: replaces under default accept-all-first
+    const applyMoveToDefault = await applyOperationToDocumentXml(moveDestXml, {
+        type: 'replace',
+        target: 'Moved destination text.',
+        modified: 'Replacement.'
+    }, 'Bob');
+    assert.equal(applyMoveToDefault.hasChanges, true);
+    assert.ok(applyMoveToDefault.documentXml.includes('w:author="Bob"'));
 }
 
 console.log('existing revision mutation policy tests passed');

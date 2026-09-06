@@ -14,6 +14,11 @@ const directory = await mkdtemp(path.join(tmpdir(), 'docx-redline-cli-edge-'));
 
 try {
     const input = path.join(directory, 'sample.docx'); await writeFile(input, fixture);
+    const version = await executeCli(['version']);
+    assert.equal(version.status, 'ok');
+    assert.ok(version.contractVersion >= 2);
+    assert.ok(version.capabilities.includes('document-scoped-list-revision-ids'));
+    assert.equal((await executeCli(['version', 'unexpected'])).error.code, 'UNEXPECTED_ARGUMENT');
     assert.equal((await executeCli([])).error.code, 'COMMAND_REQUIRED');
     assert.equal((await executeCli(['wat', input])).error.code, 'UNKNOWN_COMMAND');
     assert.equal((await executeCli(['inspect'])).error.code, 'INPUT_REQUIRED');
@@ -75,7 +80,7 @@ try {
         { type:'comment', target:{ exactText:'Body' }, textToComment:'missing anchor', commentContent:'Nope', author:'Reviewer' }
     ] }));
     const failedAnchorOutput = path.join(directory, 'anchor-must-not-exist.docx');
-    const failedAnchor = await executeCli(['apply', input, '--operations', invalidAnchor, '--output', failedAnchorOutput]);
+    const failedAnchor = await executeCli(['apply', input, '--operations', invalidAnchor, '--output', failedAnchorOutput, '--atomic']);
     assert.equal(failedAnchor.status, 'error');
     assert.equal(failedAnchor.written, false);
     assert.equal(failedAnchor.results[1].error.code, 'ANCHOR_NOT_FOUND');

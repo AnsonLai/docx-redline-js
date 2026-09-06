@@ -48,7 +48,7 @@ import { recordRouteSelection } from './route-selection.js';
  * @param {Object} [options={}] - Options
  * @param {string} [options.author='AI'] - Author for track changes
  * @param {string|null} [options.targetParagraphId=null] - Preferred paragraph identity for table wrappers
- * @param {'reject-input'|'accept-all-first'|'accept-all-first-keep-normalized'} [options.existingRevisions='reject-input'] - Policy for source OOXML with tracked changes
+ * @param {'reject-input'|'accept-all-first'|'accept-all-first-keep-normalized'} [options.existingRevisions='accept-all-first'] - Policy for source OOXML with tracked changes
  * @param {boolean} [options.removeFormatting=false] - Remove existing core formatting when text is otherwise unchanged
  * @param {boolean} [options.sanitizeInput=false] - Strip a standalone leading assistant preface line
  * @returns {Promise<{ oxml: string, hasChanges: boolean, sourceType?: 'package'|'document'|'fragment', status?: 'ok'|'no-op'|'error', error?: { code: string, message: string } }>}
@@ -120,7 +120,7 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
     seedRevisionIdsFromDocument(xmlDoc, revisionIdAllocator);
 
     if (containsTrackedChanges(xmlDoc)) {
-        const existingRevisionsPolicy = options.existingRevisions || 'reject-input';
+        const existingRevisionsPolicy = options.existingRevisions || 'accept-all-first';
         if (existingRevisionsPolicy === 'accept-all-first' || existingRevisionsPolicy === 'accept-all-first-keep-normalized') {
             log('[OxmlEngine] Existing revisions detected; accepting all input revisions before redlining');
             const accepted = acceptTrackedChangesInOoxml(inputOoxml, { allAuthors: true });
@@ -178,19 +178,23 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
         operationWarnings.push('Input was sanitized; pass sanitizeInput: false to disable.');
     }
     let structuredAnalysis = null;
-    if (options.structuredContent === true) {
+    if (options.structuredContent !== false) {
         structuredAnalysis = analyzeStructuredContent(sanitizedText);
         if (!structuredAnalysis.valid) {
-            const message = structuredAnalysis.issues.map(issue => `${issue.code}: ${issue.message}`).join(' ');
-            return finalize({
-                oxml: inputOoxml,
-                hasChanges: false,
-                status: 'error',
-                error: { code: 'STRUCTURED_CONTENT_INVALID', message },
-                warnings: structuredAnalysis.issues.map(issue => issue.message)
-            });
+            if (options.explicitStructuredContent === true) {
+                const message = structuredAnalysis.issues.map(issue => `${issue.code}: ${issue.message}`).join(' ');
+                return finalize({
+                    oxml: inputOoxml,
+                    hasChanges: false,
+                    status: 'error',
+                    error: { code: 'STRUCTURED_CONTENT_INVALID', message },
+                    warnings: structuredAnalysis.issues.map(issue => issue.message)
+                });
+            }
+            structuredAnalysis = null;
+        } else if (structuredAnalysis.requiresStructuredContent) {
+            sanitizedText = structuredAnalysis.normalizedMarkdown;
         }
-        sanitizedText = structuredAnalysis.normalizedMarkdown;
     }
     const { cleanText: cleanModifiedText, formatHints } = preprocessMarkdown(sanitizedText);
 
@@ -353,7 +357,7 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
     const hasTables = tables.length > 0;
     const isMarkdownTable = /^\|.+\|/.test(cleanModifiedText.trim()) && cleanModifiedText.includes('\n');
     const isTargetList = isListTargetLoose(cleanModifiedText);
-    const isStructuredContent = options.structuredContent === true && structuredAnalysis?.requiresStructuredContent === true;
+    const isStructuredContent = options.structuredContent !== false && structuredAnalysis?.requiresStructuredContent === true;
     const tableCellContext = initialTableCellContext;
 
     log(`[OxmlEngine] Mode: ${hasTables ? 'SURGICAL' : 'RECONSTRUCTION'}, formatHints: ${formatHints.length}, isMarkdownTable: ${isMarkdownTable}, isTargetList: ${isTargetList}, isTableCellParagraph: ${tableCellContext.isTableCellParagraph}`);

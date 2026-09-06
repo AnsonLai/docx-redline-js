@@ -130,7 +130,7 @@ export function analyzeStructuredContent(markdown) {
         blocks,
         issues,
         counts,
-        requiresStructuredContent: blocks.length > 1 || blocks.some(block => block.type !== 'paragraph')
+        requiresStructuredContent: blocks.length > 1 || blocks.some(block => block.type === 'heading' || block.type === 'table' || (block.type === 'list' && block.items > 1))
     };
 }
 

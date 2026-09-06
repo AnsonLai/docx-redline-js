@@ -144,7 +144,7 @@ const sampleDocXml = `<w:document xmlns:w="${W}"><w:body><w:p><w:r><w:t>First pa
         }
     ];
 
-    const result = await applyOperationsToDocumentXml(sampleDocXml, ops, 'Author', null, { generateRedlines: false });
+    const result = await applyOperationsToDocumentXml(sampleDocXml, ops, 'Author', null, { generateRedlines: false, atomic: true });
     assert.equal(result.rolledBack, true);
     assert.equal(result.hasChanges, false);
     assert.equal(result.results[0].status, 'no_change');
@@ -171,7 +171,7 @@ const sampleDocXml = `<w:document xmlns:w="${W}"><w:body><w:p><w:r><w:t>First pa
         }
     ];
 
-    const result = await applyOperationsToDocumentXml(sampleDocXml, ops, 'Author', null, { generateRedlines: false });
+    const result = await applyOperationsToDocumentXml(sampleDocXml, ops, 'Author', null, { generateRedlines: false, atomic: true });
     assert.equal(result.rolledBack, true);
     assert.equal(result.hasChanges, false);
     assert.equal(result.results[0].status, 'error');
@@ -199,7 +199,7 @@ const sampleDocXml = `<w:document xmlns:w="${W}"><w:body><w:p><w:r><w:t>First pa
         }
     ];
 
-    const result = await applyOperationsToDocumentXml(sampleDocXml, ops, 'Author', null, { generateRedlines: false });
+    const result = await applyOperationsToDocumentXml(sampleDocXml, ops, 'Author', null, { generateRedlines: false, atomic: true });
     assert.equal(result.rolledBack, true);
     assert.equal(result.hasChanges, false);
     assert.equal(result.documentXml, sampleDocXml);
@@ -233,7 +233,7 @@ const sampleDocXml = `<w:document xmlns:w="${W}"><w:body><w:p><w:r><w:t>First pa
         }
     ];
 
-    const result = await applyOperationsToDocumentXml(sampleDocXml, ops, 'Author', null, { generateRedlines: false });
+    const result = await applyOperationsToDocumentXml(sampleDocXml, ops, 'Author', null, { generateRedlines: false, atomic: true });
     assert.equal(result.rolledBack, true);
     assert.equal(result.hasChanges, false);
     assert.equal(result.results[2].status, 'error');
@@ -261,7 +261,7 @@ const sampleDocXml = `<w:document xmlns:w="${W}"><w:body><w:p><w:r><w:t>First pa
             }
         ];
 
-        const result = await applyOperationsToDocumentXml(sampleDocXml, ops, 'Author', null, { generateRedlines: false });
+        const result = await applyOperationsToDocumentXml(sampleDocXml, ops, 'Author', null, { generateRedlines: false, atomic: true });
         assert.equal(result.rolledBack, true);
         assert.equal(result.results[1].status, 'error');
         assert.equal(result.results[1].error.code, 'AMBIGUOUS_CAPTURE_SELECTION');
@@ -286,7 +286,7 @@ const sampleDocXml = `<w:document xmlns:w="${W}"><w:body><w:p><w:r><w:t>First pa
             }
         ];
 
-        const result = await applyOperationsToDocumentXml(sampleDocXml, ops, 'Author', null, { generateRedlines: false });
+        const result = await applyOperationsToDocumentXml(sampleDocXml, ops, 'Author', null, { generateRedlines: false, atomic: true });
         assert.equal(result.rolledBack, true);
         assert.equal(result.results[1].status, 'error');
         assert.equal(result.results[1].error.code, 'AMBIGUOUS_CAPTURE_SELECTION');

@@ -71,6 +71,19 @@ default only on the newly added Node facade and CLI.
   **Migration:** Disambiguate operations using `paragraphId`, `index`, `occurrence`,
   or `fingerprint` and pass `{ strictTargets: true }`.
 
+### ℹ️ Noteworthy Default & Usability Changes (Non-breaking)
+
+The following improvements update default behaviors to maximize agent speed, reduce friction, and eliminate unnecessary errors during iterative editing. These changes are **not technically breaking changes** (no public APIs or exports were removed, and all existing options remain configurable), but represent important behavioral refinements that callers should note:
+
+- **Fallback Author Default (`'AI Redliner'`):** `setDefaultAuthor`, `node/cli.js`, and `openDocx` now default to `'AI Redliner'` (configurable via the `DOCX_REDLINE_AUTHOR` environment variable or `--author`). The CLI `apply` command and core APIs no longer error with `AUTHOR_REQUIRED` when operations omit an author.
+- **Output Overwrite by Default:** Destination files provided via `--output` now overwrite by default instead of failing with `OUTPUT_EXISTS`. Callers wanting protection against accidental overwrites can pass `--no-overwrite` or `--no-clobber`. The source document remains protected and is never overwritten unless `--in-place` is explicitly passed.
+- **Replacement Event Pairing (`pairReplacements: true` by default):** Adjacent `<w:del>` and `<w:ins>` revisions now default to sharing linked revision metadata and identical timestamps so Microsoft Word groups them as a single replacement in the Reviewing Pane. Pass `pairReplacements: false` for independent revision timestamps.
+- **Structured Content Auto-Detection (`structuredContent: true` by default):** Markdown tables, headings (`#`), and lists in replacement text automatically render as native Word elements (`w:tbl`, `w:pStyle`, `w:numPr`). Single outline-numbered legal clauses (e.g. `13.2.1.1`) continue to be treated as ordinary paragraphs without spurious list conversion. Pass `structuredContent: false` to treat replacement text strictly as plain text.
+- **Progressive Batch Mode (`atomic: false` default, `atomic: true` opt-in):** Batch operations and CLI `apply` now apply edits progressively by default (`atomic: false`): valid edits commit directly, while failing edits report structured errors in `results` for faster debugging. Pass `{ atomic: true }` (or `--atomic` on the CLI) for all-or-nothing rollback when any operation fails.
+- **Clean Direct Edits (`generateRedlines: false` / `--no-redlines`):** Prominently documented that tracked redlines are not always the preferred method. Callers can pass `generateRedlines: false` (or `--no-redlines` on the CLI) for clean execution drafts, document restructuring, or minor typo fixes without tracked changes markup.
+- **Existing Revisions Policy (`existingRevisions: 'accept-all-first'` by default):** Automatically normalizes prior revisions in target paragraphs before applying new edits, avoiding `EXISTING_REVISIONS` errors during multi-turn editing. Pass `'reject-input'` to refuse editing revised paragraphs.
+- **Inline One-Liner CLI Edits:** Added `--target <text>` with `--modified <text>` or `--comment <text>` on `docx-redline apply` for fast 1–2 edit workflows without creating a JSON operations file.
+
 ### Added
 
 - Added **Mutation Receipts** (`receipt` on `DocumentOperationResult` and `receipts`
