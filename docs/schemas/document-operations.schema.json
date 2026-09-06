@@ -64,6 +64,12 @@
         },
         {
           "allOf": [ { "$ref": "#/$defs/base" }, { "type": "object", "required": ["textToHighlight"], "properties": { "type": { "const": "highlight" }, "textToHighlight": { "type": "string", "minLength": 1 }, "color": { "type": "string" } } } ]
+        },
+        {
+          "allOf": [ { "$ref": "#/$defs/base" }, { "type": "object", "required": ["textToFormat", "properties"], "properties": { "type": { "enum": ["format", "character-format"] }, "textToFormat": { "type": "string", "minLength": 1 }, "properties": { "type": "object" }, "formattingRevisionPolicy": { "enum": ["always", "coalesce-own-insertion"] } } } ]
+        },
+        {
+          "allOf": [ { "$ref": "#/$defs/base" }, { "type": "object", "required": ["properties"], "properties": { "type": { "const": "paragraph-format" }, "properties": { "type": "object" } } } ]
         }
       ]
     }

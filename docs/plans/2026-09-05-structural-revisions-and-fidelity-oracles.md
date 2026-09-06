@@ -1344,10 +1344,11 @@ The ownership rules are evidence, not assumptions in prose:
 - Preserve tabs, breaks, hyperlinks, drawings, and SDTs as nodes.
 - Return `UNSAFE_PARAGRAPH_BOUNDARY` before mutation for unsupported cases.
 
-### WP-11 — Formatting Contract Completion
+### WP-11 — Formatting Contract Completion [COMPLETED 2026-09-05]
 
 **Depends on:** WP-03, WP-06  
-**Produces runtime changes:** Additive operations; current default retained
+**Produces runtime changes:** Additive operations; current default retained  
+**Status:** Completed — implemented explicit character-format (`format`, `character-format`) and paragraph-format (`paragraph-format`) operations with tracked revisions (`w:rPrChange`, `w:pPrChange`), schema ordering (`RPR_SCHEMA_ORDER`, `PPR_SCHEMA_ORDER`), direct prior state snapshots excluding nested change records, fresh ID preservation on run clones, author-aware coalescing policy (`coalesce-own-insertion`), and no-op handling without ID consumption. Verified in `tests/formatting_contract_tests.mjs` and all 78 test suites.
 
 **Files to inspect/edit**
 

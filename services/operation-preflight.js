@@ -149,7 +149,9 @@ export function preflightOperations(documentXml, operations, author, options = {
             const paragraphText = metadata.resolvedTarget.text;
             const anchor = operation.operationKind === 'comment'
                 ? (operation.textToComment || paragraphText)
-                : (operation.operationKind === 'highlight' ? operation.textToHighlight : null);
+                : (operation.operationKind === 'highlight'
+                    ? operation.textToHighlight
+                    : (operation.operationKind === 'format' ? operation.textToFormat : null));
             const anchorResolution = operation.operationKind === 'comment' && anchor != null
                 ? resolveTextInParagraphIndex(createParagraphTextIndex(paragraph, { revisionView: targetView }), anchor)
                 : null;

@@ -6,7 +6,20 @@ import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { findReconstructionParagraphRange } from '../engine/reconstruction-mapper.js';
 import { createRevisionMetadata } from '../core/types.js';
 import { containsTrackedChanges, createWordElement, withOoxmlSourceType } from '../core/word-xml.js';
-import { markParagraphMarkInserted, markParagraphMarkDeleted } from '../engine/run-builders.js';
+import {
+    markParagraphMarkInserted,
+    markParagraphMarkDeleted,
+    snapshotAndAttachRPrChange,
+    snapshotAndAttachPPrChange
+} from '../engine/run-builders.js';
+import {
+    applyCharacterFormatToRPr,
+    checkRunPropertiesChanged,
+    applyParagraphPropertiesToPPr,
+    checkParagraphPropertiesChanged
+} from '../engine/rpr-helpers.js';
+import { refreshRunPropertyChangeIds } from '../core/revision-cloning.js';
+import { getDefaultAuthor } from '../adapters/config.js';
 import { applyRedlineToOxml as applyRedlineToOxmlEngine } from '../engine/oxml-engine.js';
 import { applyHighlightToOoxml } from '../engine/formatting-removal.js';
 import { parseTable as parseMarkdownTable } from '../pipeline/pipeline.js';
@@ -1226,3 +1239,305 @@ export async function applyCommentToParagraphByExactText(documentXml, targetText
         resolvedAnchor: commentResult.resolvedAnchors?.[0] || null
     };
 }
+
+function splitRunAtTextOffset(xmlDoc, run, localOffset, revisionIdAllocator) {
+    const run1 = run.cloneNode(true);
+    const run2 = run.cloneNode(true);
+    refreshRunPropertyChangeIds(run2, revisionIdAllocator);
+
+    const isTextPiece = (node) => {
+        if (node.nodeType !== 1) return false;
+        const ln = node.localName || node.nodeName.replace(/^w:/, '');
+        return ['t', 'tab', 'br', 'noBreakHyphen', 'delText'].includes(ln);
+    };
+
+    Array.from(run1.childNodes).forEach(c => { if (isTextPiece(c)) run1.removeChild(c); });
+    Array.from(run2.childNodes).forEach(c => { if (isTextPiece(c)) run2.removeChild(c); });
+
+    let fullText = '';
+    for (const child of Array.from(run.childNodes)) {
+        if (child.nodeType !== 1) continue;
+        const ln = child.localName || child.nodeName.replace(/^w:/, '');
+        if (ln === 't') fullText += child.textContent || '';
+        else if (ln === 'tab') fullText += '\t';
+        else if (ln === 'br') fullText += '\n';
+        else if (ln === 'noBreakHyphen') fullText += '\u2011';
+    }
+
+    const text1 = fullText.slice(0, localOffset);
+    const text2 = fullText.slice(localOffset);
+
+    const appendPieces = (targetRun, text) => {
+        const parts = text.split(/(\t|\n|\u2011)/);
+        for (const part of parts) {
+            if (!part) continue;
+            if (part === '\t') {
+                targetRun.appendChild(createWordElement(xmlDoc, 'w:tab'));
+            } else if (part === '\n') {
+                targetRun.appendChild(createWordElement(xmlDoc, 'w:br'));
+            } else if (part === '\u2011') {
+                targetRun.appendChild(createWordElement(xmlDoc, 'w:noBreakHyphen'));
+            } else {
+                const tEl = createWordElement(xmlDoc, 'w:t');
+                if (/^\s|\s$/.test(part)) tEl.setAttribute('xml:space', 'preserve');
+                tEl.textContent = part;
+                targetRun.appendChild(tEl);
+            }
+        }
+    };
+
+    appendPieces(run1, text1);
+    appendPieces(run2, text2);
+
+    const parent = run.parentNode;
+    parent.insertBefore(run1, run);
+    parent.insertBefore(run2, run);
+    parent.removeChild(run);
+
+    return [run1, run2];
+}
+
+export async function applyFormattingToParagraphByExactText(
+    documentXml,
+    targetText,
+    textToFormat,
+    properties = {},
+    author,
+    targetRef = null,
+    runtimeContext = null,
+    options = {}
+) {
+    const generateRedlines = options.generateRedlines !== false;
+    const onInfo = typeof options?.onInfo === 'function' ? options.onInfo : () => { };
+    const onWarn = typeof options?.onWarn === 'function' ? options.onWarn : () => { };
+    const { serializer, xmlDoc, operationSession } = resolveMutationDocument(documentXml, options);
+    if (!xmlDoc) {
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: { code: 'PARSE_ERROR', message: 'Could not parse document OOXML.' }
+        };
+    }
+    const revisionIdAllocator = operationSession?.revisionIdAllocator || prepareRevisionAllocator(xmlDoc, options);
+    const resolved = resolveTargetParagraph(xmlDoc, targetText, targetRef, 'format', runtimeContext, {
+        ...options,
+        onInfo,
+        onWarn
+    });
+    if (resolved?.error) {
+        return { documentXml, hasChanges: false, status: 'error', error: resolved.error };
+    }
+    const targetParagraph = resolved.paragraph;
+
+    const collectVisibleRuns = () => {
+        const runEntries = [];
+        const allRuns = Array.from(targetParagraph.getElementsByTagNameNS(NS_W, 'r'));
+        for (const run of allRuns) {
+            let parent = run.parentNode;
+            let isDel = false;
+            while (parent && parent !== targetParagraph) {
+                if (parent.nodeType === 1 && (parent.localName === 'del' || parent.nodeName === 'w:del')) {
+                    isDel = true;
+                    break;
+                }
+                parent = parent.parentNode;
+            }
+            if (isDel) continue;
+
+            let runText = '';
+            for (const child of Array.from(run.childNodes)) {
+                if (child.nodeType !== 1) continue;
+                const ln = child.localName || child.nodeName.replace(/^w:/, '');
+                if (ln === 't') runText += child.textContent || '';
+                else if (ln === 'tab') runText += '\t';
+                else if (ln === 'br') runText += '\n';
+                else if (ln === 'noBreakHyphen') runText += '\u2011';
+            }
+            if (runText.length > 0) {
+                runEntries.push({ run, text: runText });
+            }
+        }
+        return runEntries;
+    };
+
+    let runEntries = collectVisibleRuns();
+    let fullParaText = '';
+    let spanRanges = [];
+    for (const entry of runEntries) {
+        const start = fullParaText.length;
+        fullParaText += entry.text;
+        const end = fullParaText.length;
+        spanRanges.push({ ...entry, start, end });
+    }
+
+    const targetDescriptor = options.targetDescriptor;
+    const occurrence = targetDescriptor?.occurrence ?? null;
+    let matchStart = -1;
+    if (occurrence != null && occurrence > 0) {
+        let count = 0;
+        let offset = 0;
+        while (offset <= fullParaText.length - textToFormat.length) {
+            const idx = fullParaText.indexOf(textToFormat, offset);
+            if (idx === -1) break;
+            count++;
+            if (count === occurrence) {
+                matchStart = idx;
+                break;
+            }
+            offset = idx + 1;
+        }
+    } else {
+        matchStart = fullParaText.indexOf(textToFormat);
+    }
+
+    if (matchStart === -1) {
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: {
+                code: 'TARGET_NOT_FOUND',
+                message: `Text to format was not found in target paragraph: "${textToFormat}".`
+            }
+        };
+    }
+    const matchEnd = matchStart + textToFormat.length;
+
+    // Split runs at matchStart boundary
+    let currentRuns = [];
+    for (const span of spanRanges) {
+        if (span.start < matchStart && span.end > matchStart) {
+            const localOffset = matchStart - span.start;
+            const [r1, r2] = splitRunAtTextOffset(xmlDoc, span.run, localOffset, revisionIdAllocator);
+            currentRuns.push({ run: r1, start: span.start, end: matchStart, text: span.text.slice(0, localOffset) });
+            currentRuns.push({ run: r2, start: matchStart, end: span.end, text: span.text.slice(localOffset) });
+        } else {
+            currentRuns.push(span);
+        }
+    }
+
+    // Split runs at matchEnd boundary
+    const finalRuns = [];
+    for (const span of currentRuns) {
+        if (span.start < matchEnd && span.end > matchEnd) {
+            const localOffset = matchEnd - span.start;
+            const [r1, r2] = splitRunAtTextOffset(xmlDoc, span.run, localOffset, revisionIdAllocator);
+            finalRuns.push({ run: r1, start: span.start, end: matchEnd, text: span.text.slice(0, localOffset) });
+            finalRuns.push({ run: r2, start: matchEnd, end: span.end, text: span.text.slice(localOffset) });
+        } else {
+            finalRuns.push(span);
+        }
+    }
+
+    const targetRuns = finalRuns.filter(span => span.start >= matchStart && span.end <= matchEnd);
+
+    let anyChanged = false;
+    for (const entry of targetRuns) {
+        const rPr = entry.run.getElementsByTagNameNS(NS_W, 'rPr')[0] || null;
+        if (checkRunPropertiesChanged(rPr, properties)) {
+            anyChanged = true;
+            break;
+        }
+    }
+
+    if (!anyChanged) {
+        return { documentXml, hasChanges: false, status: 'no-op' };
+    }
+
+    for (const entry of targetRuns) {
+        const run = entry.run;
+        let rPr = run.getElementsByTagNameNS(NS_W, 'rPr')[0];
+        if (!rPr) {
+            rPr = createWordElement(xmlDoc, 'w:rPr');
+            run.insertBefore(rPr, run.firstChild);
+        }
+
+        let insAncestor = run.parentNode;
+        let insideSameAuthorIns = false;
+        while (insAncestor && insAncestor !== targetParagraph) {
+            if (insAncestor.nodeType === 1 && (insAncestor.localName === 'ins' || insAncestor.nodeName === 'w:ins')) {
+                const insAuthor = insAncestor.getAttribute('w:author') || insAncestor.getAttributeNS(NS_W, 'author');
+                if (insAuthor === (author || getDefaultAuthor())) {
+                    insideSameAuthorIns = true;
+                }
+                break;
+            }
+            insAncestor = insAncestor.parentNode;
+        }
+
+        const coalesce = insideSameAuthorIns && options.formattingRevisionPolicy === 'coalesce-own-insertion';
+
+        if (generateRedlines && !coalesce) {
+            snapshotAndAttachRPrChange(xmlDoc, rPr, author || getDefaultAuthor());
+        }
+
+        applyCharacterFormatToRPr(xmlDoc, rPr, properties);
+    }
+
+    normalizeBodySectionOrder(xmlDoc);
+
+    return {
+        documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
+        hasChanges: true,
+        status: 'ok'
+    };
+}
+
+export async function applyParagraphFormatToParagraphByExactText(
+    documentXml,
+    targetText,
+    properties = {},
+    author,
+    targetRef = null,
+    runtimeContext = null,
+    options = {}
+) {
+    const generateRedlines = options.generateRedlines !== false;
+    const onInfo = typeof options?.onInfo === 'function' ? options.onInfo : () => { };
+    const onWarn = typeof options?.onWarn === 'function' ? options.onWarn : () => { };
+    const { serializer, xmlDoc, operationSession } = resolveMutationDocument(documentXml, options);
+    if (!xmlDoc) {
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: { code: 'PARSE_ERROR', message: 'Could not parse document OOXML.' }
+        };
+    }
+    const revisionIdAllocator = operationSession?.revisionIdAllocator || prepareRevisionAllocator(xmlDoc, options);
+    const resolved = resolveTargetParagraph(xmlDoc, targetText, targetRef, 'paragraph-format', runtimeContext, {
+        ...options,
+        onInfo,
+        onWarn
+    });
+    if (resolved?.error) {
+        return { documentXml, hasChanges: false, status: 'error', error: resolved.error };
+    }
+    const targetParagraph = resolved.paragraph;
+
+    let pPr = targetParagraph.getElementsByTagNameNS(NS_W, 'pPr')[0];
+    if (!pPr) {
+        pPr = createWordElement(xmlDoc, 'w:pPr');
+        targetParagraph.insertBefore(pPr, targetParagraph.firstChild);
+    }
+
+    const hasChanges = checkParagraphPropertiesChanged(pPr, properties);
+    if (!hasChanges) {
+        return { documentXml, hasChanges: false, status: 'no-op' };
+    }
+
+    if (generateRedlines) {
+        snapshotAndAttachPPrChange(xmlDoc, pPr, author || getDefaultAuthor());
+    }
+
+    applyParagraphPropertiesToPPr(xmlDoc, pPr, properties);
+    normalizeBodySectionOrder(xmlDoc);
+
+    return {
+        documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
+        hasChanges: true,
+        status: 'ok'
+    };
+}
+

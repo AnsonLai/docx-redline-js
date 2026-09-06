@@ -9,6 +9,8 @@ const SUPPORTED_OPERATION_TYPES = new Set([
     'redline',
     'replace',
     'format',
+    'character-format',
+    'paragraph-format',
     'list-change',
     'table-reconciliation',
     'insert',
@@ -28,6 +30,8 @@ function nonEmptyString(value) {
 export function getCanonicalOperationType(operation) {
     const type = operation?.type;
     if (type === 'comment' || type === 'highlight') return type;
+    if (type === 'paragraph-format') return 'paragraph-format';
+    if (type === 'character-format' || (type === 'format' && (operation?.textToFormat != null || operation?.properties != null))) return 'format';
     return 'redline';
 }
 
@@ -226,6 +230,36 @@ export function validateDocumentOperation(operation) {
             return {
                 valid: false,
                 error: { code: 'INVALID_OPERATION', message: 'Highlight color must be a non-empty string when provided.' }
+            };
+        }
+    }
+
+    if (normalized.operationKind === 'format') {
+        if (!nonEmptyString(normalized.textToFormat)) {
+            return {
+                valid: false,
+                error: { code: 'INVALID_OPERATION', message: 'Format operations require a non-empty "textToFormat" field.' }
+            };
+        }
+        if (!isRecord(normalized.properties)) {
+            return {
+                valid: false,
+                error: { code: 'INVALID_OPERATION', message: 'Format operations require a "properties" object.' }
+            };
+        }
+        if (normalized.formattingRevisionPolicy != null && !['always', 'coalesce-own-insertion'].includes(normalized.formattingRevisionPolicy)) {
+            return {
+                valid: false,
+                error: { code: 'INVALID_OPERATION', message: 'formattingRevisionPolicy must be "always" or "coalesce-own-insertion".' }
+            };
+        }
+    }
+
+    if (normalized.operationKind === 'paragraph-format') {
+        if (!isRecord(normalized.properties)) {
+            return {
+                valid: false,
+                error: { code: 'INVALID_OPERATION', message: 'Paragraph-format operations require a "properties" object.' }
             };
         }
     }

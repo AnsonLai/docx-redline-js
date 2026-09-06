@@ -7,7 +7,9 @@ import {
 import { DocumentOperationSession } from './document-operation-session.js';
 import {
     applyCommentToParagraphByExactText,
+    applyFormattingToParagraphByExactText,
     applyHighlightToParagraphByExactText,
+    applyParagraphFormatToParagraphByExactText,
     applyToParagraphByExactText
 } from './document-operation-mutations.js';
 
@@ -77,6 +79,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
         ...(operation.structuredContent === true ? { structuredContent: true } : {}),
         ...(typeof operation.pairReplacements === 'boolean' ? { pairReplacements: operation.pairReplacements } : {}),
         ...(operation.insertionAffinity ? { insertionAffinity: operation.insertionAffinity } : {}),
+        ...(operation.formattingRevisionPolicy ? { formattingRevisionPolicy: operation.formattingRevisionPolicy } : {}),
         targetDescriptor: operation.targetDescriptor,
         _resolutionCapture: resolutionCapture,
         _revisionIdAllocator: session.revisionIdAllocator,
@@ -102,6 +105,27 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                 operation.target,
                 operation.textToComment,
                 operation.commentContent,
+                authorUsed,
+                operation.targetRef,
+                runtimeContext,
+                operationOptions
+            );
+        } else if (operation.operationKind === 'format') {
+            result = await applyFormattingToParagraphByExactText(
+                documentXml,
+                operation.target,
+                operation.textToFormat,
+                operation.properties,
+                authorUsed,
+                operation.targetRef,
+                runtimeContext,
+                operationOptions
+            );
+        } else if (operation.operationKind === 'paragraph-format') {
+            result = await applyParagraphFormatToParagraphByExactText(
+                documentXml,
+                operation.target,
+                operation.properties,
                 authorUsed,
                 operation.targetRef,
                 runtimeContext,

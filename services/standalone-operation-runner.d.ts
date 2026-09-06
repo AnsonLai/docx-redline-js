@@ -50,17 +50,51 @@ export interface CommentDocumentOperation extends DocumentOperationBase {
   commentContent: string;
 }
 
+export interface CharacterFormatProperties {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strike?: boolean;
+  strikethrough?: boolean;
+  highlight?: string | null;
+  color?: string | null;
+  fontSize?: number | string | null;
+  fontFamily?: string | null;
+}
+
+export interface ParagraphFormatProperties {
+  alignment?: 'left' | 'center' | 'right' | 'both';
+  keepNext?: boolean;
+  keepLines?: boolean;
+  pageBreakBefore?: boolean;
+  style?: string | null;
+}
+
 export interface HighlightDocumentOperation extends DocumentOperationBase {
   type: 'highlight';
   textToHighlight: string;
   color?: string;
 }
 
+export interface CharacterFormatDocumentOperation extends DocumentOperationBase {
+  type: 'format' | 'character-format';
+  textToFormat: string;
+  properties: CharacterFormatProperties;
+  formattingRevisionPolicy?: 'always' | 'coalesce-own-insertion';
+}
+
+export interface ParagraphFormatDocumentOperation extends DocumentOperationBase {
+  type: 'paragraph-format';
+  properties: ParagraphFormatProperties;
+}
+
 export type DocumentOperation =
   | RedlineDocumentOperation
   | DeleteDocumentOperation
   | CommentDocumentOperation
-  | HighlightDocumentOperation;
+  | HighlightDocumentOperation
+  | CharacterFormatDocumentOperation
+  | ParagraphFormatDocumentOperation;
 
 export interface ResolvedDocumentTarget {
   index: number;
@@ -100,7 +134,7 @@ export interface DocumentOperationResult {
   warnings?: string[];
   status?: RedlineStatus;
   error?: RedlineError;
-  operationType: 'redline' | 'comment' | 'highlight';
+  operationType: 'redline' | 'comment' | 'highlight' | 'format' | 'paragraph-format';
   authorUsed: string;
   resolvedBy?: string;
   resolvedTarget?: ResolvedDocumentTarget;
@@ -110,7 +144,7 @@ export interface DocumentOperationResult {
 export interface BatchOperationItemResult {
   index: number;
   type: string;
-  operationType: 'redline' | 'comment' | 'highlight';
+  operationType: 'redline' | 'comment' | 'highlight' | 'format' | 'paragraph-format';
   status: 'applied' | 'no_change' | 'error';
   authorUsed: string;
   resolvedBy?: string;
@@ -138,7 +172,7 @@ export interface DocumentOperationBatchResult {
 export interface OperationPreflightItemResult {
   index: number;
   type: string;
-  operationType: 'redline' | 'comment' | 'highlight';
+  operationType: 'redline' | 'comment' | 'highlight' | 'format' | 'paragraph-format';
   status: 'ready' | 'error';
   authorUsed: string;
   resolvedBy?: string;

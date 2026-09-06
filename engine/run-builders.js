@@ -351,3 +351,43 @@ export function snapshotAndAttachRPrChange(xmlDoc, rPr, author, dateStr, sourceN
 function createRPrChange(xmlDoc, rPr, author, previousRPrArg) {
     snapshotAndAttachRPrChange(xmlDoc, rPr, author, null, previousRPrArg || rPr);
 }
+
+/**
+ * Creates and attaches a `w:pPrChange` snapshot to paragraph properties.
+ *
+ * @param {Document} xmlDoc - XML document
+ * @param {Element} pPr - Target paragraph properties
+ * @param {string} author - Change author
+ * @param {string} [dateStr] - ISO date string
+ * @param {Element} [sourceNode] - Optional source for previous state snapshot
+ * @returns {Element}
+ */
+export function snapshotAndAttachPPrChange(xmlDoc, pPr, author, dateStr, sourceNode) {
+    const pPrChange = createWordElement(xmlDoc, 'w:pPrChange');
+    const metadata = createRevisionMetadata(author, xmlDoc);
+    pPrChange.setAttribute('w:id', String(metadata.id));
+    pPrChange.setAttribute('w:author', metadata.author);
+    pPrChange.setAttribute('w:date', dateStr || metadata.date);
+
+    const previousPPr = createWordElement(xmlDoc, 'w:pPr');
+    const source = sourceNode || pPr;
+
+    Array.from(source.childNodes).forEach(child => {
+        if (child.nodeType === 1 && child.nodeName !== 'w:pPrChange' && child.localName !== 'pPrChange') {
+            previousPPr.appendChild(child.cloneNode(true));
+        }
+    });
+
+    pPrChange.appendChild(previousPPr);
+
+    const existing = Array.from(pPr.childNodes).find(
+        c => c.nodeType === 1 && (c.nodeName === 'w:pPrChange' || c.localName === 'pPrChange')
+    );
+    if (existing) {
+        pPr.removeChild(existing);
+    }
+
+    pPr.appendChild(pPrChange);
+    return pPrChange;
+}
+
