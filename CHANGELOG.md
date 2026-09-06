@@ -62,8 +62,35 @@ default only on the newly added Node facade and CLI.
   **This remains supported in this release but will become an error in the next
   major version.** Migrate low-level callers to
   `mergeNumberingXmlBySchemaOrder` before that release.
+- **Permissive target resolution deprecation (`AMBIGUOUS_TARGET_HEURISTIC_USED`):**
+  Lower-level document operation runners currently default to permissive targeting.
+  In v1.0.0, application will default to `strictTargets: true`. In this release,
+  when permissive resolution encounters multiple identical candidate paragraphs and
+  heuristically chooses the first candidate, it emits an `AMBIGUOUS_TARGET_HEURISTIC_USED`
+  warning with candidate count and migration guidance.
+  **Migration:** Disambiguate operations using `paragraphId`, `index`, `occurrence`,
+  or `fingerprint` and pass `{ strictTargets: true }`.
 
 ### Added
+
+- Added **Mutation Receipts** (`receipt` on `DocumentOperationResult` and `receipts`
+  on `BatchOperationResult`). Every operation execution returns structured,
+  commit-aware telemetry capturing durable revision IDs (with kind and target part),
+  comment IDs, numbering IDs, relationship IDs, affected targets, and warnings.
+  Supports `not_attempted`, `applied`, `refused`, `no_change`, and `rolled_back`
+  dispositions.
+- Added **Commit-Aware Output Reconciliation Oracle** (`reconcileReceiptsAgainstOutput`).
+  Before completing any transaction, reported durable IDs are checked against a
+  fresh parse of the generated output OOXML parts. Any reconciliation discrepancy
+  immediately fails the transaction and triggers atomic rollback.
+- Exported receipt primitives: `ReceiptCollector`, `createEmptyReceipt`, and
+  `reconcileReceiptsAgainstOutput` along with `MutationReceipt` and
+  `MutationReceiptRevisionItem` TypeScript declarations.
+- Added **Paragraph Mark Revisions** (`w:pPrChange`, `markParagraphMarkInserted`,
+  `markParagraphMarkDeleted`) ensuring whole-paragraph deletions and insertions
+  cleanly track paragraph mark lifecycles for full Accept All / Reject All symmetry.
+- Added **Paragraph Boundary Mutation Validation** (`validateParagraphBoundaryMutation`)
+  guarding against invalid cross-paragraph boundary merges.
 
 - Added `analyzeStructuredContent(...)` and `planStructuredReplacement(...)`
   for agent-authored attachments and schedules containing mixed headings,

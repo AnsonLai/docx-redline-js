@@ -305,7 +305,28 @@ still be re-exported from `index.js`.
   metadata so integrations can audit what the engine actually selected.
 - `preflightOperations` is the read-only safety boundary for agent-generated
   batches. It uses strict targeting by default; mutation APIs retain permissive
-  legacy targeting unless `strictTargets: true` is requested.
+  legacy targeting unless `strictTargets: true` is requested. In v1.0.0,
+  application will default to strict targeting; in the current warning cycle,
+  permissive resolution that chooses among multiple identical paragraphs emits
+  `AMBIGUOUS_TARGET_HEURISTIC_USED` with candidate count and migration guidance.
+  Both preflight and mutation runners share the same candidate resolver
+  (`resolveTargetParagraph`).
+
+### Mutation receipts and output reconciliation oracle
+
+- `ReceiptCollector` tracks exact allocations (revision IDs with kind and target part,
+  comment IDs, numbering IDs, relationship IDs, affected targets, and warnings)
+  directly at the point of allocation/attachment during operation execution.
+- Collector state is snapshotted within operation savepoints. Failed or rolled-back
+  operations cleanly restore prior collector state without leaking orphaned allocations.
+- Single operations expose `result.receipt`; batches expose per-item `results[i].receipt`
+  and top-level `result.receipts`, with dispositions (`applied`, `refused`, `no_change`,
+  `rolled_back`, `not_attempted`) and `committed: true/false`.
+- The output reconciliation oracle (`reconcileReceiptsAgainstOutput`) performs an
+  independent, non-negotiable verification: every durable ID reported as committed
+  is parsed from the serialized output XML parts (`word/document.xml`, `word/comments.xml`,
+  `word/numbering.xml`). Any discrepancy immediately fails the transaction and triggers
+  atomic rollback.
 
 
 ## Build Output

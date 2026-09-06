@@ -224,6 +224,7 @@ export interface OperationPreflightItemResult {
   } | null;
   hasRevisions?: boolean;
   existingRevisions?: ExistingRevisionsPolicy;
+  warnings?: string[];
   error?: RedlineError & { candidates?: ResolvedDocumentTarget[] };
 }
 

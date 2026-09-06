@@ -165,7 +165,14 @@ agent-generated batch. Preflight is read-only and strict by default: duplicate
 exact text returns `AMBIGUOUS_TARGET`, approximate text is not selected, and
 the result reports candidate targets, missing anchors, existing revisions,
 authors, required artifacts, and same-paragraph conflicts. Application keeps
-legacy permissive targeting unless `{ strictTargets: true }` is passed.
+legacy permissive targeting unless `{ strictTargets: true }` is passed. When
+permissive resolution encounters duplicate candidate paragraphs, it emits an
+`AMBIGUOUS_TARGET_HEURISTIC_USED` warning; migrate to `{ strictTargets: true }`
+with strict descriptors (`paragraphId`, `index`, `occurrence`, or `fingerprint`)
+before v1.0.0.
+
+Whole-paragraph deletions targeting paragraphs with existing comments fail with
+`COMMENTED_CONTENT_DELETE`. Resolve or remove the comments first.
 
 Use `result.documentXml` from these APIs when replacing full `word/document.xml`.
 For mixed batches, prefer `applyOperationsToDocumentXml(...)`; it applies comments
@@ -182,6 +189,12 @@ Internally, a batch uses one live document DOM and one revision allocator, then
 serializes the full document once. Every operation has a DOM/allocator savepoint;
 do not remove this isolation merely for speed. Redline accuracy, accepted and
 rejected text, and exact rollback take precedence over throughput.
+
+Every operation produces a commit-aware `receipt` (and batch-level `receipts`)
+enumerating exact allocated `revisionItems`, `commentIds`, `numberingIds`,
+`relationshipIds`, `affectedTargets`, and `warnings`. The output reconciliation
+oracle (`reconcileReceiptsAgainstOutput`) validates that all reported durable IDs
+are present in the serialized output; any discrepancy triggers rollback and fails closed.
 
 Always inspect `status` and `error`, not only `hasChanges`. A failed transform
 can return `{ hasChanges: false, status: 'error', error: ... }`. Missing or

@@ -265,6 +265,7 @@ export function preflightOperations(documentXml, operations, author, options = {
                 },
                 hasRevisions,
                 existingRevisions: existingPolicy,
+                ...(resolved?.warnings?.length ? { warnings: resolved.warnings } : {}),
                 ...(error ? { error } : {})
             });
         } catch (error) {

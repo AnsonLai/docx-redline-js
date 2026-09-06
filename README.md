@@ -380,9 +380,42 @@ Preflight is read-only and uses strict targeting by default. It reports
 `AMBIGUOUS_TARGET` with candidates instead of selecting the first duplicate,
 does not use fuzzy fallback, checks comment/highlight anchors and existing
 revision policy, identifies same-paragraph operation conflicts, and reports
-authors plus required comments/numbering artifacts. Application remains
-permissive by default for compatibility; pass `strictTargets: true` for the same
-strict target behavior.
+authors plus required comments/numbering artifacts.
+
+Application currently defaults to permissive targeting for backward compatibility,
+but will default to `strictTargets: true` in v1.0.0. When permissive resolution
+chooses among multiple candidate paragraphs heuristically, it emits an
+`AMBIGUOUS_TARGET_HEURISTIC_USED` warning containing candidate count and migration
+guidance. Callers should pass `{ strictTargets: true }` and use strict descriptors
+(`paragraphId`, `index`, `occurrence`, or `fingerprint`) to prepare for v1.0.0.
+
+### Mutation Receipts
+
+Both single-operation (`applyOperationToDocumentXml`) and batch
+(`applyOperationsToDocumentXml`) results expose commit-aware **Mutation Receipts**
+(`result.receipt` on single results and per-item `results[i].receipt`, plus `result.receipts`
+for the full batch).
+
+```js
+const result = await applyOperationsToDocumentXml(documentXml, operations, 'Agent');
+for (const receipt of result.receipts) {
+  console.log(receipt.operationIndex, receipt.finalDisposition, receipt.committed);
+  console.log('Revisions:', receipt.revisionItems);
+  console.log('Comments:', receipt.commentIds);
+}
+```
+
+Receipts report:
+- `operationIndex` (1-based), `operationId`, and `authorUsed`
+- `attemptedDisposition` and `finalDisposition` (`applied`, `refused`, `no_change`, `rolled_back`, or `not_attempted`)
+- `committed` (boolean: verified committed into serialized package output)
+- `revisionItems` (exact allocated revision IDs with kind and target part)
+- `commentIds`, `numberingIds`, and `relationshipIds`
+- `affectedTargets` (resolved target coordinates) and `warnings`
+
+Before completing an operation or batch transaction, `reconcileReceiptsAgainstOutput`
+verifies every reported committed durable ID against a fresh parse of the output OOXML.
+Any discrepancy fails closed and triggers immediate rollback.
 
 ### Output Shape Matrix
 

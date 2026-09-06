@@ -459,9 +459,10 @@ export function resolveTargetParagraph(xmlDoc, options = {}) {
         return { paragraph: byId, resolvedBy: 'paragraph_id' };
     }
 
+    let candidates = [];
     if (cleanTargetText) {
         const unfilteredCandidates = findStrictTargetCandidates(xmlDoc, cleanTargetText, paragraphMetadataIndex);
-        const candidates = filterTargetCandidates(unfilteredCandidates, descriptor);
+        candidates = filterTargetCandidates(unfilteredCandidates, descriptor);
 
         if (descriptor?.fingerprint && unfilteredCandidates.length > 0 && candidates.length === 0) {
             throw createTargetError(
@@ -581,7 +582,19 @@ export function resolveTargetParagraph(xmlDoc, options = {}) {
 
     if (cleanTargetText && !strictAmbiguity) {
         const strictMatch = findParagraphByStrictText(xmlDoc, cleanTargetText, { paragraphMetadataIndex });
-        if (strictMatch) return { paragraph: strictMatch, resolvedBy: 'strict_text' };
+        if (strictMatch) {
+            const candidateCount = candidates.length;
+            if (candidateCount > 1) {
+                const warningMsg = `AMBIGUOUS_TARGET_HEURISTIC_USED: Target text matched ${candidateCount} paragraphs; permissive resolution chose candidate 1. Migrate to strict targeting (e.g. strictTargets: true with paragraphId, index, occurrence, or fingerprint) before v1.0.0.`;
+                onWarn(warningMsg);
+                return {
+                    paragraph: strictMatch,
+                    resolvedBy: 'strict_text',
+                    warnings: [warningMsg]
+                };
+            }
+            return { paragraph: strictMatch, resolvedBy: 'strict_text' };
+        }
 
         const fuzzyMatch = findParagraphByBestTextMatch(xmlDoc, cleanTargetText, { onInfo, paragraphMetadataIndex });
         if (fuzzyMatch) return { paragraph: fuzzyMatch, resolvedBy: 'fuzzy_text' };

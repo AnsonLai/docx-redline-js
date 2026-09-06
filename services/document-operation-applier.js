@@ -147,6 +147,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
         operation.operationId,
         authorUsed
     );
+    const operationWarnings = [];
     const operationOptions = {
         ...options,
         ...(typeof operation.generateRedlines === 'boolean' ? { generateRedlines: operation.generateRedlines } : {}),
@@ -160,7 +161,14 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
         _revisionIdAllocator: session.revisionIdAllocator,
         _documentOperationSession: session,
         _mutationLiveNodes: [],
-        _mutationRemovedNodes: []
+        _mutationRemovedNodes: [],
+        onInfo: (msg) => {
+            if (typeof options?.onInfo === 'function') options.onInfo(msg);
+        },
+        onWarn: (msg) => {
+            operationWarnings.push(String(msg));
+            if (typeof options?.onWarn === 'function') options.onWarn(msg);
+        }
     };
 
     try {
@@ -234,6 +242,13 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                     message: 'The comment operation completed without placing a comment.'
                 }
             };
+        }
+        if (operationWarnings.length > 0 && result) {
+            const merged = Array.from(new Set([
+                ...(Array.isArray(result.warnings) ? result.warnings : []),
+                ...operationWarnings
+            ]));
+            result.warnings = merged;
         }
         const isError = result?.status === 'error' || !!result?.error;
         let operationReceipt = null;

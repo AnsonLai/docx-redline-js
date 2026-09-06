@@ -1585,7 +1585,8 @@ graph.
 ### WP-18 — Strict Application Warning Cycle
 
 **Depends on:** WP-05  
-**Produces runtime changes:** Warning only before v1.0.0
+**Produces runtime changes:** Warning only before v1.0.0  
+**Status:** Completed — added `AMBIGUOUS_TARGET_HEURISTIC_USED` warning in `core/paragraph-targeting.js` triggered only when permissive resolution chooses among multiple identical candidate paragraphs. Integrated candidate count and migration guidance into warnings in `document-operation-applier.js`, `batch-operation-orchestrator.js`, and `operation-preflight.js`. Updated `README.md`, `AGENTS.md`, `ARCHITECTURE.md`, and `CHANGELOG.md` with migration guidance and strict descriptor examples. Created `tests/strict_application_warning_tests.mjs` verifying all warning cycle invariants. All 85 test suites pass.
 
 **Steps**
 
