@@ -154,7 +154,8 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
                 currentInsertOffset,
                 generateRedlines,
                 emittedCommentMarkers,
-                pendingReplacementEvent
+                pendingReplacementEvent,
+                pendingReplacementStart !== null
             );
             currentParagraph = appendResult.currentParagraph;
             currentInsertOffset += text.length;
@@ -265,20 +266,38 @@ function appendTextToCurrent(
     insertOffset = 0,
     generateRedlines = true,
     emittedCommentMarkers = new WeakSet(),
-    replacementEvent = null
+    replacementEvent = null,
+    deferClosingCommentMarkers = false
 ) {
     let localBaseIndex = baseIndex;
     let localInsertOffset = insertOffset;
     let localParagraph = currentParagraphRef;
+    const deferredCommentMarkers = [];
 
     const parts = text.split(/([\n\uFFFC]|[\uE000-\uF8FF])/);
 
     parts.forEach(part => {
         const sentinelsAtOffset = sentinelMapByStart.get(localBaseIndex) || [];
         const commentMarkers = sentinelsAtOffset.filter(sentinel => sentinel.isCommentMarker && !emittedCommentMarkers.has(sentinel.node));
+        const closingCommentIds = deferClosingCommentMarkers
+            ? new Set(commentMarkers
+                .filter(marker => isWordElement(marker.node, 'commentRangeEnd'))
+                .map(marker => marker.node.getAttributeNS?.(NS_W, 'id') || marker.node.getAttribute?.('w:id') || marker.node.getAttribute?.('id')))
+            : new Set();
 
         commentMarkers.forEach(marker => {
             emittedCommentMarkers.add(marker.node);
+            const markerId = marker.node.getAttributeNS?.(NS_W, 'id')
+                || marker.node.getAttribute?.('w:id')
+                || marker.node.getAttribute?.('id');
+            if (
+                deferClosingCommentMarkers
+                && closingCommentIds.has(markerId)
+                && (isWordElement(marker.node, 'commentRangeEnd') || isWordElement(marker.node, 'commentReference'))
+            ) {
+                deferredCommentMarkers.push(marker.node);
+                return;
+            }
             if (isWordElement(marker.node, 'commentReference')) {
                 const run = createWordElement(xmlDoc, 'w:r');
                 run.appendChild(marker.node.cloneNode(true));
@@ -410,6 +429,16 @@ function appendTextToCurrent(
             localInsertOffset += part.length;
         }
         localBaseIndex += part.length;
+    });
+
+    deferredCommentMarkers.forEach(marker => {
+        if (isWordElement(marker, 'commentReference')) {
+            const run = createWordElement(xmlDoc, 'w:r');
+            run.appendChild(marker.cloneNode(true));
+            localParagraph.appendChild(run);
+        } else {
+            localParagraph.appendChild(marker.cloneNode(true));
+        }
     });
 
     return { currentParagraph: localParagraph };

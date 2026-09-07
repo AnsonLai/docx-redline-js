@@ -179,6 +179,43 @@ async function testCommentAndBookmarkMarkersSurviveEdit() {
     assert.equal(doc.getElementsByTagNameNS(NS_W, 'commentReference').length, 1);
 }
 
+async function testWholeCommentedTextReplacementKeepsBothRevisionViewsAnchored() {
+    const original = 'The Provider may use Customer inputs and outputs to improve its services.';
+    const modified = 'Provider will not use Customer Content to train artificial intelligence models.';
+    const xml = `
+        <w:document xmlns:w="${NS_W}">
+            <w:body>
+                <w:p>
+                    <w:commentRangeStart w:id="9"/>
+                    <w:r><w:t>${original}</w:t></w:r>
+                    <w:commentRangeEnd w:id="9"/>
+                    <w:r><w:commentReference w:id="9"/></w:r>
+                </w:p>
+            </w:body>
+        </w:document>
+    `;
+
+    const result = await applyRedlineToOxml(xml, original, modified, {
+        author: 'Tester',
+        generateRedlines: true
+    });
+    const doc = parseXml(result.oxml);
+    const paragraph = elementsByLocalName(doc, 'p')[0];
+    const children = Array.from(paragraph.childNodes).filter(node => node.nodeType === 1);
+    const indexOf = name => children.findIndex(node => node.localName === name);
+
+    assert.equal(result.hasChanges, true);
+    assert.ok(indexOf('commentRangeStart') < indexOf('del'), 'comment must start before the deleted source text');
+    assert.ok(indexOf('del') < indexOf('ins'), 'replacement deletion must precede its insertion');
+    assert.ok(indexOf('ins') < indexOf('commentRangeEnd'), 'comment must also cover the inserted replacement text');
+    assert.ok(indexOf('commentRangeEnd') < indexOf('r'), 'comment reference must remain after the closing range marker');
+
+    const accepted = acceptTrackedChangesInOoxml(result.oxml, { author: 'Tester' });
+    const rejected = rejectTrackedChangesInOoxml(result.oxml, { author: 'Tester' });
+    assert.match(accepted.oxml, /commentRangeStart[\s\S]*Provider will not use[\s\S]*commentRangeEnd/);
+    assert.match(rejected.oxml, /commentRangeStart[\s\S]*The Provider may use[\s\S]*commentRangeEnd/);
+}
+
 async function testTabSurvivesAdjacentEdit() {
     const xml = `
         <w:document xmlns:w="${NS_W}">
@@ -430,6 +467,7 @@ await testEmptyDefaultNamespaceTableCellCanReceiveInsertion();
 await testApplyRedlineReportsFragmentSourceType();
 await testHyperlinkEditKeepsRevisionsInsideHyperlink();
 await testCommentAndBookmarkMarkersSurviveEdit();
+await testWholeCommentedTextReplacementKeepsBothRevisionViewsAnchored();
 await testTabSurvivesAdjacentEdit();
 await testFootnoteReferenceSurvivesEditAfterReference();
 await testReconstructionPreservesUnchangedInlineFormatting();
