@@ -251,7 +251,7 @@ explicitly supplied.
 
 #### Standard Workflow (Fast & Direct)
 
-`apply` is fast, progressive, and self-validating by default. It supports inline one-liners as well as batch operations files:
+Use this for everything by default. `apply` is fast, progressive, and self-validating by default—it validates the resulting package and revision markup internally before writing. **Do not insert a `preflight` or baseline `validate` step on top of it "to be safe"**; `apply` already covers that internally. It supports inline one-liners as well as batch operations files:
 
 ```bash
 # 1. Inline one-liner edit (fastest for 1–2 edits; no JSON file needed)
@@ -275,9 +275,11 @@ For multi-clause or multi-page reviews, apply edits **section-by-section** or cl
 
 #### High-Assurance / Staged Verification Workflow (Optional)
 
-For high-stakes legal contracts, large automated batch migrations, or workflows
-requiring explicit non-mutating pre-checks and an independent baseline audit
-report, use the extended verification cycle:
+This is an opt-in, higher-latency path for cases like large automated batch
+migrations or workflows where the user specifically requests a non-mutating dry run
+and an independent baseline audit report. **Never switch into it on your own initiative**
+(not even for "high-stakes" contracts); unless the user explicitly requests it, stick with the
+Standard workflow above. Use the extended verification cycle:
 
 ```bash
 docx-redline inspect contract.docx --non-empty
@@ -350,6 +352,57 @@ CLI described above. If `--author` and operation authors are absent, its
 compatibility fallback is `DOCX_REDLINE_AUTHOR` and then `Agent`. Consumers
 must use the JSON status and process exit code; failed atomic work has
 `written: false`, `outputPath: null`, and does not modify the output path.
+
+#### Safe Operations File Creation (JSON vs. Shell Heredocs)
+
+When composing batch operations files (`operations.json`):
+
+- **Use structured file-writing tools or JSON serializers**: Write operations files via your environment's file-creation tools or a language JSON serializer (`JSON.stringify`).
+- **Never compose operations in raw shell heredocs** (e.g., `cat << 'EOF'` in bash or PowerShell `@" ... "@`): Legal clauses routinely contain curly quotes (`“ ”`), smart apostrophes (`’`), em-dashes (`—`), section symbols (`§`), non-breaking spaces, and backslashes. Shell heredocs frequently mangle Unicode character encodings, quote escaping, and whitespace formatting, causing immediate `TARGET_NOT_FOUND` failures.
+
+#### Walking Progressive Batch Results (Status & Partial Execution)
+
+In default progressive mode (`atomic: false`), operations execute independently: valid operations commit to the document while failing operations report errors without aborting the batch:
+
+- **Do not rely solely on top-level `written: true` or `status !== "error"`**: A progressive batch can return `status: "partial"` with `written: true` when some operations succeed and others fail.
+- **Walk every entry in `results`**: Check `results[i].status` and `results[i].error`. Any `status: "error"` entry in `results` represents an unapplied change that must be investigated and resolved.
+- **`written: false`**: Indicates that zero operations were committed (or an atomic rollback occurred). Never treat or present an unwritten or partial output file as complete.
+
+#### Human-Readable References vs. Internal Machine Handles
+
+Target handles such as `ref` (`P<index>`), `targetRef`, and bare paragraph `index` numbers are **strictly internal machine handles** for the CLI and engine. They do not correspond to any visual or followable marker in Microsoft Word:
+
+- **Never surface `P11`, `P42`, or bare paragraph numbers** in user-facing prose, comments, redline summaries, or negotiation notes.
+- Instead, cite locations using the human-readable fields provided by `inspect` / `extract`:
+  - **`provision`**: Lead with section/clause numbers when present (e.g., `§14.1 Entire Agreement`).
+  - **`nearestHeading` + ordinal offset**: When `provision` is absent, describe position relative to the nearest heading (e.g., `under "Limitation of Liability", 2nd paragraph`).
+  - **Structural context**: For unnumbered clauses prior to the first heading, use plain language (e.g., `opening recital, before Section 1`).
+  - **`humanReference`**: Use the pre-joined citation string provided directly on inspected paragraph objects.
+
+#### Actionable Error Recovery Matrix
+
+When the CLI or runner returns an error code, follow these specific recovery actions:
+
+| Error Code | Meaning | Actionable Recovery |
+|---|---|---|
+| `TARGET_NOT_FOUND` | Target text did not match any paragraph. | **Do NOT retry with paraphrased text.** Re-run `extract`/`inspect`, copy `exactText` verbatim (including exact whitespace/punctuation), and add a discriminator (`paragraphId`, `fingerprint`, or `occurrence`). |
+| `AMBIGUOUS_TARGET` | Multiple paragraphs match identical text. | Disambiguate by supplying `paragraphId`, `fingerprint`, `occurrence`, or `index` in the target descriptor. |
+| `ANCHOR_NOT_FOUND` / `AMBIGUOUS_ANCHOR` | Comment anchor text was not uniquely matched in paragraph. | Narrow `textToComment` to a unique exact substring, or omit `textToComment` to anchor the comment to the entire paragraph. |
+| `OVERLAPPING_TEXT_EDITS` | Multiple operations target the same paragraph concurrently. | Consolidate all changes to the same paragraph into a single `redline` or `replace` operation. |
+| `EXISTING_REVISIONS` | Target paragraph contains tracked changes from another author. | Fails closed to protect third-party review marks. Report the other reviewer's name to the user. Do not pass `accept-all-first` without explicit authorization. |
+| `COMMENTED_CONTENT_MERGE` / `COMMENTED_CONTENT_DELETE` | Operation would overwrite, revert, or delete content with comments. | Fails closed to prevent orphaned comment threads. Report the comment author and text to the user; resolve the comment before re-editing. |
+| `INVALID_OPERATION` | Operation object violates schema or has incompatible fields. | Validate the JSON structure against [`document-operations.schema.json`](file:///c:/Users/Phara/Desktop/Projects/Docx%20Redline%20JS/docs/schemas/document-operations.schema.json) before targeting is attempted. |
+| `STRUCTURED_CONTENT_INVALID` | Malformed Markdown table or structure in replacement text. | Ensure tables include a separator row (`\| --- \| --- \|`) and consistent column counts; do not downgrade to raw text. |
+
+**Important Rule:** Never repeat the exact same failing command without correcting the reported cause. If an error persists after one correction attempt, stop and report the diagnostic code to the user.
+
+#### Document Scope & Boundary Invariants
+
+The `docx-redline` engine and CLI operate specifically on the **main document body**:
+
+- **Supported Content**: Body paragraphs, numbered/bulleted lists, tables and table cells, comments, and comment replies.
+- **Unsupported Content**: Headers, footers, footnotes, endnotes, floating text boxes, shape drawings, watermarks, and embedded macros.
+- Do not attempt to target, edit, or comment on header/footer text or footnote citations using `docx-redline`. Use specialized document manipulation tools or manual editing for layout frames outside the body text.
 
 ### Convert paragraph text into a Word list
 
