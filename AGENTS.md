@@ -57,6 +57,9 @@ reverted to the pre-revision baseline and re-diffed to the new text, cleanly
 merging the edits without accumulating intermediate revisions or nesting markup.
 If the paragraph contains revisions from a different reviewer, the edit fails
 with `EXISTING_REVISIONS` to safeguard third-party marks. Pass
+`existingRevisions: 'slice-cross-author'` (or `--existing-revisions slice-cross-author`)
+to preserve the other reviewer's attribution while applying Word-native
+insertions and deletions inside their pending insertion. Pass
 `existingRevisions: 'accept-all-first'` (or `--existing-revisions accept-all-first`
 via CLI) to normalize all prior revisions first, or `'reject-input'` to refuse any
 paragraph with open revisions. Use `'accept-all-first-keep-normalized'` only when
@@ -528,7 +531,7 @@ orchestration/
 | `structuredContent` | `boolean` | `true` | Auto-detects Markdown tables, headings (`#`), and lists in replacement text and renders them as native Word elements (`w:tbl`, `w:pStyle`, `w:numPr`). Pass `false` to treat replacement text strictly as plain text. |
 | `pairReplacements` | `boolean` | `true` | Links adjacent `<w:del>` and `<w:ins>` revisions with matching timestamps so Word groups them as a single replacement in the Reviewing Pane. |
 | `strictTargets` | `boolean` | `true` (CLI/facade) | Requires exact target descriptors (`exactText`, `paragraphId`, `index`, `occurrence`, `fingerprint`) and forbids ambiguous matching. Defaults to `false` in low-level runner for backwards compatibility. |
-| `existingRevisions` | `string` | `'merge-same-author'` | How to handle paragraphs with existing tracked changes. `'merge-same-author'` automatically merges subsequent edits from the same author against the pre-revision baseline while protecting different authors' revisions with `EXISTING_REVISIONS`. Pass `'accept-all-first'` to normalize prior revisions or `'reject-input'` to refuse editing revised paragraphs. |
+| `existingRevisions` | `string` | `'merge-same-author'` | How to handle paragraphs with existing tracked changes. `'merge-same-author'` merges the same author's work and protects other authors with `EXISTING_REVISIONS`. `'slice-cross-author'` retains same-author merging while allowing Word-native edits inside another author's pending insertion. Pass `'accept-all-first'` to normalize prior revisions or `'reject-input'` to refuse editing revised paragraphs. |
 | `removeFormatting` | `boolean` | `false` | When `true` and the text is unchanged with no Markdown hints, strips existing bold/italic/underline/strikethrough formatting. |
 | `sanitizeInput` | `boolean` | `false` | Opt-in removal of standalone leading assistant-preface lines. Literal dollar signs and `\n` sequences are always preserved. |
 
@@ -614,7 +617,7 @@ directly into `word/document.xml`.
 5. `useNativeApi: true` means standalone mode cannot fully handle that operation path.
 6. `deleteCommentsByAuthorInOoxml` removes definitions and linked anchors only when they are present in the same OOXML payload. In a real `.docx`, `word/comments.xml` and `word/document.xml` are separate parts and must both be updated by the package integration layer.
 7. If output begins with `<pkg:package`, treat it as package-level OOXML and normalize it before writing anything back to `word/document.xml`.
-8. Existing revisions from the same author are merged by default against the pre-revision baseline (`merge-same-author`), while third-party revisions fail closed with `EXISTING_REVISIONS`. Pass `existingRevisions: 'accept-all-first'` to normalize all prior revisions first, or `'reject-input'` to refuse any revised paragraph.
+8. Existing revisions from the same author are merged by default against the pre-revision baseline (`merge-same-author`), while third-party revisions fail closed with `EXISTING_REVISIONS`. Pass `existingRevisions: 'slice-cross-author'` to preserve third-party attribution while editing inside pending insertions, `'accept-all-first'` to normalize all prior revisions first, or `'reject-input'` to refuse any revised paragraph.
 9. Caller content is not sanitized by default. Pass `sanitizeInput: true` only for raw assistant output; literal dollar delimiters and `\\n` sequences are never rewritten.
 10. Hyperlinks, bookmarks, comment markers, tabs/breaks, and footnote/endnote references are structural OOXML and should survive adjacent redline edits.
 11. Internally, create Word elements through `createWordElement` and tracked-change metadata through `createRevisionMetadata`.

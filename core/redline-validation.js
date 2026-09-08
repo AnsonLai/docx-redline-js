@@ -3,8 +3,9 @@
  *
  * Mirrors the invariants enforced by the test-suite round-trip harness so
  * downstream consumers can verify output before writing it into a package:
- * no nested revisions, deleted text uses w:delText, revision metadata is
- * complete, revision ids are unique, and boundary whitespace is preserved.
+ * only schema-permitted nested revisions, deleted text uses w:delText,
+ * revision metadata is complete, revision ids are unique, and boundary
+ * whitespace is preserved.
  */
 
 import { parseXml } from '../adapters/xml-adapter.js';
@@ -107,13 +108,18 @@ export function validateRedlineOoxml(oxml) {
         }
     }
 
-    // No w:ins/w:del nested inside another w:ins/w:del.
+    // A w:del may be a direct revision child of w:ins. All other insertion /
+    // deletion nesting is rejected, including deeper revisions inside that del.
     for (const revision of revisions) {
         const nested = Array.from(revision.getElementsByTagName('*'))
             .filter(el => el !== revision && ['ins', 'del'].includes(localNameOf(el)));
-        if (nested.length > 0) {
+        const invalidNested = nested.find(candidate => {
+            if (localNameOf(revision) !== 'ins' || localNameOf(candidate) !== 'del') return true;
+            return candidate.parentNode !== revision;
+        });
+        if (invalidNested) {
             addIssue('NESTED_REVISION', 'error',
-                `<${revision.nodeName}> (w:id="${wordAttribute(revision, 'id')}") contains nested <${nested[0].nodeName}>.`);
+                `<${revision.nodeName}> (w:id="${wordAttribute(revision, 'id')}") contains invalid nested <${invalidNested.nodeName}>.`);
         }
     }
 

@@ -61,7 +61,7 @@ function getCommentIdsInOoxml(node) {
  * @param {Object} [options={}] - Options
  * @param {string} [options.author='AI'] - Author for track changes
  * @param {string|null} [options.targetParagraphId=null] - Preferred paragraph identity for table wrappers
- * @param {'merge-same-author'|'reject-input'|'accept-all-first'|'accept-all-first-keep-normalized'} [options.existingRevisions='merge-same-author'] - Policy for source OOXML with tracked changes
+ * @param {'merge-same-author'|'slice-cross-author'|'reject-input'|'accept-all-first'|'accept-all-first-keep-normalized'} [options.existingRevisions='merge-same-author'] - Policy for source OOXML with tracked changes
  * @param {boolean} [options.removeFormatting=false] - Remove existing core formatting when text is otherwise unchanged
  * @param {boolean} [options.sanitizeInput=false] - Strip a standalone leading assistant preface line
  * @returns {Promise<{ oxml: string, hasChanges: boolean, sourceType?: 'package'|'document'|'fragment', status?: 'ok'|'no-op'|'error', error?: { code: string, message: string } }>}
@@ -82,7 +82,7 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
     const finalize = result => {
         const withStatus = { ...result };
         if (normalizedExistingRevisions && withStatus.hasChanges === false && withStatus.status !== 'error') {
-            if (existingRevisionsPolicy === 'merge-same-author') {
+            if (existingRevisionsPolicy === 'merge-same-author' || existingRevisionsPolicy === 'slice-cross-author') {
                 withStatus.oxml = workingOoxml;
                 withStatus.hasChanges = true;
                 withStatus.warnings = [
@@ -141,7 +141,7 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
     seedRevisionIdsFromDocument(xmlDoc, revisionIdAllocator);
 
     if (containsTrackedChanges(xmlDoc)) {
-        if (existingRevisionsPolicy === 'merge-same-author') {
+        if (existingRevisionsPolicy === 'merge-same-author' || existingRevisionsPolicy === 'slice-cross-author') {
             const authors = getTrackedChangeAuthors(xmlDoc);
             const currentAuthor = String(author || '').trim().toLowerCase();
             const isSameAuthor = authors.length > 0 && authors.every(a => a.trim().toLowerCase() === currentAuthor);
@@ -202,7 +202,7 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
                     ? paragraphsInDoc.map(p => extractCanonicalParagraphText(p)).join('\n')
                     : '';
                 originalText = baselineText;
-            } else {
+            } else if (existingRevisionsPolicy === 'merge-same-author') {
                 log('[OxmlEngine] Existing revisions detected from another/unattributed author; refusing per merge-same-author policy');
                 return finalize({
                     oxml: inputOoxml,
@@ -213,6 +213,22 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
                         message: `Input OOXML contains tracked changes from another author (${authors.length ? authors.join(', ') : 'unattributed'}). Pass existingRevisions: "accept-all-first" or resolve revisions first.`
                     }
                 });
+            } else {
+                const hasMoveRevision = ['moveFrom', 'moveTo'].some(localName => {
+                    return getElementsByTagNSOrTag(xmlDoc, NS_W, localName).length > 0;
+                });
+                if (hasMoveRevision) {
+                    return finalize({
+                        oxml: inputOoxml,
+                        hasChanges: false,
+                        status: 'error',
+                        error: {
+                            code: 'UNSAFE_REVISION_NESTING',
+                            message: 'Cross-author slicing does not support pending move revisions.'
+                        }
+                    });
+                }
+                log('[OxmlEngine] Existing revisions retained for cross-author surgical slicing');
             }
         } else if (existingRevisionsPolicy === 'accept-all-first' || existingRevisionsPolicy === 'accept-all-first-keep-normalized') {
             log('[OxmlEngine] Existing revisions detected; accepting all input revisions before redlining');
@@ -453,7 +469,8 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
     const isStructuredContent = options.structuredContent !== false && structuredAnalysis?.requiresStructuredContent === true;
     const tableCellContext = initialTableCellContext;
 
-    log(`[OxmlEngine] Mode: ${hasTables ? 'SURGICAL' : 'RECONSTRUCTION'}, formatHints: ${formatHints.length}, isMarkdownTable: ${isMarkdownTable}, isTargetList: ${isTargetList}, isTableCellParagraph: ${tableCellContext.isTableCellParagraph}`);
+    const usesSurgicalTextMode = hasTables || existingRevisionsPolicy === 'slice-cross-author';
+    log(`[OxmlEngine] Mode: ${usesSurgicalTextMode ? 'SURGICAL' : 'RECONSTRUCTION'}, formatHints: ${formatHints.length}, isMarkdownTable: ${isMarkdownTable}, isTargetList: ${isTargetList}, isTableCellParagraph: ${tableCellContext.isTableCellParagraph}`);
 
     try {
     if (isMarkdownTable && !hasTables) {
@@ -466,8 +483,8 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
         recordRouteSelection(options, 'table', { transformation: 'table-reconciliation' });
         return finalize(applyTableReconciliation(xmlDoc, cleanModifiedText, serializer, null, author, generateRedlines));
     }
-    if (hasTables) {
-        recordRouteSelection(options, 'surgical', { tableScoped: true });
+    if (usesSurgicalTextMode) {
+        recordRouteSelection(options, 'surgical', { tableScoped: hasTables });
         const surgicalTarget = tableCellContext.hasTableWrapper && tableCellContext.targetParagraph
             ? tableCellContext.targetParagraph
             : null;

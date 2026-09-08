@@ -20,6 +20,18 @@ const SUPPORTED_OPERATION_TYPES = new Set([
     'highlight'
 ]);
 
+export const EXISTING_REVISIONS_POLICIES = Object.freeze([
+    'merge-same-author',
+    'slice-cross-author',
+    'reject-input',
+    'accept-all-first',
+    'accept-all-first-keep-normalized'
+]);
+
+export function isExistingRevisionsPolicy(value) {
+    return EXISTING_REVISIONS_POLICIES.includes(value);
+}
+
 function isRecord(value) {
     return !!value && typeof value === 'object' && !Array.isArray(value);
 }
@@ -200,6 +212,16 @@ export function validateDocumentOperation(operation) {
         return {
             valid: false,
             error: { code: 'INVALID_OPERATION', message: 'pairReplacements must be a boolean when provided.' }
+        };
+    }
+
+    if (normalized.existingRevisions != null && !isExistingRevisionsPolicy(normalized.existingRevisions)) {
+        return {
+            valid: false,
+            error: {
+                code: 'INVALID_OPERATION',
+                message: `existingRevisions must be one of: ${EXISTING_REVISIONS_POLICIES.join(', ')}.`
+            }
         };
     }
 

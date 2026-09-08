@@ -1,7 +1,7 @@
 import './setup-xml-provider.mjs';
 
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -18,6 +18,7 @@ import {
 import { preflightOperations } from '../services/operation-preflight.js';
 import { buildZip } from '../scripts/lib/minimal-zip.mjs';
 import { executeCli } from '../node/cli.js';
+import { openDocx } from '../node/index.js';
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
@@ -480,7 +481,22 @@ console.log('Testing Section 4: CLI integration with --existing-revisions...');
         assert.equal(bobAcceptRes.status, 'ok');
         assert.equal(bobAcceptRes.written, true);
 
-        // 4.4 CLI with --existing-revisions reject-input: Alice fails with EXISTING_REVISIONS
+        // 4.4 CLI + facade with slice-cross-author: Bob preserves Alice's revisions
+        const bobSliceOut = path.join(testDir, 'bob_slice_out.docx');
+        const bobSliceRes = await executeCli([
+            'apply', inputPath,
+            '--target', 'Term: 60 days',
+            '--modified', 'Term: 120 days',
+            '--author', 'Bob',
+            '--existing-revisions', 'slice-cross-author',
+            '--output', bobSliceOut
+        ]);
+        assert.equal(bobSliceRes.status, 'ok');
+        assert.equal(bobSliceRes.written, true);
+        const slicedInspection = openDocx(await readFile(bobSliceOut)).inspect();
+        assert.deepEqual(slicedInspection.revisionAuthors, ['Alice', 'Bob']);
+
+        // 4.5 CLI with --existing-revisions reject-input: Alice fails with EXISTING_REVISIONS
         const aliceRejectOut = path.join(testDir, 'alice_reject_out.docx');
         const aliceRejectRes = await executeCli([
             'apply', inputPath,
@@ -494,7 +510,7 @@ console.log('Testing Section 4: CLI integration with --existing-revisions...');
         assert.equal(aliceRejectRes.results[0].error?.code, 'UNSAFE_REVISION_NESTING');
         assert.equal(aliceRejectRes.written, false);
 
-        // 4.5 CLI preflight with --existing-revisions
+        // 4.6 CLI preflight with --existing-revisions
         const pfAccept = await executeCli([
             'preflight', inputPath,
             '--target', 'Term: 60 days',
@@ -513,6 +529,26 @@ console.log('Testing Section 4: CLI integration with --existing-revisions...');
         ]);
         assert.equal(pfReject.valid, false);
         assert.equal(pfReject.results[0].error?.code, 'UNSAFE_REVISION_NESTING');
+
+        const pfSlice = await executeCli([
+            'preflight', inputPath,
+            '--target', 'Term: 60 days',
+            '--modified', 'Term: 120 days',
+            '--author', 'Bob',
+            '--existing-revisions', 'slice-cross-author'
+        ]);
+        assert.equal(pfSlice.valid, true);
+        assert.equal(pfSlice.results[0].existingRevisions, 'slice-cross-author');
+
+        const invalidPolicy = await executeCli([
+            'preflight', inputPath,
+            '--target', 'Term: 60 days',
+            '--modified', 'Term: 120 days',
+            '--author', 'Bob',
+            '--existing-revisions', 'slice-author-typo'
+        ]);
+        assert.equal(invalidPolicy.status, 'error');
+        assert.equal(invalidPolicy.error?.code, 'INVALID_OPERATION');
 
     } finally {
         await rm(testDir, { recursive: true, force: true });

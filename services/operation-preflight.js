@@ -19,6 +19,7 @@ import {
 } from '../core/paragraph-targeting.js';
 import { createParagraphTextIndex, resolveTextInParagraphIndex } from './comment-locator.js';
 import {
+    isExistingRevisionsPolicy,
     normalizeDocumentOperation,
     resolveDocumentOperationAuthor,
     validateDocumentOperation
@@ -80,6 +81,20 @@ function getCommentIdsInParagraph(paragraph) {
 }
 
 export function preflightOperations(documentXml, operations, author, options = {}) {
+    if (options.existingRevisions != null && !isExistingRevisionsPolicy(options.existingRevisions)) {
+        return {
+            valid: false,
+            status: 'error',
+            error: {
+                code: 'INVALID_OPERATION',
+                message: `Unsupported existingRevisions policy: "${String(options.existingRevisions)}".`
+            },
+            results: [],
+            conflicts: [],
+            authorsUsed: [],
+            requiredArtifacts: { comments: false, numbering: false }
+        };
+    }
     const parsed = parseOoxmlSafe(documentXml, 'application/xml');
     if (parsed.error || !parsed.doc) {
         return {
@@ -228,16 +243,16 @@ export function preflightOperations(documentXml, operations, author, options = {
                 && existingPolicy !== 'accept-all-first'
                 && existingPolicy !== 'accept-all-first-keep-normalized'
             ) {
-                if (existingPolicy === 'merge-same-author') {
+                if (existingPolicy === 'merge-same-author' || existingPolicy === 'slice-cross-author') {
                     const authors = getTrackedChangeAuthors(paragraph);
                     const opAuthor = String(authorUsed || '').trim().toLowerCase();
                     const allSame = authors.length > 0 && authors.every(a => a.trim().toLowerCase() === opAuthor);
-                    if (!allSame) {
+                    if (!allSame && existingPolicy === 'merge-same-author') {
                         error = {
                             code: 'EXISTING_REVISIONS',
                             message: `Target paragraph contains tracked changes from another author (${authors.length ? authors.join(', ') : 'unattributed'}). Pass existingRevisions: "accept-all-first" or resolve revisions first.`
                         };
-                    } else {
+                    } else if (allSame) {
                         const mergeCommentIds = getCommentIdsInParagraph(paragraph);
                         if (mergeCommentIds.length > 0) {
                             const comments = mergeCommentIds
@@ -248,6 +263,15 @@ export function preflightOperations(documentXml, operations, author, options = {
                                 message: 'Refusing to merge existing revisions in commented content because reverting the prior revisions could remove or orphan comment anchors.',
                                 commentIds: mergeCommentIds,
                                 ...(comments.length > 0 ? { comments } : {})
+                            };
+                        }
+                    } else {
+                        const hasMove = paragraph.getElementsByTagNameNS(NS_W, 'moveFrom').length > 0
+                            || paragraph.getElementsByTagNameNS(NS_W, 'moveTo').length > 0;
+                        if (hasMove) {
+                            error = {
+                                code: 'UNSAFE_REVISION_NESTING',
+                                message: 'Cross-author slicing does not support pending move revisions.'
                             };
                         }
                     }

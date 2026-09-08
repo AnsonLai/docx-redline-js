@@ -47,10 +47,33 @@ function issueCodes(result) {
     assert(issueCodes(result).includes('PARSE_ERROR'));
 }
 
-// --- Nested revisions ---
+// --- Word-native w:del inside w:ins is valid ---
 {
     const result = validateRedlineOoxml(paragraph(
-        `<w:ins ${META}><w:del ${META2}><w:r><w:delText>bad</w:delText></w:r></w:del></w:ins>`
+        `<w:ins ${META}><w:del ${META2}><w:r><w:delText>allowed</w:delText></w:r></w:del></w:ins>`
+    ));
+    assert.equal(result.valid, true);
+    assert(!issueCodes(result).includes('NESTED_REVISION'));
+}
+
+// --- Other nested revisions remain invalid ---
+{
+    const result = validateRedlineOoxml(paragraph(
+        `<w:ins ${META}><w:ins ${META2}><w:r><w:t>bad</w:t></w:r></w:ins></w:ins>`
+    ));
+    assert.equal(result.valid, false);
+    assert(issueCodes(result).includes('NESTED_REVISION'));
+}
+{
+    const result = validateRedlineOoxml(paragraph(
+        `<w:del ${META}><w:del ${META2}><w:r><w:delText>bad</w:delText></w:r></w:del></w:del>`
+    ));
+    assert.equal(result.valid, false);
+    assert(issueCodes(result).includes('NESTED_REVISION'));
+}
+{
+    const result = validateRedlineOoxml(paragraph(
+        `<w:del ${META}><w:ins ${META2}><w:r><w:t>bad</w:t></w:r></w:ins></w:del>`
     ));
     assert.equal(result.valid, false);
     assert(issueCodes(result).includes('NESTED_REVISION'));

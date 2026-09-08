@@ -12,7 +12,8 @@ import {
     getRunContentPieces,
     getRunTextLength,
     insertRunPiecesBefore,
-    sliceRunPieces
+    sliceRunPieces,
+    splitTrackChangeCarrier
 } from './surgical-run-splitting.js';
 import {
     findContainingSpan,
@@ -86,8 +87,7 @@ export function processDelete(xmlDoc, spanIndex, startPos, endPos, author, gener
         spansByRun.get(span.runElement).push(span);
     });
 
-    let changed = false;
-    let usedDelMetadata = false;
+    const records = [];
     spansByRun.forEach((runSpans, runElement) => {
         const parent = runElement.parentNode;
         if (!parent) return;
@@ -111,31 +111,104 @@ export function processDelete(xmlDoc, spanIndex, startPos, endPos, author, gener
 
         if (!Number.isFinite(deleteStart) || deleteEnd <= deleteStart) return;
 
-        const beforePieces = sliceRunPieces(xmlDoc, pieces, 0, deleteStart, false);
-        const deletedPieces = sliceRunPieces(xmlDoc, pieces, deleteStart, deleteEnd, true);
-        const afterPieces = sliceRunPieces(xmlDoc, pieces, deleteEnd, getRunTextLength(pieces), false);
+        records.push({
+            runElement,
+            parent,
+            rPr: runSpans[0].rPr,
+            beforePieces: sliceRunPieces(xmlDoc, pieces, 0, deleteStart, false),
+            deletedPieces: sliceRunPieces(xmlDoc, pieces, deleteStart, deleteEnd, true),
+            afterPieces: sliceRunPieces(xmlDoc, pieces, deleteEnd, getRunTextLength(pieces), false),
+            globalStart: Math.max(startPos, Math.min(...runSpans.map(span => span.charStart))),
+            globalEnd: Math.min(endPos, Math.max(...runSpans.map(span => span.charEnd))),
+            carrierGlobalStart: isWordElement(parent, 'ins') ? getCarrierGlobalStart(spanIndex, parent) : null
+        });
+    });
 
-        insertRunPiecesBefore(xmlDoc, parent, runElement, beforePieces, runSpans[0].rPr);
+    const groups = [];
+    for (const record of records) {
+        const previousGroup = groups[groups.length - 1];
+        const previousRecord = previousGroup?.[previousGroup.length - 1];
+        if (
+            previousRecord
+            && previousRecord.parent === record.parent
+            && nextElementSibling(previousRecord.runElement) === record.runElement
+        ) {
+            previousGroup.push(record);
+        } else {
+            groups.push([record]);
+        }
+    }
 
-        if (generateRedlines && deletedPieces.length > 0) {
-            const delRun = createRunFromPieces(xmlDoc, deletedPieces, runSpans[0].rPr);
+    let changed = false;
+    let usedDelMetadata = false;
+    for (const group of groups) {
+        const firstRecord = group[0];
+        let delWrapper = null;
+        if (generateRedlines && group.some(record => record.deletedPieces.length > 0)) {
             const metadata = revisionMetadata
-                ? (usedDelMetadata ? { ...revisionMetadata, id: createRevisionMetadata(author, xmlDoc).id } : revisionMetadata)
+                ? (usedDelMetadata ? { ...revisionMetadata, id: createRevisionMetadata(author, xmlDoc, 'del').id } : revisionMetadata)
                 : null;
             usedDelMetadata = true;
-            const delWrapper = createTrackChange(xmlDoc, 'del', delRun, author, metadata);
-            parent.insertBefore(delWrapper, runElement);
+            delWrapper = createTrackChange(xmlDoc, 'del', null, author, metadata);
         }
 
-        insertRunPiecesBefore(xmlDoc, parent, runElement, afterPieces, runSpans[0].rPr);
-        parent.removeChild(runElement);
-        changed = true;
-    });
+        for (const record of group) {
+            const { parent, runElement } = record;
+            insertRunPiecesBefore(xmlDoc, parent, runElement, record.beforePieces, record.rPr);
+            if (delWrapper && record === firstRecord) {
+                parent.insertBefore(delWrapper, runElement);
+            }
+            if (delWrapper && record.deletedPieces.length > 0) {
+                delWrapper.appendChild(createRunFromPieces(xmlDoc, record.deletedPieces, record.rPr));
+            }
+            insertRunPiecesBefore(xmlDoc, parent, runElement, record.afterPieces, record.rPr);
+            parent.removeChild(runElement);
+            changed = true;
+        }
+
+        const carrier = isWordElement(firstRecord.parent, 'ins') ? firstRecord.parent : null;
+        const groupEnd = Math.max(...group.map(record => record.globalEnd));
+        if (carrier && groupEnd === endPos) {
+            const carrierStart = firstRecord.carrierGlobalStart;
+            const deletedBeforeEnd = group
+                .filter(record => record.globalStart < endPos)
+                .reduce((sum, record) => sum + record.deletedPieces.reduce((n, piece) => n + (piece.textContent || '').length, 0), 0);
+            const currentOffset = Math.max(0, endPos - carrierStart - deletedBeforeEnd);
+            if (!spanIndex.revisionInsertionAnchors) spanIndex.revisionInsertionAnchors = new Map();
+            spanIndex.revisionInsertionAnchors.set(endPos, {
+                carrier,
+                splitOffset: currentOffset,
+                rPr: firstRecord.rPr
+            });
+        }
+    }
 
     return changed;
 }
 
-export function processInsert(xmlDoc, spanIndex, pos, text, author, formatHints = [], insertOffset = 0, generateRedlines = true, fallbackParagraph = null, revisionMetadata = null, affinity = null) {
+export function processInsert(xmlDoc, spanIndex, pos, text, author, formatHints = [], insertOffset = 0, generateRedlines = true, fallbackParagraph = null, revisionMetadata = null, affinity = null, existingRevisions = 'merge-same-author') {
+    const mutationAnchor = spanIndex.revisionInsertionAnchors?.get(pos) || null;
+    if (
+        mutationAnchor
+        && existingRevisions === 'slice-cross-author'
+        && isConnected(mutationAnchor.carrier)
+        && isForeignInsertion(mutationAnchor.carrier, author)
+    ) {
+        spanIndex.revisionInsertionAnchors.delete(pos);
+        return spliceInsertionAtCarrierOffset(
+            xmlDoc,
+            mutationAnchor.carrier,
+            mutationAnchor.splitOffset,
+            text,
+            mutationAnchor.rPr,
+            author,
+            formatHints,
+            insertOffset,
+            generateRedlines,
+            revisionMetadata
+        );
+    }
+
     if (!affinity) {
         let targetSpan = findContainingSpan(spanIndex, pos);
 
@@ -162,6 +235,25 @@ export function processInsert(xmlDoc, spanIndex, pos, text, author, formatHints 
             if (!fallbackParagraph) return false;
             insertTextRuns(xmlDoc, fallbackParagraph, null, text, targetSpan.rPr, author, formatHints, insertOffset, generateRedlines, revisionMetadata);
             return true;
+        }
+
+        if (
+            generateRedlines
+            && existingRevisions === 'slice-cross-author'
+            && isForeignInsertion(parent, author)
+        ) {
+            return spliceInsertionAtCarrierOffset(
+                xmlDoc,
+                parent,
+                getCarrierSplitOffset(spanIndex, parent, pos),
+                text,
+                targetSpan.rPr,
+                author,
+                formatHints,
+                insertOffset,
+                generateRedlines,
+                revisionMetadata
+            );
         }
 
         const pieces = getRunContentPieces(targetSpan.runElement);
@@ -357,8 +449,88 @@ export function processInsert(xmlDoc, spanIndex, pos, text, author, formatHints 
         }
     }
 
+    if (
+        generateRedlines
+        && existingRevisions === 'slice-cross-author'
+        && isForeignInsertion(parent, author)
+    ) {
+        return spliceInsertionAtCarrierOffset(
+            xmlDoc,
+            parent,
+            getCarrierSplitOffset(spanIndex, parent, pos),
+            text,
+            baseRPr,
+            author,
+            formatHints,
+            insertOffset,
+            generateRedlines,
+            revisionMetadata
+        );
+    }
+
     insertTextRuns(xmlDoc, parent, referenceNode, text, baseRPr, author, formatHints, insertOffset, generateRedlines, revisionMetadata);
     return true;
+}
+
+function spliceInsertionAtCarrierOffset(xmlDoc, carrier, splitOffset, text, baseRPr, author, formatHints, insertOffset, generateRedlines, revisionMetadata) {
+    const parent = carrier.parentNode;
+    if (!parent) return false;
+
+    const { leftCarrier, rightCarrier } = splitTrackChangeCarrier(xmlDoc, carrier, splitOffset);
+    if (leftCarrier) parent.insertBefore(leftCarrier, carrier);
+    insertTextRuns(
+        xmlDoc,
+        parent,
+        carrier,
+        text,
+        withoutRunPropertyChanges(baseRPr),
+        author,
+        formatHints,
+        insertOffset,
+        generateRedlines,
+        revisionMetadata
+    );
+    if (rightCarrier) parent.insertBefore(rightCarrier, carrier);
+    parent.removeChild(carrier);
+    return true;
+}
+
+function withoutRunPropertyChanges(rPr) {
+    if (!rPr) return null;
+    const clone = rPr.cloneNode(true);
+    const changes = Array.from(clone.getElementsByTagName?.('*') || [])
+        .filter(node => isWordElement(node, 'rPrChange'));
+    changes.forEach(node => node.parentNode?.removeChild(node));
+    return clone;
+}
+
+function getCarrierSplitOffset(spanIndex, carrier, pos) {
+    const carrierStart = getCarrierGlobalStart(spanIndex, carrier);
+    const carrierLength = spanIndex.spans
+        .filter(span => span.runElement?.parentNode === carrier)
+        .reduce((length, span) => length + (span.charEnd - span.charStart), 0);
+    return Math.max(0, Math.min(pos - carrierStart, carrierLength));
+}
+
+function getCarrierGlobalStart(spanIndex, carrier) {
+    const carrierSpans = spanIndex.spans.filter(span => span.runElement?.parentNode === carrier);
+    return carrierSpans.length > 0 ? Math.min(...carrierSpans.map(span => span.charStart)) : 0;
+}
+
+function isForeignInsertion(node, author) {
+    if (!isWordElement(node, 'ins')) return false;
+    const carrierAuthor = node.getAttribute('w:author') || node.getAttributeNS?.(NS_W, 'author') || '';
+    return carrierAuthor.trim().toLowerCase() !== String(author || '').trim().toLowerCase();
+}
+
+function nextElementSibling(node) {
+    let sibling = node?.nextSibling || null;
+    while (sibling && sibling.nodeType !== 1) sibling = sibling.nextSibling;
+    return sibling;
+}
+
+function isConnected(node) {
+    return !!node?.parentNode;
 }
 
 function insertTextRuns(xmlDoc, parent, referenceNode, text, baseRPr, author, formatHints, insertOffset, generateRedlines, revisionMetadata = null) {

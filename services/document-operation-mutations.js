@@ -860,11 +860,11 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         && existingPolicy !== 'accept-all-first'
         && existingPolicy !== 'accept-all-first-keep-normalized'
     ) {
-        if (existingPolicy === 'merge-same-author') {
+        if (existingPolicy === 'merge-same-author' || existingPolicy === 'slice-cross-author') {
             const authors = getTrackedChangeAuthors(targetParagraph);
             const opAuthor = String(author || '').trim().toLowerCase();
             const allSame = authors.length > 0 && authors.every(a => a.trim().toLowerCase() === opAuthor);
-            if (!allSame) {
+            if (!allSame && existingPolicy === 'merge-same-author') {
                 return {
                     documentXml,
                     hasChanges: false,
@@ -876,7 +876,7 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
                     }
                 };
             }
-            const mergeCommentIds = getCommentIdsInElement(targetParagraph);
+            const mergeCommentIds = allSame ? getCommentIdsInElement(targetParagraph) : [];
             if (mergeCommentIds.length > 0) {
                 const comments = commentDetailsForIds(mergeCommentIds, options._existingCommentDetails);
                 return {
@@ -891,6 +891,22 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
                         ...(comments.length > 0 ? { comments } : {})
                     }
                 };
+            }
+            if (!allSame) {
+                const hasMove = targetParagraph.getElementsByTagNameNS(NS_W, 'moveFrom').length > 0
+                    || targetParagraph.getElementsByTagNameNS(NS_W, 'moveTo').length > 0;
+                if (hasMove) {
+                    return {
+                        documentXml,
+                        hasChanges: false,
+                        numberingXml: null,
+                        status: 'error',
+                        error: {
+                            code: 'UNSAFE_REVISION_NESTING',
+                            message: 'Cross-author slicing does not support pending move revisions.'
+                        }
+                    };
+                }
             }
         } else {
             const hasDel = targetParagraph.getElementsByTagNameNS(NS_W, 'del').length > 0;

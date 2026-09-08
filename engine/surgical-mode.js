@@ -17,7 +17,7 @@ import {
 import { withOoxmlSourceType } from '../core/word-xml.js';
 import { createReplacementRevisionEvent } from '../core/types.js';
 
-function checkSafeAdjacencyForPairing(spanIndex, startPos, endPos) {
+function checkSafeAdjacencyForPairing(spanIndex, startPos, endPos, allowInsertionCarrier = false) {
     const spans = [];
     forEachOverlappingSpan(spanIndex, startPos, endPos, span => spans.push(span));
     if (spans.length === 0) return { safe: false };
@@ -32,7 +32,10 @@ function checkSafeAdjacencyForPairing(spanIndex, startPos, endPos) {
 
     // Parent container itself cannot be an existing revision or unsupported container
     const parentLocal = (parent.localName || parent.nodeName.replace(/^.*:/, ''));
-    if (['hyperlink', 'sdt', 'ins', 'del', 'moveFrom', 'moveTo'].includes(parentLocal)) {
+    if (
+        ['hyperlink', 'sdt', 'del', 'moveFrom', 'moveTo'].includes(parentLocal)
+        || (parentLocal === 'ins' && !allowInsertionCarrier)
+    ) {
         return { safe: false, structuralBoundary: true };
     }
 
@@ -149,7 +152,12 @@ export function applySurgicalMode(xmlDoc, originalText, modifiedText, serializer
                 const nextText = diffs[i + 1][1];
                 const textWithoutNewlines = nextText.replace(/\n/g, ' ');
                 if (textWithoutNewlines.trim().length > 0) {
-                    const checkResult = checkSafeAdjacencyForPairing(spanIndex, originalPos, originalPos + text.length);
+                    const checkResult = checkSafeAdjacencyForPairing(
+                        spanIndex,
+                        originalPos,
+                        originalPos + text.length,
+                        options?.existingRevisions === 'slice-cross-author'
+                    );
                     if (checkResult.safe) {
                         const event = createReplacementRevisionEvent(author, xmlDoc);
                         delMetadata = { id: event.deletionId, author: event.author, date: event.date };
@@ -171,7 +179,7 @@ export function applySurgicalMode(xmlDoc, originalText, modifiedText, serializer
                 const [, nextText] = diffs[i];
                 const textWithoutNewlines = nextText.replace(/\n/g, ' ');
                 if (textWithoutNewlines.trim().length > 0) {
-                    const insertResult = processInsert(xmlDoc, spanIndex, originalPos, textWithoutNewlines, author, formatHints, newPos, generateRedlines, allParagraphs[0] || null, insMetadata, options?.insertionAffinity || null);
+                    const insertResult = processInsert(xmlDoc, spanIndex, originalPos, textWithoutNewlines, author, formatHints, newPos, generateRedlines, allParagraphs[0] || null, insMetadata, options?.insertionAffinity || null, options?.existingRevisions || 'merge-same-author');
                     if (insertResult && typeof insertResult === 'object' && insertResult.error) {
                         return withOoxmlSourceType({
                             oxml: serializer.serializeToString(xmlDoc),
@@ -189,7 +197,7 @@ export function applySurgicalMode(xmlDoc, originalText, modifiedText, serializer
         } else if (op === 1) {
             const textWithoutNewlines = text.replace(/\n/g, ' ');
             if (textWithoutNewlines.trim().length > 0) {
-                const insertResult = processInsert(xmlDoc, spanIndex, originalPos, textWithoutNewlines, author, formatHints, newPos, generateRedlines, allParagraphs[0] || null, null, options?.insertionAffinity || null);
+                const insertResult = processInsert(xmlDoc, spanIndex, originalPos, textWithoutNewlines, author, formatHints, newPos, generateRedlines, allParagraphs[0] || null, null, options?.insertionAffinity || null, options?.existingRevisions || 'merge-same-author');
                 if (insertResult && typeof insertResult === 'object' && insertResult.error) {
                     return withOoxmlSourceType({
                         oxml: serializer.serializeToString(xmlDoc),

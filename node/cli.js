@@ -5,12 +5,14 @@ import { MemoryZip, unzipDocx } from './zip-archive.js';
 import { validateDocxPackage } from '../services/standalone-docx-plumbing.js';
 import { validateRedlineOoxml } from '../core/redline-validation.js';
 import { configureLogger } from '../adapters/logger.js';
+import { isExistingRevisionsPolicy } from '../services/document-operation-contract.js';
 
 const suffixes = { apply: 'redlined', accept: 'accepted', reject: 'rejected', 'delete-comments': 'comments-removed' };
 const CLI_CONTRACT_VERSION = 2;
 const CLI_CAPABILITIES = [
     'atomic-batch-results-on-package-failure',
     'baseline-aware-validation',
+    'cross-author-revision-slicing',
     'document-scoped-list-revision-ids'
 ];
 const commandOptions = {
@@ -216,6 +218,9 @@ export async function executeCli(argv) {
     if (!rawInput) return cliError('INPUT_REQUIRED', 'An input .docx path is required.');
     const optionError = validateCommandOptions(command, flags, extraPositionals);
     if (optionError) return optionError;
+    if (flags.existingRevisions != null && !isExistingRevisionsPolicy(flags.existingRevisions)) {
+        return cliError('INVALID_OPERATION', `Unsupported existing-revisions policy: "${String(flags.existingRevisions)}".`);
+    }
     let inspectOptions = null;
     if (command === 'inspect' || command === 'extract') {
         try { inspectOptions = inspectionOptions(flags); }

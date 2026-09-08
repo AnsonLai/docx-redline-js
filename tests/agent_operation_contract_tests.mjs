@@ -8,6 +8,7 @@ import {
     applyOperationToDocumentXml,
     preflightOperations
 } from '../services/standalone-operation-runner.js';
+import { validateDocumentOperation } from '../services/document-operation-contract.js';
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const NS_W14 = 'http://schemas.microsoft.com/office/word/2010/wordml';
@@ -214,6 +215,25 @@ function testPreflightDiagnosticsAndConflicts() {
     assert.equal(result.results[3].resolvedTarget.fingerprint.startsWith('fnv1a32:'), true);
 }
 
+function testExistingRevisionPolicyContract() {
+    const valid = validateDocumentOperation({
+        type: 'replace',
+        target: 'Revised clause.',
+        modified: 'Updated clause.',
+        existingRevisions: 'slice-cross-author'
+    });
+    assert.equal(valid.valid, true);
+
+    const invalid = validateDocumentOperation({
+        type: 'replace',
+        target: 'Revised clause.',
+        modified: 'Updated clause.',
+        existingRevisions: 'slice-author-typo'
+    });
+    assert.equal(invalid.valid, false);
+    assert.equal(invalid.error.code, 'INVALID_OPERATION');
+}
+
 async function testCommentAnchorParityAndAtomicFailure() {
     const input = documentXml([
         { id: 'EEE00001', text: 'Replace this paragraph.' },
@@ -309,6 +329,7 @@ await testPerOperationAuthorsAndMetadata();
 await testRuntimeOperationValidation();
 await testStrictAmbiguityAndDescriptors();
 testPreflightDiagnosticsAndConflicts();
+testExistingRevisionPolicyContract();
 await testCommentAnchorParityAndAtomicFailure();
 
 console.log('agent_operation_contract_tests.mjs ... PASS');

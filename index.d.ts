@@ -1,6 +1,6 @@
 export type OoxmlSourceType = 'package' | 'document' | 'fragment';
 export type RedlineStatus = 'ok' | 'no-op' | 'error';
-export type ExistingRevisionsPolicy = 'merge-same-author' | 'reject-input' | 'accept-all-first' | 'accept-all-first-keep-normalized';
+export type ExistingRevisionsPolicy = 'merge-same-author' | 'slice-cross-author' | 'reject-input' | 'accept-all-first' | 'accept-all-first-keep-normalized';
 export type RevisionView = 'accepted' | 'rejected';
 
 export interface RevisionTextSegment {

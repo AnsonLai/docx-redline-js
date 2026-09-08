@@ -113,6 +113,44 @@ function unwrapNode(node) {
     return true;
 }
 
+function nextElementSibling(node) {
+    let sibling = node?.nextSibling || null;
+    while (sibling && sibling.nodeType !== 1) sibling = sibling.nextSibling;
+    return sibling;
+}
+
+function revisionMetadataWithoutId(node) {
+    return Array.from(node?.attributes || [])
+        .filter(attribute => String(attribute.localName || attribute.name || '').toLowerCase() !== 'id')
+        .map(attribute => `${attribute.namespaceURI || ''}|${attribute.localName || attribute.name}=${attribute.value}`)
+        .sort()
+        .join('\n');
+}
+
+function coalesceAdjacentCompatibleInsertions(xmlDoc) {
+    let coalesced = 0;
+    const insertions = getWordElementsByLocalName(xmlDoc, 'ins');
+
+    for (const insertion of insertions) {
+        if (!insertion.parentNode || isParagraphMarkRevisionMarker(insertion)) continue;
+        let sibling = nextElementSibling(insertion);
+        while (
+            isWordElement(sibling, 'ins')
+            && normalizeAuthor(getAttributeByLocalName(sibling, 'author'))
+                === normalizeAuthor(getAttributeByLocalName(insertion, 'author'))
+            && revisionMetadataWithoutId(sibling) === revisionMetadataWithoutId(insertion)
+        ) {
+            const next = nextElementSibling(sibling);
+            while (sibling.firstChild) insertion.appendChild(sibling.firstChild);
+            sibling.parentNode?.removeChild(sibling);
+            coalesced += 1;
+            sibling = next;
+        }
+    }
+
+    return coalesced;
+}
+
 function isTableRowRevisionMarker(node) {
     const parent = node?.parentNode;
     return isWordElement(parent, 'trPr') && isWordElement(parent?.parentNode, 'tr');
@@ -422,6 +460,8 @@ export function rejectTrackedChangesInOoxml(oxml, options = {}) {
             if (rejectPropertyChangeNode(changeNode, localName)) rejectedCount += 1;
         }
     }
+
+    coalesceAdjacentCompatibleInsertions(xmlDoc);
 
     const serializedOxml = parseResult.isFragmentWrapped
         ? Array.from(xmlDoc.documentElement.childNodes).map(n => serializer.serializeToString(n)).join('')

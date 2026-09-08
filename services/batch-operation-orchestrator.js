@@ -1,6 +1,7 @@
 import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { getDefaultAuthor } from '../adapters/config.js';
 import {
+    isExistingRevisionsPolicy,
     normalizeDocumentOperation,
     resolveDocumentOperationAuthor
 } from './document-operation-contract.js';
@@ -192,6 +193,24 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
         resolveDocumentOperationAuthor(op, author, defaultAuthor),
         'not_attempted'
     ));
+
+    if (options.existingRevisions != null && !isExistingRevisionsPolicy(options.existingRevisions)) {
+        return {
+            documentXml,
+            hasChanges: false,
+            commentsXml: null,
+            numberingXmlParts: [],
+            results: [],
+            receipts: emptyReceipts(),
+            executionOrder: [],
+            authorsUsed: [],
+            status: 'error',
+            error: {
+                code: 'INVALID_OPERATION',
+                message: `Unsupported existingRevisions policy: "${String(options.existingRevisions)}".`
+            }
+        };
+    }
 
     if (options?.expectedRevision) {
         const tokenValidation = validateRevisionToken(options.expectedRevision);

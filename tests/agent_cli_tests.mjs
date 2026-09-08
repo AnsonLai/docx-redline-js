@@ -59,7 +59,8 @@ try {
     const exitCode = await runCli(['extract', input, '--range', '1:1'], { stdout: { write: value => { stdout += value; } } });
     assert.equal(exitCode, 0); assert.equal(JSON.parse(stdout).paragraphs[0].exactText, '  Exact\ttext  ');
     const schemaText = await readFile(new URL('../docs/schemas/document-operations.schema.json', import.meta.url), 'utf8');
-    assert.doesNotThrow(() => JSON.parse(schemaText));
+    const schema = JSON.parse(schemaText);
+    assert(schema.$defs.base.properties.existingRevisions.enum.includes('slice-cross-author'));
 } finally {
     await rm(directory, { recursive: true, force: true });
 }
