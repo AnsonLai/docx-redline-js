@@ -158,7 +158,7 @@ use explicit restoration intent. A normal `redline` remains fail-closed with
 ```js
 const restoration = {
   type: 'restore',
-  target: { paragraphId: '1A2B3C4D' },
+  target: { paragraphId: '1A2B3C4D', revisionView: 'rejected' },
   modified: 'Restored or adjusted paragraph text.',
   author: 'Editor'
 };
@@ -166,8 +166,29 @@ const restoration = {
 
 For a contiguous range, provide `targetEnd`/`targetEndRef` and one string per
 source paragraph in `modified`. Restoration always uses tracked changes,
-preserves the deleted source paragraph, and inserts the counterproposal before
-it with a fresh paragraph ID.
+preserves the deleted source paragraph, and inserts the counterproposal after
+the complete deleted source block with a fresh paragraph ID. Unchanged
+pre-existing validation defects remain baseline diagnostics; a restore fails
+with `GENERATED_OOXML_INVALID` only when it introduces a new validation error.
+
+To insert run-level text inside content visible only in the rejected view, use
+an explicit rejected-view `insert` operation:
+
+```js
+const insertion = {
+  type: 'insert',
+  target: { paragraphId: '1A2B3C4D', revisionView: 'rejected' },
+  anchor: { exactText: 'must pay', occurrence: 1, offset: 5 },
+  modified: '[clarification] ',
+  author: 'Editor',
+  existingRevisions: 'slice-cross-author'
+};
+```
+
+The anchor offset is relative to `anchor.exactText`. Repeated anchors require an
+explicit `occurrence`. The engine preserves the foreign deletion as sibling
+`w:del` carriers around a top-level `w:ins`; unsupported comments, bookmarks,
+fields, hyperlinks, moves, or non-text split boundaries fail closed.
 
 `targetRef` is an optional 1-based paragraph reference used to disambiguate
 duplicate text. An operation-level `author` overrides the batch author; batch
@@ -294,7 +315,8 @@ Key CLI defaults and behaviors:
 - **Overwrite behavior**: Destination files provided via `--output` overwrite by default. To protect existing destination files, pass `--no-overwrite` or `--no-clobber`. The source document is never overwritten unless `--in-place` is specified.
 - **Tracked changes**: Defaults to `generateRedlines: true`. When clean direct text is needed, pass `--no-redlines`.
 - **Atomic rollback (optional)**: Operations apply progressively by default (`atomic: false`). For all-or-nothing transactional rollback where any error halts and reverts all changes, pass `--atomic`.
-- Check `written: true` on stdout. If an error occurs, inspect `error.code` or `results[i].error.code` (e.g. `TARGET_NOT_FOUND`, `ANCHOR_NOT_FOUND`) to correct the target text and re-apply.
+- **Compact mutation JSON**: `apply`, `accept`, `reject`, and `delete-comments` omit document/package XML and full validation arrays. `validation.originalIssues` and `validation.generatedIssues` are code/count summaries; run `validate` for full issue records.
+- Check `completion: true`, `written: true`, and a non-null `outputPath` on stdout. `completion` is derived from the write result, top-level status, and every operation status, so failed, partial, and unwritten work cannot appear complete. If an error occurs, inspect `error.code` or `results[i].error.code` (e.g. `TARGET_NOT_FOUND`, `ANCHOR_NOT_FOUND`) before correcting the cause and re-applying.
 
 For multi-clause or multi-page reviews, apply edits **section-by-section** or clause-by-clause (e.g., using `--in-place` on a working copy) rather than bundling dozens of edits into one massive batch. This keeps context compact, simplifies error diagnosis, and prevents cascading anchor drift.
 
@@ -412,12 +434,14 @@ When the CLI or runner returns an error code, follow these specific recovery act
 |---|---|---|
 | `TARGET_NOT_FOUND` | Target text did not match any paragraph. | **Do NOT retry with paraphrased text.** Re-run `extract`/`inspect`, copy `exactText` verbatim (including exact whitespace/punctuation), and add a discriminator (`paragraphId`, `fingerprint`, or `occurrence`). |
 | `AMBIGUOUS_TARGET` | Multiple paragraphs match identical text. | Disambiguate by supplying `paragraphId`, `fingerprint`, `occurrence`, or `index` in the target descriptor. |
-| `ANCHOR_NOT_FOUND` / `AMBIGUOUS_ANCHOR` | Comment anchor text was not uniquely matched in paragraph. | Narrow `textToComment` to a unique exact substring, or omit `textToComment` to anchor the comment to the entire paragraph. |
+| `ANCHOR_NOT_FOUND` / `AMBIGUOUS_ANCHOR` | A comment or rejected-view insertion anchor was not uniquely matched. | For comments, narrow `textToComment` or omit it to anchor the whole paragraph. For rejected-view insertion, copy exact rejected text and provide `anchor.occurrence`. |
 | `OVERLAPPING_TEXT_EDITS` | Multiple operations target the same paragraph concurrently. | Consolidate all changes to the same paragraph into a single `redline` or `replace` operation. |
 | `EXISTING_REVISIONS` | Target paragraph contains tracked changes from another author. | Fails closed to protect third-party review marks. If editing inside that reviewer's pending insertion is intended, pass `--existing-revisions slice-cross-author` (or `existingRevisions: 'slice-cross-author'`). Do not pass `accept-all-first` without explicit user authorization. |
 | `PATCH_ROUNDTRIP_MISMATCH` | A cross-author surgical edit did not reconstruct the requested modified text exactly. | Treat the operation as unapplied. Re-extract the exact paragraph text and split the edit into a narrower operation that does not cross the reported structural boundary. |
 | `FOREIGN_PARAGRAPH_MARK_DELETION` | A normal edit attempted to write into a paragraph wholly deleted by another reviewer. | Use an explicit `restore` operation if the user intends to counterpropose that paragraph; otherwise leave the deletion unresolved. |
 | `RESTORATION_STATE_REQUIRED` / `RESTORATION_COUNT_MISMATCH` | A `restore` target is not a wholly foreign-deleted paragraph, or its replacement count does not match the paragraph range. | Re-inspect the document and target the deleted paragraph by stable descriptor; provide exactly one replacement string per source paragraph. |
+| `REJECTED_INSERTION_STATE_REQUIRED` / `UNSAFE_REVISION_BOUNDARY` | An explicit rejected-view insertion did not resolve to supported plain run text inside a wholly foreign-deleted paragraph. | Do not fall back to a generic edit. Narrow the exact anchor/offset, or handle comments, bookmarks, fields, hyperlinks, moves, or other structural boundaries manually. |
+| `GENERATED_OOXML_INVALID` | The operation introduced a new validation error relative to its baseline. | Treat the operation as unapplied and inspect `generatedIssues`; correct the generating operation or builder rather than repairing or accepting the source document's unrelated baseline defects. |
 | `UNSAFE_DELETED_TABLE_ROW` / `UNSUPPORTED_MOVE_REVISION` / `SECTION_BREAK_PARAGRAPH` / `UNSAFE_PARAGRAPH_PLACEMENT` | Paragraph restoration cannot preserve the source structural boundary safely. | Do not retry as an ordinary redline. Resolve the row/move/section/placement condition manually or narrow the restoration to a safe paragraph. |
 | `COMMENTED_CONTENT_MERGE` / `COMMENTED_CONTENT_DELETE` | Operation would overwrite, revert, or delete content with comments. | Fails closed to prevent orphaned comment threads. Report the comment author and text to the user; resolve the comment before re-editing. |
 | `INVALID_OPERATION` | Operation object violates schema or has incompatible fields. | Validate the JSON structure against [`document-operations.schema.json`](file:///c:/Users/Phara/Desktop/Projects/Docx%20Redline%20JS/docs/schemas/document-operations.schema.json) before targeting is attempted. |
@@ -607,6 +631,16 @@ non-breaking spaces, repeated spaces, and leading/trailing whitespace become
 part of the requested edit. When editing extracted document text, copy the
 exact paragraph text and modify it in place rather than round-tripping it
 through a formatter that may change whitespace.
+
+The normalized caller target is never used for mutation offsets in a text-bearing
+edit. After target selection, the engine uses the resolved paragraph's byte-exact
+JavaScript string as the source coordinate system. The legacy format-only
+fallback for field-code paragraphs with no extractable accepted-view spans is
+not a text-replacement path. If an ASCII-space target selected an NBSP
+source, `resolvedTarget.targetTextMatch` reports `space_equivalent`, escaped
+source/request excerpts, and differing code points. An NBSP-to-space request is
+tracked as a replacement; it must not retain the NBSP and append another space.
+The CLI keeps these bounded diagnostics but removes resolved clause text.
 
 For ordinary insertions and deletions, target the visible accepted view:
 inserted `w:t` text is visible and deleted `w:delText` is not. Move revisions

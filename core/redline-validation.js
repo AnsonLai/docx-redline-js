@@ -65,19 +65,22 @@ function parseOoxmlForValidation(oxml) {
  * Issue severities: 'error' issues indicate output Word may repair or
  * mis-resolve; 'warning' issues are suspicious but tolerated by Word.
  *
- * @param {string} oxml - OOXML string (fragment, document, or package scope)
+ * @param {string|Document|Element} oxml - OOXML string or an already-parsed DOM
  * @returns {{ valid: boolean, issues: Array<{ code: string, severity: 'error'|'warning', message: string }> }}
  */
 export function validateRedlineOoxml(oxml) {
     const issues = [];
     const addIssue = (code, severity, message) => issues.push({ code, severity, message });
 
-    if (typeof oxml !== 'string' || oxml.trim() === '') {
-        addIssue('PARSE_ERROR', 'error', 'Input is not a non-empty OOXML string.');
+    const isDomNode = oxml && typeof oxml === 'object' && (oxml.nodeType === 9 || oxml.nodeType === 1);
+    if (!isDomNode && (typeof oxml !== 'string' || oxml.trim() === '')) {
+        addIssue('PARSE_ERROR', 'error', 'Input is not non-empty OOXML or a parsed XML DOM.');
         return { valid: false, issues };
     }
 
-    const { doc, error } = parseOoxmlForValidation(oxml);
+    const { doc, error } = isDomNode
+        ? { doc: oxml.nodeType === 9 ? oxml : oxml.ownerDocument }
+        : parseOoxmlForValidation(oxml);
     if (!doc) {
         addIssue('PARSE_ERROR', 'error', `OOXML does not parse as XML: ${error}`);
         return { valid: false, issues };

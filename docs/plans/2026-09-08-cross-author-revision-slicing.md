@@ -10,11 +10,11 @@
 ## 1. Executive Summary & Findings
 
 ### The Problem
-During contract review and multi-turn legal negotiations, a reviewer (Author B, e.g., "Lai, Anson") often needs to edit text that was previously inserted by another reviewer (Author A, e.g., "Lai, Barry") whose revision has not yet been accepted.
+During contract review and multi-turn legal negotiations, Reviewer B often needs to edit text that was previously inserted by Reviewer A whose revision has not yet been accepted.
 
 In previous discussions and documentation, it was assumed that deleting or inserting text inside another author's pending insertion was either impossible in WordprocessingML (OOXML) or logically paradoxical. However, empirical inspection of Microsoft Word Desktop proves otherwise:
 
-1. **Word Desktop supports deletions inside pending insertions**: When Author B deletes text inside Author A's pending `<w:ins>`, Word Desktop displays Author B's deletion visibly (strikethrough formatting, deletion tooltip attributed to Author B with timestamp: `Lai, Anson deleted: <text>`), while the surrounding insertion text remains attributed to Author A.
+1. **Word Desktop supports deletions inside pending insertions**: When Reviewer B deletes text inside Reviewer A's pending `<w:ins>`, Word Desktop displays Reviewer B's deletion visibly (strikethrough formatting and a deletion tooltip attributed to Reviewer B), while the surrounding insertion text remains attributed to Reviewer A.
 2. **Word Desktop supports insertions inside pending insertions**: When Author B types text in the middle of Author A's `<w:ins>`, Word Desktop displays Author B's new text attributed to Author B, while preserving Author A's attribution on the preceding and succeeding words.
 
 ### The Underlying OOXML Mechanics
@@ -24,15 +24,15 @@ Empirical inspection of Microsoft Word Desktop 365 (via automated COM fixture ge
    ECMA-376 Part 1 `CT_RunTrackChange` does NOT allow `<w:ins>` inside `<w:ins>`. Word Desktop splits the carrier `<w:ins>` into sibling fragments at the paragraph (`<w:p>`) level, splicing Author B's new `<w:ins>` between them:
    ```xml
    <!-- Sibling 1: Author A's insertion (leading fragment) -->
-   <w:ins w:id="0" w:author="Barry Lai" w:date="2026-09-08T09:29:00Z">
+    <w:ins w:id="0" w:author="Reviewer A" w:date="2026-09-08T09:29:00Z">
        <w:r><w:t xml:space="preserve">amended by this </w:t></w:r>
    </w:ins>
    <!-- Sibling 2: Author B's insertion spliced in between -->
-   <w:ins w:id="1" w:author="Anson Lai" w:date="2026-09-08T09:29:00Z">
+    <w:ins w:id="1" w:author="Reviewer B" w:date="2026-09-08T09:29:00Z">
        <w:r><w:t xml:space="preserve">MASTER </w:t></w:r>
    </w:ins>
    <!-- Sibling 3: Author A's insertion (trailing fragment) -->
-   <w:ins w:id="2" w:author="Barry Lai" w:date="2026-09-08T09:29:00Z">
+    <w:ins w:id="2" w:author="Reviewer A" w:date="2026-09-08T09:29:00Z">
        <w:r><w:t>Agreement.</w:t></w:r>
    </w:ins>
    ```
@@ -40,9 +40,9 @@ Empirical inspection of Microsoft Word Desktop 365 (via automated COM fixture ge
 2. **Cross-Author Deletions (`delete-interior`) — Direct `<w:del>` Nesting inside `<w:ins>`**:
    Under ECMA-376 Part 1 Section 17.13.5.21 (`CT_RunTrackChange`), `<w:del>` is an explicitly permitted child element of `<w:ins>`. Microsoft Word Desktop does **not** split `<w:ins>` for deletions; instead, it nests `<w:del>` directly inside `<w:ins>`:
    ```xml
-   <w:ins w:id="0" w:author="Barry Lai" w:date="2026-09-08T09:29:00Z">
+    <w:ins w:id="0" w:author="Reviewer A" w:date="2026-09-08T09:29:00Z">
        <w:r><w:t xml:space="preserve">The Services will process the Input to </w:t></w:r>
-       <w:del w:id="1" w:author="Anson Lai" w:date="2026-09-08T09:29:00Z">
+        <w:del w:id="1" w:author="Reviewer B" w:date="2026-09-08T09:29:00Z">
            <w:r w:rsidDel="00F70C09"><w:delText xml:space="preserve">generate </w:delText></w:r>
        </w:del>
        <w:r><w:t>outputs for Customer.</w:t></w:r>
@@ -414,8 +414,8 @@ type ExistingRevisionsPolicy =
 ### Final Automated Test Completion [COMPLETED 2026-09-08]
 * **Coverage Added**:
   - Completed the executable synthetic matrix for SYN-01 through SYN-12d. The final additions generate SYN-02 in the engine, add a second cross-author deletion to produce SYN-11, and exercise Accept All, Accept Author A, Reject Author A, Reject Author B, and selective rejection of the third author.
-  - Added strict package-facade differential tests for all five core Word Desktop scenarios. Each test reconstructs the pre-Anson package, applies `slice-cross-author` through `openDocx(...).applyOperations`, requires atomic package validation, and compares engine Accept-All/Reject-All text with the checked-in Word Desktop accepted/rejected DOCX files.
-  - Added a two-round package test that generates the three-author stacked-deletion fixture through Anson and Chris operations, asserts all three reviewers survive inspection, and compares both lifecycle endpoints with Word Desktop.
+  - Added strict package-facade differential tests for all five core Word Desktop scenarios. Each test reconstructs the pre-Reviewer-B package, applies `slice-cross-author` through `openDocx(...).applyOperations`, requires atomic package validation, and compares engine Accept-All/Reject-All text with the checked-in Word Desktop accepted/rejected DOCX files.
+  - Added a two-round package test that generates the three-author stacked-deletion fixture through Reviewer B and Reviewer C operations, asserts all three reviewers survive inspection, and compares both lifecycle endpoints with Word Desktop.
 * **Files Touched**:
   - `tests/cross_author_slicing_synthetic_tests.mjs` (MODIFIED)
   - `tests/cross_author_slicing_real_tests.mjs` (NEW)
@@ -436,7 +436,7 @@ type ExistingRevisionsPolicy =
   - `npm run check:types` — PASS; all 123 runtime exports have declarations.
   - `git diff --check` — PASS (line-ending conversion notices only; no whitespace errors).
 * **Scope Note**:
-  - The repository does not contain the private `agreement.docx` referenced by REAL-01/REAL-02 or the exact `c5bb43ede5...` corpus package referenced by REAL-03. Those named cases remain external acceptance scenarios rather than silently skipped automated tests.
+  - The repository does not contain the private source packages referenced by REAL-01 through REAL-03. Those cases remain external acceptance scenarios rather than silently skipped automated tests.
   - REAL-04/REAL-05 require Microsoft Word Desktop COM and visual review. The checked-in fixtures were produced by Word COM, while the normal automated suite deliberately remains deterministic and non-interactive.
 
 ### Bug Follow-Up: Hyperlink Boundary Round-Trip Mismatch [FIXED 2026-09-08]
@@ -511,7 +511,7 @@ type ExistingRevisionsPolicy =
   - `git diff --check` — PASS (line-ending conversion notices only; no whitespace errors).
 
 ### Hyperlink-Adjacent Replacement Follow-Up [COMPLETED 2026-09-08]
-* **Bug Report**: Replacing the space immediately after a Privacy Policy hyperlink with a comma and execution-date qualifier failed with `PATCH_ROUNDTRIP_MISMATCH`. The generated intermediate OOXML moved the qualifier and URL relative to the following definition text.
+* **Bug Report**: Replacing the space immediately after a policy hyperlink with a comma and effective-date qualifier failed with `PATCH_ROUNDTRIP_MISMATCH`. The generated intermediate OOXML moved the qualifier and URL relative to the following definition text.
 * **Root Cause**: `processDelete` split and removed the run containing the replaced boundary space, but `processInsert` subsequently resolved the paired insertion through the pre-mutation span index. That span still referenced the detached source run, so insertion placement fell back to the wrong paragraph location.
 * **Fix**: `processDelete` now records a stable parent/reference-node anchor at a non-carrier deletion boundary. `processInsert` consumes that anchor for the immediately paired insertion when no explicit insertion affinity was requested. Foreign `w:ins` carriers continue to use their existing carrier-splitting anchor and explicit affinity remains authoritative.
 * **Additional Defect Found by the Matrix**: Two pure insertions in the same source run could detach the shared pre-mutation span after the first insertion and relocate the second insertion to the paragraph end. Multi-insertion-only slicing now applies insertions from right to left and rebuilds the live span index between mutations.
@@ -631,6 +631,8 @@ Three consequences are binding on the implementation:
 2. **Reviewer B's paragraph MUST carry its own inserted paragraph mark** (`w:pPr/w:rPr/w:ins` attributed to Reviewer B, with an allocator-issued ID). Adding a paragraph adds a paragraph mark. Without it, Reject Reviewer B removes B's content but leaves an empty stub paragraph permanently, silently violating the Reject-B lifecycle row and drifting the document's paragraph count.
 3. **The existing inserted-paragraph builders do not do this today.** `wrapParagraphContentInInsertion` and `buildFallbackInsertedPlainParagraph` in `services/document-operation-mutations.js` emit no paragraph-mark revision and clone `pPr` verbatim. Cloning `pPr` verbatim from the deleted source paragraph would copy Reviewer A's `w:rPr/w:del` onto Reviewer B's paragraph, reproducing the exact unsafe shape WP08 exists to prevent. Emitting the inserted mark and sanitizing `pPr` is new work in those builders, not reuse of them.
 
+> **WP09e supersession:** A later Microsoft Word Desktop oracle places a two-paragraph counterproposal **after** the corresponding fully deleted source block, not before it. WP09e reopens the completed WP08b placement decision and requires Word-native ordering plus native lifecycle comparison. This historical WP08b record describes the v0.5.3 implementation, not the final target behavior.
+
 #### Paragraph Property Sanitization (Normative Allowlist)
 
 When deriving Reviewer B's paragraph from the deleted source, copy only:
@@ -663,6 +665,8 @@ Reviewer B's paragraph MUST receive a **fresh `w14:paraId`**, and MUST drop `w14
 The reconciliation rule must match the resurrection state exactly. A broader rule of the form "foreign paragraph-mark deletion plus visible insertion in the same paragraph" is **wrong** — inserting text into a paragraph whose mark is deleted by another author is legal, Word-native, and common (it is an ordinary pending merge). Flagging it would reject valid third-party documents.
 
 The predicate is: foreign `w:pPr/w:rPr/w:del` **AND** every pre-existing content node deleted **AND** a new non-empty foreign `w:ins`. It is a **warning** in `core/redline-validation.js` and an **error** only at the mutation gate (WP08a).
+
+> **WP09e supersession:** Word Desktop itself emits that structural predicate when a second reviewer inserts at a rejected-view offset inside the deleted text. Authored shape alone cannot distinguish unsafe generic resurrection from intentional deletion-carrier slicing. WP09e narrows validation and routing by operation intent and anchoring evidence.
 
 #### Required Behavior
 
@@ -792,13 +796,549 @@ Every successful fixture must assert exact current text, both-view body-scoped r
 
 ---
 
+### WP09 — Real-Document Mutation Reliability and Agent-Safe Failure Reporting [WP09a-e COMPLETE]
+
+#### Planning and characterization update (2026-09-08)
+
+- Updated `docs/plans/2026-09-08-cross-author-revision-slicing.md`: added the three failure classes, the Word Desktop structural oracle, WP09a-e requirements, ordered implementation handoff, sanitized operation examples, and the planned file/function map. Removed private party, person, corpus, URL, clause, and commercial wording from permanent examples.
+- Added `tests/word_deleted_section_edit_oracle_tests.mjs`: introduced local fixture/test helpers `localName`, `descendants`, `elementChildren`, `revisionElements`, `parse`, `plainText`, `assertUniqueRevisionIds`, and `assertValidOracle`; added sanitized inline deletion-carrier and post-source paragraph-restoration OOXML fixtures; asserted direct-child order, authorship, paragraph-mark behavior, global revision-ID uniqueness, validation, and selective/all-author lifecycle outcomes.
+- No production mutation function has been changed for WP09 yet. The new test is a characterization oracle for the structures that the later public-runner and package-facade implementation tests must generate.
+- Verification: focused oracle test passed; serial `$env:DOCX_TEST_CONCURRENCY='1'; npm test` passed **98/98 test files** with the new suite included; `npm run lint` passed; `git diff --check` reported no whitespace errors.
+
+#### WP09a-b implementation update (completed 2026-09-09)
+
+WP09a and WP09b are implemented. WP09c, WP09d, and WP09e remain planned and are not implied by this completion record.
+
+**Production files and functions changed:**
+
+- `services/document-operation-mutations.js`
+  - `applyToParagraphByExactText`: sends the resolved paragraph's exact accepted-view text to the engine for every text-bearing single-paragraph edit. The legacy caller-text fallback remains only for format-only field-code paragraphs whose canonical accepted view has no extractable text spans.
+  - `resolveTargetParagraph`: attaches bounded `targetTextMatch` metadata to the resolved target captured in operation results and receipts.
+  - Added internal `escapeInvisibleText`, `codePointLabel`, and `describeTargetTextMatch` helpers. They distinguish `exact`, one-to-one ordinary-space/NBSP `space_equivalent`, and broader `normalized` matches and report at most eight code-point differences.
+- `pipeline/diff-engine.js`
+  - Added `computeCharacterDiffs`, a character-local diff without semantic cleanup for refining whitespace substitutions that word tokenization grouped with unchanged content.
+- `engine/surgical-mode.js`
+  - `applySurgicalMode`: refines adjacent delete/insert hunks that differ only by ordinary spaces and NBSPs, preserving unchanged hyperlink runs rather than deleting and reconstructing their visible URL text.
+  - Plain-text edit groups now apply from right to left. Each group rebuilds the live surgical span index, so an earlier run split/removal cannot leave a stale DOM anchor for a later hunk.
+  - Added internal `refineSpaceEquivalentReplacements`, `collectTextEditOperations`, and `codePointAtOffset` helpers. `PATCH_ROUNDTRIP_MISMATCH` now includes `expectedCodePoint` and `actualCodePoint` at the first difference while still returning the exact input OOXML.
+- `node/cli.js`
+  - Raised `CLI_CONTRACT_VERSION` to 3 and added the `compact-mutation-results` capability.
+  - `executeCli` now passes `apply`, `accept`, `reject`, and `delete-comments` results through `compactMutationResult`.
+  - Added `boundedText`, `compactError`, `compactResolvedTarget`, `compactReceipt`, `compactOperationResult`, `summarizeIssues`, and `compactMutationResult`.
+  - Normal mutation stdout omits `documentXml`, `oxml`, comments/numbering XML, inspection payloads, raw package buffers, and full issue arrays. It retains per-operation errors/receipts, `written`, `outputPath`, compact issue counts, and a derived `completion` flag. Resolved target text is removed while bounded match/code-point diagnostics remain.
+- `services/standalone-operation-runner.d.ts`
+  - Extended `ResolvedDocumentTarget` with the typed `targetTextMatch` diagnostic contract.
+
+**Tests changed:**
+
+- `tests/cross_author_slicing_hyperlink_roundtrip_tests.mjs`
+  - Replaced the identifying policy sample with a synthetic Service Policy fixture.
+  - Added an ASCII-space target against an NBSP source, two code-point assertions, hyperlink relationship/history preservation, exact Accept-All output, and exact Reject-current-author restoration of the NBSP-bearing source.
+- `tests/agent_cli_tests.mjs`
+  - Added a complete DOCX/CLI ASCII-space-target versus NBSP-source regression using strict paragraph identity.
+  - Asserts exact written text, `space_equivalent` diagnostics, source restoration after Reject, compact validation summaries, omitted resolved clause/XML text, and truthful `completion`.
+- `tests/agent_cli_edge_tests.mjs`
+  - Added failed-apply assertions for `written: false`, `outputPath: null`, `completion: false`, summarized validation, no `documentXml`, bounded stdout, no unrelated body text, and the actionable per-operation error.
+- `tests/plugin_wrapper_compatibility_tests.mjs`
+  - Sanitized the comment-author fixture and verified compact CLI errors retain bounded comment author/text details required to resolve `COMMENTED_CONTENT_DELETE`.
+
+The first full serial compatibility run exposed two retained-contract requirements and was not treated as final: compact errors initially omitted protected-comment details, and the strict source-truth change initially removed the established caller-text fallback for format-only field-code paragraphs with no canonical text spans. `compactError` now retains bounded comment records, and `applyToParagraphByExactText` preserves that non-text fallback. Both formerly failing suites pass directly; the final serial result is recorded below after rerun.
+
+**Documentation changed:** `README.md`, `CHANGELOG.md`, `ARCHITECTURE.md`, `AGENTS.md`, and this plan now describe source-truth mutation alignment, invisible-character diagnostics, reverse live-span application, CLI contract version 3, compact validation summaries, and completion semantics.
+
+**Final WP09a-b verification:**
+
+- `node tests/cross_author_slicing_hyperlink_roundtrip_tests.mjs` — PASS.
+- `node tests/agent_cli_tests.mjs` — PASS.
+- `node tests/agent_cli_edge_tests.mjs` — PASS.
+- `node tests/plugin_wrapper_compatibility_tests.mjs` — PASS.
+- `node tests/standalone_operation_runner_tests.mjs` — PASS.
+- `$env:DOCX_TEST_CONCURRENCY='1'; npm test` — PASS, **98/98 test files** and 0 failed.
+- `npm run lint` — PASS.
+- `npm run check:types` — PASS; all 123 runtime exports have declarations.
+- `npm run build` — PASS.
+- `git diff --check` — PASS (line-ending conversion notices only; no whitespace errors).
+
+#### WP09c-e implementation update (completed 2026-09-09)
+
+WP09c, WP09d, and WP09e are implemented. The implementation keeps generic
+accepted-view mutation fail-closed and adds only the explicit rejected-view
+operation described below.
+
+**Production files and functions changed:**
+
+- `core/validation-delta.js` (new)
+  - Added internal `issueKey`, exported `subtractValidationIssueMultiset`, and
+    exported `validationErrors`. Validation differences retain multiplicity and
+    include source/severity/code/message in the stable signature.
+- `core/revision-cloning.js`
+  - Added `clonePropertiesWithoutRevisionHistory`. New paragraphs and runs may
+    inherit effective properties, but cloned `ins`, `del`, move, `pPrChange`,
+    `rPrChange`, table/row/cell property-change, and section-property history is
+    removed rather than duplicated with stale identities.
+- `core/paragraph-revision-safety.js`
+  - `getParagraphRestorationRefusal` now accepts
+    `requireFollowingParagraph: false` for an inline deletion-carrier edit that
+    creates no paragraph. All section, move, and deleted-table-row refusals stay
+    active; paragraph restoration still requires a following sibling.
+- `core/redline-validation.js`
+  - `validateRedlineOoxml` accepts an already-parsed document DOM for internal
+    operation checks, avoiding an extra full-source parse while retaining the
+    public string input. All existing validation rules are unchanged.
+- `engine/surgical-spans.js`
+  - `getRunChildText` and `isTextLikeRunChild` recognize `w:delText`, allowing
+    the shared run-piece splitter to address rejected-view deletion text.
+- `engine/surgical-run-splitting.js`
+  - `splitTrackChangeCarrier` now supports `w:del` as well as `w:ins`, emits
+    `w:delText` on split deletion runs, preserves the leading carrier identity,
+    allocates the trailing carrier identity, refreshes duplicated
+    `w:rPrChange` IDs, and records the allocation in the active receipt.
+  - `cloneRunPiece` preserves tab, break, soft-hyphen, and non-breaking-hyphen
+    elements while slicing deletion carriers instead of flattening those
+    controls into `w:delText`.
+- `services/document-operation-contract.js`
+  - `getCanonicalOperationType` maps only `type: "insert"` plus a rejected-view
+    target to `rejected-insert`.
+  - `normalizeDocumentOperation` normalizes `anchor.exactText`, `occurrence`,
+    and `offset` while retaining whether occurrence was supplied explicitly.
+  - `validateDocumentOperation` requires non-empty inserted text, an in-range
+    anchor-relative offset, and `existingRevisions: "slice-cross-author"`.
+- `services/document-operation-mutations.js`
+  - Added `insertIntoRejectedDeletedText` and its exact occurrence, deletion
+    carrier, formatting-clone, and unsupported-boundary helpers. It resolves a
+    strict rejected-view paragraph, requires a wholly foreign-deleted state,
+    refuses repeated anchors without an explicit occurrence, splits the direct
+    deletion carrier, emits the new author's sibling `w:ins`, and verifies that
+    the rejected view is unchanged while the accepted view exposes the inserted
+    text. Comments, bookmarks, fields, hyperlinks, moves, and other non-text
+    split markup fail closed with `UNSAFE_REVISION_BOUNDARY`.
+  - `buildInsertedListParagraph`, `buildEmptyParagraphTemplateFromAnchor`, and
+    `wrapParagraphContentInInsertion` use
+    `clonePropertiesWithoutRevisionHistory` for effective property inheritance.
+  - `verifyParagraphRestorationLifecycle` validates baseline/output issue
+    multisets, separately validates each inserted mutation envelope, returns
+    `GENERATED_OOXML_INVALID` for generated markup defects, and preserves the
+    exact current/Accept-All/Reject-All paragraph-vector checks.
+  - `followingParagraphBlock`, `buildExpectedRestorationDocument`, and
+    `restoreDeletedParagraphByExactText` now detect, verify, replace, and emit
+    restoration blocks immediately after the complete deleted source range.
+- `services/document-operation-applier.js`
+  - `applyOperationToDocumentXml` dispatches `rejected-insert` and permits a
+    rejected target only for explicit `rejected-insert` and `restore`
+    operations. Before marking any changed operation committed, it validates
+    the entire live document against its DOM savepoint by issue multiset. A
+    generated error restores the savepoint and returns
+    `GENERATED_OOXML_INVALID` with a refused receipt.
+- `services/operation-preflight.js`
+  - Same-target conflict grouping includes `rejected-insert`, so it cannot evade
+    overlap diagnostics merely because it uses a distinct canonical kind.
+- `node/docx-document.js`
+  - `DocxDocument.applyOperations` now applies the same multiset baseline-delta
+    classification to document and package validation. Unchanged legacy defects
+    remain in `validation.originalIssues`; introduced errors block the write and
+    are returned as generated issues.
+- `docs/schemas/document-operations.schema.json`
+  - Added `rejectedTextInsertionAnchor` and the optional `anchor` field on the
+    compatible `insert` shape; runtime validation makes it mandatory for a
+    rejected-view target.
+- `services/standalone-operation-runner.d.ts`
+  - Added `RejectedTextInsertionAnchor` and exposed `anchor` on insert/redline
+    operation declarations.
+
+**Tests changed or added:**
+
+- `tests/paragraph_level_cross_author_restoration_tests.mjs`
+  - Updated current-view, selective-author, range, idempotency, progressive,
+    table-cell, and follow-up edit assertions for post-source restoration.
+- `tests/cross_author_carrier_splitting_tests.mjs`
+  - Extended the allocator receipt assertion so a refreshed cloned
+    `w:rPrChange` and the trailing carrier are both recorded in allocation order.
+- `tests/docx_package_facade_tests.mjs`
+  - Updated the intentionally malformed-package fixture to prove an unchanged
+    package defect stays in `originalIssues` while a safe document mutation may
+    still be written with zero generated issues.
+- `tests/merge_same_author_tests.mjs`
+  - Corrected an intermittent false-positive assertion that searched all OOXML
+    for the bare string `45` and therefore failed whenever a legitimate revision
+    ID reached 45. It now checks the intended intermediate phrase `45 days`.
+- `tests/wp09c_e_validation_identity_rejected_insert_tests.mjs` (new)
+  - Proves restoration succeeds over an unrelated duplicate-ID baseline;
+    paragraph expansion does not clone `pPrChange`/`rPrChange` history; rejected
+    insertion produces `pPr / del(A) / ins(B) / del(A)` with globally unique
+    IDs; rejected text remains exact; selective/all-author lifecycle outcomes
+    match the minimized Word shape; missing policy/anchor inputs fail schema
+    validation; and both dirty-baseline restoration and rejected-view insertion
+    write successfully through `openDocx(...).applyOperations` with zero
+    generated package issues. Oracle reinforcement covers deletion start/end,
+    multi-run and formatted-run boundaries, tab/break preservation,
+    repeated-anchor disambiguation, comment/hyperlink/field refusal, explicit
+    rejected-view range restoration, all seven lifecycle views, and a combined
+    inline-insertion plus post-source range-restoration forward-merge case.
+- `tests/word_deleted_section_edit_oracle_tests.mjs`
+  - Remains the sanitized Word-authored structural characterization oracle for
+    inline deletion slicing and post-source range restoration.
+
+**Documentation changed:** `README.md`, `CHANGELOG.md`, `ARCHITECTURE.md`,
+`AGENTS.md`, the operation JSON Schema, declarations, and this plan describe
+baseline-delta validation, effective-property clone sanitation, post-source
+restoration, and the explicit rejected-view insertion contract.
+
+**Final WP09c-e verification:**
+
+- `node tests/paragraph_level_cross_author_restoration_tests.mjs` — PASS.
+- `node tests/wp09c_e_validation_identity_rejected_insert_tests.mjs` — PASS.
+- `node tests/word_deleted_section_edit_oracle_tests.mjs` — PASS.
+- `node tests/cross_author_carrier_splitting_tests.mjs` — PASS.
+- `node tests/docx_package_facade_tests.mjs` — PASS.
+- `node tests/performance_phase1_session_tests.mjs` — PASS; the full source is
+  still parsed once and the live document serialized once.
+- 30 consecutive isolated `merge_same_author_tests.mjs` runs — PASS after
+  correcting the bare-revision-ID false positive.
+- `$env:DOCX_TEST_CONCURRENCY='1'; npm test` — PASS, **99/99 test files** and 0 failed.
+- `npm run lint` — PASS.
+- `npm run check:types` — PASS; all 123 runtime exports have declarations.
+- `npm run build` — PASS.
+- `git diff --check` — PASS (line-ending conversion notices only; no whitespace errors).
+
+#### Motivation and First Bug Report
+
+The first post-WP08 report is not a paragraph-restoration case and does not involve a foreign paragraph-mark deletion. It is an ordinary single-paragraph replacement in a paragraph with two external hyperlinks and non-breaking spaces (`U+00A0`) immediately before both URLs and after the Service Policy URL.
+
+The requested edit adds an execution-date qualifier around the second URL while leaving the Processing Schedule URL alone. The operation supplied ordinary spaces (`U+0020`) in its `target.exactText` and `modified` strings. Strict descriptor resolution still selected a uniquely identified paragraph by paragraph ID/fingerprint because paragraph targeting treats ordinary spaces and NBSPs as equivalent. The mutation then failed closed:
+
+```text
+PATCH_ROUNDTRIP_MISMATCH at offset 934
+expected: "Service Policy available at example.invalid/policy/ that ..."
+actual:   "Service Policy available at\u00a0 example.invalid/policy/ that ..."
+```
+
+Adding another ordinary space on retry made the actual sequence `NBSP + two ordinary spaces`; it did not consume the source NBSP. A later `extract` exposed the hidden NBSPs, and the agent constructed a third operation with them, but the transcript contains no third `apply` command or successful result. It nevertheless reported the document as complete. No output path was produced by either recorded application.
+
+The failed CLI response also serialized the entire large `documentXml` payload and repeated 21 pre-existing `MISSING_SPACE_PRESERVE` issues plus one pre-existing commentsExtended content-type issue. `generatedIssues` was empty. This noise obscured the actionable operation error and contributed to an unreliable agent recovery loop.
+
+The exact source paragraph was recovered from the failed result. It contains no open revisions itself; its important shape is:
+
+```xml
+<w:r><w:t>... Processing Schedule available at&#xA0;</w:t></w:r>
+<w:hyperlink r:id="rId7"><w:r><w:t>example.invalid/schedule</w:t></w:r></w:hyperlink>
+<w:r><w:t>... Service Policy available at&#xA0;</w:t></w:r>
+<w:hyperlink r:id="rId8"><w:r><w:t>example.invalid/policy/</w:t></w:r></w:hyperlink>
+<w:r><w:t>&#xA0;(the “</w:t></w:r>
+```
+
+This is therefore a distinct gap in replacement alignment and failure ergonomics. WP08a/b remain unchanged.
+
+#### Second Bug Report — Restore Blocked by Pre-Existing Validation Errors
+
+The second report exercises the explicit WP08b `restore` operation against a paragraph wholly deleted by another reviewer. Target resolution succeeds by paragraph ID in the accepted/current view, where the paragraph text is empty; the rejected view exposes the deleted restrictions paragraph used to draft the adjusted restoration. The operation then fails before commit with:
+
+```text
+PATCH_ROUNDTRIP_MISMATCH
+stage: "validation"
+message: repeated MISSING_SPACE_PRESERVE errors
+written: false
+```
+
+Those `MISSING_SPACE_PRESERVE` errors already appear in `validation.originalIssues`. They occur elsewhere in the source document and were not created by the restoration. The package facade knows the baseline is imperfect, but `verifyParagraphRestorationLifecycle` calls `validateRedlineOoxml(outputXml)` and rejects the complete output whenever *any* error exists. It never validates `beforeXml`, subtracts the baseline, or scopes the errors to the inserted restoration paragraphs. This makes WP08b unusable on a real document that contains an unrelated legacy validation defect, even when the proposed restoration itself is valid.
+
+The recovery then abandons `restore` and considers inserting the paragraph after a different surviving paragraph. That is not an equivalent fallback: it can change clause order, list numbering, paragraph-mark lifecycle behavior, and the relationship between the restored counterproposal and the original deleted paragraph. The transcript says the insertion worked but contains neither its apply result nor a validated output record. WP09 must prohibit silent operation-type fallback and make successful completion independently provable.
+
+#### Third Bug Report — Paragraph Expansion Duplicates Revision IDs
+
+The third report asks to restore the adjacent `8.4 Changes; No Waiver` heading and body, while modifying the body so an email satisfies the signature/writing requirement. It reconfirms the WP09c dirty-baseline failure: even a trivial explicit restore of `"Synthetic restoration text"` is rejected because the same 21 pre-existing `MISSING_SPACE_PRESERVE` issues are treated as generated validation failures.
+
+It also exposes a separate structural mutation defect. The agent tried to append a new paragraph to an existing clause with both `"\n\n"` and `"\n"`. In both cases the operation returned `results[0].status: "applied"`, but the package facade subsequently rejected the output:
+
+```text
+status: error
+written: false
+error: PACKAGE_OPERATION_FAILED
+message: Applied operations introduced invalid revision markup (DUPLICATE_REVISION_ID)
+results[0]: applied
+```
+
+The duplicate appears only after expanding one paragraph into multiple tracked paragraphs. The likely implementation surface is the plain-adjacency/structured paragraph builder: `buildEmptyParagraphTemplateFromAnchor` clones the anchor's `pPr` and first-run `rPr` verbatim, while `wrapParagraphContentInInsertion` clones those properties again. Existing `w:pPrChange` or `w:rPrChange` descendants can therefore carry their old `w:id` into a newly inserted paragraph even though the new content and paragraph mark use the live document allocator. This hypothesis must be proven by recording the duplicated ID and both owning elements before choosing whether inherited change-history elements should be stripped or deliberately cloned with fresh IDs.
+
+The run also demonstrates why structural validity alone is insufficient. An earlier workaround replaced the text of a surviving `3.1 Restricted Use` paragraph with restored `3.2` language; the generated redline was internally coherent but semantically targeted the wrong clause. For 8.4, another workaround inserted only the heading into a preceding amendment sentence, producing same-author deletions of that sentence and an insertion of the heading. A final baseline validation reported no *structural* issues, yet the requested standalone 8.4 heading/body was delivered inline after an earlier subsection instead. WP09 must require a document-shape oracle—paragraph count, order, identity, and exact neighboring text—for structural operations and restorations.
+
+#### Microsoft Word Desktop Oracle — Edits Inside a Deleted Section
+
+The user supplied a complete `word/document.xml` after making two edits directly in Microsoft Word Desktop. This is a first-party structural oracle, not an engine-generated hypothesis. The full source XML must remain an external/private acceptance artifact; implementation must reduce the relevant paragraphs to minimal checked-in fixtures.
+
+**Oracle A — inline insertion inside a deleted subsection body.** A synthetic `8.1 Standard Charges` body has a paragraph-mark deletion by `Reviewer A` and all original text is deleted. Word inserts `REVIEWER B INSERTION` at a rejected-view offset by splitting Reviewer A's deletion carrier:
+
+```xml
+<w:p>
+  <w:pPr><w:rPr><w:del w:id="710" w:author="Reviewer A"/></w:rPr></w:pPr>
+  <w:del w:id="711" w:author="Reviewer A">The account holder must pa</w:del>
+  <w:ins w:id="712" w:author="Reviewer B">REVIEWER B INSERTION</w:ins>
+  <w:del w:id="713" w:author="Reviewer A">y each undisputed invoice.</w:del>
+</w:p>
+```
+
+Word preserves the leading carrier's ID/metadata, gives the trailing split carrier a fresh ID while retaining Reviewer A's author/date, and emits Reviewer B's insertion as a sibling—never nested inside `w:del`. It does not add an inserted paragraph mark because no new paragraph was created. This proves that foreign paragraph-mark deletion + all original content deleted + a foreign `w:ins` is not intrinsically invalid. The missing discriminator in WP08 is **intent and rejected-view anchoring**: a generic current-view insertion into an empty deleted paragraph remains ambiguous and fail-closed, while an explicit insertion at a uniquely resolved offset inside the foreign deletion is Word-native deletion-carrier slicing.
+
+This operation is lifecycle-dependent by design. Rejecting Reviewer B removes only `REVIEWER B INSERTION`; rejecting Reviewer A restores the original sentence with Reviewer B's insertion at the exact `pa|y` offset. Accepting Reviewer A removes the deleted text and resolves its paragraph mark, so Reviewer B's surviving text follows Word's forward-merge semantics. WP09 must compare all selective Accept/Reject outcomes with Word Desktop, not assume the insertion remains an independent standalone paragraph.
+
+**Oracle B — two new paragraphs between wholly deleted subsections.** Word leaves a deleted `8.2 Usage Adjustments` heading and body byte-for-byte intact, then inserts two new sibling paragraphs after that source block and before deleted `8.3 Collection Costs`:
+
+```text
+[del(A): 8.2 heading]
+[del(A): 8.2 body]
+[ins(B) paragraph mark + ins(B) content: 8.2 Usage Adjustments]
+[ins(B) paragraph mark + ins(B) content: Usage above the stated threshold may be billed at the next tier.]
+[del(A): 8.3 heading]
+```
+
+The heading paragraph uses five distinct synthetic IDs (720–724) for its paragraph-mark insertion, Word-authored property-change metadata, nested historical paragraph-mark snapshot, content insertion, and run-property change. The body uses IDs 725 and 726 for paragraph mark and content. All IDs are globally unique. The extra `w:rPrChange` nodes are Word UI artifacts and need not be reproduced byte-for-byte if the engine preserves equivalent effective bold formatting and lifecycle behavior; if emitted, however, each must receive a unique allocator ID.
+
+Oracle B supersedes WP08b's pre-source placement decision for a fully deleted source range. The target behavior is now: insert the counterproposal block immediately **after the source range and before its original next paragraph**, matching Word Desktop. The source range remains untouched. Combined cases—such as Oracle A immediately before Oracle B—must be tested because accepting paragraph-mark deletions can cascade surviving inline content forward into the next inserted paragraph.
+
+#### Diagnosis to Prove Before Mutation Changes
+
+WP09 must first reduce the recovered paragraph and operation to a checked-in fixture and record the surgical diff/mutation trace. The implementation must determine which of these boundaries is wrong rather than patching the final string:
+
+1. `computeWordDiffs` may align the source NBSP as unchanged while treating the requested ordinary space as an insertion after it when the surrounding phrase is also replaced.
+2. The diff may be correct, but `processDelete` may fail to consume the NBSP at a run/hyperlink boundary.
+3. `processInsert` may consume a stale or ambiguous replacement anchor and place the ordinary space beside the still-live NBSP.
+4. The document runner may pass a space-equivalent caller target as the edit-coordinate baseline instead of the exact accepted-view text recovered from the resolved paragraph.
+
+The regression must expose the diff tuples, original offsets, live DOM anchors, and final accepted text sufficiently to identify the failing layer. A fix is not accepted if it merely special-cases URLs, policy wording, or one observed offset.
+
+#### Normative Text Contract
+
+1. **Target selection and edit coordinates are separate concerns.** Space/NBSP equivalence may select a uniquely identified paragraph, but mutations MUST use the resolved paragraph's exact canonical accepted-view text as their source coordinate system.
+2. **`modified` remains exact.** The engine must reconstruct the caller's requested `modified` string byte-for-byte at the JavaScript string level, including every `U+0020`, `U+00A0`, tab, and line break. WP09 must not make replacement text globally whitespace-normalized.
+3. **Whitespace substitutions are real edits.** When exact source has NBSP and `modified` has an ordinary space, the output must track deletion/replacement of the NBSP; it must never retain the NBSP and append the ordinary space beside it.
+4. **Unchanged hyperlink containers survive.** Both `rId7` and `rId8`, their `w:history` attributes, and their run formatting must be preserved. Text immediately outside a hyperlink must not be moved inside it, and URL text must not be reconstructed as a plain run.
+5. **Fail closed remains mandatory.** `PATCH_ROUNDTRIP_MISMATCH` is doing the right thing by refusing incorrect OOXML. WP09 fixes the false mismatch; it must not weaken, normalize, or remove the exact accepted-view oracle.
+6. **The runner must report how matching occurred.** If target resolution used space equivalence, the result/receipt should expose that fact and provide escaped source/caller excerpts or differing code points. Invisible characters must be diagnosable without a second ad hoc script.
+
+#### WP09a — Source-Truth Replacement Alignment
+
+1. Capture the recovered paragraph as a minimal fixture with the two hyperlinks, all three NBSP boundaries, bold/underline formatting on the defined term, and the reported replacement.
+2. Make the exact resolved accepted-view text authoritative from target resolution through surgical span construction. A normalized target string may validate identity, but must never supply mutation offsets.
+3. Normalize replacement hunks/anchors so an NBSP-to-space substitution adjacent to a retained or shifted hyperlink becomes one deletion plus one insertion at the same logical boundary.
+4. Rebuild live span/anchor state after any deletion that detaches a run. Multiple replacement hunks in the same paragraph must not reuse stale pre-mutation nodes.
+5. Preserve existing insertion-only behavior, foreign-carrier slicing, explicit insertion affinity, formatting, comments, bookmarks, fields, and hyperlink relationships.
+6. Run the exact round-trip oracle after the complete paragraph mutation and return the byte-exact input OOXML on any mismatch.
+
+#### WP09b — Compact, Actionable CLI Failures
+
+1. Do not include full `documentXml` in normal CLI stdout for `apply`, `accept`, `reject`, or `delete-comments`. It remains available from library APIs where it is the actual programmatic result, but the CLI already communicates durability through the written DOCX and `outputPath`.
+2. On a failed mutation, lead with the per-operation error and retain `written: false`, `outputPath: null`, `status`, `results`, and receipts. Include `mismatchOffset`, escaped excerpts, and code-point details for whitespace mismatches.
+3. Summarize pre-existing validation issues by code/count in the normal mutation response. Keep `generatedIssues` explicit and provide full issue arrays only through `validate` or an explicit verbose diagnostics option if one is added.
+4. A failed or partial result must be mechanically unmistakable. Add a compact `completion`/`success` signal only if it is derived from `written === true`, a non-error top-level status, and zero failed result entries; do not introduce a second contradictory status model.
+5. CLI tests must prove that a failed application cannot emit an output path, cannot write a destination, and produces bounded stdout that does not contain `<w:document>` or contract body text.
+
+The library cannot prevent an external agent from making a false narrative claim, but its default output must make the recorded mistake difficult: there must be no huge XML payload between the failure code and `written: false`, and no ambiguous success-looking field.
+
+#### WP09c — Baseline-Delta Validation for Restoration and Package Mutation
+
+1. `verifyParagraphRestorationLifecycle` must validate both `beforeXml` and `outputXml`. Pre-existing errors are baseline diagnostics, not generated-output failures.
+2. Compare issues as a **multiset**, not a `Set`: code/message duplicates occur many times in real Word documents. An additional occurrence after mutation is generated even when its code/message matches a baseline issue.
+3. Validate every newly inserted or modified restoration paragraph independently. A generated `<w:t>` or `<w:delText>` with missing `xml:space="preserve"` must fail even if the source already contains the same error elsewhere.
+4. Full-document validation must still catch document-scoped failures such as duplicate revision IDs, invalid revision nesting, unsafe paragraph restoration state, or duplicated structural anchors. Baseline subtraction must not become a blanket bypass.
+5. Apply the same baseline-delta semantics at the package facade. Pre-existing package defects must remain visible in `originalIssues`; newly introduced defects belong in `generatedIssues` and fail the write. If a package defect cannot be safely classified, fail closed with a package-validation code rather than mislabeling it as a text round-trip mismatch.
+6. Reserve `PATCH_ROUNDTRIP_MISMATCH` for current/Accept-All/Reject-All text-or-lifecycle divergence. Validation failures should return a distinct structured code such as `GENERATED_OOXML_INVALID`, with `stage: "validation"`, generated issue details, and the original document unchanged.
+7. A failed `restore` must never be auto-converted to `redline`, `replace`, or an insertion beside a convenient surviving paragraph. Recovery requires either correcting the reported cause and retrying the same restoration or explicit caller authorization for a semantically different operation.
+8. Successful restoration through the package facade must prove `written: true`, a non-null `outputPath` at the CLI layer, one applied result with a committed receipt, zero generated validation issues, and exact lifecycle oracle results.
+
+#### WP09d — Revision Identity and Shape Oracles for Paragraph Expansion
+
+1. Every revision-bearing element introduced into the live document—including `w:ins`, `w:del`, paragraph-mark revisions, `w:rPrChange`, `w:pPrChange`, table/row revisions, and deliberately preserved cloned revisions—must have a document-unique allocator-issued `w:id`.
+2. New paragraphs may inherit effective paragraph/run formatting, but MUST NOT blindly inherit the anchor paragraph's revision history. Define a shared clone policy:
+   - strip `w:pPrChange`, `w:rPrChange`, and other historical `*Change` descendants when only effective formatting is needed; or
+   - when revision history is intentionally preserved, deep-clone it and refresh every revision ID through the live document allocator.
+3. `buildEmptyParagraphTemplateFromAnchor`, `buildInsertedPlainParagraph`, `buildFallbackInsertedPlainParagraph`, `wrapParagraphContentInInsertion`, and list/structured paragraph builders must use that shared policy. No builder may call `cloneNode(true)` on revision-bearing properties without explicit sanitization or ID refresh.
+4. Perform an operation-level global revision-ID uniqueness check before an operation is reported as applied. A duplicate introduced by the mutation must roll back the operation savepoint, mark its receipt refused/uncommitted, and return a per-operation generated-markup error. It must not appear as `results[i].status: "applied"` followed by only a top-level package error.
+5. Preserve the package-level duplicate-ID check as defense in depth. Operation-level and package-level checks must agree on the offending ID and element kinds.
+6. Structural paragraph operations require shape postconditions in addition to accepted text: exact paragraph count delta, sibling order, fresh `w14:paraId`, unchanged anchor/source text where the operation is insertion-only, and correct paragraph-mark ownership.
+7. Accept All and Reject Current Author must be checked at paragraph-vector scope. Rejecting a paragraph expansion must restore the original paragraph vector without empty stubs; accepting must retain the intended standalone paragraphs in order.
+8. Restoring an adjacent deleted heading/body pair should use one explicit range `restore` operation with two `modified` strings, not a sequence that targets the newly created heading or a multiline replacement of an unrelated surviving clause. The body may be adjusted during restoration to add the email-sufficiency sentence.
+
+#### WP09e — Word-Native Deleted-Section Editing
+
+1. Add an explicit, unambiguous contract for inserting at a rejected-view offset inside foreign deleted content. Reuse `type: "insert"` only if it can require a strict deleted-text anchor/offset and `revisionView: "rejected"`; otherwise add a dedicated operation shape. Do not reinterpret an ordinary empty accepted-view `redline` as this intent.
+2. Resolve the deleted carrier by paragraph identity plus an exact, unique rejected-view anchor (or explicit offset tied to a fingerprint). Stale fingerprints, repeated anchors, move revisions, comments crossing the split, and ambiguous offsets fail closed.
+3. Split a foreign `w:del` carrier at the exact run-piece offset. Preserve the leading carrier identity, allocate a fresh ID for each trailing carrier, preserve original author/date on split carriers, convert/retain `w:delText` correctly, and preserve formatting, tabs, breaks, rendered page breaks, fields, bookmarks, and hyperlinks.
+4. Insert Reviewer B's `w:ins` as a sibling between deletion carriers. Never nest `w:ins` inside `w:del`; never add a paragraph-mark insertion unless the operation actually creates a paragraph.
+5. Narrow `inspectForeignDeletedParagraphTarget` and `findForeignDeletedParagraphResurrections`: explicit, structurally anchored deletion-carrier slicing is allowed and must not produce `FOREIGN_PARAGRAPH_MARK_DELETION`; ambiguous generic resurrection stays protected by WP08a.
+6. Update range restoration placement to insert Reviewer B's sibling block immediately **after** the complete foreign-deleted source range and before the range's original next paragraph, matching Oracle B. Idempotency detection and changed-restoration replacement must recognize the new side of the source block.
+7. Preserve WP08b property sanitization and fresh identity requirements. Word's incidental `rsid`, `textId`, and property-change history are not required output, but effective heading/body formatting, separate paragraph/content revisions, and global ID uniqueness are required.
+8. Extend lifecycle oracles to the entire affected section and compare engine resolution with Word Desktop for Current, Accept All, Reject All, Accept A, Reject A, Accept B, and Reject B. Explicitly test forward-merge cascades across adjacent deleted paragraphs and inserted blocks.
+9. The validator must accept the minimized Word-authored Oracle A shape. It may warn about lifecycle dependency, but must not label a first-party Word structure as an unsafe resurrection solely from the presence of a foreign insertion in an otherwise deleted paragraph.
+
+#### Required Test Matrix
+
+1. Exact synthetic two-hyperlink Service Policy fixture: ASCII-space operation against NBSP source; current view and Accept All equal `modified` exactly.
+2. The same fixture through `applyOperationsToDocumentXml`, `openDocx(...).applyOperations`, and CLI `apply` with strict paragraph ID/fingerprint targeting.
+3. Qualifier inserted before the second hyperlink, after it, and on both sides; each permutation with `U+0020 -> U+00A0`, `U+00A0 -> U+0020`, and unchanged NBSP.
+4. Two hyperlinks in one paragraph where only the second surrounding clause changes; assert both relationship IDs and hyperlink attributes survive.
+5. Repeated URL text and repeated surrounding prose so placement cannot rely on the first string occurrence.
+6. NBSP as its own run, at the end of the run before a hyperlink, at the start of the run after a hyperlink, and inside a foreign `w:ins` carrier.
+7. Multiple replacement hunks in one paragraph, including one earlier whitespace substitution and the later reported qualifier replacement.
+8. Leading/trailing spaces, consecutive ordinary spaces, tabs, narrow NBSP (`U+202F`), word joiner (`U+2060`), and non-breaking hyphen (`U+2011`) remain distinct unless the contract explicitly declares equivalence.
+9. Explicit insertion affinity at both hyperlink boundaries remains authoritative.
+10. Reject-current-author restores the exact pre-operation source, including NBSPs; selective Accept/Reject of foreign authors retains valid lifecycle behavior.
+11. Structural validation, unique revision IDs, receipt reconciliation, hyperlink preservation, and exact current/Accept-All/Reject-current views for every successful fixture.
+12. Forced round-trip mismatch still returns `PATCH_ROUNDTRIP_MISMATCH`, byte-exact OOXML rollback, and bounded escaped diagnostics.
+13. CLI failure over a large document omits `documentXml`, does not echo clause text, stays below a fixed response-size ceiling, and reports `written: false`/`outputPath: null` adjacent to the actionable error.
+14. Pre-existing validation defects are summarized separately from generated defects; zero `generatedIssues` must remain obvious.
+15. Progressive batch with one success and one failure reports `status: "partial"` and is never marked complete; atomic mode writes nothing and rolls back exactly.
+16. Explicit restoration in a document containing pre-existing `MISSING_SPACE_PRESERVE` errors succeeds when the restoration introduces no new issues; the original issue counts remain reported.
+17. Restoration that itself emits one missing `xml:space="preserve"` fails with `GENERATED_OOXML_INVALID` even when identical baseline errors already exist.
+18. Duplicate baseline issues are compared by multiplicity: N baseline occurrences plus one generated occurrence yields exactly one generated issue.
+19. Baseline issue removed in one location and reintroduced in a newly authored paragraph is still detected by mutation-envelope validation rather than hidden by equal aggregate counts.
+20. Pre-existing document-level revision warnings remain visible but do not block a structurally valid restoration; new duplicate IDs, nested revisions, duplicated anchors, and unsafe restoration shapes still fail.
+21. Package-facade fixture with a pre-existing commentsExtended content-type defect either repairs that defect through normal packaging or preserves it as a baseline issue without attributing it to the restoration; any new package defect fails.
+22. A synthetic deleted restrictions paragraph restores at its original structural location with adjusted `(i)`–`(vi)` text, one new sibling paragraph, distinct paragraph identity, content/paragraph-mark revisions, exact six-way lifecycle behavior, and no numbering drift.
+23. Tests assert that restore failure never invokes or reports a fallback insertion after another paragraph. A success narrative is supported only by an applied result, committed receipt, `written: true`, and a real output path.
+24. Exact reported single- and double-newline paragraph expansion fixtures reproduce `DUPLICATE_REVISION_ID` from an anchor containing `w:pPrChange` and/or `w:rPrChange`, then prove all generated IDs are unique.
+25. Property-clone matrix: clean `pPr`/`rPr`, `pPrChange` only, `rPrChange` only, both, nested formatting changes, and anchor content already inside a same-author or foreign `w:ins`.
+26. Insert one, two, and three adjacent plain paragraphs; assert unique content and paragraph-mark revision IDs, fresh paragraph IDs, committed receipt reconciliation, and exact paragraph order.
+27. Repeat the expansion through structured Markdown heading, plain adjacency, list adjacency, explicit range, low-level runner, package facade, and CLI routes that share paragraph builders.
+28. A deliberately injected cloned revision ID is caught before commit: per-operation status is `error`, receipt is uncommitted, atomic output is byte-exact, and no destination is written.
+29. Package validation remains a backstop and reports the same offending ID/kinds if the operation-level guard is deliberately bypassed in a test harness.
+30. Shape oracle catches a syntactically valid operation that replaces anchor text instead of inserting siblings, even when accepted text contains all requested words.
+31. Shape oracle catches the `8.4 Changes; No Waiver` heading/body being appended inline to an earlier subsection rather than restored as two standalone paragraphs.
+32. Exact 8.4 range restoration: heading remains `8.4 Changes; No Waiver`; body retains its original substance plus an email-sufficiency adjustment; both follow their foreign-deleted sources per WP09e; paragraph identities and six lifecycle outcomes are exact.
+33. Exact 3.1/3.2 neighborhood regression: restoring 3.2 cannot replace, delete, concatenate with, or otherwise mutate the surviving `3.1 Restricted Use` paragraph.
+34. Minimized Word Oracle A: split deletion IDs/authors/dates, sibling insertion placement, no nested revision, no inserted paragraph mark, exact `pa|REVIEWER B INSERTION|y` rejected-author view.
+35. Oracle A at deletion start, end, run boundary, formatted-run boundary, and across multiple runs; repeated anchor text must require an occurrence/offset discriminator.
+36. Oracle A preserves `w:lastRenderedPageBreak`, bold/underline runs, NBSPs, tabs, hyperlinks, and field boundaries or fails closed with a specific unsupported-boundary code.
+37. Oracle A six-way lifecycle matrix is compared with a Word Desktop accepted/rejected oracle; Reject B reconstructs the original split deletion semantically and Reject A restores original text with B at the exact offset.
+38. Generic non-explicit insertion into an empty foreign-deleted paragraph remains refused, proving WP09e does not weaken WP08a's ambiguity guard.
+39. `validateRedlineOoxml` accepts the minimized Word-authored Oracle A structure without `FOREIGN_PARAGRAPH_MARK_DELETION` as an error; any informational warning must identify it as dependent inline content, not corruption.
+40. Minimized Word Oracle B: two inserted paragraphs appear after the untouched deleted 8.2 heading/body and before deleted 8.3, with fresh paragraph IDs and distinct paragraph/content revision IDs.
+41. Oracle B heading preserves effective bold formatting without requiring Word's incidental `rPrChange` history; if property changes are emitted, synthetic IDs 720–726 are modeled as seven distinct revision identities.
+42. Combined Oracle A + B fixture checks forward-merge destination and exact section paragraph vectors under all selective lifecycle resolutions, including whether accepted inline text joins the next surviving paragraph exactly as Word does.
+43. Restoration idempotency and changed reapplication operate on the post-source block; they neither prepend a second block nor mistake the original deleted paragraphs for the restoration.
+44. Existing pre-source v0.5.3 restoration output is detected deliberately: migrate/reapply only under explicit policy, otherwise return a structured placement-version diagnostic rather than duplicating it.
+
+#### Planned Implementation Areas
+
+* `core/paragraph-targeting.js`
+  - Extend `resolveTargetParagraph` results with exact canonical source text and an explicit resolution/match mode without changing strict identity checks.
+  - Keep `normalizeWhitespaceForTargeting` confined to candidate comparison; do not reuse its output as mutation text.
+  - Add strict rejected-view deleted-text anchor/offset resolution for Word-native deletion-carrier insertion.
+* `core/paragraph-revision-safety.js`
+  - Separate ambiguous same-paragraph resurrection from explicitly anchored inline insertion inside a foreign deletion carrier.
+* `services/document-operation-mutations.js`
+  - Update `applyToParagraphByExactText` to pass exact resolved source text and space-equivalence diagnostics into the engine and receipt path.
+  - Update `verifyParagraphRestorationLifecycle` and `restoreDeletedParagraphByExactText` to use baseline-delta plus mutation-envelope validation while preserving the current/Accept-All/Reject-All oracle and rollback.
+* `core/validation-delta.js` (NEW, or an equivalent shared validation helper)
+  - Centralize stable issue signatures, multiset subtraction, issue summaries, and generated-versus-baseline classification so restoration, package, and CLI paths cannot drift.
+* `core/revision-cloning.js`
+  - Generalize revision-ID refresh/sanitization beyond `w:rPrChange`, or provide separate effective-property clone helpers that deliberately remove historical change elements.
+* `core/redline-validation.js`
+  - Expose duplicate-ID details sufficient to identify the repeated ID and owning element kinds for operation-level diagnostics.
+* `pipeline/diff-engine.js`
+  - Add or adjust deterministic replacement-hunk normalization for exact whitespace substitutions and repeated-token alignment.
+* `engine/surgical-mode.js`
+  - Add a pre-mutation diff replay assertion against exact source/modified text and rebuild live spans between mutation-dependent replacement hunks where required.
+* `engine/surgical-diff-application.js`
+  - Correct deletion/insertion anchors at run and hyperlink boundaries; make anchor consumption single-use and connected-node checked.
+* `engine/surgical-run-splitting.js`
+  - Extend carrier splitting to `w:del` with fresh trailing IDs and preserved foreign metadata/run pieces.
+* `engine/oxml-engine.js`
+  - Preserve the exact final accepted-view oracle and enrich whitespace mismatch metadata without leaking the whole payload.
+* `services/receipt-collector.js` and operation result types
+  - Report space-equivalent resolution and exact source-character diagnostics in a stable structured form if the data belongs in durable receipts.
+  - Reconcile every revision-bearing element emitted by paragraph expansion and refuse duplicate/unreported cloned IDs before commit.
+* `services/document-operation-contract.js`, `docs/schemas/document-operations.schema.json`, and operation declarations
+  - Publish the explicit rejected-view insertion anchor/offset contract and reject ambiguous combinations.
+* `node/cli.js`
+  - Add a CLI projection that removes `documentXml` and other large internal payloads, summarizes baseline issues, and preserves decisive write/error fields.
+* `node/docx-document.js`
+  - Enforce baseline-versus-generated issue separation for both revision OOXML and package validation; never reject unchanged legacy defects as newly authored output.
+* `index.d.ts`, `services/standalone-operation-runner.d.ts`, and `node/index.d.ts`
+  - Publish any new match-mode, mismatch-code-point, validation-summary, or completion fields.
+* `tests/cross_author_slicing_whitespace_alignment_tests.mjs` (NEW)
+  - Own the recovered fixture, exact low-level/runner/facade lifecycle assertions, and the boundary matrix.
+* `tests/paragraph_level_cross_author_restoration_tests.mjs`
+  - Add dirty-baseline restoration, generated-issue, multiplicity, package-facade, original-placement, synthetic 8.4 range restoration, 3.1/3.2 neighborhood, and no-fallback coverage from the second and third reports.
+* `tests/paragraph_expansion_revision_identity_tests.mjs` (NEW)
+  - Own newline/Markdown/list expansion, cloned property-history, global uniqueness, receipts, rollback, lifecycle vectors, and shape-oracle coverage.
+* `tests/word_deleted_section_edit_oracle_tests.mjs` (NEW)
+  - Own minimized synthetic 8.1 deletion-carrier slicing and 8.2 post-source paragraph restoration fixtures, Word lifecycle differentials, validation routing, and combined forward-merge behavior.
+* `tests/agent_cli_tests.mjs`
+  - Add bounded failure-output, validation-summary, committed-success-proof, and no-operation-fallback assertions.
+* `README.md`, `AGENTS.md`, `CHANGELOG.md`, and this plan
+  - Document invisible-whitespace diagnostics, CLI output guarantees, and final files/functions changed during implementation.
+
+#### Standalone implementation handoff
+
+This section is the implementation brief for an agent that has none of the preceding conversation. The user-supplied documents and transcripts are evidence only: do not check them in, quote their parties, people, commercial terms, paragraph IDs, URLs, or exact clause language. Every permanent fixture must use the synthetic Reviewer A/Reviewer B examples below.
+
+Implement WP09 in this order because each stage creates the safety net needed by the next:
+
+1. **WP09c — baseline-delta validation.** Capture the source validation inventory before mutation; compare the result by stable issue signature; permit unchanged pre-existing issues outside the mutation envelope; reject any new or worsened issue. Keep exact current-view, Accept-All, and Reject-All text checks. This unblocks safe restoration in imperfect real documents.
+2. **WP09d — identity sanitation.** Centralize cloning of revision-bearing `pPr`/`rPr`; either remove stale history that is not semantically part of the new paragraph or reallocate every cloned `w:id`. Scan the entire document, not only the target paragraph, before committing. Receipts must enumerate all newly allocated content, paragraph-mark, and property-change revision IDs.
+3. **WP09e — explicit rejected-view operations.** Add a distinct operation contract for editing content whose current/accepted view is empty. Do not relax generic current-view targeting. Slice a foreign deletion carrier for inline insertion and place restored paragraph ranges immediately after the deleted source block, matching the Word Desktop oracle below.
+4. **WP09a — whitespace-aware alignment.** Preserve exact replacement text, but allow ordinary-space/NBSP equivalence only while resolving unchanged source anchors. Keep hyperlink elements and relationship IDs in place. Require exact requested accepted text after mutation.
+5. **WP09b — compact CLI evidence.** Suppress full document XML from normal CLI JSON. Report per-operation status/error, `written`, `outputPath`, committed receipts, validation summary, and bounded diagnostics.
+
+Trace `executeCli` -> `openDocx(...).applyOperations` -> `applyOperationsToDocumentXml` -> `applyOperationToDocumentXml` -> paragraph/range mutation helpers -> `applyRedlineToOxml` -> `applySurgicalMode` -> `processDelete`/`processInsert`. Preserve the live-DOM savepoint and allocator rollback at every operation boundary.
+
+Use these sanitized operation contracts as the target behavior (field names may be adjusted once in the schema, but must remain explicit and schema-validated):
+
+```json
+{
+  "type": "insert",
+  "target": {
+    "exactText": "The account holder must pay each undisputed invoice.",
+    "paragraphId": "A1B2C3D4",
+    "revisionView": "rejected"
+  },
+  "anchor": { "exactText": "pay", "occurrence": 1, "offset": 2 },
+  "modified": "REVIEWER B INSERTION",
+  "author": "Reviewer B",
+  "existingRevisions": "slice-cross-author"
+}
+```
+
+This must convert Reviewer A's single deletion carrier into sibling `del(A prefix)`, `ins(B text)`, `del(A suffix)` nodes. The trailing Reviewer A carrier gets a fresh revision ID; the insertion must not inherit a deleted paragraph mark and must not be nested inside `w:del`. Rejecting Reviewer B restores Reviewer A's original deletion-carrier text; rejecting Reviewer A exposes the original sentence plus Reviewer B's pending insertion; Accept-All retains Reviewer B's inserted text at the deletion boundary with Word-compatible paragraph merging.
+
+```json
+{
+  "type": "restore",
+  "target": {
+    "exactText": "8.2 Usage Adjustments",
+    "paragraphId": "B1C2D3E4",
+    "revisionView": "rejected"
+  },
+  "targetEnd": {
+    "exactText": "Usage above the stated threshold may be billed at the next tier.",
+    "paragraphId": "B1C2D3E5",
+    "revisionView": "rejected"
+  },
+  "modified": "8.2 Usage Adjustments\n\nUsage above the stated threshold may be billed at the next tier.",
+  "author": "Reviewer B"
+}
+```
+
+The restored heading and body must be newly inserted sibling paragraphs immediately **after** the two-paragraph Reviewer A deletion block and before the following source paragraph. Each inserted paragraph needs a fresh paragraph identity, a Reviewer B paragraph-mark insertion, a Reviewer B content insertion, sanitized properties, and globally unique IDs. The original deleted block remains unchanged outside allocator-neutral serialization. A repeated request is an idempotent no-op or a specific duplicate-restoration error; it must never add a second copy.
+
+Required red/green fixtures are: (a) two hyperlinks separated by NBSP/ordinary spaces with a small insertion; (b) a source document containing an unrelated missing-`xml:space` warning plus a safe restoration that adds no issue; (c) newline expansion from a paragraph whose `pPr` and first run contain prior property-change IDs; (d) the inline deletion-carrier oracle above; and (e) the two-paragraph post-source restoration oracle above. For each, assert structural order, authorship, global ID uniqueness, exact accepted and rejected paragraph vectors, selective Accept/Reject outcomes, receipt reconciliation, atomic rollback, and package validation. Expected failures must use a specific code such as `AMBIGUOUS_TARGET`, `UNSAFE_REVISION_NESTING`, `UNSAFE_PARAGRAPH_BOUNDARY`, or a new rejected-view anchor error—not a generic exception.
+
+The checked-in characterization suite `tests/word_deleted_section_edit_oracle_tests.mjs` records the Word-authored shapes without private source text. It is an oracle scaffold, not proof that WP09e mutation support already exists; implementation tests must additionally create those shapes through the public runner and package facade.
+
+#### Exit Criteria
+
+WP09 is complete only when all reported workflows and both sanitized Word Desktop oracles succeed through the real package facade: the Service Policy edit must require no manual NBSP discovery, produce exact requested accepted text, preserve both hyperlinks, and reject back to the exact source; explicit paragraph restorations must tolerate unrelated baseline defects, introduce zero new validation issues, follow Word's post-source placement, and satisfy all selective lifecycle outcomes; rejected-view insertion inside a foreign deletion must split the carrier exactly like Word; and multiline paragraph expansion must allocate globally unique revision IDs and satisfy exact paragraph-shape oracles. The synthetic 8.4 pair must exist as standalone paragraphs in its original location, while the neighboring 3.1 paragraph remains unchanged. The CLI must provide a compact success or failure record that an agent can verify from `status`, every `results[i].status`, committed receipts, `written`, and `outputPath` without receiving full document XML.
+
+Final implementation notes must replace the planned file/function list above with the actual touched files and functions, record any deliberately deferred cases, and include focused tests, full serial `npm test`, lint, type declarations, build, schema parsing if changed, and `git diff --check`.
+
+---
+
 ## 6. Comprehensive Verification Plan (Synthetic & Real Test Series)
 
 To prove correctness across all layers of the stack, this plan defines two comprehensive test suites:
 1. **Synthetic Unit & Boundary Suites** (`tests/cross_author_slicing_synthetic_tests.mjs`): Isolated OOXML fixtures testing edge cases, boundary alignments, and lifecycle mechanics.
 2. **Checked-In Word Package Differential Suite** (`tests/cross_author_slicing_real_tests.mjs`): End-to-end strict-facade replay against actual DOCX packages created by Microsoft Word Desktop, including package validation and lifecycle comparison with Word-generated oracles.
 
-The synthetic matrix below is fully automated. The checked-in package suite is also fully automated as PKG-01 through PKG-06. REAL-01 through REAL-05 remain an environment/input-dependent acceptance matrix for the named private/corpus documents and live Word COM/visual checks.
+The synthetic matrix below is fully automated. The checked-in package suite is also fully automated as PKG-01 through PKG-06. REAL-01 through REAL-05 remain an environment/input-dependent acceptance matrix using sanitized documents and live Word COM/visual checks.
 
 ---
 
@@ -806,21 +1346,21 @@ The synthetic matrix below is fully automated. The checked-in package suite is a
 
 | ID | Test Case Name | Input Structure | Operation (Author B) | Expected OOXML Structure | Invariant Assertions |
 |:---|:---|:---|:---|:---|:---|
-| **SYN-01** | Pure Interior Insertion | `<w:ins author="Barry">amended by this Agreement</w:ins>` | Insert `"MASTER "` before `"Agreement"` | `[ins(Barry): "amended by this "][ins(Anson): "MASTER "][ins(Barry): "Agreement"]` | 3 sibling `<w:ins>` nodes; no `NESTED_REVISION`; unique IDs allocated for `ins(Anson)` and trailing `ins(Barry)`. |
-| **SYN-02** | Pure Interior Deletion | `<w:ins author="Barry">The Services will process the Input to generate outputs</w:ins>` | Delete `"generate "` | `<w:ins author="Barry">...<w:del author="Anson">generate </w:del>...</w:ins>` | One Barry carrier remains; nested `w:del` uses `<w:delText>` and is authored by Anson. |
-| **SYN-03** | Boundary Deletion at Insertion Start | `<w:ins author="Barry">Notwithstanding the foregoing, the NDA remains</w:ins>` | Delete `"Notwithstanding the foregoing, "` | `<w:ins author="Barry"><w:del author="Anson">Notwithstanding...</w:del>the NDA remains</w:ins>` | Nested deletion is the carrier's first content node; Barry metadata remains intact. |
-| **SYN-04** | Boundary Deletion at Insertion End | `<w:ins author="Barry">subject to Section 2.8 and applicable law</w:ins>` | Delete `" and applicable law"` | `<w:ins author="Barry">subject...<w:del author="Anson"> and applicable law</w:del></w:ins>` | Nested deletion is the carrier's final content node. |
-| **SYN-05** | Complete Deletion of Pending Insertion Text | `<w:ins author="Barry">Obsolete clause insertion.</w:ins>` | Delete entire string `"Obsolete clause insertion."` | `<w:ins author="Barry"><w:del author="Anson">Obsolete clause insertion.</w:del></w:ins>` | Barry's carrier remains so rejecting Barry still cascades away Anson's dependent deletion. |
-| **SYN-06** | Straddle Deletion (Baseline to Insertion) | `<w:r><w:t>Baseline start </w:t></w:r><w:ins author="Barry">inserted finish</w:ins>` | Delete `"start inserted"` | `[r: "Baseline "][del(Anson): "start "][ins(Barry): [del(Anson): "inserted"] " finish"]` | Top-level and nested deletion portions remain structurally separate, matching Word Desktop. |
-| **SYN-07** | Straddle Deletion (Insertion to Baseline) | `<w:ins author="Barry">Inserted start</w:ins><w:r><w:t> baseline finish</w:t></w:r>` | Delete `"start baseline"` | `[ins(Barry): "Inserted " [del(Anson): "start"]][del(Anson): " baseline"][r: " finish"]` | Nested and top-level deletion portions preserve their respective carrier contexts. |
-| **SYN-08** | Multi-Insertion Straddle (Author A to Author C) | `<w:ins author="Barry">Barry text </w:ins><w:ins author="Carl">Carl text</w:ins>` | Author B deletes `"text Carl"` | `[ins(Barry): "Barry " [del(Anson): "text "]][ins(Carl): [del(Anson): "Carl"] " text"]` | Each foreign carrier owns its nested deletion portion; neither carrier is sliced for deletion. |
-| **SYN-09** | Multi-Run Formatting Preservation | `<w:ins author="Barry"><w:r><w:rPr><w:b/></w:rPr><w:t>Bold text </w:t></w:r><w:r><w:t>plain text</w:t></w:r></w:ins>` | Delete `"text plain"` | Barry's `<w:ins>` remains intact around a nested `<w:del>` containing a bold run for `"text "` and a plain run for `"plain"`. | Exact run-level formatting is preserved inside `<w:delText>` and unaffected insertion runs. |
-| **SYN-10** | Paired Replacement Event inside Insertion | `<w:ins author="Barry">process the Input to generate outputs</w:ins>` | Replace `"generate"` with `"synthesize"` (`pairReplacements: true`) | `[ins(Barry): prefix + nested del(Anson)][ins(Anson): "synthesize"][ins(Barry): suffix]` | Deletion and insertion share timestamp; only the insertion requires carrier splitting/hoisting. |
-| **SYN-11** | 3-Author Stacked Deletions | Output of **SYN-02** | Author C ("Davis, Chris") deletes `"process"` in Barry's carrier | `<w:ins author="Barry">...<w:del author="Davis">process</w:del>...<w:del author="Anson">generate</w:del>...</w:ins>` | Multiple distinct reviewer deletions coexist safely inside the same foreign insertion. |
-| **SYN-12a** | Lifecycle Oracle: Accept All | Output of **SYN-02** | `acceptTrackedChanges({ allAuthors: true })` | Clean baseline string: `"The Services will process the Input to outputs"` | All `<w:del>` removed, all `<w:ins>` unwrapped; zero revision tags remaining. |
-| **SYN-12b** | Lifecycle Oracle: Accept Author A Only | Output of **SYN-02** | `acceptTrackedChanges({ author: 'Barry' })` | Barry's text becomes baseline; Anson's `<w:del>` remains pending against the baseline. | Anson's `<w:del>` remains intact and reviewable. |
-| **SYN-12c** | Lifecycle Oracle: Reject Author A Only | Output of **SYN-02** | `rejectTrackedChanges({ author: 'Barry' })` | Barry's insertion is deleted from the document. Anson's internal `<w:del>` is cascaded and pruned. | Prevents orphaned deletion of text that was rejected from ever existing. |
-| **SYN-12d** | Lifecycle Oracle: Reject Author B Only | Output of **SYN-02** | `rejectTrackedChanges({ author: 'Anson' })` | Anson's nested `<w:del>` is unwrapped back into regular runs within Barry's `<w:ins>`. | Full restoration of Barry's original insertion. |
+| **SYN-01** | Pure Interior Insertion | `<w:ins author="Reviewer A">amended by this agreement</w:ins>` | Reviewer B inserts `"MASTER "` before `"agreement"` | `[ins(A): "amended by this "][ins(B): "MASTER "][ins(A): "agreement"]` | 3 sibling `<w:ins>` nodes; no `NESTED_REVISION`; unique IDs for Reviewer B and the trailing Reviewer A carrier. |
+| **SYN-02** | Pure Interior Deletion | `<w:ins author="Reviewer A">The service processes input to produce output</w:ins>` | Reviewer B deletes `"produce "` | `<w:ins author="Reviewer A">...<w:del author="Reviewer B">produce </w:del>...</w:ins>` | One Reviewer A carrier remains; nested `w:del` uses `<w:delText>` and is authored by Reviewer B. |
+| **SYN-03** | Boundary Deletion at Insertion Start | `<w:ins author="Reviewer A">Subject to the exception, the policy remains</w:ins>` | Delete `"Subject to the exception, "` | `<w:ins author="Reviewer A"><w:del author="Reviewer B">Subject...</w:del>the policy remains</w:ins>` | Nested deletion is the carrier's first content node; Reviewer A metadata remains intact. |
+| **SYN-04** | Boundary Deletion at Insertion End | `<w:ins author="Reviewer A">subject to Section 2 and applicable rules</w:ins>` | Delete `" and applicable rules"` | `<w:ins author="Reviewer A">subject...<w:del author="Reviewer B"> and applicable rules</w:del></w:ins>` | Nested deletion is the carrier's final content node. |
+| **SYN-05** | Complete Deletion of Pending Insertion Text | `<w:ins author="Reviewer A">Obsolete inserted clause.</w:ins>` | Delete the entire inserted string | `<w:ins author="Reviewer A"><w:del author="Reviewer B">Obsolete inserted clause.</w:del></w:ins>` | Reviewer A's carrier remains so rejecting A still cascades away B's dependent deletion. |
+| **SYN-06** | Straddle Deletion (Baseline to Insertion) | `<w:r><w:t>Baseline start </w:t></w:r><w:ins author="Reviewer A">inserted finish</w:ins>` | Delete `"start inserted"` | `[r: "Baseline "][del(B): "start "][ins(A): [del(B): "inserted"] " finish"]` | Top-level and nested deletion portions remain structurally separate. |
+| **SYN-07** | Straddle Deletion (Insertion to Baseline) | `<w:ins author="Reviewer A">Inserted start</w:ins><w:r><w:t> baseline finish</w:t></w:r>` | Delete `"start baseline"` | `[ins(A): "Inserted " [del(B): "start"]][del(B): " baseline"][r: " finish"]` | Nested and top-level deletion portions preserve their respective carrier contexts. |
+| **SYN-08** | Multi-Insertion Straddle | `<w:ins author="Reviewer A">Alpha text </w:ins><w:ins author="Reviewer C">Gamma text</w:ins>` | Reviewer B deletes `"text Gamma"` | `[ins(A): "Alpha " [del(B): "text "]][ins(C): [del(B): "Gamma"] " text"]` | Each foreign carrier owns its nested deletion portion. |
+| **SYN-09** | Multi-Run Formatting Preservation | `<w:ins author="Reviewer A"><w:r><w:rPr><w:b/></w:rPr><w:t>Bold text </w:t></w:r><w:r><w:t>plain text</w:t></w:r></w:ins>` | Delete `"text plain"` | Reviewer A's `<w:ins>` remains intact around Reviewer B's nested deletion with bold and plain runs. | Exact run-level formatting is preserved inside `<w:delText>` and unaffected insertion runs. |
+| **SYN-10** | Paired Replacement Event inside Insertion | `<w:ins author="Reviewer A">process input to produce output</w:ins>` | Replace `"produce"` with `"create"` | `[ins(A): prefix + nested del(B)][ins(B): "create"][ins(A): suffix]` | Deletion and insertion share a timestamp; only the insertion requires carrier splitting/hoisting. |
+| **SYN-11** | 3-Author Stacked Deletions | Output of **SYN-02** | Reviewer C deletes `"processes"` in Reviewer A's carrier | `<w:ins author="Reviewer A">...<w:del author="Reviewer C">processes</w:del>...<w:del author="Reviewer B">produce</w:del>...</w:ins>` | Multiple reviewer deletions coexist safely inside the same foreign insertion. |
+| **SYN-12a** | Lifecycle Oracle: Accept All | Output of **SYN-02** | `acceptTrackedChanges({ allAuthors: true })` | Clean baseline string: `"The service processes input to output"` | All `<w:del>` removed, all `<w:ins>` unwrapped; zero revision tags remaining. |
+| **SYN-12b** | Lifecycle Oracle: Accept Reviewer A Only | Output of **SYN-02** | `acceptTrackedChanges({ author: 'Reviewer A' })` | Reviewer A's text becomes baseline; Reviewer B's `<w:del>` remains pending. | Reviewer B's deletion remains intact and reviewable. |
+| **SYN-12c** | Lifecycle Oracle: Reject Reviewer A Only | Output of **SYN-02** | `rejectTrackedChanges({ author: 'Reviewer A' })` | Reviewer A's insertion is removed with Reviewer B's dependent deletion. | Prevents an orphaned deletion of text that never became baseline. |
+| **SYN-12d** | Lifecycle Oracle: Reject Reviewer B Only | Output of **SYN-02** | `rejectTrackedChanges({ author: 'Reviewer B' })` | Reviewer B's nested deletion is unwrapped inside Reviewer A's carrier. | Full restoration of Reviewer A's original insertion. |
 
 ---
 
@@ -828,29 +1368,32 @@ The synthetic matrix below is fully automated. The checked-in package suite is a
 
 | ID | Scenario & Source Document | Workflow & Operations | Expected Real-World Behavior | Verification Oracle |
 |:---|:---|:---|:---|:---|
-| **REAL-01** | **Salary.com Agreement: The Motivating AI Terms Deletion**<br>Source: `agreement.docx` (Section 2.1 Customer Data, `P40`) | 1. Document contains Barry Lai's pending insertion (`P40`, ID `45`).<br>2. Anson Lai runs operation to delete `"generate"` from `"to generate outputs"`.<br>3. `--existing-revisions slice-cross-author`. | Batch commits with `status: "ok"`, `written: true`.<br>Barry's insertion remains intact and contains Anson's visible, attributed nested deletion.<br>No `COMMENTED_CONTENT_DELETE` (since comment 144 is on Section 2.8, not 2.1). | Output file validated via `validateDocxPackage`. Revisions inspectable via `docx-redline inspect`. |
-| **REAL-02** | **Salary.com Agreement: §14.1 NDA Carve-Out**<br>Source: `agreement.docx` (Section 14.1 Entire Agreement, `P131`) | 1. Barry has pending insertion of the amendment sentence.<br>2. Anson inserts August 25, 2026 NDA carve-out in the middle.<br>3. `--existing-revisions slice-cross-author`. | Barry's insertion remains visibly attributed to Barry (not baked into baseline).<br>Anson's carve-out sits as an adjacent/spliced insertion attributed to Anson. | `extract` and `inspect` show both `Lai, Barry` and `Lai, Anson` in `revisionAuthors`. |
-| **REAL-03** | **SuperDoc Corpus: Interagency Multi-Counsel Negotiation**<br>Source: Corpus ID `c5bb43ede5...` (Joint Communications Protocol) | Round 1: BCHD Lead Agency Counsel applies insertions to Sections 3.2 and 4.1.<br>Round 2: MOHS Counterparty Counsel edits directly inside BCHD's insertions.<br>Round 3: Third Reviewer applies further modifications. | 3 distinct institutional authors with overlapping and sliced edits commit across rounds without merge corruption or loss of attribution. | Document hash checks; zero schema errors across all 3 rounds. |
-| **REAL-04** | **Desktop Word 365 COM Automation Oracle**<br>Execution on Windows runner via native Word | Open the output DOCX files from **REAL-01**, **REAL-02**, and **REAL-03** via Windows COM automation (`word-client.mjs`). | 1. Word opens each file with **0 repair prompts** / corruption dialogs.<br>2. `Document.Revisions.Count` matches exact receipt counts.<br>3. `Document.Revisions.AcceptAll()` in Word matches engine `acceptAll()` bit-for-bit.<br>4. `Document.Revisions.RejectAll()` in Word matches engine `rejectAll()` bit-for-bit. | COM automation script asserts identical string contents after Word native Accept/Reject. |
-| **REAL-05** | **Word Visual Rendering & PDF Export Proof**<br>Visual Evidence Pipeline | Export pages of **REAL-01** and **REAL-02** to PDF via Word COM `ExportAsFixedFormat`. Convert PDF pages to PNG. | 1. Deletions show strikethrough in Anson's reviewer color.<br>2. Insertions show underline in Barry's reviewer color.<br>3. Word Reviewing Pane displays balloons for both authors correctly without overlap or misaligned leader lines. | Visual evidence artifact generated in `tests/visual-evidence/` for human review sign-off. |
+| **REAL-01** | **Synthetic Service Agreement: Pending Feature Clause**<br>Source: sanitized Word-authored package | 1. Reviewer A has a pending insertion.<br>2. Reviewer B deletes one interior verb from it.<br>3. Apply with `--existing-revisions slice-cross-author`. | Batch commits with `status: "ok"`, `written: true`.<br>Reviewer A's insertion remains intact and contains Reviewer B's visible, attributed nested deletion. | Output validates via `validateDocxPackage`; `inspect` reports both generic reviewers. |
+| **REAL-02** | **Synthetic Master Agreement: Policy Carve-Out**<br>Source: sanitized Word-authored package | 1. Reviewer A has a pending amendment sentence.<br>2. Reviewer B inserts a policy carve-out in its middle.<br>3. Apply with `--existing-revisions slice-cross-author`. | Reviewer A's insertion remains attributed to Reviewer A rather than becoming baseline; Reviewer B's carve-out is an adjacent/spliced insertion. | `extract` and `inspect` report Reviewer A and Reviewer B without private source metadata. |
+| **REAL-03** | **Synthetic Three-Reviewer Negotiation**<br>Source: sanitized multi-round corpus package | Round 1: Reviewer A inserts text in two clauses.<br>Round 2: Reviewer B edits inside those insertions.<br>Round 3: Reviewer C applies further modifications. | Three authors' overlapping and sliced edits commit without merge corruption or lost attribution. | Document hash checks; zero new schema errors across all rounds. |
+| **REAL-04** | **Desktop Word COM Automation Oracle**<br>Execution on a Windows runner with Word | Open the sanitized outputs from **REAL-01**, **REAL-02**, and **REAL-03** through the native Word automation client. | 1. Word opens each file with no repair prompt.<br>2. `Document.Revisions.Count` matches committed receipt counts.<br>3. Word Accept-All and Reject-All text matches the engine lifecycle results. | Automation asserts identical paragraph vectors after native and engine lifecycle operations. |
+| **REAL-05** | **Word Visual Rendering and PDF Proof**<br>Sanitized evidence pipeline | Export **REAL-01** and **REAL-02** to PDF through Word, then render the affected pages. | Reviewer B's deletions and Reviewer A's insertions have distinct reviewer colors; the Reviewing Pane attributes both correctly without overlapping or misplaced balloons. | Sanitized visual artifacts are generated outside the repository unless explicitly approved for check-in. |
 
 ---
 
 ### 6.3 Test Execution Matrix
 
 ```bash
-# 1. Run synthetic unit & boundary suite
+# 1. Run the sanitized Word deleted-section characterization oracle
+node tests/word_deleted_section_edit_oracle_tests.mjs
+
+# 2. Run synthetic unit & boundary suite
 node tests/cross_author_slicing_synthetic_tests.mjs
 
-# 2. Run checked-in Word DOCX package differential suite (PKG-01..06)
+# 3. Run checked-in Word DOCX package differential suite (PKG-01..06)
 node tests/cross_author_slicing_real_tests.mjs
 
-# 3. Optional external acceptance: Word Desktop COM differential oracle (Windows desktop)
+# 4. Optional external acceptance: Word Desktop COM differential oracle (Windows desktop)
 npm run test:word
 
-# 4. Verify existing mode matrix remains 100% backward compatible
+# 5. Verify existing mode matrix remains 100% backward compatible
 node tests/existing_revisions_modes_matrix_tests.mjs
 
-# 5. Full regression check
+# 6. Full regression check
 npm test
 ```

@@ -27,6 +27,13 @@ import {
 } from '../core/paragraph-revision-safety.js';
 import { extractCanonicalParagraphText } from '../core/paragraph-text.js';
 import { validateRedlineOoxml } from '../core/redline-validation.js';
+import { subtractValidationIssueMultiset, validationErrors } from '../core/validation-delta.js';
+import { clonePropertiesWithoutRevisionHistory } from '../core/revision-cloning.js';
+import {
+    getRunContentPieces,
+    getRunTextLength,
+    splitTrackChangeCarrier
+} from '../engine/surgical-run-splitting.js';
 import { applyHighlightToOoxml } from '../engine/formatting-removal.js';
 import { parseTable as parseMarkdownTable } from '../pipeline/pipeline.js';
 import { injectCommentsIntoOoxml } from './comment-engine.js';
@@ -166,6 +173,57 @@ function getParagraphText(paragraph) {
     return getParagraphTextFromOxml(paragraph);
 }
 
+function escapeInvisibleText(value, maxLength = 96) {
+    const text = String(value ?? '');
+    const bounded = text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
+    return bounded
+        .replace(/\\/g, '\\\\')
+        .replace(/\r/g, '\\r')
+        .replace(/\n/g, '\\n')
+        .replace(/\t/g, '\\t')
+        .replace(/\u00a0/g, '\\u00A0')
+        .replace(/\u202f/g, '\\u202F')
+        .replace(/\u2060/g, '\\u2060');
+}
+
+function codePointLabel(value, offset) {
+    if (offset >= value.length) return 'END';
+    return `U+${value.codePointAt(offset).toString(16).toUpperCase().padStart(4, '0')}`;
+}
+
+function describeTargetTextMatch(actualText, requestedText) {
+    const actual = String(actualText ?? '');
+    const requested = String(requestedText ?? '');
+    if (actual === requested) return { mode: 'exact' };
+
+    const differences = [];
+    const limit = Math.min(actual.length, requested.length);
+    for (let offset = 0; offset < limit && differences.length < 8; offset++) {
+        if (actual[offset] === requested[offset]) continue;
+        differences.push({
+            offset,
+            sourceCodePoint: codePointLabel(actual, offset),
+            requestedCodePoint: codePointLabel(requested, offset)
+        });
+    }
+    if (actual.length !== requested.length && differences.length < 8) {
+        differences.push({
+            offset: limit,
+            sourceCodePoint: codePointLabel(actual, limit),
+            requestedCodePoint: codePointLabel(requested, limit)
+        });
+    }
+
+    const spaceEquivalent = actual.length === requested.length
+        && actual.replace(/\u00a0/g, ' ') === requested.replace(/\u00a0/g, ' ');
+    return {
+        mode: spaceEquivalent ? 'space_equivalent' : 'normalized',
+        differences,
+        sourceExcerpt: escapeInvisibleText(actual),
+        requestedExcerpt: escapeInvisibleText(requested)
+    };
+}
+
 function resolveTargetParagraph(xmlDoc, targetText, targetRef, opType, runtimeContext = null, options = {}) {
     const onInfo = typeof options?.onInfo === 'function' ? options.onInfo : () => { };
     const onWarn = typeof options?.onWarn === 'function' ? options.onWarn : () => { };
@@ -185,7 +243,11 @@ function resolveTargetParagraph(xmlDoc, targetText, targetRef, opType, runtimeCo
                         paragraphId: metadata?.paragraphId ?? getParagraphId(paragraph),
                         text: metadata?.text ?? getParagraphText(paragraph),
                         fingerprint: metadata?.fingerprint ?? createParagraphFingerprint(paragraph),
-                        inTable: metadata?.inTable ?? !!findContainingWordElement(paragraph, 'tbl')
+                        inTable: metadata?.inTable ?? !!findContainingWordElement(paragraph, 'tbl'),
+                        targetTextMatch: describeTargetTextMatch(
+                            metadata?.text ?? getParagraphText(paragraph),
+                            options?.targetDescriptor?.exactText ?? targetText
+                        )
                     }
                 });
             }
@@ -221,7 +283,11 @@ function resolveTargetParagraph(xmlDoc, targetText, targetRef, opType, runtimeCo
                 paragraphId: metadata?.paragraphId ?? getParagraphId(paragraph),
                 text: metadata?.text ?? getParagraphText(paragraph),
                 fingerprint: metadata?.fingerprint ?? createParagraphFingerprint(paragraph),
-                inTable: metadata?.inTable ?? !!findContainingWordElement(paragraph, 'tbl')
+                inTable: metadata?.inTable ?? !!findContainingWordElement(paragraph, 'tbl'),
+                targetTextMatch: describeTargetTextMatch(
+                    metadata?.text ?? getParagraphText(paragraph),
+                    options?.targetDescriptor?.exactText ?? targetText
+                )
             }
         });
     }
@@ -325,7 +391,7 @@ function buildInsertedListParagraph(xmlDoc, anchorParagraph, entry, revisionMeta
 
     const anchorPPr = getDirectWordChild(anchorParagraph, 'pPr');
     if (anchorPPr) {
-        paragraph.appendChild(anchorPPr.cloneNode(true));
+        paragraph.appendChild(clonePropertiesWithoutRevisionHistory(anchorPPr));
     }
     ensureListProperties(xmlDoc, paragraph, entry.ilvl, entry.numId);
 
@@ -341,7 +407,7 @@ function buildInsertedListParagraph(xmlDoc, anchorParagraph, entry, revisionMeta
     const anchorFirstRun = Array.from(anchorParagraph.getElementsByTagNameNS(NS_W, 'r'))[0] || null;
     const anchorRunPr = anchorFirstRun ? getDirectWordChild(anchorFirstRun, 'rPr') : null;
     if (anchorRunPr) {
-        run.appendChild(anchorRunPr.cloneNode(true));
+        run.appendChild(clonePropertiesWithoutRevisionHistory(anchorRunPr));
     }
 
     const textNode = createWordElement(xmlDoc, 'w:t');
@@ -445,12 +511,12 @@ function buildFallbackInsertedPlainParagraph(xmlDoc, text, revisionMetadata, aut
 function buildEmptyParagraphTemplateFromAnchor(xmlDoc, anchorParagraph) {
     const paragraph = createWordElement(xmlDoc, 'w:p');
     const anchorPPr = getDirectWordChild(anchorParagraph, 'pPr');
-    if (anchorPPr) paragraph.appendChild(anchorPPr.cloneNode(true));
+    if (anchorPPr) paragraph.appendChild(clonePropertiesWithoutRevisionHistory(anchorPPr));
 
     const run = createWordElement(xmlDoc, 'w:r');
     const anchorFirstRun = Array.from(anchorParagraph.getElementsByTagNameNS(NS_W, 'r'))[0] || null;
     const anchorRunPr = anchorFirstRun ? getDirectWordChild(anchorFirstRun, 'rPr') : null;
-    if (anchorRunPr) run.appendChild(anchorRunPr.cloneNode(true));
+    if (anchorRunPr) run.appendChild(clonePropertiesWithoutRevisionHistory(anchorRunPr));
 
     const textNode = createWordElement(xmlDoc, 'w:t');
     textNode.textContent = '';
@@ -463,7 +529,7 @@ function wrapParagraphContentInInsertion(xmlDoc, paragraph, revisionMetadata, au
     const wrappedParagraph = createWordElement(xmlDoc, 'w:p');
     const pPr = options.sanitizeParagraphProperties === true
         ? createSanitizedRestorationPPr(xmlDoc, paragraph)
-        : getDirectWordChild(paragraph, 'pPr')?.cloneNode(true);
+        : clonePropertiesWithoutRevisionHistory(getDirectWordChild(paragraph, 'pPr'));
     if (pPr) wrappedParagraph.appendChild(pPr);
     if (options.paragraphId) wrappedParagraph.setAttributeNS(NS_W14, 'w14:paraId', options.paragraphId);
     if (options.trackParagraphMark === true) {
@@ -537,6 +603,71 @@ function collectNumberingIdsFromNodes(nodes) {
         }
     }
     return Array.from(ids);
+}
+
+function directDeletionCarrierText(carrier) {
+    return Array.from(carrier?.childNodes || []).reduce((text, child) => {
+        return text + (child?.nodeType === 1 && child.namespaceURI === NS_W && child.localName === 'r'
+            ? getRunContentPieces(child).map(piece => piece.text).join('')
+            : '');
+    }, '');
+}
+
+function findOccurrenceOffset(text, needle, occurrence) {
+    let from = 0;
+    let found = -1;
+    for (let index = 0; index < occurrence; index++) {
+        found = text.indexOf(needle, from);
+        if (found < 0) return -1;
+        from = found + Math.max(needle.length, 1);
+    }
+    return found;
+}
+
+function countNonOverlappingOccurrences(text, needle) {
+    if (!needle) return 0;
+    let count = 0;
+    let from = 0;
+    while (from <= text.length) {
+        const found = text.indexOf(needle, from);
+        if (found < 0) break;
+        count += 1;
+        from = found + needle.length;
+    }
+    return count;
+}
+
+function hasUnsupportedDeletionSplitMarkup(paragraph, carrier) {
+    const unsafeParagraphNames = new Set([
+        'commentRangeStart', 'commentRangeEnd', 'commentReference',
+        'bookmarkStart', 'bookmarkEnd', 'moveFromRangeStart', 'moveFromRangeEnd',
+        'moveToRangeStart', 'moveToRangeEnd'
+    ]);
+    if (Array.from(paragraph.getElementsByTagName?.('*') || []).some(node => unsafeParagraphNames.has(node.localName))) {
+        return true;
+    }
+    for (const child of Array.from(carrier?.childNodes || [])) {
+        if (child.nodeType !== 1) continue;
+        if (!(child.namespaceURI === NS_W && child.localName === 'r')) return true;
+        for (const runChild of Array.from(child.childNodes || [])) {
+            if (runChild.nodeType !== 1 || runChild.namespaceURI !== NS_W) continue;
+            if (!['rPr', 'delText', 't', 'tab', 'br', 'cr', 'noBreakHyphen', 'softHyphen'].includes(runChild.localName)) return true;
+        }
+    }
+    return false;
+}
+
+function insertedRunPropertiesAtDeletionOffset(carrier, localOffset) {
+    let offset = 0;
+    for (const child of Array.from(carrier?.childNodes || [])) {
+        if (!(child?.nodeType === 1 && child.namespaceURI === NS_W && child.localName === 'r')) continue;
+        const length = getRunTextLength(getRunContentPieces(child));
+        if (localOffset <= offset + length) {
+            return clonePropertiesWithoutRevisionHistory(getDirectWordChild(child, 'rPr'));
+        }
+        offset += length;
+    }
+    return null;
 }
 
 const RESTORATION_PPR_ALLOWLIST = new Set([
@@ -678,13 +809,13 @@ function isInsertedParagraphByAuthor(paragraph, author) {
     return !!marker && normalizedAuthor(wordAttribute(marker, 'author')) === normalizedAuthor(author);
 }
 
-function precedingParagraphBlock(firstSource, count) {
+function followingParagraphBlock(lastSource, count) {
     const paragraphs = [];
-    let cursor = firstSource;
+    let cursor = lastSource;
     for (let i = 0; i < count; i++) {
-        cursor = directWordParagraphSibling(cursor, 'previousSibling');
+        cursor = directWordParagraphSibling(cursor, 'nextSibling');
         if (!cursor) return [];
-        paragraphs.unshift(cursor);
+        paragraphs.push(cursor);
     }
     return paragraphs;
 }
@@ -713,26 +844,37 @@ function buildExpectedRestorationDocument(beforeXml, sourceStartIndex, existingI
     if (parsed.error || !parsed.doc) return null;
     const expectedDoc = parsed.doc;
     const originalParagraphs = getDocumentParagraphNodes(expectedDoc);
-    const source = originalParagraphs[sourceStartIndex] || null;
-    if (!source?.parentNode) return null;
+    const lastSource = originalParagraphs[sourceStartIndex + templates.length - 1] || null;
+    if (!lastSource?.parentNode) return null;
 
     for (const index of [...existingIndexes].sort((a, b) => b - a)) {
         const paragraph = originalParagraphs[index];
         paragraph?.parentNode?.removeChild(paragraph);
     }
+    const insertionPoint = lastSource.nextSibling;
     for (const template of templates) {
-        source.parentNode.insertBefore(expectedDoc.importNode(template, true), source);
+        lastSource.parentNode.insertBefore(expectedDoc.importNode(template, true), insertionPoint);
     }
     return createSerializer().serializeToString(expectedDoc);
 }
 
-function verifyParagraphRestorationLifecycle(beforeXml, outputXml, sourceStartIndex, existingIndexes, templates) {
-    const validation = validateRedlineOoxml(outputXml);
-    if (!validation.valid) {
+function verifyParagraphRestorationLifecycle(beforeXml, outputXml, sourceStartIndex, existingIndexes, templates, insertedParagraphs = []) {
+    const baselineValidation = validateRedlineOoxml(beforeXml);
+    const outputValidation = validateRedlineOoxml(outputXml);
+    const generatedIssues = subtractValidationIssueMultiset(outputValidation.issues, baselineValidation.issues);
+    const envelopeIssues = insertedParagraphs.flatMap(paragraph => (
+        validateRedlineOoxml(createSerializer().serializeToString(paragraph)).issues
+            .filter(issue => issue.severity === 'error')
+    ));
+    const generatedErrors = validationErrors(generatedIssues);
+    if (generatedErrors.length > 0 || envelopeIssues.length > 0) {
         return {
             valid: false,
             stage: 'validation',
-            message: validation.issues.filter(issue => issue.severity === 'error').map(issue => issue.message).join(' ')
+            code: 'GENERATED_OOXML_INVALID',
+            generatedIssues,
+            envelopeIssues,
+            message: [...generatedErrors, ...envelopeIssues].map(issue => issue.message).join(' ')
         };
     }
 
@@ -756,6 +898,176 @@ function verifyParagraphRestorationLifecycle(beforeXml, outputXml, sourceStartIn
         }
     }
     return { valid: true };
+}
+
+/**
+ * Inserts a new tracked run at an exact offset inside text visible only in the
+ * rejected view of a wholly deleted paragraph. The foreign deletion is split,
+ * never rewritten or re-authored.
+ */
+export async function insertIntoRejectedDeletedText(
+    documentXml,
+    targetText,
+    anchor,
+    modified,
+    author,
+    targetRef = null,
+    runtimeContext = null,
+    options = {}
+) {
+    const { serializer, xmlDoc, operationSession } = resolveMutationDocument(documentXml, options);
+    if (!xmlDoc) {
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: { code: 'PARSE_ERROR', message: 'Could not parse document OOXML.' }
+        };
+    }
+
+    const resolved = resolveTargetParagraph(xmlDoc, targetText, targetRef, 'insert', runtimeContext, options);
+    if (resolved?.error || !resolved?.paragraph) {
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: resolved?.error || { code: 'TARGET_NOT_FOUND', message: 'Rejected-view insertion target was not found.' }
+        };
+    }
+
+    const paragraph = resolved.paragraph;
+    const state = inspectForeignDeletedParagraphTarget(paragraph, author);
+    if (!state.matches) {
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: {
+                code: 'REJECTED_INSERTION_STATE_REQUIRED',
+                message: 'Rejected-view insertion requires a wholly deleted paragraph owned by another author.'
+            }
+        };
+    }
+    const structuralRefusal = getParagraphRestorationRefusal(paragraph, { requireFollowingParagraph: false });
+    if (structuralRefusal) {
+        return { documentXml, hasChanges: false, status: 'error', error: structuralRefusal };
+    }
+    if (/\r|\n/.test(modified)) {
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: {
+                code: 'UNSAFE_PARAGRAPH_BOUNDARY',
+                message: 'Rejected-view insertion supports run-level text only; use restore for paragraph boundaries.'
+            }
+        };
+    }
+
+    const rejectedText = extractCanonicalParagraphText(paragraph, { revisionView: 'rejected' });
+    if (!anchor.occurrenceExplicit && countNonOverlappingOccurrences(rejectedText, anchor.exactText) > 1) {
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: {
+                code: 'AMBIGUOUS_ANCHOR',
+                message: 'The rejected-view insertion anchor is repeated; provide anchor.occurrence explicitly.'
+            }
+        };
+    }
+    const anchorStart = findOccurrenceOffset(rejectedText, anchor.exactText, anchor.occurrence);
+    if (anchorStart < 0) {
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: { code: 'ANCHOR_NOT_FOUND', message: 'The rejected-view insertion anchor was not found at the requested occurrence.' }
+        };
+    }
+    const insertionOffset = anchorStart + anchor.offset;
+    const carriers = Array.from(paragraph.childNodes || []).filter(
+        node => node?.nodeType === 1 && node.namespaceURI === NS_W && node.localName === 'del'
+    );
+    if (carriers.some(carrier => hasUnsupportedDeletionSplitMarkup(paragraph, carrier))) {
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: {
+                code: 'UNSAFE_REVISION_BOUNDARY',
+                message: 'The rejected-view insertion boundary contains comments, bookmarks, fields, hyperlinks, moves, or non-text run markup that cannot be split safely.'
+            }
+        };
+    }
+    let carrierStart = 0;
+    let targetCarrier = null;
+    let carrierOffset = 0;
+    for (const carrier of carriers) {
+        const length = directDeletionCarrierText(carrier).length;
+        if (insertionOffset >= carrierStart && insertionOffset <= carrierStart + length) {
+            targetCarrier = carrier;
+            carrierOffset = insertionOffset - carrierStart;
+            break;
+        }
+        carrierStart += length;
+    }
+    if (!targetCarrier || carriers.map(directDeletionCarrierText).join('') !== rejectedText) {
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: {
+                code: 'UNSAFE_REVISION_NESTING',
+                message: 'The rejected-view anchor is not contained in a supported direct deletion carrier.'
+            }
+        };
+    }
+
+    const runProperties = insertedRunPropertiesAtDeletionOffset(targetCarrier, carrierOffset);
+    const { leftCarrier, rightCarrier } = splitTrackChangeCarrier(
+        xmlDoc,
+        targetCarrier,
+        carrierOffset,
+        options._revisionIdAllocator || null
+    );
+    const insertion = createWordElement(xmlDoc, 'w:ins');
+    const metadata = createRevisionMetadata(author, options._revisionIdAllocator || xmlDoc, 'ins');
+    insertion.setAttribute('w:id', String(metadata.id));
+    insertion.setAttribute('w:author', metadata.author);
+    insertion.setAttribute('w:date', metadata.date);
+    const run = createWordElement(xmlDoc, 'w:r');
+    if (runProperties) run.appendChild(runProperties);
+    const textNode = createWordElement(xmlDoc, 'w:t');
+    if (/^\s|\s$/.test(modified)) textNode.setAttribute('xml:space', 'preserve');
+    textNode.textContent = modified;
+    run.appendChild(textNode);
+    insertion.appendChild(run);
+
+    const parent = targetCarrier.parentNode;
+    if (leftCarrier) parent.insertBefore(leftCarrier, targetCarrier);
+    parent.insertBefore(insertion, targetCarrier);
+    if (rightCarrier) parent.insertBefore(rightCarrier, targetCarrier);
+    options?._mutationRemovedNodes?.push(targetCarrier);
+    parent.removeChild(targetCarrier);
+    options?._mutationLiveNodes?.push(paragraph, insertion);
+    operationSession?.invalidateParagraphMetadata?.();
+
+    const outputXml = serializer.serializeToString(xmlDoc);
+    const outputRejected = extractCanonicalParagraphText(paragraph, { revisionView: 'rejected' });
+    const outputAccepted = extractCanonicalParagraphText(paragraph, { revisionView: 'accepted' });
+    if (outputRejected !== rejectedText || !outputAccepted.includes(modified)) {
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: {
+                code: 'PATCH_ROUNDTRIP_MISMATCH',
+                message: 'Rejected-view insertion did not preserve the deleted source and expose the requested inserted text.'
+            }
+        };
+    }
+    return { documentXml: outputXml, hasChanges: true, status: 'ok' };
 }
 
 /**
@@ -891,7 +1203,8 @@ export async function restoreDeletedParagraphByExactText(
         }
     }
 
-    const existingBlock = precedingParagraphBlock(firstSource, sourceParagraphs.length);
+    const lastSource = sourceParagraphs[sourceParagraphs.length - 1];
+    const existingBlock = followingParagraphBlock(lastSource, sourceParagraphs.length);
     const hasExistingRestoration = existingBlock.length === sourceParagraphs.length
         && existingBlock.every(paragraph => isInsertedParagraphByAuthor(paragraph, author));
     if (
@@ -939,7 +1252,8 @@ export async function restoreDeletedParagraphByExactText(
         const paragraph = xmlDoc.importNode(template, true);
         return trackRestoredParagraph(xmlDoc, paragraph, author, operationSession);
     });
-    for (const paragraph of insertedParagraphs) parent.insertBefore(paragraph, firstSource);
+    const insertionPoint = lastSource.nextSibling;
+    for (const paragraph of insertedParagraphs) parent.insertBefore(paragraph, insertionPoint);
     if (hasExistingRestoration) {
         for (const paragraph of existingBlock) {
             options?._mutationRemovedNodes?.push(paragraph);
@@ -955,7 +1269,8 @@ export async function restoreDeletedParagraphByExactText(
         outputXml,
         sourceStartIndex,
         existingIndexes,
-        templates
+        templates,
+        insertedParagraphs
     );
     if (!oracle.valid) {
         return {
@@ -963,9 +1278,11 @@ export async function restoreDeletedParagraphByExactText(
             hasChanges: false,
             status: 'error',
             error: {
-                code: 'PATCH_ROUNDTRIP_MISMATCH',
+                code: oracle.code || 'PATCH_ROUNDTRIP_MISMATCH',
                 message: oracle.message,
                 stage: oracle.stage,
+                ...(oracle.generatedIssues ? { generatedIssues: oracle.generatedIssues } : {}),
+                ...(oracle.envelopeIssues ? { envelopeIssues: oracle.envelopeIssues } : {}),
                 ...(oracle.expected ? { expected: oracle.expected } : {}),
                 ...(oracle.actual ? { actual: oracle.actual } : {})
             }

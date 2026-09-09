@@ -3,7 +3,8 @@ import assert from 'assert/strict';
 import './setup-xml-provider.mjs';
 import {
     acceptTrackedChangesInOoxml,
-    applyRedlineToOxml
+    applyRedlineToOxml,
+    rejectTrackedChangesInOoxml
 } from '../index.js';
 import { extractCanonicalParagraphText } from '../core/paragraph-text.js';
 import { parseOoxmlSafe } from '../adapters/xml-adapter.js';
@@ -23,7 +24,7 @@ function insertion(id, text) {
 }
 
 function hyperlink(id, text) {
-    return `<w:hyperlink r:id="${id}">${run(text)}</w:hyperlink>`;
+    return `<w:hyperlink r:id="${id}" w:history="1">${run(text)}</w:hyperlink>`;
 }
 
 function acceptedParagraphText(xml) {
@@ -33,17 +34,17 @@ function acceptedParagraphText(xml) {
     return extractCanonicalParagraphText(paragraph);
 }
 
-const original = `Acme will take reasonable measures to safeguard Data. This Agreement incorporates by reference the Processing Addendum located at${nbsp}example.com/legal/dpa, which sets forth obligations of the Parties. In addition, Acme will use Data only in accordance with the Agreement and, to the extent Data includes Personal Data, Acme's Widget Policy located at${nbsp}example.com/legal/wp/${nbsp}(the "Widget Policy").`;
-const modified = `Acme will take reasonable measures to safeguard Data. This Agreement incorporates by reference the Processing Addendum located at example.com/legal/dpa, which sets forth obligations of the Parties. In addition, Acme will use Data only in accordance with the Agreement and, to the extent Data includes Personal Data, Acme's Widget Policy, as in effect as of the date this Agreement is executed, located at example.com/legal/wp/ (the "Widget Policy").`;
+const original = `Example Co. will take reasonable measures to safeguard records. This agreement incorporates the Processing Schedule located at${nbsp}example.invalid/schedule, which states the parties' obligations. Example Co. will also use records under the agreement and the Service Policy located at${nbsp}example.invalid/policy/${nbsp}(the "Service Policy").`;
+const modified = `Example Co. will take reasonable measures to safeguard records. This agreement incorporates the Processing Schedule located at example.invalid/schedule, which states the parties' obligations. Example Co. will also use records under the agreement and the Service Policy, as in effect on execution, located at example.invalid/policy/ (the "Service Policy").`;
 
 const source = `<w:p xmlns:w="${W}" xmlns:r="${R}">`
-    + insertion(1, 'Acme will take reasonable measures to safeguard Data. This Agreement incorporates by reference the Processing Addendum located at')
+    + insertion(1, 'Example Co. will take reasonable measures to safeguard records. This agreement incorporates the Processing Schedule located at')
     + insertion(2, nbsp)
-    + hyperlink('rIdDpa', 'example.com/legal/dpa')
-    + insertion(3, ", which sets forth obligations of the Parties. In addition, Acme will use Data only in accordance with the Agreement and, to the extent Data includes Personal Data, Acme's Widget Policy located at")
+    + hyperlink('rIdSchedule', 'example.invalid/schedule')
+    + insertion(3, ", which states the parties' obligations. Example Co. will also use records under the agreement and the Service Policy located at")
     + insertion(4, nbsp)
-    + hyperlink('rIdWidget', 'example.com/legal/wp/')
-    + insertion(5, `${nbsp}(the "Widget Policy").`)
+    + hyperlink('rIdPolicy', 'example.invalid/policy/')
+    + insertion(5, `${nbsp}(the "Service Policy").`)
     + '</w:p>';
 
 const result = await applyRedlineToOxml(source, original, modified, {
@@ -68,14 +69,15 @@ assert.equal(parsedResult.doc.getElementsByTagNameNS(W, 'hyperlink').length, 2,
 // Replacing the space immediately after a hyperlink must keep the paired
 // insertion at that boundary rather than appending it after the following run.
 {
-    const policyOriginal = `Salary’s Privacy Policy located at${nbsp}www.salary.com/legal/pp/${nbsp}(the “Privacy Policy”).`;
-    const policyModified = `Salary’s Privacy Policy located at${nbsp}www.salary.com/legal/pp/, as it exists as of execution${nbsp}(the “Privacy Policy”).`;
+    const policyOriginal = `Example Co.’s Service Policy located at${nbsp}example.invalid/policy/${nbsp}(the “Service Policy”).`;
+    const policyCallerTarget = 'Example Co.’s Service Policy located at example.invalid/policy/ (the “Service Policy”).';
+    const policyModified = 'Example Co.’s Service Policy, as in effect on execution, located at example.invalid/policy/ (the “Service Policy”).';
     const policySource = `<w:p xmlns:w="${W}" xmlns:r="${R}">`
-        + run('Salary’s Privacy Policy located at')
+        + run('Example Co.’s Service Policy located at')
         + run(nbsp)
-        + hyperlink('rIdPrivacy', 'www.salary.com/legal/pp/')
+        + hyperlink('rIdPolicy', 'example.invalid/policy/')
         + run(`${nbsp}(the “`)
-        + '<w:r><w:rPr><w:b/><w:bCs/><w:u w:val="single"/></w:rPr><w:t>Privacy Policy</w:t></w:r>'
+        + '<w:r><w:rPr><w:b/><w:bCs/><w:u w:val="single"/></w:rPr><w:t>Service Policy</w:t></w:r>'
         + run('”).')
         + '</w:p>';
     const policyResult = await applyRedlineToOxml(policySource, policyOriginal, policyModified, {
@@ -89,7 +91,8 @@ assert.equal(parsedResult.doc.getElementsByTagNameNS(W, 'hyperlink').length, 2,
     const policyParsed = parseOoxmlSafe(policyResult.oxml, 'application/xml');
     const policyLinks = policyParsed.doc.getElementsByTagNameNS(W, 'hyperlink');
     assert.equal(policyLinks.length, 1);
-    assert.equal(policyLinks[0].getAttribute('r:id'), 'rIdPrivacy');
+    assert.equal(policyLinks[0].getAttribute('r:id'), 'rIdPolicy');
+    assert.equal(policyLinks[0].getAttribute('w:history'), '1');
 
     const policyAccepted = acceptTrackedChangesInOoxml(policyResult.oxml, { allAuthors: true });
     assert.equal(acceptedParagraphText(policyAccepted.oxml), policyModified);
@@ -97,15 +100,23 @@ assert.equal(parsedResult.doc.getElementsByTagNameNS(W, 'hyperlink').length, 2,
     const policyDocument = `<w:document xmlns:w="${W}" xmlns:r="${R}"><w:body>${policySource}<w:sectPr/></w:body></w:document>`;
     const policyBatch = await applyOperationsToDocumentXml(policyDocument, [{
         type: 'redline',
-        target: { exactText: policyOriginal },
+        target: { exactText: policyCallerTarget },
         modified: policyModified,
         author: 'Reviewer',
         existingRevisions: 'slice-cross-author'
     }], 'Reviewer', null, { atomic: true, strictTargets: true });
     assert.equal(policyBatch.status, 'ok', JSON.stringify(policyBatch.error));
     assert.equal(policyBatch.results[0]?.status, 'applied');
+    assert.equal(policyBatch.results[0]?.resolvedTarget?.targetTextMatch?.mode, 'space_equivalent');
+    assert.deepEqual(
+        policyBatch.results[0]?.resolvedTarget?.targetTextMatch?.differences.map(item => [item.sourceCodePoint, item.requestedCodePoint]),
+        [['U+00A0', 'U+0020'], ['U+00A0', 'U+0020']]
+    );
     const policyBatchAccepted = acceptTrackedChangesInOoxml(policyBatch.documentXml, { allAuthors: true });
     assert.equal(acceptedParagraphText(policyBatchAccepted.oxml), policyModified);
+    const policyBatchRejected = rejectTrackedChangesInOoxml(policyBatch.documentXml, { author: 'Reviewer' });
+    assert.equal(acceptedParagraphText(policyBatchRejected.oxml), policyOriginal,
+        'Rejecting the current reviewer must restore the exact NBSP-bearing source text');
 }
 
 // The document operation path used by CLI apply must preserve the same invariant.

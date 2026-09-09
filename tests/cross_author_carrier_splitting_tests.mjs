@@ -64,7 +64,7 @@ function revisionIds(element) {
     assert.equal(result.rightCarrier.getElementsByTagNameNS(NS_W, 'b').length, 1);
     assert.deepEqual(revisionIds(result.leftCarrier), [7, 8]);
     assert.deepEqual(revisionIds(result.rightCarrier), [1001, 1000]);
-    assert.deepEqual(recordedRevisions, [[1001, 'ins']]);
+    assert.deepEqual(recordedRevisions, [[1000, 'rPrChange'], [1001, 'ins']]);
     assert.equal(text(carrier), 'amended Agreement', 'source carrier must not be mutated');
 }
 

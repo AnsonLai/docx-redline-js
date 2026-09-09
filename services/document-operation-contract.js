@@ -43,6 +43,7 @@ function nonEmptyString(value) {
 
 export function getCanonicalOperationType(operation) {
     const type = operation?.type;
+    if (type === 'insert' && operation?.target?.revisionView === 'rejected') return 'rejected-insert';
     if (type === 'restore') return 'restore';
     if (type === 'comment' || type === 'comment_reply' || type === 'highlight') return type;
     if (type === 'paragraph-format') return 'paragraph-format';
@@ -95,6 +96,12 @@ export function normalizeDocumentOperation(operation) {
         operationId: nonEmptyString(source.operationId) ? source.operationId.trim() : null,
         captureKey: nonEmptyString(source.captureKey) ? source.captureKey.trim() : null,
         operationKind: kind,
+        anchor: isRecord(source.anchor) ? {
+            exactText: typeof source.anchor.exactText === 'string' ? source.anchor.exactText : '',
+            occurrence: Number.isInteger(source.anchor.occurrence) && source.anchor.occurrence > 0 ? source.anchor.occurrence : 1,
+            occurrenceExplicit: Number.isInteger(source.anchor.occurrence) && source.anchor.occurrence > 0,
+            offset: Number.isInteger(source.anchor.offset) ? source.anchor.offset : null
+        } : null,
         targetDescriptor,
         targetEndDescriptor,
         target: targetDescriptor.text,
@@ -209,6 +216,39 @@ export function validateDocumentOperation(operation) {
             valid: false,
             error: { code: 'INVALID_OPERATION', message: 'Redline operations require a string "modified" field.' }
         };
+    }
+
+    if (normalized.operationKind === 'rejected-insert') {
+        if (!nonEmptyString(normalized.modified)) {
+            return {
+                valid: false,
+                error: { code: 'INVALID_OPERATION', message: 'Rejected-view insert operations require non-empty string "modified" text.' }
+            };
+        }
+        if (
+            !normalized.anchor
+            || !nonEmptyString(normalized.anchor.exactText)
+            || !Number.isInteger(normalized.anchor.offset)
+            || normalized.anchor.offset < 0
+            || normalized.anchor.offset > normalized.anchor.exactText.length
+        ) {
+            return {
+                valid: false,
+                error: {
+                    code: 'INVALID_OPERATION',
+                    message: 'Rejected-view insert operations require anchor.exactText, a positive occurrence, and an offset within the anchor text.'
+                }
+            };
+        }
+        if (normalized.existingRevisions !== 'slice-cross-author') {
+            return {
+                valid: false,
+                error: {
+                    code: 'INVALID_OPERATION',
+                    message: 'Rejected-view insert operations require existingRevisions: "slice-cross-author".'
+                }
+            };
+        }
     }
 
     if (normalized.operationKind === 'restore') {

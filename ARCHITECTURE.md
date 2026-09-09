@@ -94,6 +94,12 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
     fingerprints, document order, and table context for deterministic reuse.
 - `core/redline-validation.js`
   - Runtime structural validation (`validateRedlineOoxml`) mirroring the test-suite invariants: no nested revisions, `w:delText` inside `w:del`, complete revision metadata, unique revision ids, preserved boundary whitespace.
+- `core/validation-delta.js`
+  - Stable issue signatures and multiset subtraction for classifying baseline
+    versus generated validation issues without hiding added duplicate errors.
+- `core/revision-cloning.js`
+  - Shared effective-property cloning strips historical revision descendants;
+    intentional revision-bearing splits refresh cloned property-change IDs.
 - `engine/oxml-engine.js`
   - Main reconciliation router, mode selection, existing-revision policy gate, and status/error result handling.
 - `engine/route-selection.js`
@@ -102,7 +108,10 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 - `engine/run-builders.js`
   - Shared builders for insertion/deletion wrappers, paragraph-mark revisions, visible run content, and run-property changes.
 - `engine/surgical-*.js`
-  - Surgical run splitting, diff application, and span helpers for localized edits that preserve surrounding markup.
+  - Surgical run splitting, diff application, and span helpers for localized edits that preserve surrounding markup. Plain-text edit groups execute from right to left with a fresh live span index, while space/NBSP-only replacement hunks are refined to character-local changes so unchanged hyperlink containers survive.
+    The shared carrier splitter also handles explicit rejected-view deletion
+    splits, retaining `w:delText`, tabs, breaks, soft/non-breaking hyphens,
+    formatting, foreign metadata, and fresh trailing/property-change IDs.
 - `engine/formatting-removal.js`
   - Shared formatting removal and highlight helpers.
 - `pipeline/list-markers.js`
@@ -130,10 +139,21 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
     preflight, single-operation application, batch application, and scheduling.
 - `services/document-operation-applier.js`
   - Canonical single-operation validation, author resolution, dispatch, and
-    result metadata assembly.
+    result metadata assembly. Before commit it validates the entire live
+    document against the operation savepoint and refuses newly generated
+    structural errors, including duplicate revision IDs.
 - `services/document-operation-mutations.js`
   - Coupled OOXML mutation implementations for redline, highlight, and comment
-    operations. These use leaf-module imports and never import the root entry.
+    operations. For text-bearing edits, the resolved paragraph's exact
+    accepted-view text is the source coordinate system even when target
+    selection used normalized whitespace;
+    bounded match-mode/code-point diagnostics are attached to resolved target
+    metadata. Explicit rejected-view insertion splits a supported direct
+    foreign `w:del` at an anchor-relative offset into sibling deletion,
+    insertion, and deletion carriers. Paragraph restoration emits its inserted
+    block after the untouched source range and verifies baseline-delta,
+    mutation-envelope, and lifecycle postconditions. These use leaf-module
+    imports and never import the root entry.
 - `services/batch-operation-orchestrator.js`
   - Comment-first stable scheduling, atomic policy, artifact aggregation,
     per-operation results, one final document serialization, and deferred
@@ -157,11 +177,16 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
     revision authors, table context, and advisory visible numbering.
 - `node/docx-document.js`
   - Transactional whole-DOCX editing, artifact wiring, validation, and rollback.
+    OOXML and package issues are classified as baseline/generated multisets, so
+    unchanged source defects remain diagnostics while new defects block writes.
     This surface is excluded from the browser/root dependency graph.
 - `node/cli.js` and `bin/docx-redline.js`
   - Cross-platform, JSON-only agent command boundary. Read commands never
     mutate; write commands require attribution, use package transactions, and
     only overwrite source files under explicit `--in-place` authorization.
+    Mutation commands expose a compact contract: package/XML payloads and full
+    validation arrays remain internal, while stdout contains durability fields,
+    per-operation evidence, validation counts, and a derived completion flag.
 - `orchestration/*`
   - Route planning and list fallback orchestration utilities.
 
@@ -309,6 +334,16 @@ still be re-exported from `index.js`.
 - Operation-level authors override the batch author. Runtime results expose
   `authorUsed`, `authorsUsed`, `operationType`, `resolvedBy`, and resolved target
   metadata so integrations can audit what the engine actually selected.
+- A normalized target match does not become an edit coordinate system for a
+  text-bearing mutation. Mutation uses canonical accepted-view source text, and `resolvedTarget.targetTextMatch`
+  records `exact`, `space_equivalent`, or `normalized` selection plus bounded
+  invisible-character diagnostics.
+- CLI contract version 3 is deliberately narrower than library result objects.
+  `apply`, `accept`, `reject`, and `delete-comments` omit `documentXml`, package
+  parts, inspection text, and full issue arrays. `completion` is true only when
+  `written === true`, top-level status is neither error nor partial, and every
+  operation result is non-error. The `validate` command remains the full issue
+  reporting surface.
 - `preflightOperations` is the read-only safety boundary for agent-generated
   batches. It uses strict targeting by default; mutation APIs retain permissive
   legacy targeting unless `strictTargets: true` is requested. In v1.0.0,

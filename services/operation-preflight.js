@@ -418,7 +418,7 @@ export function preflightOperations(documentXml, operations, author, options = {
     }
 
     for (const [targetIndex, targetResults] of byTarget) {
-        const redlines = targetResults.filter(result => ['redline', 'restore'].includes(result.operationType));
+        const redlines = targetResults.filter(result => ['redline', 'restore', 'rejected-insert'].includes(result.operationType));
         const highlights = targetResults.filter(result => result.operationType === 'highlight');
         const target = targetResults[0].resolvedTarget;
         if (redlines.length > 1) {

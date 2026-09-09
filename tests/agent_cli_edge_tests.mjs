@@ -72,7 +72,25 @@ try {
     const failedOutput = path.join(directory, 'must-not-exist.docx');
     const failed = await executeCli(['apply', input, '--operations', invalidTarget, '--output', failedOutput]);
     assert.equal(failed.status, 'error'); assert.equal(failed.written, false);
+    assert.equal(failed.outputPath, null);
+    assert.equal(failed.completion, false);
+    assert.equal('documentXml' in failed, false, 'normal CLI failures must omit full document XML');
+    assert.equal(Array.isArray(failed.validation.originalIssues), false, 'normal CLI failures must summarize baseline issues');
+    assert.equal(typeof failed.validation.originalIssues.total, 'number');
     await assert.rejects(access(failedOutput)); assert.deepEqual(await readFile(input), fixture);
+
+    let failedStdout = '';
+    const failedExit = await runCli(['apply', input, '--operations', invalidTarget, '--output', failedOutput], {
+        stdout: { write: value => { failedStdout += value; } }
+    });
+    assert.notEqual(failedExit, 0);
+    assert(failedStdout.length < 12000, `mutation failure JSON should be bounded, got ${failedStdout.length} bytes`);
+    assert.equal(failedStdout.includes('<w:document'), false);
+    assert.equal(failedStdout.includes('Table Needle'), false, 'mutation failure JSON must not echo unrelated document body text');
+    const failedJson = JSON.parse(failedStdout);
+    assert.equal(failedJson.results[0].error.code, 'TARGET_NOT_FOUND');
+    assert.equal(failedJson.written, false);
+    assert.equal(failedJson.outputPath, null);
 
     const invalidAnchor = path.join(directory, 'invalid-anchor.json');
     await writeFile(invalidAnchor, JSON.stringify({ operations:[

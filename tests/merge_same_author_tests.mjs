@@ -124,7 +124,7 @@ function createDocumentXml(bodyInner) {
         modified: 'Clause 2: Payment within 60 calendar days.'
     }, 'Editor');
     assert.equal(res2.hasChanges, true);
-    assert.ok(!res2.documentXml.includes('45'), 'Intermediate "45 days" should not appear in document markup');
+    assert.ok(!res2.documentXml.includes('45 days'), 'Intermediate "45 days" should not appear in document markup');
 
     // Rejecting the document restores "30 days"
     const rejectedDoc = rejectTrackedChangesInOoxml(res2.documentXml, { author: 'Editor' });

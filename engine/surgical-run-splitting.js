@@ -8,7 +8,7 @@ import {
 import { refreshRunPropertyChangeIds } from '../core/revision-cloning.js';
 import { getRunChildText, isTextLikeRunChild } from './surgical-spans.js';
 
-const TRACK_CHANGE_CARRIERS = new Set(['ins']);
+const TRACK_CHANGE_CARRIERS = new Set(['ins', 'del']);
 
 export function getRunContentPieces(runElement) {
     const pieces = [];
@@ -72,7 +72,7 @@ export function insertRunPiecesBefore(xmlDoc, parent, referenceNode, pieces, rPr
 }
 
 /**
- * Splits a run-level tracked-change carrier at an accepted-view character
+ * Splits a run-level tracked-change carrier at its visible-view character
  * offset without mutating the source carrier. The original revision ID stays
  * with the leading fragment; an interior trailing fragment receives a fresh,
  * document-scoped ID while all other carrier metadata remains unchanged.
@@ -86,7 +86,7 @@ export function insertRunPiecesBefore(xmlDoc, parent, referenceNode, pieces, rPr
 export function splitTrackChangeCarrier(xmlDoc, carrierElement, splitOffset, allocator = null) {
     const carrierName = getLocalName(carrierElement);
     if (!TRACK_CHANGE_CARRIERS.has(carrierName)) {
-        throw new TypeError('splitTrackChangeCarrier requires a w:ins carrier.');
+        throw new TypeError('splitTrackChangeCarrier requires a w:ins or w:del carrier.');
     }
     if (!Number.isInteger(splitOffset) || splitOffset < 0) {
         throw new RangeError('splitOffset must be a non-negative integer.');
@@ -129,17 +129,18 @@ export function splitTrackChangeCarrier(xmlDoc, carrierElement, splitOffset, all
         } else {
             const localOffset = splitOffset - offset;
             const rPr = Array.from(child.childNodes || []).find(node => isWordElement(node, 'rPr')) || null;
-            const leftPieces = sliceRunPieces(xmlDoc, pieces, 0, localOffset, false);
-            const rightPieces = sliceRunPieces(xmlDoc, pieces, localOffset, runLength, false);
+            const asDeletedText = carrierName === 'del';
+            const leftPieces = sliceRunPieces(xmlDoc, pieces, 0, localOffset, asDeletedText);
+            const rightPieces = sliceRunPieces(xmlDoc, pieces, localOffset, runLength, asDeletedText);
             leftCarrier.appendChild(createRunFromPieces(xmlDoc, leftPieces, rPr));
             const rightRun = createRunFromPieces(xmlDoc, rightPieces, rPr);
-            refreshRunPropertyChangeIds(rightRun, resolveAllocator(xmlDoc, allocator));
             rightCarrier.appendChild(rightRun);
         }
         offset = runEnd;
     }
 
     const resolvedAllocator = resolveAllocator(xmlDoc, allocator);
+    refreshRunPropertyChangeIds(rightCarrier, resolvedAllocator);
     const nextId = resolvedAllocator.next();
     setWordAttribute(rightCarrier, 'id', String(nextId));
     resolvedAllocator._receiptCollector?.recordRevision(nextId, carrierName);
@@ -166,7 +167,7 @@ function getLocalName(element) {
 }
 
 function cloneRunPiece(xmlDoc, sourceNode, text, asDeletedText) {
-    if (asDeletedText) {
+    if (asDeletedText && (isWordElement(sourceNode, 'delText') || isWordElement(sourceNode, 't'))) {
         const delText = createWordElement(xmlDoc, 'w:delText');
         delText.setAttribute('xml:space', 'preserve');
         delText.textContent = text;
@@ -190,6 +191,17 @@ function cloneRunPiece(xmlDoc, sourceNode, text, asDeletedText) {
     }
     if (text === '\u2011' && isWordElement(sourceNode, 'noBreakHyphen')) {
         return sourceNode.cloneNode(true);
+    }
+
+    if (text === '\u00ad' && isWordElement(sourceNode, 'softHyphen')) {
+        return sourceNode.cloneNode(true);
+    }
+
+    if (asDeletedText) {
+        const delText = createWordElement(xmlDoc, 'w:delText');
+        delText.setAttribute('xml:space', 'preserve');
+        delText.textContent = text;
+        return delText;
     }
 
     const textNode = createWordElement(xmlDoc, 'w:t');

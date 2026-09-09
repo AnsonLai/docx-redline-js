@@ -128,7 +128,7 @@ export function inspectForeignDeletedParagraphTarget(paragraph, mutationAuthor) 
     };
 }
 
-export function getParagraphRestorationRefusal(paragraph) {
+export function getParagraphRestorationRefusal(paragraph, options = {}) {
     const pPr = directChild(paragraph, 'pPr');
     if (directChild(pPr, 'sectPr')) {
         return {
@@ -169,13 +169,15 @@ export function getParagraphRestorationRefusal(paragraph) {
         };
     }
 
-    let sibling = paragraph?.nextSibling || null;
-    while (sibling && (sibling.nodeType !== 1 || localNameOf(sibling) !== 'p')) sibling = sibling.nextSibling;
-    if (!sibling) {
-        return {
-            code: 'UNSAFE_PARAGRAPH_PLACEMENT',
-            message: 'Refusing to restore a deleted paragraph without a following paragraph in the same structural container.'
-        };
+    if (options.requireFollowingParagraph !== false) {
+        let sibling = paragraph?.nextSibling || null;
+        while (sibling && (sibling.nodeType !== 1 || localNameOf(sibling) !== 'p')) sibling = sibling.nextSibling;
+        if (!sibling) {
+            return {
+                code: 'UNSAFE_PARAGRAPH_PLACEMENT',
+                message: 'Refusing to restore a deleted paragraph without a following paragraph in the same structural container.'
+            };
+        }
     }
 
     return null;

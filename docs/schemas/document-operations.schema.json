@@ -28,6 +28,16 @@
       "additionalProperties": false
     },
     "operationArray": { "type": "array", "items": { "$ref": "#/$defs/operation" } },
+    "rejectedTextInsertionAnchor": {
+      "type": "object",
+      "required": ["exactText", "offset"],
+      "properties": {
+        "exactText": { "type": "string", "minLength": 1 },
+        "occurrence": { "type": "integer", "minimum": 1 },
+        "offset": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
     "target": {
       "oneOf": [
         { "type": "string", "minLength": 1 },
@@ -86,7 +96,7 @@
           "additionalProperties": false
         },
         {
-          "allOf": [ { "$ref": "#/$defs/base" }, { "type": "object", "required": ["modified"], "properties": { "type": { "enum": ["redline", "replace", "format", "list-change", "table-reconciliation", "insert"] }, "modified": { "type": "string" }, "structuredContent": { "type": "boolean" }, "targetEnd": { "$ref": "#/$defs/target" }, "targetEndRef": { "type": ["integer", "string", "null"] } } } ]
+          "allOf": [ { "$ref": "#/$defs/base" }, { "type": "object", "required": ["modified"], "properties": { "type": { "enum": ["redline", "replace", "format", "list-change", "table-reconciliation", "insert"] }, "modified": { "type": "string" }, "structuredContent": { "type": "boolean" }, "targetEnd": { "$ref": "#/$defs/target" }, "targetEndRef": { "type": ["integer", "string", "null"] }, "anchor": { "$ref": "#/$defs/rejectedTextInsertionAnchor" } } } ]
         },
         {
           "allOf": [ { "$ref": "#/$defs/base" }, { "type": "object", "required": ["modified"], "properties": { "type": { "const": "restore" }, "modified": { "oneOf": [ { "type": "string", "minLength": 1 }, { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } } ] }, "targetEnd": { "$ref": "#/$defs/target" }, "targetEndRef": { "type": ["integer", "string", "null"] } } } ]

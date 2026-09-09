@@ -6,7 +6,7 @@
  */
 
 import { getApplicableFormatHints } from '../pipeline/markdown-processor.js';
-import { computeInsertionOnlyDiffs, computeWordDiffs } from '../pipeline/diff-engine.js';
+import { computeCharacterDiffs, computeInsertionOnlyDiffs, computeWordDiffs } from '../pipeline/diff-engine.js';
 import { getDocumentParagraphs } from './format-extraction.js';
 import { buildSpanIndex, buildSurgicalTextSpans, forEachOverlappingSpan } from './surgical-spans.js';
 import {
@@ -115,7 +115,10 @@ export function applySurgicalMode(xmlDoc, originalText, modifiedText, serializer
     const insertionOnlyDiffs = options.existingRevisions === 'slice-cross-author'
         ? computeInsertionOnlyDiffs(fullText, modifiedText)
         : null;
-    const diffs = insertionOnlyDiffs || computeWordDiffs(fullText, modifiedText, diffOptions);
+    const diffs = insertionOnlyDiffs || refineSpaceEquivalentReplacements(
+        computeWordDiffs(fullText, modifiedText, diffOptions),
+        diffOptions
+    );
     const spanIndex = buildSpanIndex(textSpans);
     const pairReplacements = options.pairReplacements === true;
     const warnings = [];
@@ -156,6 +159,84 @@ export function applySurgicalMode(xmlDoc, originalText, modifiedText, serializer
                 });
             }
             if (insertResult === true) hasChanges = true;
+        }
+    } else if (formatHints.length === 0) {
+        const editOperations = collectTextEditOperations(diffs);
+        for (const operation of editOperations.reverse()) {
+            const liveSpanIndex = buildSpanIndex(buildSurgicalTextSpans(allParagraphs).textSpans);
+            if (operation.type === 'insert') {
+                const inserted = processInsert(
+                    xmlDoc,
+                    liveSpanIndex,
+                    operation.start,
+                    operation.text.replace(/\n/g, ' '),
+                    author,
+                    formatHints,
+                    operation.newPos,
+                    generateRedlines,
+                    allParagraphs[0] || null,
+                    null,
+                    options?.insertionAffinity || null,
+                    options?.existingRevisions || 'merge-same-author'
+                );
+                if (inserted && typeof inserted === 'object' && inserted.error) {
+                    return withOoxmlSourceType({
+                        oxml: serializer.serializeToString(xmlDoc),
+                        hasChanges: false,
+                        status: 'error',
+                        error: inserted.error
+                    });
+                }
+                if (inserted === true) hasChanges = true;
+                continue;
+            }
+
+            let delMetadata = null;
+            let insMetadata = null;
+            if (operation.type === 'replace' && pairReplacements && generateRedlines && operation.text.replace(/\n/g, ' ')) {
+                const checkResult = checkSafeAdjacencyForPairing(
+                    liveSpanIndex,
+                    operation.start,
+                    operation.end,
+                    options?.existingRevisions === 'slice-cross-author'
+                );
+                if (checkResult.safe) {
+                    const event = createReplacementRevisionEvent(author, xmlDoc);
+                    delMetadata = { id: event.deletionId, author: event.author, date: event.date };
+                    insMetadata = { id: event.insertionId, author: event.author, date: event.date };
+                } else if (checkResult.structuralBoundary) {
+                    warnings.push('PAIRING_SKIPPED_STRUCTURAL_BOUNDARY');
+                }
+            }
+
+            if (processDelete(xmlDoc, liveSpanIndex, operation.start, operation.end, author, generateRedlines, delMetadata)) {
+                hasChanges = true;
+            }
+            if (operation.type === 'replace') {
+                const inserted = processInsert(
+                    xmlDoc,
+                    liveSpanIndex,
+                    operation.end,
+                    operation.text.replace(/\n/g, ' '),
+                    author,
+                    formatHints,
+                    operation.newPos,
+                    generateRedlines,
+                    allParagraphs[0] || null,
+                    insMetadata,
+                    options?.insertionAffinity || null,
+                    options?.existingRevisions || 'merge-same-author'
+                );
+                if (inserted && typeof inserted === 'object' && inserted.error) {
+                    return withOoxmlSourceType({
+                        oxml: serializer.serializeToString(xmlDoc),
+                        hasChanges: false,
+                        status: 'error',
+                        error: inserted.error
+                    });
+                }
+                if (inserted === true) hasChanges = true;
+            }
         }
     } else {
 
@@ -267,7 +348,9 @@ export function applySurgicalMode(xmlDoc, originalText, modifiedText, serializer
                 message: 'Generated OOXML accepted-view text does not match the requested modified text; the mutation was rejected.',
                 mismatchOffset,
                 expectedExcerpt: excerptAt(expectedText, mismatchOffset),
-                actualExcerpt: excerptAt(actualText, mismatchOffset)
+                actualExcerpt: excerptAt(actualText, mismatchOffset),
+                expectedCodePoint: codePointAtOffset(expectedText, mismatchOffset),
+                actualCodePoint: codePointAtOffset(actualText, mismatchOffset)
             },
             ...(warnings.length > 0 ? { warnings: [...new Set(warnings)] } : {})
         });
@@ -292,6 +375,68 @@ function excerptAt(text, offset, radius = 40) {
     const start = Math.max(0, offset - radius);
     const end = Math.min(text.length, offset + radius);
     return text.slice(start, end);
+}
+
+function codePointAtOffset(text, offset) {
+    if (offset >= text.length) return 'END';
+    return `U+${text.codePointAt(offset).toString(16).toUpperCase().padStart(4, '0')}`;
+}
+
+function refineSpaceEquivalentReplacements(diffs, diffOptions) {
+    const refined = [];
+    for (let index = 0; index < diffs.length; index++) {
+        const [op, text] = diffs[index];
+        const next = diffs[index + 1];
+        if (
+            op === -1
+            && next?.[0] === 1
+            && text !== next[1]
+            && text.length === next[1].length
+            && text.replace(/\u00a0/g, ' ') === next[1].replace(/\u00a0/g, ' ')
+        ) {
+            refined.push(...computeCharacterDiffs(text, next[1], diffOptions));
+            index++;
+            continue;
+        }
+        refined.push([op, text]);
+    }
+    return refined;
+}
+
+function collectTextEditOperations(diffs) {
+    const operations = [];
+    let originalPos = 0;
+    let newPos = 0;
+    for (let index = 0; index < diffs.length; index++) {
+        const [op, text] = diffs[index];
+        if (op === 0) {
+            originalPos += text.length;
+            newPos += text.length;
+            continue;
+        }
+        if (op === -1) {
+            const next = diffs[index + 1];
+            if (next?.[0] === 1) {
+                operations.push({
+                    type: 'replace',
+                    start: originalPos,
+                    end: originalPos + text.length,
+                    newPos,
+                    text: next[1]
+                });
+                originalPos += text.length;
+                newPos += next[1].length;
+                index++;
+            } else {
+                operations.push({ type: 'delete', start: originalPos, end: originalPos + text.length, newPos, text: '' });
+                originalPos += text.length;
+            }
+            continue;
+        }
+        operations.push({ type: 'insert', start: originalPos, end: originalPos, newPos, text });
+        newPos += text.length;
+    }
+    return operations;
 }
 
 function collectInsertionOperations(diffs) {

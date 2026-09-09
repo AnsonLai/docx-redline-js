@@ -3,7 +3,7 @@ import { getFirstElementByTag } from '../core/xml-query.js';
 import { isWordElement } from '../core/word-xml.js';
 
 export function getRunChildText(child) {
-    if (isWordElement(child, 't')) return child.textContent || '';
+    if (isWordElement(child, 't') || isWordElement(child, 'delText')) return child.textContent || '';
     if (isWordElement(child, 'br') || isWordElement(child, 'cr')) return '\n';
     if (isWordElement(child, 'tab')) return '\t';
     if (isWordElement(child, 'noBreakHyphen')) return '\u2011';
@@ -13,6 +13,7 @@ export function getRunChildText(child) {
 
 export function isTextLikeRunChild(child) {
     return isWordElement(child, 't')
+        || isWordElement(child, 'delText')
         || isWordElement(child, 'br')
         || isWordElement(child, 'cr')
         || isWordElement(child, 'tab')

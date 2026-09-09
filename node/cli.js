@@ -8,10 +8,11 @@ import { configureLogger } from '../adapters/logger.js';
 import { isExistingRevisionsPolicy } from '../services/document-operation-contract.js';
 
 const suffixes = { apply: 'redlined', accept: 'accepted', reject: 'rejected', 'delete-comments': 'comments-removed' };
-const CLI_CONTRACT_VERSION = 2;
+const CLI_CONTRACT_VERSION = 3;
 const CLI_CAPABILITIES = [
     'atomic-batch-results-on-package-failure',
     'baseline-aware-validation',
+    'compact-mutation-results',
     'cross-author-revision-slicing',
     'document-scoped-list-revision-ids'
 ];
@@ -167,6 +168,120 @@ function serializable(value) {
     return rest;
 }
 
+function boundedText(value, limit = 512) {
+    const text = String(value ?? '');
+    return text.length > limit ? `${text.slice(0, limit)}…` : text;
+}
+
+function compactError(error) {
+    if (!error || typeof error !== 'object') return error;
+    const fields = [
+        'code', 'stage', 'mismatchOffset', 'expectedExcerpt', 'actualExcerpt',
+        'expectedCodePoint', 'actualCodePoint', 'ownerAuthor', 'commentIds'
+    ];
+    const compact = {};
+    for (const field of fields) {
+        if (error[field] !== undefined) compact[field] = error[field];
+    }
+    if (Array.isArray(error.comments)) {
+        compact.comments = error.comments.map(comment => ({
+            ...(comment?.id !== undefined ? { id: comment.id } : {}),
+            ...(comment?.author !== undefined ? { author: boundedText(comment.author, 160) } : {}),
+            ...(comment?.text !== undefined ? { text: boundedText(comment.text, 512) } : {})
+        }));
+    }
+    if (Array.isArray(error.candidates)) {
+        compact.candidates = error.candidates.map(compactResolvedTarget);
+    }
+    compact.message = boundedText(error.message || String(error));
+    return compact;
+}
+
+function compactResolvedTarget(target) {
+    if (!target || typeof target !== 'object') return target;
+    const { text: _text, exactText: _exactText, ...compact } = target;
+    return compact;
+}
+
+function compactReceipt(receipt) {
+    if (!receipt || typeof receipt !== 'object') return receipt;
+    return {
+        ...receipt,
+        affectedTargets: Array.isArray(receipt.affectedTargets)
+            ? receipt.affectedTargets.map(compactResolvedTarget)
+            : [],
+        warnings: Array.isArray(receipt.warnings) ? receipt.warnings.map(warning => boundedText(warning)) : []
+    };
+}
+
+function compactOperationResult(result) {
+    if (!result || typeof result !== 'object') return result;
+    return {
+        ...result,
+        ...(result.resolvedTarget ? { resolvedTarget: compactResolvedTarget(result.resolvedTarget) } : {}),
+        ...(result.resolvedAnchor ? { resolvedAnchor: compactResolvedTarget(result.resolvedAnchor) } : {}),
+        ...(result.error ? { error: compactError(result.error) } : {}),
+        ...(result.receipt ? { receipt: compactReceipt(result.receipt) } : {}),
+        ...(Array.isArray(result.warnings) ? { warnings: result.warnings.map(warning => boundedText(warning)) } : {})
+    };
+}
+
+function summarizeIssues(issues) {
+    const list = Array.isArray(issues) ? issues : [];
+    const grouped = new Map();
+    for (const issue of list) {
+        const code = issue?.code || 'UNKNOWN';
+        const source = issue?.source || 'unknown';
+        const severity = issue?.severity || 'error';
+        const key = `${source}:${severity}:${code}`;
+        const current = grouped.get(key) || { source, severity, code, count: 0 };
+        current.count++;
+        grouped.set(key, current);
+    }
+    return {
+        total: list.length,
+        errors: list.filter(issue => issue?.severity === 'error').length,
+        warnings: list.filter(issue => issue?.severity === 'warning').length,
+        byCode: Array.from(grouped.values()).sort((a, b) => (
+            a.source.localeCompare(b.source) || a.code.localeCompare(b.code) || a.severity.localeCompare(b.severity)
+        ))
+    };
+}
+
+function compactMutationResult(value) {
+    const serialized = serializable(value);
+    const {
+        documentXml: _documentXml,
+        oxml: _oxml,
+        commentsXml: _commentsXml,
+        commentsExtendedXml: _commentsExtendedXml,
+        numberingXml: _numberingXml,
+        numberingXmlParts: _numberingXmlParts,
+        inspection: _inspection,
+        issues: _issues,
+        ...compact
+    } = serialized;
+    const results = Array.isArray(compact.results) ? compact.results.map(compactOperationResult) : [];
+    const status = compact.status || 'ok';
+    return {
+        ...compact,
+        ...(Array.isArray(compact.results) ? { results } : {}),
+        ...(Array.isArray(compact.receipts) ? { receipts: compact.receipts.map(compactReceipt) } : {}),
+        ...(compact.error ? { error: compactError(compact.error) } : {}),
+        ...(Array.isArray(compact.warnings) ? { warnings: compact.warnings.map(warning => boundedText(warning)) } : {}),
+        ...(compact.validation ? {
+            validation: {
+                originalIssues: summarizeIssues(compact.validation.originalIssues),
+                generatedIssues: summarizeIssues(compact.validation.generatedIssues)
+            }
+        } : {}),
+        completion: compact.written === true
+            && status !== 'error'
+            && status !== 'partial'
+            && results.every(result => result?.status !== 'error')
+    };
+}
+
 async function collectValidationIssues(buffer) {
     const entries = unzipDocx(buffer);
     const documentXml = entries.get('word/document.xml')?.toString('utf8') || '';
@@ -301,17 +416,17 @@ export async function executeCli(argv) {
                 ...(expectedRevision ? { expectedRevision } : {})
             });
             const mutationResult = await writeMutation(command, input, flags, result);
-            return {
+            return compactMutationResult({
                 command,
                 input,
                 ...serializable(mutationResult),
                 ...(result.status === 'error' || result.error ? { exitCode: 2 } : {})
-            };
+            });
         }
         const filter = flags.allAuthors ? { allAuthors: true } : flags.author ? { author: String(flags.author) } : null;
         if (!filter) return cliError('AUTHOR_REQUIRED', 'Use --author <name> or --all-authors.');
         const result = command === 'delete-comments' ? await document.deleteComments(filter) : await document.resolveRevisions(command, filter);
-        return { command, input, ...serializable(await writeMutation(command, input, flags, result)) };
+        return compactMutationResult({ command, input, ...serializable(await writeMutation(command, input, flags, result)) });
     } catch (error) { return cliError(error.code || 'CLI_FAILED', error.message); }
 }
 

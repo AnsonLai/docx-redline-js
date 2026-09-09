@@ -42,9 +42,11 @@ assert.deepEqual(failedAnchor.toBuffer(), input);
 const invalidPackage = buildZip([{name:'word/document.xml',data:documentXml},{name:'word/_rels/document.xml.rels',data:rels}]);
 const invalidDoc = openDocx(invalidPackage);
 const validationFailure = await invalidDoc.applyOperations([{ type:'replace', target:{ exactText:'Hello world' }, modified:'Changed' }], { author:'Agent', atomic:true });
-assert.equal(validationFailure.written, false);
-assert.equal(validationFailure.rolledBack, true);
-assert.deepEqual(validationFailure.toBuffer(), invalidPackage);
+assert.equal(validationFailure.written, true, 'an unchanged package defect remains a baseline issue');
+assert.equal(validationFailure.rolledBack, undefined);
+assert.notDeepEqual(validationFailure.toBuffer(), invalidPackage);
+assert(validationFailure.validation.originalIssues.some(issue => issue.code === 'PACKAGE_VALIDATION'));
+assert.deepEqual(validationFailure.validation.generatedIssues, []);
 
 const numberedTypes = contentTypes.replace('</Types>', '<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/></Types>');
 const numberedRels = rels.replace('</Relationships>', '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>');

@@ -15,6 +15,7 @@ import {
     applyFormattingToParagraphByExactText,
     applyHighlightToParagraphByExactText,
     applyParagraphFormatToParagraphByExactText,
+    insertIntoRejectedDeletedText,
     restoreDeletedParagraphByExactText,
     applyToParagraphByExactText
 } from './document-operation-mutations.js';
@@ -27,6 +28,8 @@ import {
     createEmptyReceipt,
     reconcileReceiptsAgainstOutput
 } from './receipt-collector.js';
+import { validateRedlineOoxml } from '../core/redline-validation.js';
+import { subtractValidationIssueMultiset, validationErrors } from '../core/validation-delta.js';
 
 export function normalizeOperationError(error) {
     return {
@@ -61,6 +64,8 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
 
     if (
         operation.operationKind !== 'comment_reply'
+        && operation.operationKind !== 'rejected-insert'
+        && operation.operationKind !== 'restore'
         && (
             operation.targetDescriptor?.revisionView === 'rejected'
             || operation.targetEndDescriptor?.revisionView === 'rejected'
@@ -250,6 +255,17 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                 runtimeContext,
                 operationOptions
             );
+        } else if (operation.operationKind === 'rejected-insert') {
+            result = await insertIntoRejectedDeletedText(
+                documentXml,
+                operation.target,
+                operation.anchor,
+                operation.modified,
+                authorUsed,
+                operation.targetRef,
+                runtimeContext,
+                operationOptions
+            );
         } else if (operation.operationKind === 'restore') {
             result = await restoreDeletedParagraphByExactText(
                 documentXml,
@@ -312,6 +328,35 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                 }
             }
         } else {
+            const beforeValidation = validateRedlineOoxml(savepoint.document);
+            const afterValidation = validateRedlineOoxml(session.document);
+            const generatedIssues = subtractValidationIssueMultiset(afterValidation.issues, beforeValidation.issues);
+            const generatedErrors = validationErrors(generatedIssues);
+            if (generatedErrors.length > 0) {
+                session.restoreSavepoint(savepoint);
+                operationReceipt = createEmptyReceipt(
+                    operationIndex,
+                    operation.operationId,
+                    authorUsed,
+                    'refused'
+                );
+                const codes = [...new Set(generatedErrors.map(issue => issue.code))].join(', ');
+                return {
+                    documentXml,
+                    hasChanges: false,
+                    status: 'error',
+                    error: {
+                        code: 'GENERATED_OOXML_INVALID',
+                        stage: 'validation',
+                        message: `Operation introduced invalid OOXML (${codes}).`,
+                        generatedIssues: generatedErrors
+                    },
+                    operationType: operation.operationKind,
+                    authorUsed,
+                    receipt: operationReceipt,
+                    ...resolutionCapture
+                };
+            }
             session.markMutationCommitted(operation.operationKind !== 'comment_reply');
             if (operation.captureKey && session.captureTable) {
                 session.captureTable.set(

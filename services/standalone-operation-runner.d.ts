@@ -23,6 +23,12 @@ export interface InsertionAffinity {
   comment?: 'inside' | 'outside';
 }
 
+export interface RejectedTextInsertionAnchor {
+  exactText: string;
+  occurrence?: number;
+  offset: number;
+}
+
 export interface DocumentOperationBase {
   operationId?: string;
   captureKey?: string;
@@ -41,6 +47,8 @@ export interface RedlineDocumentOperation extends DocumentOperationBase {
   structuredContent?: boolean;
   targetEnd?: ParagraphTargetDescriptor;
   targetEndRef?: number | string | null;
+  /** Required when type is insert and target.revisionView is rejected. */
+  anchor?: RejectedTextInsertionAnchor;
 }
 
 export interface RestoreDocumentOperation extends DocumentOperationBase {
@@ -124,6 +132,16 @@ export interface ResolvedDocumentTarget {
   text: string;
   fingerprint?: string;
   inTable?: boolean;
+  targetTextMatch?: {
+    mode: 'exact' | 'space_equivalent' | 'normalized';
+    differences?: Array<{
+      offset: number;
+      sourceCodePoint: string;
+      requestedCodePoint: string;
+    }>;
+    sourceExcerpt?: string;
+    requestedExcerpt?: string;
+  };
 }
 
 export interface ResolvedCommentAnchor {

@@ -233,6 +233,21 @@ export function computeWordDiffs(originalText, newText, options = {}) {
 }
 
 /**
+ * Computes a character-local diff without semantic cleanup. This is used to
+ * refine whitespace-only substitutions that a word-level token groups with
+ * adjacent unchanged content (for example, an NBSP beside a hyperlink).
+ *
+ * @param {string} originalText
+ * @param {string} newText
+ * @param {{ diffTimeoutSeconds?: number }} [options={}]
+ * @returns {Array<[number, string]>}
+ */
+export function computeCharacterDiffs(originalText, newText, options = {}) {
+    if (originalText === newText) return [[0, originalText]];
+    return createDiffEngine(options).diff_main(originalText, newText);
+}
+
+/**
  * Returns a character-local diff only when the modified string can be made
  * solely by inserting into the original. This prevents word-token cleanup
  * from relocating small insertions between repeated phrases or containers.

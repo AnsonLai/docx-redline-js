@@ -25,7 +25,7 @@ const fixture = buildZip([
 const commentContentTypes = contentTypes.replace('</Types>', '<Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/></Types>');
 const commentRels = '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/></Relationships>';
 const commentedDocumentXml = `<w:document xmlns:w="${W}"><w:body><w:p><w:commentRangeStart w:id="8"/><w:r><w:t>Delete me.</w:t></w:r><w:commentRangeEnd w:id="8"/><w:r><w:commentReference w:id="8"/></w:r></w:p><w:sectPr/></w:body></w:document>`;
-const commentsXml = `<w:comments xmlns:w="${W}"><w:comment w:id="8" w:author="Emma Plasteras"><w:p><w:r><w:t>Keep this concern visible.</w:t></w:r></w:p></w:comment></w:comments>`;
+const commentsXml = `<w:comments xmlns:w="${W}"><w:comment w:id="8" w:author="Reviewer A"><w:p><w:r><w:t>Keep this concern visible.</w:t></w:r></w:p></w:comment></w:comments>`;
 const commentedFixture = buildZip([
     { name: '[Content_Types].xml', data: commentContentTypes },
     { name: 'word/document.xml', data: commentedDocumentXml },
@@ -116,7 +116,7 @@ try {
     assert.equal(protectedDelete.json.written, false);
     assert.equal(protectedDelete.json.rolledBack, true);
     assert.equal(protectedDelete.json.results[0].error.code, 'COMMENTED_CONTENT_DELETE');
-    assert.equal(protectedDelete.json.results[0].error.comments[0].author, 'Emma Plasteras');
+    assert.equal(protectedDelete.json.results[0].error.comments[0].author, 'Reviewer A');
     assert.equal(protectedDelete.json.results[0].error.comments[0].text, 'Keep this concern visible.');
     await assert.rejects(access(deleteOutput));
     assert.deepEqual(await readFile(commentedInput), commentedFixture);

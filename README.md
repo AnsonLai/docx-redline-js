@@ -166,6 +166,7 @@ All commands emit JSON on stdout. `apply` defaults:
 - **Transactionality**: Defaults to `atomic: false` (applies valid operations and reports any failures). Pass `--atomic` for all-or-nothing rollback on any operation error.
 - **Tracked changes**: Defaults to `generateRedlines: true`. Pass `--no-redlines` when clean direct text edits are desired.
 - **Inline edits**: Use `--target <text>` with `--modified <text>` or `--comment <text>` for quick one-liners without creating a JSON file.
+- **Compact mutation results**: `apply`, `accept`, `reject`, and `delete-comments` omit full OOXML/package payloads and inspection text from stdout. They report `written`, `outputPath`, per-operation results and receipts, compact validation counts, and a derived `completion` boolean. Use `validate` when full issue arrays are needed.
 
 See [the agent workflow in AGENTS.md](./AGENTS.md#agent-document-workflow-cli) and the
 [operation JSON Schema](docs/schemas/document-operations.schema.json).
@@ -204,6 +205,7 @@ Common result fields:
 | `status` | Operation status: `'ok'`, `'partial'`, `'no-op'`, or `'error'`. |
 | `error` | Present on failure; includes a stable `code` such as `PARSE_ERROR`, `TARGET_NOT_FOUND`, `PARTIAL_TARGET`, `EXISTING_REVISIONS`, `DIFF_TOKEN_LIMIT`, or `BATCH_OPERATION_FAILED`. |
 | `written` | CLI/facade boolean indicating whether the output file was successfully written to disk. |
+| `completion` | CLI-only boolean that is `true` only when a destination was written, top-level status is neither error nor partial, and no operation result failed. |
 | `rolledBack` | Present and `true` when an atomic batch encountered an error and rolled back all changes. |
 
 Word diffs are deterministic by default (no wall-clock timeout). Inputs above
@@ -218,7 +220,7 @@ During multi-round legal negotiations, a reviewer often needs to edit text that 
 ```js
 const result = await applyRedlineToOxml(paragraphOoxml, originalText, modifiedText, {
   generateRedlines: true,
-  author: 'Anson Lai',
+  author: 'Reviewer B',
   existingRevisions: 'slice-cross-author'
 });
 ```
@@ -346,6 +348,12 @@ If a structural boundary prevents exact reconstruction, the transform returns
 Pure insertion-only slicing uses an exact character-local diff so repeated words
 cannot move an insertion to a different occurrence. Leading/trailing spaces,
 tabs, and non-breaking spaces are treated as real changes rather than no-ops.
+For text-bearing replacements, the exact accepted-view text of the resolved
+paragraph—not a space-normalized caller target—defines mutation offsets. Word-level replacement
+hunks that differ only by ordinary spaces and NBSPs are refined to character
+edits so unchanged hyperlinks and their relationship attributes stay in place.
+Runner results expose bounded `resolvedTarget.targetTextMatch` code-point
+diagnostics when equivalent whitespace was used to identify the target.
 
 ### Deep Imports
 
@@ -533,8 +541,27 @@ const restoration = await applyOperationToDocumentXml(
   documentXml,
   {
     type: 'restore',
-    target: { paragraphId: '1A2B3C4D' },
+    target: { paragraphId: '1A2B3C4D', revisionView: 'rejected' },
     modified: 'Restored or adjusted paragraph text.'
+  },
+  'Editor'
+);
+
+// A single restoration follows its deleted source paragraph. A range
+// restoration follows the complete deleted source block. Unchanged legacy
+// validation defects are retained as baseline issues; newly generated errors
+// fail closed before commit.
+
+// To insert run-level text at a location visible only in the rejected view,
+// provide explicit rejected-view intent and an exact anchor-relative offset.
+const deletedTextInsertion = await applyOperationToDocumentXml(
+  documentXml,
+  {
+    type: 'insert',
+    target: { paragraphId: '1A2B3C4D', revisionView: 'rejected' },
+    anchor: { exactText: 'must pay', occurrence: 1, offset: 5 },
+    modified: '[clarification] ',
+    existingRevisions: 'slice-cross-author'
   },
   'Editor'
 );

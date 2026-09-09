@@ -6,6 +6,7 @@ import { applyOperationsToDocumentXml, preflightOperations } from '../services/s
 import { createDynamicNumberingIdState, mergeNumberingXmlBySchemaOrder } from '../services/numbering-helpers.js';
 import { ensureCommentsArtifactsInZip, ensureCommentsExtendedArtifactsInZip, ensureNumberingArtifactsInZip, validateDocxPackage } from '../services/standalone-docx-plumbing.js';
 import { validateRedlineOoxml } from '../core/redline-validation.js';
+import { subtractValidationIssueMultiset, validationErrors } from '../core/validation-delta.js';
 import { acceptTrackedChangesInOoxml, rejectTrackedChangesInOoxml, deleteCommentsByAuthorInOoxml } from '../services/revision-comment-management.js';
 import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { createHash } from 'node:crypto';
@@ -178,16 +179,18 @@ export class DocxDocument {
             });
             if (options.validate !== false) {
                 const generated = validateRedlineOoxml(result.documentXml);
-                const baselineErrors = new Set(baseline.issues.filter(i => i.severity === 'error').map(i => `${i.code}:${i.message}`));
-                const introduced = generated.issues.filter(i => i.severity === 'error' && !baselineErrors.has(`${i.code}:${i.message}`));
-                if (introduced.length) {
-                    const codes = [...new Set(introduced.map(issue => issue.code))].join(', ');
+                const outputIssues = generated.issues.map(issue => ({ source: 'word/document.xml', ...issue }));
+                try { await validateDocxPackage(zip); }
+                catch (error) { outputIssues.push({ source: 'package', code: 'PACKAGE_VALIDATION', severity: 'error', message: error.message }); }
+                const introduced = subtractValidationIssueMultiset(outputIssues, originalIssues);
+                const introducedErrors = validationErrors(introduced);
+                if (introducedErrors.length) {
+                    const codes = [...new Set(introducedErrors.map(issue => issue.code))].join(', ');
                     throw Object.assign(
                         new Error(`Applied operations introduced invalid revision markup (${codes}); these are generated-output issues, not pre-existing input issues.`),
-                        { issues: introduced }
+                        { issues: introducedErrors }
                     );
                 }
-                await validateDocxPackage(zip);
             }
             this.entries = working;
             const output = this.toBuffer();

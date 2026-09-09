@@ -115,12 +115,12 @@ async function restore(input, modified = 'Restored clause.', overrides = {}) {
     const result = await restore(input);
     assert.equal(result.status, 'ok', JSON.stringify(result.error));
     assert.equal(result.hasChanges, true);
-    assert.deepEqual(paragraphTexts(result.documentXml), ['Before.', 'Restored clause.', '', 'After.']);
+    assert.deepEqual(paragraphTexts(result.documentXml), ['Before.', '', 'Restored clause.', 'After.']);
     assert.equal(validateRedlineOoxml(result.documentXml).valid, true);
 
     const nodes = paragraphs(result.documentXml);
-    const restored = nodes[1];
-    const source = nodes[2];
+    const source = nodes[1];
+    const restored = nodes[2];
     assert.notEqual(paraId(restored), paraId(source));
     assert.equal(paraId(source), 'DEAD0001');
     assert(!restored.hasAttribute('w14:textId'));
@@ -153,7 +153,7 @@ async function restore(input, modified = 'Restored clause.', overrides = {}) {
     assert.equal(count(acceptA.oxml, 'ins'), 2);
 
     const acceptB = acceptTrackedChangesInOoxml(result.documentXml, { author: B });
-    assert.deepEqual(paragraphTexts(acceptB.oxml), ['Before.', 'Restored clause.', '', 'After.']);
+    assert.deepEqual(paragraphTexts(acceptB.oxml), ['Before.', '', 'Restored clause.', 'After.']);
     assert.equal(count(acceptB.oxml, 'del'), 2);
 
     const rejectAll = rejectTrackedChangesInOoxml(result.documentXml, { allAuthors: true });
@@ -175,8 +175,8 @@ async function restore(input, modified = 'Restored clause.', overrides = {}) {
     });
     const result = await restore(baseDocument(target), 'Bold revised.');
     assert.equal(result.status, 'ok', JSON.stringify(result.error));
-    assert.deepEqual(paragraphTexts(result.documentXml), ['Before.', 'Bold revised.', '', 'After.']);
-    const restored = paragraphs(result.documentXml)[1];
+    assert.deepEqual(paragraphTexts(result.documentXml), ['Before.', '', 'Bold revised.', 'After.']);
+    const restored = paragraphs(result.documentXml)[2];
     assert(restored.getElementsByTagNameNS(W, 'b').length >= 1);
 }
 
@@ -191,8 +191,8 @@ async function restore(input, modified = 'Restored clause.', overrides = {}) {
             + run('underlined.', '<w:rPr><w:u w:val="single"/></w:rPr>', true)
     });
     const result = await restore(baseDocument(target), 'Bold italic underlined.');
-    assert.equal(result.status, 'ok');
-    const restored = paragraphs(result.documentXml)[1];
+    assert.equal(result.status, 'ok', JSON.stringify(result.error));
+    const restored = paragraphs(result.documentXml)[2];
     assert.equal(restored.getElementsByTagNameNS(W, 'b').length, 1);
     assert.equal(restored.getElementsByTagNameNS(W, 'i').length, 1);
     assert.equal(restored.getElementsByTagNameNS(W, 'u').length, 1);
@@ -206,7 +206,7 @@ async function restore(input, modified = 'Restored clause.', overrides = {}) {
         text: 'Listed clause.', id: 'DEAD0001', revisionBase: 20, pPr
     })), 'Listed clause.');
     assert.equal(result.status, 'ok');
-    const restored = paragraphs(result.documentXml)[1];
+    const restored = paragraphs(result.documentXml)[2];
     assert.equal(restored.getElementsByTagNameNS(W, 'pStyle')[0].getAttribute('w:val'), 'Clause');
     assert.equal(restored.getElementsByTagNameNS(W, 'numId')[0].getAttribute('w:val'), '9');
     assert.equal(restored.getElementsByTagNameNS(W, 'pPrChange').length, 0);
@@ -223,14 +223,14 @@ async function restore(input, modified = 'Restored clause.', overrides = {}) {
     assert.equal(result.status, 'ok');
     assert.equal(count(result.documentXml, 'bookmarkStart'), count(input, 'bookmarkStart'));
     assert.equal(count(result.documentXml, 'commentRangeStart'), count(input, 'commentRangeStart'));
-    const restored = paragraphs(result.documentXml)[1];
+    const restored = paragraphs(result.documentXml)[2];
     assert.equal(restored.getElementsByTagNameNS(W, 'bookmarkStart').length, 0);
     assert.equal(restored.getElementsByTagNameNS(W, 'commentReference').length, 0);
     assert(result.receipt.warnings.includes('RESTORATION_DROPPED_BOOKMARK:ClauseAnchor'));
     assert(result.receipt.warnings.includes('RESTORATION_DROPPED_COMMENT:7'));
 }
 
-// Multi-paragraph range produces one contiguous inserted block before all A paragraphs.
+// Multi-paragraph range produces one contiguous inserted block after all A paragraphs.
 {
     const input = doc(
         normalParagraph('Before.', 'BEFORE01')
@@ -245,14 +245,33 @@ async function restore(input, modified = 'Restored clause.', overrides = {}) {
         modified: ['First restored.', 'Second restored.'],
         author: B
     }, B, null, { strictTargets: true });
-    assert.equal(result.status, 'ok');
+    assert.equal(result.status, 'ok', JSON.stringify(result.error));
     assert.deepEqual(paragraphTexts(result.documentXml), [
-        'Before.', 'First restored.', 'Second restored.', '', '', 'After.'
+        'Before.', '', '', 'First restored.', 'Second restored.', 'After.'
     ]);
     const nodes = paragraphs(result.documentXml);
-    assert.equal(paraId(nodes[3]), 'DEAD0001');
-    assert.equal(paraId(nodes[4]), 'DEAD0002');
+    assert.equal(paraId(nodes[1]), 'DEAD0001');
+    assert.equal(paraId(nodes[2]), 'DEAD0002');
     assert.equal(result.receipt.revisionItems.length, 4);
+
+    assert.deepEqual(paragraphTexts(acceptTrackedChangesInOoxml(result.documentXml, { allAuthors: true }).oxml), [
+        'Before.', 'First restored.', 'Second restored.', 'After.'
+    ]);
+    assert.deepEqual(paragraphTexts(rejectTrackedChangesInOoxml(result.documentXml, { allAuthors: true }).oxml), [
+        'Before.', 'First.', 'Second.', 'After.'
+    ]);
+    assert.deepEqual(paragraphTexts(acceptTrackedChangesInOoxml(result.documentXml, { author: A }).oxml), [
+        'Before.', 'First restored.', 'Second restored.', 'After.'
+    ]);
+    assert.deepEqual(paragraphTexts(rejectTrackedChangesInOoxml(result.documentXml, { author: A }).oxml), [
+        'Before.', 'First.', 'Second.', 'First restored.', 'Second restored.', 'After.'
+    ]);
+    assert.deepEqual(paragraphTexts(acceptTrackedChangesInOoxml(result.documentXml, { author: B }).oxml), [
+        'Before.', '', '', 'First restored.', 'Second restored.', 'After.'
+    ]);
+    assert.deepEqual(paragraphTexts(rejectTrackedChangesInOoxml(result.documentXml, { author: B }).oxml), [
+        'Before.', '', '', 'After.'
+    ]);
 
     const descriptorResult = await applyOperationToDocumentXml(input, {
         type: 'restore',
@@ -263,7 +282,7 @@ async function restore(input, modified = 'Restored clause.', overrides = {}) {
     }, B, null, { strictTargets: true });
     assert.equal(descriptorResult.status, 'ok');
     assert.deepEqual(paragraphTexts(descriptorResult.documentXml), [
-        'Before.', 'First restored.', 'Second restored.', '', '', 'After.'
+        'Before.', '', '', 'First restored.', 'Second restored.', 'After.'
     ]);
 }
 
@@ -279,7 +298,7 @@ async function restore(input, modified = 'Restored clause.', overrides = {}) {
         { type: 'restore', target: { paragraphId: 'DEAD0002' }, modified: 'Second.', author: B }
     ], B, null, { strictTargets: true, atomic: true });
     assert.equal(result.status, 'ok');
-    assert.deepEqual(paragraphTexts(result.documentXml), ['First.', '', 'Second.', '', 'After.']);
+    assert.deepEqual(paragraphTexts(result.documentXml), ['', 'First.', '', 'Second.', 'After.']);
     assert.equal(result.receipts.length, 2);
     assert(result.receipts.every(receipt => receipt.revisionItems.length === 2));
 }
@@ -289,13 +308,13 @@ async function restore(input, modified = 'Restored clause.', overrides = {}) {
     const first = await restore(baseDocument());
     const changed = await restore(first.documentXml, 'Adjusted restoration.');
     assert.equal(changed.status, 'ok', JSON.stringify(changed.error));
-    assert.deepEqual(paragraphTexts(changed.documentXml), ['Before.', 'Adjusted restoration.', '', 'After.']);
+    assert.deepEqual(paragraphTexts(changed.documentXml), ['Before.', '', 'Adjusted restoration.', 'After.']);
     assert.equal(paragraphs(changed.documentXml).filter(paragraph => (
         extractCanonicalParagraphText(paragraph) === 'Adjusted restoration.'
     )).length, 1);
 }
 
-// Strict fingerprint targeting works from the accepted view; rejected-view mutation stays read-only.
+// Strict fingerprint targeting works from the accepted view; explicit restore also supports rejected-view text.
 {
     const input = baseDocument();
     const target = paragraphs(input)[1];
@@ -311,9 +330,8 @@ async function restore(input, modified = 'Restored clause.', overrides = {}) {
         modified: 'Restored clause.',
         author: B
     }, B, null, { strictTargets: true });
-    assert.equal(rejectedView.status, 'error');
-    assert.equal(rejectedView.error.code, 'UNSUPPORTED_REVISION_VIEW_MUTATION');
-    assert.equal(rejectedView.documentXml, input);
+    assert.equal(rejectedView.status, 'ok', JSON.stringify(rejectedView.error));
+    assert.deepEqual(paragraphTexts(rejectedView.documentXml), ['Before.', '', 'Restored clause.', 'After.']);
 
     const rejectedInspection = preflightOperations(input, [{
         type: 'restore',
@@ -482,7 +500,7 @@ async function restore(input, modified = 'Restored clause.', overrides = {}) {
     assert.equal(result.results[0].receipt.finalDisposition, 'applied');
     assert.equal(result.results[0].receipt.revisionItems.length, 2);
     assert.equal(result.results[1].status, 'error');
-    assert.deepEqual(paragraphTexts(result.documentXml), ['Before.', 'Restored clause.', '', 'After.']);
+    assert.deepEqual(paragraphTexts(result.documentXml), ['Before.', '', 'Restored clause.', 'After.']);
 }
 
 // Table-cell restoration is supported when a same-cell successor exists; deleted rows fail closed.
@@ -491,7 +509,7 @@ async function restore(input, modified = 'Restored clause.', overrides = {}) {
     const table = `<w:tbl><w:tr><w:tc>${target}${normalParagraph('Cell successor.', 'CELLNEXT')}</w:tc></w:tr></w:tbl>`;
     const supported = await restore(doc(table), 'Cell clause.');
     assert.equal(supported.status, 'ok');
-    assert.deepEqual(paragraphTexts(supported.documentXml), ['Cell clause.', '', 'Cell successor.']);
+    assert.deepEqual(paragraphTexts(supported.documentXml), ['', 'Cell clause.', 'Cell successor.']);
 
     const deletedRow = `<w:tbl><w:tr><w:trPr><w:del w:id="90" w:author="${A}" w:date="${DATE}"/></w:trPr><w:tc>${target}${normalParagraph('Cell successor.', 'CELLNEXT')}</w:tc></w:tr></w:tbl>`;
     const refused = await restore(doc(deletedRow), 'Cell clause.');
@@ -502,7 +520,7 @@ async function restore(input, modified = 'Restored clause.', overrides = {}) {
 // A third author can continue editing B's restored paragraph through ordinary slicing.
 {
     const restored = await restore(baseDocument());
-    const restoredId = paraId(paragraphs(restored.documentXml)[1]);
+    const restoredId = paraId(paragraphs(restored.documentXml)[2]);
     const followUp = await applyOperationToDocumentXml(restored.documentXml, {
         type: 'redline',
         target: { paragraphId: restoredId },
@@ -511,7 +529,7 @@ async function restore(input, modified = 'Restored clause.', overrides = {}) {
         existingRevisions: 'slice-cross-author'
     }, C, null, { strictTargets: true });
     assert.equal(followUp.status, 'ok');
-    assert.equal(paragraphTexts(followUp.documentXml)[1], 'Restored clause, revised again.');
+    assert.equal(paragraphTexts(followUp.documentXml)[2], 'Restored clause, revised again.');
     assert.equal(validateRedlineOoxml(followUp.documentXml).valid, true);
 }
 

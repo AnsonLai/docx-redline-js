@@ -10,6 +10,7 @@ const contentTypes = `<Types xmlns="http://schemas.openxmlformats.org/package/20
 const rels = `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`;
 const documentXml = `<w:document xmlns:w="${W}"><w:body><w:p w:paraId="A1"><w:r><w:t xml:space="preserve">  Exact\ttext  </w:t></w:r></w:p><w:sectPr/></w:body></w:document>`;
 const fixture = buildZip([{name:'[Content_Types].xml',data:contentTypes},{name:'word/document.xml',data:documentXml},{name:'word/_rels/document.xml.rels',data:rels},{name:'custom.bin',data:Buffer.from([9,8,7])}]);
+const nbsp = '\u00a0';
 
 const directory = await mkdtemp(path.join(tmpdir(), 'docx-redline-cli-'));
 try {
@@ -31,6 +32,10 @@ try {
     const output = path.join(directory, 'output.docx');
     const applied = await executeCli(['apply', input, '--operations', operationsFile, '--output', output]);
     assert.equal(applied.status, 'ok'); assert.equal(applied.written, true); assert.equal(applied.outputPath, output);
+    assert.equal(applied.completion, true);
+    assert.equal('documentXml' in applied, false);
+    assert.equal(applied.validation.originalIssues.total, 0);
+    assert.equal(applied.validation.generatedIssues.total, 0);
     assert.deepEqual(await readFile(input), fixture);
     assert.equal((await executeCli(['validate', output])).valid, true);
     const accepted = await executeCli(['accept', output, '--author', 'CLI Editor']);
@@ -54,6 +59,42 @@ try {
     assert.equal(inlineApplied.written, true);
     const inlineExtracted = await executeCli(['extract', inlineOutput]);
     assert.ok(inlineExtracted.paragraphs[0].exactText.includes('Inline Replaced'));
+
+    // WP09a: target matching may treat ASCII spaces and NBSPs as equivalent,
+    // but mutation coordinates and Reject must use the exact resolved source.
+    const whitespaceInput = path.join(directory, 'whitespace-source.docx');
+    const whitespaceOutput = path.join(directory, 'whitespace-output.docx');
+    const whitespaceOps = path.join(directory, 'whitespace-operations.json');
+    const sourceText = `Service terms are available at${nbsp}example.invalid/policy/${nbsp}(the “Service Policy”).`;
+    const callerTarget = 'Service terms are available at example.invalid/policy/ (the “Service Policy”).';
+    const requestedText = 'Service terms, as in effect on execution, are available at example.invalid/policy/ (the “Service Policy”).';
+    const whitespaceXml = `<w:document xmlns:w="${W}"><w:body><w:p w:paraId="W9"><w:r><w:t>${sourceText}</w:t></w:r></w:p><w:sectPr/></w:body></w:document>`;
+    await writeFile(whitespaceInput, buildZip([
+        {name:'[Content_Types].xml',data:contentTypes},
+        {name:'word/document.xml',data:whitespaceXml},
+        {name:'word/_rels/document.xml.rels',data:rels}
+    ]));
+    await writeFile(whitespaceOps, JSON.stringify([{
+        type: 'replace',
+        target: { exactText: callerTarget, paragraphId: 'W9' },
+        modified: requestedText,
+        author: 'Reviewer B',
+        existingRevisions: 'slice-cross-author'
+    }]));
+    const whitespaceApplied = await executeCli(['apply', whitespaceInput, '--operations', whitespaceOps, '--output', whitespaceOutput]);
+    assert.equal(whitespaceApplied.status, 'ok', JSON.stringify(whitespaceApplied));
+    assert.equal(whitespaceApplied.written, true);
+    assert.equal(whitespaceApplied.completion, true);
+    assert.equal(whitespaceApplied.results[0].resolvedTarget.targetTextMatch.mode, 'space_equivalent');
+    assert.equal(whitespaceApplied.results[0].resolvedTarget.text, undefined, 'CLI must not echo resolved clause text');
+    assert.deepEqual(
+        whitespaceApplied.results[0].resolvedTarget.targetTextMatch.differences.map(item => item.sourceCodePoint),
+        ['U+00A0', 'U+00A0']
+    );
+    assert.equal((await executeCli(['extract', whitespaceOutput])).paragraphs[0].exactText, requestedText);
+    const whitespaceRejected = await executeCli(['reject', whitespaceOutput, '--author', 'Reviewer B']);
+    assert.equal(whitespaceRejected.written, true);
+    assert.equal((await executeCli(['extract', whitespaceRejected.outputPath])).paragraphs[0].exactText, sourceText);
 
     let stdout = '';
     const exitCode = await runCli(['extract', input, '--range', '1:1'], { stdout: { write: value => { stdout += value; } } });
