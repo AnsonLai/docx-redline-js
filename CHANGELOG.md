@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Safety Fixes
+
+- **Foreign deleted-paragraph resurrection guard**: Refuses non-empty same-paragraph edits when another author owns the paragraph-mark deletion and all existing paragraph content is deleted. The operation now returns `FOREIGN_PARAGRAPH_MARK_DELETION` with the owning author instead of emitting lifecycle-unsafe OOXML; atomic document operations roll back byte-for-byte. `validateRedlineOoxml` reports already-authored instances as warnings.
+
+### New Features
+
+- **Explicit paragraph restoration (`type: 'restore'`)**: Restores or counterproposes another reviewer's pending whole-paragraph deletion as a separately tracked sibling paragraph. The source deletion remains untouched; the restored paragraph receives its own inserted paragraph mark, content insertion, sanitized paragraph properties, and fresh `w14:paraId`. Single paragraphs and contiguous ranges are supported, with full Accept/Reject lifecycle verification and structured refusals at unsafe table-row, move, section-break, and terminal-paragraph boundaries.
+
 ## 0.5.1
 
 ### Highlights & New Features
@@ -19,9 +29,11 @@
 
 - **Validation Update (`validateRedlineOoxml`)**: Refined `NESTED_REVISION` checks to permit direct `<w:ins><w:del>...</w:del></w:ins>` nesting (standard ECMA-376 and Word Desktop behavior), while continuing to strictly reject `ins/ins`, `del/del`, and `del/ins` nesting.
 - **Slicing Round-Trip Guard**: Cross-author surgical edits now preserve whitespace-only insertions (including ordinary-space replacements for NBSP characters beside hyperlinks) and verify the exact accepted-view text before reporting success. A mismatch fails closed with `PATCH_ROUNDTRIP_MISMATCH` and returns the original OOXML unchanged.
+- **Hyperlink-Adjacent Replacement Anchoring**: Paired replacements immediately before or after a hyperlink now retain a stable insertion point after the deletion run is split, preventing qualifiers from being relocated past the hyperlink or following formatted runs.
+- **Multiple Same-Run Insertions**: Insertion-only slicing operations with multiple edit points now apply from right to left against a refreshed live span index, preventing an earlier run split from relocating later insertions.
 - **Insertion Stress Hardening**: Slicing now detects edge whitespace changes exactly, uses a character-local insertion-only diff when the original text is an exact subsequence of the modified text, and coalesces new text into an existing same-author carrier when foreign revisions are also present. This prevents repeated phrases from relocating insertions and prevents invalid `w:ins/w:ins` nesting in mixed-author paragraphs.
 - **Preflight Inspection**: `preflightOperations` now inspects and validates `slice-cross-author` batches, reporting pending foreign-author carrier targets as `ready` instead of `EXISTING_REVISIONS`.
-- **Test Suite Expansion**: Added 6 new test suites covering 36 Word Desktop COM golden fixtures, carrier splitting invariants, the SYN-01..12d synthetic test matrix, PKG-01..06 strict package differential replay, the repeated-text/hyperlink whitespace regression, and 76 deterministic insertion stress scenarios (expanding the suite from 88 to 94 passing suites).
+- **Test Suite Expansion**: Added 7 new test suites covering 36 Word Desktop COM golden fixtures, carrier splitting invariants, the SYN-01..12d synthetic test matrix, PKG-01..06 strict package differential replay, the repeated-text/hyperlink whitespace regression, 76 deterministic insertion stress scenarios, and 12 replacement-anchor lifecycle scenarios (expanding the suite from 88 to 95 passing suites).
 
 ## 0.5.0
 

@@ -8,12 +8,17 @@ import { containsTrackedChanges, getTrackedChangeAuthors } from '../core/word-xm
 import { NS_W } from '../core/types.js';
 import { extractCanonicalParagraphText } from '../core/paragraph-text.js';
 import {
+    getParagraphRestorationRefusal,
+    inspectForeignDeletedParagraphTarget
+} from '../core/paragraph-revision-safety.js';
+import {
     buildParagraphMetadataIndex,
     createParagraphFingerprint,
     findContainingWordElement,
     getDocumentParagraphNodes,
     getParagraphId,
     normalizeWhitespaceForTargeting,
+    resolveParagraphRangeByRefs,
     resolveTargetParagraph,
     validateParagraphBoundaryMutation
 } from '../core/paragraph-targeting.js';
@@ -222,7 +227,66 @@ export function preflightOperations(documentXml, operations, author, options = {
             const commentIds = deletingWholeParagraph ? getCommentIdsInParagraph(paragraph) : [];
 
             let error = null;
-            if (!anchorFound) {
+            if (operation.operationKind === 'restore') {
+                let restorationParagraphs = operation.targetEndRef
+                    ? resolveParagraphRangeByRefs(xmlDoc, operation.targetRef, operation.targetEndRef, {
+                        opType: 'restore',
+                        targetRefSnapshot: options.targetRefSnapshot || null,
+                        onInfo: options.onInfo,
+                        onWarn: options.onWarn
+                    })
+                    : [paragraph];
+                if (!operation.targetEndRef && operation.targetEndDescriptor) {
+                    const endResolved = resolveTargetParagraph(xmlDoc, {
+                        targetText: operation.targetEndDescriptor.text,
+                        targetRef: operation.targetEndDescriptor.index,
+                        targetDescriptor: operation.targetEndDescriptor,
+                        opType: 'restore',
+                        strictAmbiguity: strictTargets,
+                        paragraphMetadataIndex: currentMetadataIndex,
+                        metadataIndices,
+                        onInfo: options.onInfo,
+                        onWarn: options.onWarn
+                    });
+                    const allParagraphs = getDocumentParagraphNodes(xmlDoc);
+                    const startIndex = allParagraphs.indexOf(paragraph);
+                    const endIndex = allParagraphs.indexOf(endResolved?.paragraph);
+                    restorationParagraphs = startIndex >= 0 && endIndex >= startIndex
+                        ? allParagraphs.slice(startIndex, endIndex + 1)
+                        : null;
+                }
+                const replacements = Array.isArray(operation.modified) ? operation.modified : [operation.modified];
+                if (!restorationParagraphs || restorationParagraphs[0] !== paragraph || replacements.length !== restorationParagraphs.length) {
+                    error = {
+                        code: 'RESTORATION_COUNT_MISMATCH',
+                        message: 'Restoration requires one replacement for every paragraph in a contiguous resolved range.'
+                    };
+                } else {
+                    for (const restorationParagraph of restorationParagraphs) {
+                        const structuralRefusal = getParagraphRestorationRefusal(restorationParagraph);
+                        if (structuralRefusal?.code === 'UNSUPPORTED_MOVE_REVISION') {
+                            error = structuralRefusal;
+                            break;
+                        }
+                        const state = inspectForeignDeletedParagraphTarget(restorationParagraph, authorUsed);
+                        const refusal = state.matches
+                            ? (structuralRefusal || getParagraphRestorationRefusal(restorationParagraph))
+                            : null;
+                        if (!state.matches) {
+                            error = {
+                                code: 'RESTORATION_STATE_REQUIRED',
+                                message: 'Explicit restoration requires a foreign paragraph-mark deletion with every pre-existing content node deleted.',
+                                ...(state.ownerAuthor ? { ownerAuthor: state.ownerAuthor } : {})
+                            };
+                            break;
+                        }
+                        if (refusal) {
+                            error = refusal;
+                            break;
+                        }
+                    }
+                }
+            } else if (!anchorFound) {
                 error = anchorResolution?.error || {
                     code: 'ANCHOR_NOT_FOUND',
                     message: `Anchor text was not found in target paragraph: "${anchor}".`
@@ -354,7 +418,7 @@ export function preflightOperations(documentXml, operations, author, options = {
     }
 
     for (const [targetIndex, targetResults] of byTarget) {
-        const redlines = targetResults.filter(result => result.operationType === 'redline');
+        const redlines = targetResults.filter(result => ['redline', 'restore'].includes(result.operationType));
         const highlights = targetResults.filter(result => result.operationType === 'highlight');
         const target = targetResults[0].resolvedTarget;
         if (redlines.length > 1) {

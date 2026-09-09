@@ -29,6 +29,7 @@ export type {
   OperationPreflightResult,
   ParagraphTargetDescriptor,
   RedlineDocumentOperation,
+  RestoreDocumentOperation,
   ResolvedCommentAnchor,
   ResolvedDocumentTarget,
   StandaloneRunnerOptions
@@ -43,6 +44,13 @@ export interface RedlineError {
     | 'UNSUPPORTED_REVISION_VIEW_MUTATION'
     | 'UNSUPPORTED_INSERTION_AFFINITY'
     | 'UNSAFE_PARAGRAPH_BOUNDARY'
+    | 'FOREIGN_PARAGRAPH_MARK_DELETION'
+    | 'RESTORATION_STATE_REQUIRED'
+    | 'RESTORATION_COUNT_MISMATCH'
+    | 'UNSAFE_DELETED_TABLE_ROW'
+    | 'UNSUPPORTED_MOVE_REVISION'
+    | 'SECTION_BREAK_PARAGRAPH'
+    | 'UNSAFE_PARAGRAPH_PLACEMENT'
     | 'TARGET_INDEX_MISMATCH'
     | 'REVISION_MISMATCH'
     | 'REVISION_TOKEN_SCOPE_MISMATCH'
@@ -54,6 +62,10 @@ export interface RedlineError {
     | 'CAPTURE_STALE'
     | string;
   message: string;
+  ownerAuthor?: string;
+  stage?: string;
+  expected?: unknown;
+  actual?: unknown;
   commentIds?: string[];
   comments?: Array<{ id: string; author: string; text: string }>;
 }

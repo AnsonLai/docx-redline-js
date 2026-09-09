@@ -40,6 +40,7 @@ import { getDocumentParagraphs } from './format-extraction.js';
 import { isDiffTokenLimitError } from '../pipeline/diff-engine.js';
 import { NumberingService } from '../services/numbering-service.js';
 import { recordRouteSelection } from './route-selection.js';
+import { inspectForeignDeletedParagraphTarget } from '../core/paragraph-revision-safety.js';
 
 function getCommentIdsInOoxml(node) {
     const ids = new Set();
@@ -139,6 +140,26 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
         ? options._revisionIdAllocator
         : new RevisionIdAllocator();
     seedRevisionIdsFromDocument(xmlDoc, revisionIdAllocator);
+
+    const inputParagraphs = xmlDoc.documentElement && String(xmlDoc.documentElement.localName || '').toLowerCase() === 'p'
+        ? [xmlDoc.documentElement]
+        : getDocumentParagraphs(xmlDoc);
+    if (inputParagraphs.length === 1 && modifiedText.length > 0) {
+        const resurrectionTarget = inspectForeignDeletedParagraphTarget(inputParagraphs[0], author);
+        if (resurrectionTarget.matches) {
+            const ownerAuthor = resurrectionTarget.ownerAuthor || 'unattributed';
+            return finalize({
+                oxml: inputOoxml,
+                hasChanges: false,
+                status: 'error',
+                error: {
+                    code: 'FOREIGN_PARAGRAPH_MARK_DELETION',
+                    message: `Refusing to add visible text to a paragraph whose paragraph mark is deleted by another author (${ownerAuthor}). Use explicit paragraph restoration when supported.`,
+                    ownerAuthor
+                }
+            });
+        }
+    }
 
     if (containsTrackedChanges(xmlDoc)) {
         if (existingRevisionsPolicy === 'merge-same-author' || existingRevisionsPolicy === 'slice-cross-author') {

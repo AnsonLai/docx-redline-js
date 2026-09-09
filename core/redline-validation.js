@@ -10,6 +10,7 @@
 
 import { parseXml } from '../adapters/xml-adapter.js';
 import { NS_W } from './types.js';
+import { findForeignDeletedParagraphResurrections } from './paragraph-revision-safety.js';
 
 const REVISION_ID_ELEMENTS = new Set(['ins', 'del', 'rPrChange', 'pPrChange']);
 const REVISION_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}T/;
@@ -178,6 +179,18 @@ export function validateRedlineOoxml(oxml) {
             addIssue('EMPTY_REVISION_WRAPPER', 'warning',
                 `<${revision.nodeName}> (w:id="${wordAttribute(revision, 'id')}") wraps no content.`);
         }
+    }
+
+    // Structurally valid but lifecycle-unsafe: accepting the paragraph-mark
+    // deletion can merge or discard a foreign insertion placed into a
+    // paragraph whose pre-existing content is otherwise wholly deleted.
+    for (const resurrection of findForeignDeletedParagraphResurrections(doc)) {
+        const ownerAuthor = resurrection.ownerAuthor || 'unattributed';
+        addIssue(
+            'FOREIGN_PARAGRAPH_MARK_DELETION',
+            'warning',
+            `Paragraph deleted by ${ownerAuthor} also contains non-empty insertion content from another author; Accept/Reject lifecycle may not preserve the apparent restoration.`
+        );
     }
 
     return { valid: !issues.some(issue => issue.severity === 'error'), issues };

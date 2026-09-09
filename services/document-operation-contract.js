@@ -14,6 +14,7 @@ const SUPPORTED_OPERATION_TYPES = new Set([
     'list-change',
     'table-reconciliation',
     'insert',
+    'restore',
     'delete',
     'comment',
     'comment_reply',
@@ -42,6 +43,7 @@ function nonEmptyString(value) {
 
 export function getCanonicalOperationType(operation) {
     const type = operation?.type;
+    if (type === 'restore') return 'restore';
     if (type === 'comment' || type === 'comment_reply' || type === 'highlight') return type;
     if (type === 'paragraph-format') return 'paragraph-format';
     if (type === 'character-format' || (type === 'format' && (operation?.textToFormat != null || operation?.properties != null))) return 'format';
@@ -83,7 +85,7 @@ export function normalizeTargetDescriptor(target, legacyTargetRef = null) {
 export function normalizeDocumentOperation(operation) {
     const source = isRecord(operation) ? operation : {};
     const targetDescriptor = normalizeTargetDescriptor(source.target, source.targetRef);
-    const targetEndDescriptor = isRecord(source.targetEnd)
+    const targetEndDescriptor = source.targetEnd != null
         ? normalizeTargetDescriptor(source.targetEnd, source.targetEndRef)
         : null;
     const kind = getCanonicalOperationType(source);
@@ -94,6 +96,7 @@ export function normalizeDocumentOperation(operation) {
         captureKey: nonEmptyString(source.captureKey) ? source.captureKey.trim() : null,
         operationKind: kind,
         targetDescriptor,
+        targetEndDescriptor,
         target: targetDescriptor.text,
         targetRef: targetDescriptor.index,
         targetEndRef: targetEndDescriptor?.index ?? source.targetEndRef ?? null,
@@ -174,7 +177,14 @@ export function validateDocumentOperation(operation) {
     }
 
     const target = normalized.targetDescriptor;
-    if (normalized.operationKind !== 'comment_reply' && !nonEmptyString(target.text) && target.index == null && !target.paragraphId && !target.captureRef) {
+    if (
+        normalized.operationKind !== 'comment_reply'
+        && !nonEmptyString(target.text)
+        && target.index == null
+        && !target.paragraphId
+        && !target.fingerprint
+        && !target.captureRef
+    ) {
         return {
             valid: false,
             error: {
@@ -199,6 +209,31 @@ export function validateDocumentOperation(operation) {
             valid: false,
             error: { code: 'INVALID_OPERATION', message: 'Redline operations require a string "modified" field.' }
         };
+    }
+
+    if (normalized.operationKind === 'restore') {
+        const validSingle = nonEmptyString(normalized.modified);
+        const validRange = Array.isArray(normalized.modified)
+            && normalized.modified.length > 0
+            && normalized.modified.every(nonEmptyString);
+        if (!validSingle && !validRange) {
+            return {
+                valid: false,
+                error: {
+                    code: 'INVALID_OPERATION',
+                    message: 'Restore operations require a non-empty string or non-empty string array in "modified".'
+                }
+            };
+        }
+        if (normalized.generateRedlines === false) {
+            return {
+                valid: false,
+                error: {
+                    code: 'INVALID_OPERATION',
+                    message: 'Restore operations require tracked changes and cannot set generateRedlines to false.'
+                }
+            };
+        }
     }
 
     if (normalized.structuredContent != null && typeof normalized.structuredContent !== 'boolean') {

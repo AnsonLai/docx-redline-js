@@ -467,6 +467,7 @@ type ExistingRevisionsPolicy =
   - Exact Accept-All equality with the submitted modified string.
   - Explicit fail-closed test proving mismatch status, error code, mismatch offset, and byte-exact original OOXML rollback.
 * **Verification**:
+  - `node tests/cross_author_slicing_replacement_anchor_tests.mjs` — PASS, 12 scenarios.
   - `node tests/cross_author_slicing_hyperlink_roundtrip_tests.mjs` — PASS.
   - `npm test` — PASS, 93 test files passed and 0 failed.
   - `npm run lint` — PASS.
@@ -504,9 +505,289 @@ type ExistingRevisionsPolicy =
   - Stress helpers `escapeXml`, `run`, `insertion`, `paragraph`, `parsed`, `acceptedText`, `authorOf`, `assertValid`, and `assertInsertionRoundTrip` (NEW).
 * **Verification**:
   - `node tests/cross_author_slicing_insertion_stress_tests.mjs` — PASS, 76 scenarios.
-  - `npm test` — PASS, 94 test files passed and 0 failed.
+  - `npm test` — PASS, 95 test files passed and 0 failed.
   - `npm run lint` — PASS.
   - `npm run check:types` — PASS; all 123 runtime exports have declarations.
+  - `git diff --check` — PASS (line-ending conversion notices only; no whitespace errors).
+
+### Hyperlink-Adjacent Replacement Follow-Up [COMPLETED 2026-09-08]
+* **Bug Report**: Replacing the space immediately after a Privacy Policy hyperlink with a comma and execution-date qualifier failed with `PATCH_ROUNDTRIP_MISMATCH`. The generated intermediate OOXML moved the qualifier and URL relative to the following definition text.
+* **Root Cause**: `processDelete` split and removed the run containing the replaced boundary space, but `processInsert` subsequently resolved the paired insertion through the pre-mutation span index. That span still referenced the detached source run, so insertion placement fell back to the wrong paragraph location.
+* **Fix**: `processDelete` now records a stable parent/reference-node anchor at a non-carrier deletion boundary. `processInsert` consumes that anchor for the immediately paired insertion when no explicit insertion affinity was requested. Foreign `w:ins` carriers continue to use their existing carrier-splitting anchor and explicit affinity remains authoritative.
+* **Additional Defect Found by the Matrix**: Two pure insertions in the same source run could detach the shared pre-mutation span after the first insertion and relocate the second insertion to the paragraph end. Multi-insertion-only slicing now applies insertions from right to left and rebuilds the live span index between mutations.
+* **Files Touched**:
+  - `engine/surgical-diff-application.js`
+  - `engine/surgical-mode.js`
+  - `tests/cross_author_slicing_hyperlink_roundtrip_tests.mjs`
+  - `tests/cross_author_slicing_replacement_anchor_tests.mjs` (NEW)
+  - `CHANGELOG.md`
+  - `docs/plans/2026-09-08-cross-author-revision-slicing.md`
+* **Functions Touched**:
+  - `processDelete` (MODIFIED): records the live DOM insertion boundary while splitting a deleted run.
+  - `processInsert` (MODIFIED): consumes the stable replacement anchor before consulting stale pre-mutation spans.
+  - `applySurgicalMode` (MODIFIED): uses live right-to-left application for multiple insertion-only diffs.
+  - `collectInsertionOperations` (NEW): records original/new offsets for insertion-only mutations.
+  - Hyperlink round-trip test helpers and assertions (MODIFIED): cover low-level apply, Accept All, hyperlink relationship preservation, and the atomic strict-target document runner.
+  - Replacement-anchor matrix helpers `escapeXml`, `run`, `hyperlink`, `insertion`, `paragraph`, `parse`, `acceptedText`, and `hyperlinkIds` (NEW).
+* **Additional Future-Regression Coverage**:
+  - 12 deterministic replacements at run starts, interiors, and ends; before and after hyperlinks; across an entire spacer run; beside bold/underlined runs, bookmarks, and comment markers; across multiple replacements; and beside/inside a foreign insertion carrier.
+  - Every case asserts exact current view, Accept All, Reject Reviewer, structural validation, unique revision IDs, and hyperlink relationship preservation.
+  - Four representative hyperlink and multi-replacement cases also execute through the atomic strict-target document runner used by the CLI.
+* **Verification**:
+  - `node tests/cross_author_slicing_replacement_anchor_tests.mjs` — PASS, 12 scenarios.
+  - `node tests/cross_author_slicing_hyperlink_roundtrip_tests.mjs` — PASS.
+  - `node tests/cross_author_slicing_insertion_stress_tests.mjs` — PASS, 76 scenarios.
+  - `node tests/insertion_affinity_tests.mjs` — PASS.
+  - `npm test` — PASS, 95 test files passed and 0 failed.
+  - `npm run lint` — PASS.
+  - `npm run check:types` — PASS; all 123 runtime exports have declarations.
+  - `git diff --check` — PASS (line-ending conversion notices only; no whitespace errors).
+
+### WP08a — Fail-Closed Gate for Foreign Paragraph-Mark Deletions [COMPLETED 2026-09-08]
+
+WP08a is separable from, and a prerequisite of, WP08b. It ships on its own as a patch release: it adds no new capability, only refuses an operation that currently returns `status: 'ok'` while producing a lifecycle-unsafe document. Every prior follow-up in this document shipped the fail-closed guard before the feature; WP08 follows the same order.
+
+#### Scope
+
+1. At the mutation gate, refuse any operation that would add visible runs or `w:ins` content to a paragraph in the **resurrection state** defined in WP08b's trigger taxonomy (foreign paragraph-mark deletion + every pre-existing content node already deleted + new non-empty insertion). Return `FOREIGN_PARAGRAPH_MARK_DELETION` with the owning author, and the original document unchanged under atomic mode.
+2. Add the same predicate to `core/redline-validation.js` as a **warning**, not an error. Validation runs over documents this engine did not author; see the Validation Predicate section below for why the broader rule is unsafe.
+3. Regression fixture reproducing the reported restoration shape (foreign `w:pPr/w:rPr/w:del` plus an attempted same-paragraph `w:ins`), asserting the refusal, the error code, and byte-exact rollback.
+4. Lifecycle assertions in the fixture proving *why* the shape is refused: Accept All loses Reviewer B's text, and Reject Reviewer A yields duplicate visible text.
+
+Package validation alone is not a sufficient oracle for this case — the unsafe shape is structurally valid. Accept/Reject lifecycle checks are mandatory.
+
+#### Implementation Record
+
+* **Result**: Added a shared, narrowly scoped resurrection-state predicate. Both the low-level paragraph engine and the document mutation runner now refuse a non-empty edit when a different author owns the paragraph-mark deletion and every pre-existing content child is deleted. The refusal returns `FOREIGN_PARAGRAPH_MARK_DELETION`, includes `ownerAuthor`, and leaves the original input unchanged. Same-author deleted paragraphs, foreign deleted marks with surviving content, and content-only deletions without a paragraph-mark deletion remain on their existing paths.
+* **Validation**: `validateRedlineOoxml` uses the same structural model to emit a warning for already-authored unsafe shapes. The warning does not make otherwise valid OOXML invalid.
+* **Files Touched**:
+  - `core/paragraph-revision-safety.js` (NEW)
+  - `core/redline-validation.js`
+  - `engine/oxml-engine.js`
+  - `services/document-operation-mutations.js`
+  - `index.d.ts`
+  - `tests/foreign_paragraph_mark_deletion_gate_tests.mjs` (NEW)
+  - `CHANGELOG.md`
+  - `docs/plans/2026-09-08-cross-author-revision-slicing.md`
+* **Functions and Types Touched**:
+  - `inspectForeignDeletedParagraphTarget` (NEW): identifies the pre-mutation WP08 resurrection state and excludes same-author ownership.
+  - `findForeignDeletedParagraphResurrections` (NEW): identifies already-authored unsafe foreign-insertion shapes for warning-only validation.
+  - `paragraphMarkDeletion`, `hasVisibleInsertionContent`, `isAnchorOnlyRun`, and DOM/name/author helpers (NEW): implement the shared structural inspection without mutating the source DOM, while excluding non-visible comment/bookmark anchors from the content-state decision.
+  - `applyRedlineToOxml` (MODIFIED): fails closed before existing-revision normalization or diff application for paragraph-level calls.
+  - `applyToParagraphByExactText` (MODIFIED): fails closed immediately after strict target resolution and before preprocessing/mutation for document-runner calls.
+  - `validateRedlineOoxml` (MODIFIED): reports `FOREIGN_PARAGRAPH_MARK_DELETION` as a warning for structurally valid but lifecycle-unsafe authored output.
+  - `RedlineError` (MODIFIED): documents the new error code and optional `ownerAuthor` metadata.
+  - WP08a fixture helpers and assertions (NEW): cover the low-level tracked and direct-edit paths, strict atomic runner rollback, validator severity, Accept/Reject lifecycle evidence, and every non-triggering taxonomy row.
+* **Verification**:
+  - `node tests/foreign_paragraph_mark_deletion_gate_tests.mjs` — PASS.
+  - Focused validation, revision-policy, replacement-anchor, and paragraph-boundary suites — PASS.
+  - `npm test` — PASS, 96 test files passed and 0 failed.
+  - `npm run lint` — PASS.
+  - `npm run check:types` — PASS; all 123 runtime exports have declarations.
+  - `npm run build` — PASS.
+  - `git diff --check` — PASS (line-ending conversion notices only; no whitespace errors).
+
+---
+
+### WP08b — Paragraph-Level Cross-Author Slicing for Deleted Paragraph Restoration [COMPLETED 2026-09-08]
+
+#### Motivation
+
+Restoring text from another reviewer's pending whole-paragraph deletion is the paragraph-level counterpart of run-level cross-author slicing. The accepted/current view of such a paragraph is empty, while its text exists only in the rejected view. Writing replacement text into that same paragraph can look correct before revisions are resolved, but it is lifecycle-unsafe because the foreign paragraph-mark deletion still owns the paragraph.
+
+The observed unsafe shape is conceptually:
+
+```xml
+<w:p>
+  <w:pPr><w:rPr><w:del w:author="Reviewer A"/></w:rPr></w:pPr>
+  <w:del w:author="Reviewer A">...</w:del>
+  <w:ins w:author="Reviewer B">restored text</w:ins>
+</w:p>
+```
+
+This passes structural package validation and looks correct in the current view, but Accept All removes the entire paragraph because Reviewer A's paragraph-mark deletion remains active. Rejecting Reviewer A can also expose both the original deleted text and Reviewer B's inserted copy.
+
+Nesting Reviewer B's `<w:ins>` inside Reviewer A's `<w:del>` is not a solution: `w:del/w:ins` nesting is invalid for this use, and accepting the outer deletion would remove the nested text.
+
+#### Required Paragraph-Level Slicing Model
+
+Preserve the foreign deleted paragraph and materialize the restoring reviewer's counterproposal as a new adjacent tracked paragraph:
+
+```text
+[restored/adjusted paragraph inserted by Reviewer B]
+[paragraph deleted by Reviewer A]
+```
+
+#### Paragraph-Mark Semantics (Normative)
+
+This is the part the run-level slicing model has no analogue for, and it governs every lifecycle row below.
+
+**Accepting a paragraph-mark deletion does not remove the paragraph — it merges the paragraph into the next paragraph.** `mergeParagraphIntoNextAndRemove` in `services/revision-comment-management.js` moves the deleted paragraph's surviving children into the following `w:p` and removes the emptied paragraph; the **following** paragraph's `pPr` is the one that survives. Any design statement phrased as "Reviewer A's paragraph is removed" is imprecise and must be read as "merged forward".
+
+Three consequences are binding on the implementation:
+
+1. **Sibling order is a design decision, not cosmetic.** Placing Reviewer B's paragraph *after* Reviewer A's makes B the merge target when Reviewer A is accepted: A's surviving children land inside B. This is harmless only while A's content is 100% deleted, and stops being harmless the moment A retains content (a partially resolved deletion, or a third author's `w:ins` still pending inside A). Placing B *before* A leaves A's merge target exactly as it was before the restoration existed, so accepting A behaves identically with or without B.
+   * **Decision: place Reviewer B's paragraph immediately BEFORE Reviewer A's**, for merge-target neutrality. The current view is unaffected (A is invisible), and All-Markup view order is a rendering preference, not a correctness property. Fixtures must assert the merge target explicitly rather than inferring it from the resulting text.
+2. **Reviewer B's paragraph MUST carry its own inserted paragraph mark** (`w:pPr/w:rPr/w:ins` attributed to Reviewer B, with an allocator-issued ID). Adding a paragraph adds a paragraph mark. Without it, Reject Reviewer B removes B's content but leaves an empty stub paragraph permanently, silently violating the Reject-B lifecycle row and drifting the document's paragraph count.
+3. **The existing inserted-paragraph builders do not do this today.** `wrapParagraphContentInInsertion` and `buildFallbackInsertedPlainParagraph` in `services/document-operation-mutations.js` emit no paragraph-mark revision and clone `pPr` verbatim. Cloning `pPr` verbatim from the deleted source paragraph would copy Reviewer A's `w:rPr/w:del` onto Reviewer B's paragraph, reproducing the exact unsafe shape WP08 exists to prevent. Emitting the inserted mark and sanitizing `pPr` is new work in those builders, not reuse of them.
+
+#### Paragraph Property Sanitization (Normative Allowlist)
+
+When deriving Reviewer B's paragraph from the deleted source, copy only:
+
+* `w:pStyle`, `w:numPr`, `w:ind`, `w:jc`, `w:spacing`, `w:tabs`, `w:keepNext`/`w:keepLines`, `w:outlineLvl`, `w:contextualSpacing`.
+
+Strip unconditionally:
+
+* `w:rPr/w:del` and `w:rPr/w:ins` (foreign mark revisions — replaced by Reviewer B's own inserted mark),
+* `w:sectPr` (section identity must never be duplicated; see refusals),
+* `w:pPrChange`, `w:rPrChange`, and every other `*Change` element (they describe a revision of the *source* paragraph and are meaningless on the clone).
+
+#### Paragraph Identity (Normative)
+
+Reviewer B's paragraph MUST receive a **fresh `w14:paraId`**, and MUST drop `w14:textId` and all `w:rsid*` attributes. This is unconditional, not best-effort: `extractParagraphIdFromOoxml` in `core/ooxml-identifiers.js` resolves strict targets by `w14:paraId`, so a duplicated paraId makes Reviewer A's and Reviewer B's paragraphs indistinguishable to paragraph-ID targeting — including to this work package's own strict-targeting test case.
+
+#### Trigger Taxonomy (Normative)
+
+"Whole-paragraph deletion" is ambiguous across the four combinations of paragraph-mark state and content state. Only one routes to WP08b:
+
+| Paragraph mark | Pre-existing content | Route |
+|:--|:--|:--|
+| Deleted by foreign author | All deleted | **WP08b sibling restoration** (the resurrection state) |
+| Deleted by foreign author | Intact or partially deleted | Ordinary run-level cross-author slicing — the accepted view is non-empty; a pending forward merge is legal and Word-native |
+| Not deleted | All deleted | Ordinary cross-author insertion — no foreign mark owns the paragraph; MUST NOT route to WP08b |
+| Deleted by current author | All deleted | `merge-same-author`; MUST NOT route to WP08b |
+
+#### Validation Predicate (Normative)
+
+The reconciliation rule must match the resurrection state exactly. A broader rule of the form "foreign paragraph-mark deletion plus visible insertion in the same paragraph" is **wrong** — inserting text into a paragraph whose mark is deleted by another author is legal, Word-native, and common (it is an ordinary pending merge). Flagging it would reject valid third-party documents.
+
+The predicate is: foreign `w:pPr/w:rPr/w:del` **AND** every pre-existing content node deleted **AND** a new non-empty foreign `w:ins`. It is a **warning** in `core/redline-validation.js` and an **error** only at the mutation gate (WP08a).
+
+#### Required Behavior
+
+1. Detect the resurrection state per the trigger taxonomy when an operation attempts to restore non-empty text into the paragraph's empty accepted view.
+2. Never append visible runs or `w:ins` content to the paragraph still owned by the foreign paragraph deletion.
+3. Derive Reviewer B's paragraph as a sanitized sibling of the source paragraph per the allowlist and identity rules above, without mutating Reviewer A's original deleted paragraph.
+4. Track the new paragraph's content and its paragraph mark as Reviewer B insertions with document-scoped revision IDs.
+5. Preserve document order and ensure `w:sectPr`, tables, list boundaries, comments, bookmarks, and other structural anchors are neither displaced nor duplicated.
+6. **Restoring a multi-paragraph range emits one inserted sibling paragraph per restored source paragraph**, as a contiguous block preserving source order, with N paragraph-mark insertions — never one merged paragraph.
+7. **Idempotency**: re-running the same restoration must not emit a second Reviewer B paragraph. If an adjacent same-author inserted paragraph already carries the restoration, route the edit through ordinary run-level slicing of that paragraph.
+8. Rejected-view descriptors remain read-only targeting aids until rejected-view mutation is deliberately supported. Do not silently treat `revisionView: 'rejected'` as accepted-view mutation.
+9. **Contract decision (resolved, not deferred):** restoration requires **explicit caller intent** — a dedicated restore operation or an explicit restoration option. A `redline` operation with an empty accepted-view target and non-empty modified text remains fail-closed under WP08a. Automatic conversion is rejected because the same request shape is indistinguishable from an ordinary "insert text into an empty paragraph", and silently choosing restoration would move the caller's content into a different paragraph than the one they targeted.
+
+#### Structural Anchors (Normative)
+
+Reviewer B's paragraph MUST NOT clone `w:bookmarkStart`/`w:bookmarkEnd` or `w:commentRangeStart`/`w:commentRangeEnd`/`w:commentReference`. Bookmark names are document-unique, and duplicating a comment range attaches one comment to two disjoint locations. Anchors stay on Reviewer A's paragraph, where they remain valid until that deletion is resolved. Every anchor not carried over is reported in the receipt as a structured warning naming the bookmark or comment ID, so the caller can re-anchor deliberately.
+
+#### Fail-Closed Refusals (Distinct Codes)
+
+A single `UNSAFE_PARAGRAPH_BOUNDARY` code conflates unrelated conditions and reads as a near-collision with the existing `PAIRING_SKIPPED_STRUCTURAL_BOUNDARY`. Enumerate:
+
+| Condition | Code |
+|:--|:--|
+| Resurrection attempted without explicit restore intent (WP08a gate) | `FOREIGN_PARAGRAPH_MARK_DELETION` |
+| Source paragraph inside a row deleted via `w:trPr/w:del` — a sibling paragraph cannot survive the row | `UNSAFE_DELETED_TABLE_ROW` |
+| Source paragraph is part of a move (`w:moveFrom` / `w:moveFromRangeStart`) | `UNSUPPORTED_MOVE_REVISION` |
+| Source paragraph's `pPr` carries `w:sectPr` — mirrors the existing deletion refusal in `core/paragraph-targeting.js` | `SECTION_BREAK_PARAGRAPH` |
+| Source paragraph is the final paragraph of the body, so no safe sibling placement exists | `UNSAFE_PARAGRAPH_PLACEMENT` |
+
+All refusals return the original document unchanged under atomic mode.
+
+#### Lifecycle Invariants
+
+For the paragraph pair `[ins(B), del(A)]` in document order:
+
+| Resolution | Expected Result |
+|:--|:--|
+| Current view | Reviewer B's restored/adjusted paragraph appears exactly once; Reviewer A's paragraph is invisible. |
+| Accept All | Reviewer B's paragraph and mark become baseline; Reviewer A's content deletion resolves and A's mark merges A forward into its **original** successor (not into B). Net: Reviewer B's paragraph remains exactly once. |
+| Reject Reviewer B | Reviewer B's content is removed and B's inserted mark is rejected, merging the now-empty B forward into A. Net: the document returns to its pre-restoration text with Reviewer A's deletion still pending. |
+| Reject Reviewer A | Reviewer A's paragraph and its text return; Reviewer B's insertion remains independently pending. Both marks remain attributable and structurally valid. |
+| Accept Reviewer A only | Reviewer A's content deletion resolves and A merges forward into its original successor; Reviewer B's inserted paragraph remains pending and visible. |
+| Accept Reviewer B only | Reviewer B's paragraph and mark become baseline; Reviewer A's deleted paragraph remains pending and invisible in the current view. |
+
+No lifecycle path may silently discard Reviewer B's restoration, produce invalid nested revisions, orphan comments/bookmarks, or leave duplicate visible text after all revisions are resolved.
+
+#### Verification Oracle (Normative)
+
+Package validation is not an oracle for this feature; neither is a paragraph-local text comparison. Accepting a paragraph-mark deletion **crosses the paragraph boundary**, so a paragraph-scoped round-trip check cannot observe the merge.
+
+Every WP08b fixture must therefore:
+
+1. Reconstruct **body-scoped** (or at minimum a window of source paragraph ± 2) canonical text for **both the accepted view and the rejected view**, and compare each exactly against expectation. The rejected view is where duplicate-text regressions surface; the accepted view alone would pass the reported bug.
+2. Assert the merge target of each paragraph-mark resolution explicitly, not inferred from resulting text.
+3. Fail closed with a structured mismatch code and byte-exact rollback on divergence, matching the established `PATCH_ROUNDTRIP_MISMATCH` pattern.
+
+#### Planned Implementation Areas
+
+- `services/document-operation-applier.js`: route explicit restoration intent; retain the rejected-view mutation guard for unsupported generic mutations.
+- `services/document-operation-mutations.js`: add the paragraph-level restoration mutation and sibling placement; extend the inserted-paragraph builders to emit inserted paragraph marks and sanitized `pPr` (see Paragraph-Mark Semantics item 3).
+- `core/paragraph-targeting.js`: resolve the deleted paragraph identity consistently across accepted and rejected metadata without allowing stale descriptors; reuse the existing `w:sectPr` refusal.
+- Revision allocator and receipt collector: report every paragraph-mark and content revision ID allocated by the restoration, plus dropped-anchor warnings.
+- `core/redline-validation.js`: add the narrowed resurrection-state warning (see Validation Predicate).
+
+#### Required Test Matrix
+
+1. Plain whole-paragraph deletion restored verbatim.
+2. Restored paragraph adjusted while being restored.
+3. Bold, italic, underline, and mixed-run formatting preservation.
+4. Numbered and bulleted paragraph restoration without list-label drift.
+5. Paragraph immediately before `w:sectPr`, **and** a paragraph whose own `pPr` carries `w:sectPr` (refusal).
+6. Paragraph inside a table cell; paragraph inside a row deleted via `w:trPr/w:del` (refusal).
+7. Deleted paragraph containing bookmarks or comment anchors: assert anchor counts are **unchanged**, that no name or comment ID appears twice, and that each dropped anchor is reported in the receipt.
+8. Multiple adjacent deleted paragraphs restored independently and as a range, asserting one inserted sibling per source paragraph and preserved order.
+9. Same-author deletion behavior remains governed by `merge-same-author` and is not routed through cross-author restoration.
+10. Each non-triggering row of the trigger taxonomy routes to its stated path and not to WP08b.
+11. Third-author follow-up edits to Reviewer B's restored paragraph continue to use ordinary cross-author slicing.
+12. Repeat application of the same restoration is idempotent — no duplicate Reviewer B paragraph.
+13. Source paragraph retains unresolved content (partial deletion, or a third author's pending `w:ins`) — proves the merge target is A's original successor and that surviving content does not land inside Reviewer B's paragraph.
+14. `w:moveFrom` source paragraph (refusal); final-paragraph-of-body source (refusal).
+15. Atomic runner rollback and progressive batch receipts.
+16. Strict targeting by paragraph ID, index, fingerprint, and `revisionView: 'rejected'` diagnostics — including an assertion that Reviewer A's and Reviewer B's paragraphs carry distinct `w14:paraId` values.
+
+Every successful fixture must assert exact current text, both-view body-scoped round-trip equality, structural validation, unique revision IDs, receipt reconciliation, paragraph ordering, and the six lifecycle outcomes above.
+
+#### Implementation Record
+
+* **Public Contract**: Added a dedicated `restore` document operation. A single restoration accepts a non-empty `modified` string; a contiguous range accepts one string per source paragraph. `generateRedlines: false` is rejected because restoration necessarily creates both a tracked content insertion and an inserted paragraph mark. Generic `redline` operations remain protected by WP08a.
+* **Paragraph Model**: Each counterproposal is inserted immediately before the foreign-deleted source paragraph (or, for a range, as one contiguous inserted block before the source block). The source paragraph is not modified. The new paragraph receives two allocator-issued revisions, a fresh `w14:paraId`, no copied `w14:textId`/`w:rsid*`, and only allowlisted paragraph properties.
+* **Lifecycle Oracle**: Before commit, restoration validates the authored OOXML and compares body-scoped paragraph text vectors for current view, Accept All, and Reject All against independently constructed expected documents. Any mismatch returns `PATCH_ROUNDTRIP_MISMATCH`; the operation savepoint supplies byte-exact rollback.
+* **Idempotency**: An identical adjacent same-author restoration is a no-op. A changed same-author reapplication replaces the prior counterproposal rather than adding a duplicate paragraph.
+* **Files Touched**:
+  - `core/paragraph-revision-safety.js`
+  - `core/paragraph-targeting.js`
+  - `services/document-operation-contract.js`
+  - `services/document-operation-applier.js`
+  - `services/document-operation-mutations.js`
+  - `services/operation-preflight.js`
+  - `services/standalone-operation-runner.d.ts`
+  - `docs/schemas/document-operations.schema.json`
+  - `index.d.ts`
+  - `tests/paragraph_level_cross_author_restoration_tests.mjs` (NEW)
+  - `tests/types/usage.ts`
+  - `README.md`
+  - `AGENTS.md`
+  - `CHANGELOG.md`
+  - `docs/plans/2026-09-08-cross-author-revision-slicing.md`
+* **Functions and Types Touched**:
+  - `getParagraphRestorationRefusal` and move-range/content-state helpers (NEW): distinguish deleted-row, move-from, section-break, and unsafe-placement refusals while preserving the narrow trigger taxonomy.
+  - `resolveTargetParagraph` (MODIFIED): supports strict fingerprint-only descriptors, bringing runtime targeting into alignment with the published schema.
+  - `getCanonicalOperationType`, `normalizeDocumentOperation`, and `validateDocumentOperation` (MODIFIED): normalize and validate explicit single/range `restore` operations and retain full `targetEnd` descriptors.
+  - `applyOperationToDocumentXml` (MODIFIED): routes restoration separately and keeps rejected-view mutation read-only for both range endpoints.
+  - `restoreDeletedParagraphByExactText` (NEW): resolves the source block, enforces trigger/safety rules, reconstructs rejected-view content, inserts tracked siblings, handles idempotency, and runs the lifecycle oracle.
+  - `createSanitizedRestorationPPr`, `buildRejectedRestorationTemplate`, `editRestorationTemplate`, `allocateFreshParagraphId`, `trackRestoredParagraph`, and lifecycle/anchor helpers (NEW): implement property sanitization, formatting preservation, fresh identity, dropped-anchor diagnostics, and exact round-trip checks.
+  - `wrapParagraphContentInInsertion`, `buildFallbackInsertedPlainParagraph`, and `buildInsertedPlainParagraph` (MODIFIED): optionally emit inserted paragraph marks, use typed insertion receipt metadata, sanitize restoration properties, and accept fresh paragraph identity.
+  - `preflightOperations` (MODIFIED): recognizes restoration state, range cardinality, and structural refusals without mutating the document.
+  - `RestoreDocumentOperation` and `RedlineError` (MODIFIED/NEW): publish the operation shape and structured refusal/oracle metadata.
+  - WP08b fixture helpers and assertions (NEW): exercise six lifecycle outcomes, strict descriptors, independent and range restoration, formatting/list preservation, anchor warnings, table cells/deleted rows, section/move/placement refusals, taxonomy exclusions, progressive and atomic batches, idempotency, and third-author follow-up slicing.
+* **Verification**:
+  - `node tests/paragraph_level_cross_author_restoration_tests.mjs` — PASS.
+  - Focused list and insertion-affinity regressions — PASS.
+  - `$env:DOCX_TEST_CONCURRENCY='1'; npm test` — PASS, 97 test files passed and 0 failed. The serial final run was used after concurrent attempts hit unrelated per-file timeouts under host contention; each timed-out suite also passed directly.
+  - `npm run lint` — PASS.
+  - `npm run check:types` — PASS; all 123 runtime exports have declarations.
+  - `npm run build` — PASS.
   - `git diff --check` — PASS (line-ending conversion notices only; no whitespace errors).
 
 ---

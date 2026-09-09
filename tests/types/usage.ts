@@ -55,6 +55,12 @@ const operations: DocumentOperation[] = [
     target: 'New text',
     commentContent: 'Review this paragraph',
     author: 'Reviewer'
+  },
+  {
+    type: 'restore',
+    target: { paragraphId: '1A2B3C4D' },
+    modified: 'Restored paragraph',
+    author: 'Reviewer'
   }
 ];
 

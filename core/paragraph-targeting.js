@@ -459,6 +459,25 @@ export function resolveTargetParagraph(xmlDoc, options = {}) {
         return { paragraph: byId, resolvedBy: 'paragraph_id' };
     }
 
+    if (descriptor?.fingerprint && !cleanTargetText && !parsedRef) {
+        let fingerprintCandidates = (paragraphMetadataIndex?.entries || [])
+            .filter(candidate => candidate.fingerprint === descriptor.fingerprint);
+        if (typeof descriptor.inTable === 'boolean') {
+            fingerprintCandidates = fingerprintCandidates.filter(candidate => candidate.inTable === descriptor.inTable);
+        }
+        if (fingerprintCandidates.length === 1) {
+            return { paragraph: fingerprintCandidates[0].paragraph, resolvedBy: 'fingerprint' };
+        }
+        if (fingerprintCandidates.length > 1) {
+            throw createTargetError(
+                'AMBIGUOUS_TARGET',
+                'Target fingerprint matched multiple paragraphs; provide paragraphId or index.',
+                fingerprintCandidates.map(serializeTargetCandidate)
+            );
+        }
+        throw createTargetError('TARGET_NOT_FOUND', `Target fingerprint not found: "${descriptor.fingerprint}".`);
+    }
+
     let candidates = [];
     if (cleanTargetText) {
         const unfilteredCandidates = findStrictTargetCandidates(xmlDoc, cleanTargetText, paragraphMetadataIndex);

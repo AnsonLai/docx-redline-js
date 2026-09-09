@@ -21,6 +21,12 @@ import {
 import { refreshRunPropertyChangeIds } from '../core/revision-cloning.js';
 import { getDefaultAuthor } from '../adapters/config.js';
 import { applyRedlineToOxml as applyRedlineToOxmlEngine } from '../engine/oxml-engine.js';
+import {
+    getParagraphRestorationRefusal,
+    inspectForeignDeletedParagraphTarget
+} from '../core/paragraph-revision-safety.js';
+import { extractCanonicalParagraphText } from '../core/paragraph-text.js';
+import { validateRedlineOoxml } from '../core/redline-validation.js';
 import { applyHighlightToOoxml } from '../engine/formatting-removal.js';
 import { parseTable as parseMarkdownTable } from '../pipeline/pipeline.js';
 import { injectCommentsIntoOoxml } from './comment-engine.js';
@@ -32,6 +38,7 @@ import {
     findContainingWordElement,
     resolveTargetParagraphWithSnapshot as resolveTargetParagraphWithSnapshotShared,
     resolveParagraphRangeByRefs,
+    getDocumentParagraphNodes,
     validateParagraphBoundaryMutation
 } from '../core/paragraph-targeting.js';
 import {
@@ -71,8 +78,13 @@ import {
     deriveSingleParagraphPlainAdjacencyInsertion
 } from './operation-heuristics.js';
 import { resolveTargetFromCapture, ensureParagraphIdsOnImportedNode } from './capture-engine.js';
+import {
+    acceptTrackedChangesInOoxml,
+    rejectTrackedChangesInOoxml
+} from './revision-comment-management.js';
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+const NS_W14 = 'http://schemas.microsoft.com/office/word/2010/wordml';
 
 function getCommentIdsInElement(element) {
     const ids = new Set();
@@ -413,7 +425,10 @@ function buildFallbackInsertedPlainParagraph(xmlDoc, text, revisionMetadata, aut
     run.appendChild(textNode);
 
     if (generateRedlines) {
-        const metadata = revisionMetadata || createRevisionMetadata(author, xmlDoc);
+        if (options.trackParagraphMark === true) {
+            markParagraphMarkInserted(xmlDoc, paragraph, author);
+        }
+        const metadata = revisionMetadata || createRevisionMetadata(author, xmlDoc, 'ins');
         const ins = createWordElement(xmlDoc, 'w:ins');
         ins.setAttribute('w:id', String(metadata.id));
         ins.setAttribute('w:author', metadata.author);
@@ -444,13 +459,19 @@ function buildEmptyParagraphTemplateFromAnchor(xmlDoc, anchorParagraph) {
     return paragraph;
 }
 
-function wrapParagraphContentInInsertion(xmlDoc, paragraph, revisionMetadata, author) {
+function wrapParagraphContentInInsertion(xmlDoc, paragraph, revisionMetadata, author, options = {}) {
     const wrappedParagraph = createWordElement(xmlDoc, 'w:p');
-    const pPr = getDirectWordChild(paragraph, 'pPr');
-    if (pPr) wrappedParagraph.appendChild(pPr.cloneNode(true));
+    const pPr = options.sanitizeParagraphProperties === true
+        ? createSanitizedRestorationPPr(xmlDoc, paragraph)
+        : getDirectWordChild(paragraph, 'pPr')?.cloneNode(true);
+    if (pPr) wrappedParagraph.appendChild(pPr);
+    if (options.paragraphId) wrappedParagraph.setAttributeNS(NS_W14, 'w14:paraId', options.paragraphId);
+    if (options.trackParagraphMark === true) {
+        markParagraphMarkInserted(xmlDoc, wrappedParagraph, author);
+    }
 
     const ins = createWordElement(xmlDoc, 'w:ins');
-    const metadata = revisionMetadata || createRevisionMetadata(author, xmlDoc);
+    const metadata = revisionMetadata || createRevisionMetadata(author, xmlDoc, 'ins');
     ins.setAttribute('w:id', String(metadata.id));
     ins.setAttribute('w:author', metadata.author);
     ins.setAttribute('w:date', metadata.date);
@@ -493,7 +514,7 @@ async function buildInsertedPlainParagraph(xmlDoc, anchorParagraph, text, revisi
             text,
             revisionMetadata,
             author,
-            { generateRedlines }
+            { ...options, generateRedlines }
         );
     }
 
@@ -501,7 +522,7 @@ async function buildInsertedPlainParagraph(xmlDoc, anchorParagraph, text, revisi
         return sourceParagraph;
     }
 
-    return wrapParagraphContentInInsertion(xmlDoc, sourceParagraph, revisionMetadata, author);
+    return wrapParagraphContentInInsertion(xmlDoc, sourceParagraph, revisionMetadata, author, options);
 }
 
 function collectNumberingIdsFromNodes(nodes) {
@@ -516,6 +537,448 @@ function collectNumberingIdsFromNodes(nodes) {
         }
     }
     return Array.from(ids);
+}
+
+const RESTORATION_PPR_ALLOWLIST = new Set([
+    'pStyle', 'numPr', 'ind', 'jc', 'spacing', 'tabs',
+    'keepNext', 'keepLines', 'outlineLvl', 'contextualSpacing'
+]);
+
+function wordAttribute(node, localName) {
+    return node?.getAttribute?.(`w:${localName}`) || node?.getAttribute?.(localName) || '';
+}
+
+function normalizedAuthor(author) {
+    return String(author || '').trim().toLowerCase();
+}
+
+function directWordParagraphSibling(paragraph, direction = 'nextSibling') {
+    let cursor = paragraph?.[direction] || null;
+    while (cursor) {
+        if (cursor.nodeType === 1 && cursor.namespaceURI === NS_W && cursor.localName === 'p') return cursor;
+        cursor = cursor[direction] || null;
+    }
+    return null;
+}
+
+function createSanitizedRestorationPPr(xmlDoc, sourceParagraph) {
+    const sourcePPr = getDirectWordChild(sourceParagraph, 'pPr');
+    const pPr = createWordElement(xmlDoc, 'w:pPr');
+    if (!sourcePPr) return pPr;
+    for (const child of Array.from(sourcePPr.childNodes || [])) {
+        if (child.nodeType !== 1 || child.namespaceURI !== NS_W) continue;
+        if (!RESTORATION_PPR_ALLOWLIST.has(child.localName)) continue;
+        pPr.appendChild(xmlDoc.importNode(child, true));
+    }
+    return pPr;
+}
+
+function collectRestorationAnchorWarnings(sourceParagraph) {
+    const warnings = [];
+    const bookmarkNames = new Set();
+    for (const node of Array.from(sourceParagraph?.getElementsByTagNameNS?.(NS_W, 'bookmarkStart') || [])) {
+        const name = wordAttribute(node, 'name') || '(unnamed)';
+        bookmarkNames.add(name);
+    }
+    for (const name of bookmarkNames) warnings.push(`RESTORATION_DROPPED_BOOKMARK:${name}`);
+
+    const commentIds = new Set();
+    for (const localName of ['commentRangeStart', 'commentRangeEnd', 'commentReference']) {
+        for (const node of Array.from(sourceParagraph?.getElementsByTagNameNS?.(NS_W, localName) || [])) {
+            const id = wordAttribute(node, 'id');
+            if (id !== '') commentIds.add(id);
+        }
+    }
+    for (const id of commentIds) warnings.push(`RESTORATION_DROPPED_COMMENT:${id}`);
+    return warnings;
+}
+
+function removeRestorationAnchors(paragraph) {
+    const anchorNames = [
+        'bookmarkStart', 'bookmarkEnd',
+        'commentRangeStart', 'commentRangeEnd', 'commentReference'
+    ];
+    for (const localName of anchorNames) {
+        for (const node of Array.from(paragraph?.getElementsByTagNameNS?.(NS_W, localName) || [])) {
+            node.parentNode?.removeChild(node);
+        }
+    }
+    for (const run of Array.from(paragraph?.getElementsByTagNameNS?.(NS_W, 'r') || [])) {
+        const meaningful = Array.from(run.childNodes || []).some(child => (
+            child.nodeType === 1 && child.namespaceURI === NS_W && child.localName !== 'rPr'
+        ));
+        if (!meaningful) run.parentNode?.removeChild(run);
+    }
+}
+
+function buildRejectedRestorationTemplate(xmlDoc, sourceParagraph, serializer) {
+    const rejected = rejectTrackedChangesInOoxml(serializer.serializeToString(sourceParagraph), { allAuthors: true });
+    const parsed = parseOoxmlSafe(rejected.oxml, 'application/xml');
+    const rejectedParagraph = parsed.doc?.getElementsByTagNameNS?.(NS_W, 'p')?.[0] || null;
+    if (!rejectedParagraph) return null;
+
+    const paragraph = createWordElement(xmlDoc, 'w:p');
+    paragraph.appendChild(createSanitizedRestorationPPr(xmlDoc, sourceParagraph));
+    for (const child of Array.from(rejectedParagraph.childNodes || [])) {
+        if (child.nodeType === 1 && child.namespaceURI === NS_W && child.localName === 'pPr') continue;
+        paragraph.appendChild(xmlDoc.importNode(child, true));
+    }
+    removeRestorationAnchors(paragraph);
+    return paragraph;
+}
+
+async function editRestorationTemplate(xmlDoc, template, modifiedText, author, serializer) {
+    const originalText = extractCanonicalParagraphText(template);
+    if (originalText === modifiedText) return template;
+    const result = await applyRedlineToOxml(
+        serializer.serializeToString(template),
+        originalText,
+        modifiedText,
+        {
+            author,
+            generateRedlines: false,
+            structuredContent: false
+        }
+    );
+    if (result?.status === 'error' || typeof result?.oxml !== 'string') return null;
+    const extracted = extractReplacementNodes(result.oxml);
+    const paragraph = (extracted.replacementNodes || []).find(node => (
+        node?.nodeType === 1 && node.namespaceURI === NS_W && node.localName === 'p'
+    ));
+    return paragraph ? xmlDoc.importNode(paragraph, true) : null;
+}
+
+function allocateFreshParagraphId(xmlDoc, operationSession) {
+    const used = new Set(getDocumentParagraphNodes(xmlDoc)
+        .map(paragraph => paragraph.getAttributeNS?.(NS_W14, 'paraId') || paragraph.getAttribute?.('w14:paraId') || '')
+        .filter(Boolean)
+        .map(value => value.toUpperCase()));
+    let candidate = null;
+    do {
+        candidate = operationSession?.generateParagraphId?.()
+            || (0x40000000 + used.size + 1).toString(16).toUpperCase();
+    } while (used.has(candidate.toUpperCase()));
+    return candidate;
+}
+
+function trackRestoredParagraph(xmlDoc, paragraph, author, operationSession) {
+    const root = xmlDoc.documentElement;
+    if (root && !root.getAttribute('xmlns:w14')) root.setAttribute('xmlns:w14', NS_W14);
+    return wrapParagraphContentInInsertion(xmlDoc, paragraph, null, author, {
+        paragraphId: allocateFreshParagraphId(xmlDoc, operationSession),
+        sanitizeParagraphProperties: true,
+        trackParagraphMark: true
+    });
+}
+
+function isInsertedParagraphByAuthor(paragraph, author) {
+    const pPr = getDirectWordChild(paragraph, 'pPr');
+    const rPr = getDirectWordChild(pPr, 'rPr');
+    const marker = getDirectWordChild(rPr, 'ins');
+    return !!marker && normalizedAuthor(wordAttribute(marker, 'author')) === normalizedAuthor(author);
+}
+
+function precedingParagraphBlock(firstSource, count) {
+    const paragraphs = [];
+    let cursor = firstSource;
+    for (let i = 0; i < count; i++) {
+        cursor = directWordParagraphSibling(cursor, 'previousSibling');
+        if (!cursor) return [];
+        paragraphs.unshift(cursor);
+    }
+    return paragraphs;
+}
+
+function paragraphTextVector(oxml) {
+    const parsed = parseOoxmlSafe(oxml, 'application/xml');
+    if (parsed.error || !parsed.doc) return null;
+    return getDocumentParagraphNodes(parsed.doc).map(paragraph => extractCanonicalParagraphText(paragraph));
+}
+
+function sameTextVector(left, right) {
+    return Array.isArray(left) && Array.isArray(right)
+        && left.length === right.length
+        && left.every((value, index) => value === right[index]);
+}
+
+function lifecycleTextVector(oxml, action) {
+    const result = action === 'accept'
+        ? acceptTrackedChangesInOoxml(oxml, { allAuthors: true })
+        : rejectTrackedChangesInOoxml(oxml, { allAuthors: true });
+    return paragraphTextVector(result.oxml);
+}
+
+function buildExpectedRestorationDocument(beforeXml, sourceStartIndex, existingIndexes, templates) {
+    const parsed = parseOoxmlSafe(beforeXml, 'application/xml');
+    if (parsed.error || !parsed.doc) return null;
+    const expectedDoc = parsed.doc;
+    const originalParagraphs = getDocumentParagraphNodes(expectedDoc);
+    const source = originalParagraphs[sourceStartIndex] || null;
+    if (!source?.parentNode) return null;
+
+    for (const index of [...existingIndexes].sort((a, b) => b - a)) {
+        const paragraph = originalParagraphs[index];
+        paragraph?.parentNode?.removeChild(paragraph);
+    }
+    for (const template of templates) {
+        source.parentNode.insertBefore(expectedDoc.importNode(template, true), source);
+    }
+    return createSerializer().serializeToString(expectedDoc);
+}
+
+function verifyParagraphRestorationLifecycle(beforeXml, outputXml, sourceStartIndex, existingIndexes, templates) {
+    const validation = validateRedlineOoxml(outputXml);
+    if (!validation.valid) {
+        return {
+            valid: false,
+            stage: 'validation',
+            message: validation.issues.filter(issue => issue.severity === 'error').map(issue => issue.message).join(' ')
+        };
+    }
+
+    const expectedXml = buildExpectedRestorationDocument(beforeXml, sourceStartIndex, existingIndexes, templates);
+    if (!expectedXml) return { valid: false, stage: 'expected-document', message: 'Could not construct the restoration lifecycle oracle.' };
+
+    const comparisons = [
+        ['current', paragraphTextVector(expectedXml), paragraphTextVector(outputXml)],
+        ['accept-all', lifecycleTextVector(expectedXml, 'accept'), lifecycleTextVector(outputXml, 'accept')],
+        ['reject-all', lifecycleTextVector(beforeXml, 'reject'), lifecycleTextVector(outputXml, 'reject')]
+    ];
+    for (const [stage, expected, actual] of comparisons) {
+        if (!sameTextVector(expected, actual)) {
+            return {
+                valid: false,
+                stage,
+                expected,
+                actual,
+                message: `Paragraph restoration ${stage} lifecycle text did not match the expected body-scoped paragraph sequence.`
+            };
+        }
+    }
+    return { valid: true };
+}
+
+/**
+ * Materializes an explicit counterproposal for one or more paragraphs wholly
+ * deleted (content and paragraph mark) by another author.
+ */
+export async function restoreDeletedParagraphByExactText(
+    documentXml,
+    targetText,
+    modified,
+    author,
+    targetRef = null,
+    targetEndRef = null,
+    runtimeContext = null,
+    options = {}
+) {
+    const { serializer, xmlDoc, operationSession } = resolveMutationDocument(documentXml, options);
+    if (!xmlDoc) {
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: { code: 'PARSE_ERROR', message: 'Could not parse document OOXML.' }
+        };
+    }
+
+    const resolved = resolveTargetParagraph(xmlDoc, targetText, targetRef, 'restore', runtimeContext, options);
+    if (resolved?.error || !resolved?.paragraph) {
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: resolved?.error || { code: 'TARGET_NOT_FOUND', message: 'Restoration target paragraph not found.' }
+        };
+    }
+
+    const firstSource = resolved.paragraph;
+    let sourceParagraphs = [firstSource];
+    if (targetEndRef) {
+        sourceParagraphs = resolveParagraphRangeByRefs(xmlDoc, targetRef, targetEndRef, {
+            opType: 'restore',
+            targetRefSnapshot: runtimeContext?.targetRefSnapshot || null,
+            onInfo: options.onInfo,
+            onWarn: options.onWarn
+        });
+    } else if (options.targetEndDescriptor) {
+        const endResolved = resolveTargetParagraph(
+            xmlDoc,
+            options.targetEndDescriptor.text,
+            options.targetEndDescriptor.index,
+            'restore',
+            runtimeContext,
+            { ...options, targetDescriptor: options.targetEndDescriptor }
+        );
+        const allParagraphs = endResolved?.paragraph ? getDocumentParagraphNodes(xmlDoc) : [];
+        const startIndex = allParagraphs.indexOf(firstSource);
+        const endIndex = allParagraphs.indexOf(endResolved?.paragraph);
+        sourceParagraphs = startIndex >= 0 && endIndex >= startIndex
+            ? allParagraphs.slice(startIndex, endIndex + 1)
+            : null;
+    }
+    if (!Array.isArray(sourceParagraphs) || sourceParagraphs.length === 0 || sourceParagraphs[0] !== firstSource) {
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: {
+                code: 'RESTORATION_COUNT_MISMATCH',
+                message: 'The restoration range could not be resolved as a contiguous paragraph block.'
+            }
+        };
+    }
+
+    const replacements = Array.isArray(modified) ? modified.map(String) : [String(modified || '')];
+    if (replacements.length !== sourceParagraphs.length || replacements.some(text => text.length === 0)) {
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: {
+                code: 'RESTORATION_COUNT_MISMATCH',
+                message: `Restoration requires exactly one non-empty replacement per source paragraph (${sourceParagraphs.length} expected, ${replacements.length} received).`
+            }
+        };
+    }
+
+    const parent = firstSource.parentNode;
+    if (!parent || sourceParagraphs.some(paragraph => paragraph.parentNode !== parent)) {
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: {
+                code: 'UNSAFE_PARAGRAPH_PLACEMENT',
+                message: 'Restoration source paragraphs must be a contiguous block in one structural container.'
+            }
+        };
+    }
+
+    for (const paragraph of sourceParagraphs) {
+        const structuralRefusal = getParagraphRestorationRefusal(paragraph);
+        if (structuralRefusal?.code === 'UNSUPPORTED_MOVE_REVISION') {
+            return {
+                documentXml,
+                hasChanges: false,
+                status: 'error',
+                error: structuralRefusal
+            };
+        }
+        const state = inspectForeignDeletedParagraphTarget(paragraph, author);
+        if (!state.matches) {
+            return {
+                documentXml,
+                hasChanges: false,
+                status: 'error',
+                error: {
+                    code: 'RESTORATION_STATE_REQUIRED',
+                    message: state.hasParagraphMarkDeletion && !state.foreignParagraphMarkDeletion
+                        ? 'Explicit cross-author restoration does not apply to a paragraph deleted by the current author; use merge-same-author.'
+                        : 'Explicit restoration requires a foreign paragraph-mark deletion with every pre-existing content node deleted.',
+                    ...(state.ownerAuthor ? { ownerAuthor: state.ownerAuthor } : {})
+                }
+            };
+        }
+        const refusal = structuralRefusal || getParagraphRestorationRefusal(paragraph);
+        if (refusal) {
+            return {
+                documentXml,
+                hasChanges: false,
+                status: 'error',
+                error: refusal
+            };
+        }
+    }
+
+    const existingBlock = precedingParagraphBlock(firstSource, sourceParagraphs.length);
+    const hasExistingRestoration = existingBlock.length === sourceParagraphs.length
+        && existingBlock.every(paragraph => isInsertedParagraphByAuthor(paragraph, author));
+    if (
+        hasExistingRestoration
+        && existingBlock.every((paragraph, index) => extractCanonicalParagraphText(paragraph) === replacements[index])
+    ) {
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'no-op',
+            warnings: ['An identical same-author paragraph restoration already exists.']
+        };
+    }
+
+    const beforeXml = serializer.serializeToString(xmlDoc);
+    const beforeParagraphs = getDocumentParagraphNodes(xmlDoc);
+    const sourceStartIndex = beforeParagraphs.indexOf(firstSource);
+    const existingIndexes = hasExistingRestoration
+        ? existingBlock.map(paragraph => beforeParagraphs.indexOf(paragraph))
+        : [];
+    const templates = [];
+    const warnings = [];
+    for (let index = 0; index < sourceParagraphs.length; index++) {
+        const source = sourceParagraphs[index];
+        warnings.push(...collectRestorationAnchorWarnings(source));
+        const template = buildRejectedRestorationTemplate(xmlDoc, source, serializer);
+        const edited = template
+            ? await editRestorationTemplate(xmlDoc, template, replacements[index], author, serializer)
+            : null;
+        if (!edited) {
+            return {
+                documentXml,
+                hasChanges: false,
+                status: 'error',
+                error: {
+                    code: 'PATCH_ROUNDTRIP_MISMATCH',
+                    message: `Could not reconstruct restoration paragraph ${index + 1} from its rejected revision view.`
+                }
+            };
+        }
+        templates.push(edited);
+    }
+
+    const insertedParagraphs = templates.map(template => {
+        const paragraph = xmlDoc.importNode(template, true);
+        return trackRestoredParagraph(xmlDoc, paragraph, author, operationSession);
+    });
+    for (const paragraph of insertedParagraphs) parent.insertBefore(paragraph, firstSource);
+    if (hasExistingRestoration) {
+        for (const paragraph of existingBlock) {
+            options?._mutationRemovedNodes?.push(paragraph);
+            paragraph.parentNode?.removeChild(paragraph);
+        }
+    }
+    options?._mutationLiveNodes?.push(...insertedParagraphs);
+    normalizeBodySectionOrder(xmlDoc);
+
+    const outputXml = serializer.serializeToString(xmlDoc);
+    const oracle = verifyParagraphRestorationLifecycle(
+        beforeXml,
+        outputXml,
+        sourceStartIndex,
+        existingIndexes,
+        templates
+    );
+    if (!oracle.valid) {
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: {
+                code: 'PATCH_ROUNDTRIP_MISMATCH',
+                message: oracle.message,
+                stage: oracle.stage,
+                ...(oracle.expected ? { expected: oracle.expected } : {}),
+                ...(oracle.actual ? { actual: oracle.actual } : {})
+            }
+        };
+    }
+
+    return {
+        documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
+        hasChanges: true,
+        status: 'ok',
+        numberingXml: null,
+        ...(warnings.length > 0 ? { warnings: [...new Set(warnings)] } : {})
+    };
 }
 
 async function tryExplicitDecimalHeaderListConversion({
@@ -820,6 +1283,23 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         };
     }
     const targetParagraph = resolved.paragraph;
+    if (typeof modifiedText === 'string' && modifiedText.length > 0) {
+        const resurrectionTarget = inspectForeignDeletedParagraphTarget(targetParagraph, author);
+        if (resurrectionTarget.matches) {
+            const ownerAuthor = resurrectionTarget.ownerAuthor || 'unattributed';
+            return {
+                documentXml,
+                hasChanges: false,
+                numberingXml: null,
+                status: 'error',
+                error: {
+                    code: 'FOREIGN_PARAGRAPH_MARK_DELETION',
+                    message: `Refusing to add visible text to a paragraph whose paragraph mark is deleted by another author (${ownerAuthor}). Use explicit paragraph restoration when supported.`,
+                    ownerAuthor
+                }
+            };
+        }
+    }
     preprocessRedlineTargetParagraph(targetParagraph);
     const currentParagraphText = getParagraphText(targetParagraph);
     if (modifiedText === '') {

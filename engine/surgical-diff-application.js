@@ -161,7 +161,18 @@ export function processDelete(xmlDoc, spanIndex, startPos, endPos, author, gener
             if (delWrapper && record.deletedPieces.length > 0) {
                 delWrapper.appendChild(createRunFromPieces(xmlDoc, record.deletedPieces, record.rPr));
             }
-            insertRunPiecesBefore(xmlDoc, parent, runElement, record.afterPieces, record.rPr);
+            const afterRun = insertRunPiecesBefore(xmlDoc, parent, runElement, record.afterPieces, record.rPr);
+            if (
+                record.globalEnd === endPos
+                && !isWordElement(parent, 'ins')
+            ) {
+                if (!spanIndex.replacementInsertionAnchors) spanIndex.replacementInsertionAnchors = new Map();
+                spanIndex.replacementInsertionAnchors.set(endPos, {
+                    parent,
+                    referenceNode: afterRun || runElement.nextSibling,
+                    rPr: record.rPr
+                });
+            }
             parent.removeChild(runElement);
             changed = true;
         }
@@ -207,6 +218,29 @@ export function processInsert(xmlDoc, spanIndex, pos, text, author, formatHints 
             generateRedlines,
             revisionMetadata
         );
+    }
+
+    const replacementAnchor = spanIndex.replacementInsertionAnchors?.get(pos) || null;
+    if (
+        replacementAnchor
+        && !affinity
+        && isConnected(replacementAnchor.parent)
+        && (!replacementAnchor.referenceNode || replacementAnchor.referenceNode.parentNode === replacementAnchor.parent)
+    ) {
+        spanIndex.replacementInsertionAnchors.delete(pos);
+        insertTextRuns(
+            xmlDoc,
+            replacementAnchor.parent,
+            replacementAnchor.referenceNode,
+            text,
+            replacementAnchor.rPr,
+            author,
+            formatHints,
+            insertOffset,
+            generateRedlines,
+            revisionMetadata
+        );
+        return true;
     }
 
     if (!affinity) {

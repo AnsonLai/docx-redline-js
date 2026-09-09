@@ -151,6 +151,24 @@ const operations = [
 ];
 ```
 
+To counterpropose text for a paragraph wholly deleted by another reviewer,
+use explicit restoration intent. A normal `redline` remains fail-closed with
+`FOREIGN_PARAGRAPH_MARK_DELETION`:
+
+```js
+const restoration = {
+  type: 'restore',
+  target: { paragraphId: '1A2B3C4D' },
+  modified: 'Restored or adjusted paragraph text.',
+  author: 'Editor'
+};
+```
+
+For a contiguous range, provide `targetEnd`/`targetEndRef` and one string per
+source paragraph in `modified`. Restoration always uses tracked changes,
+preserves the deleted source paragraph, and inserts the counterproposal before
+it with a fresh paragraph ID.
+
 `targetRef` is an optional 1-based paragraph reference used to disambiguate
 duplicate text. An operation-level `author` overrides the batch author; batch
 results report both `authorUsed` per item and the aggregate `authorsUsed` list.
@@ -398,6 +416,9 @@ When the CLI or runner returns an error code, follow these specific recovery act
 | `OVERLAPPING_TEXT_EDITS` | Multiple operations target the same paragraph concurrently. | Consolidate all changes to the same paragraph into a single `redline` or `replace` operation. |
 | `EXISTING_REVISIONS` | Target paragraph contains tracked changes from another author. | Fails closed to protect third-party review marks. If editing inside that reviewer's pending insertion is intended, pass `--existing-revisions slice-cross-author` (or `existingRevisions: 'slice-cross-author'`). Do not pass `accept-all-first` without explicit user authorization. |
 | `PATCH_ROUNDTRIP_MISMATCH` | A cross-author surgical edit did not reconstruct the requested modified text exactly. | Treat the operation as unapplied. Re-extract the exact paragraph text and split the edit into a narrower operation that does not cross the reported structural boundary. |
+| `FOREIGN_PARAGRAPH_MARK_DELETION` | A normal edit attempted to write into a paragraph wholly deleted by another reviewer. | Use an explicit `restore` operation if the user intends to counterpropose that paragraph; otherwise leave the deletion unresolved. |
+| `RESTORATION_STATE_REQUIRED` / `RESTORATION_COUNT_MISMATCH` | A `restore` target is not a wholly foreign-deleted paragraph, or its replacement count does not match the paragraph range. | Re-inspect the document and target the deleted paragraph by stable descriptor; provide exactly one replacement string per source paragraph. |
+| `UNSAFE_DELETED_TABLE_ROW` / `UNSUPPORTED_MOVE_REVISION` / `SECTION_BREAK_PARAGRAPH` / `UNSAFE_PARAGRAPH_PLACEMENT` | Paragraph restoration cannot preserve the source structural boundary safely. | Do not retry as an ordinary redline. Resolve the row/move/section/placement condition manually or narrow the restoration to a safe paragraph. |
 | `COMMENTED_CONTENT_MERGE` / `COMMENTED_CONTENT_DELETE` | Operation would overwrite, revert, or delete content with comments. | Fails closed to prevent orphaned comment threads. Report the comment author and text to the user; resolve the comment before re-editing. |
 | `INVALID_OPERATION` | Operation object violates schema or has incompatible fields. | Validate the JSON structure against [`document-operations.schema.json`](file:///c:/Users/Phara/Desktop/Projects/Docx%20Redline%20JS/docs/schemas/document-operations.schema.json) before targeting is attempted. |
 | `STRUCTURED_CONTENT_INVALID` | Malformed Markdown table or structure in replacement text. | Ensure tables include a separator row (`\| --- \| --- \|`) and consistent column counts; do not downgrade to raw text. |

@@ -65,6 +65,49 @@ const parsedResult = parseOoxmlSafe(result.oxml, 'application/xml');
 assert.equal(parsedResult.doc.getElementsByTagNameNS(W, 'hyperlink').length, 2,
     'both hyperlink relationship containers must survive');
 
+// Replacing the space immediately after a hyperlink must keep the paired
+// insertion at that boundary rather than appending it after the following run.
+{
+    const policyOriginal = `Salary’s Privacy Policy located at${nbsp}www.salary.com/legal/pp/${nbsp}(the “Privacy Policy”).`;
+    const policyModified = `Salary’s Privacy Policy located at${nbsp}www.salary.com/legal/pp/, as it exists as of execution${nbsp}(the “Privacy Policy”).`;
+    const policySource = `<w:p xmlns:w="${W}" xmlns:r="${R}">`
+        + run('Salary’s Privacy Policy located at')
+        + run(nbsp)
+        + hyperlink('rIdPrivacy', 'www.salary.com/legal/pp/')
+        + run(`${nbsp}(the “`)
+        + '<w:r><w:rPr><w:b/><w:bCs/><w:u w:val="single"/></w:rPr><w:t>Privacy Policy</w:t></w:r>'
+        + run('”).')
+        + '</w:p>';
+    const policyResult = await applyRedlineToOxml(policySource, policyOriginal, policyModified, {
+        author: 'Reviewer',
+        existingRevisions: 'slice-cross-author',
+        pairReplacements: true,
+        structuredContent: false
+    });
+    assert.equal(policyResult.status, 'ok', JSON.stringify(policyResult.error));
+    assert.equal(acceptedParagraphText(policyResult.oxml), policyModified);
+    const policyParsed = parseOoxmlSafe(policyResult.oxml, 'application/xml');
+    const policyLinks = policyParsed.doc.getElementsByTagNameNS(W, 'hyperlink');
+    assert.equal(policyLinks.length, 1);
+    assert.equal(policyLinks[0].getAttribute('r:id'), 'rIdPrivacy');
+
+    const policyAccepted = acceptTrackedChangesInOoxml(policyResult.oxml, { allAuthors: true });
+    assert.equal(acceptedParagraphText(policyAccepted.oxml), policyModified);
+
+    const policyDocument = `<w:document xmlns:w="${W}" xmlns:r="${R}"><w:body>${policySource}<w:sectPr/></w:body></w:document>`;
+    const policyBatch = await applyOperationsToDocumentXml(policyDocument, [{
+        type: 'redline',
+        target: { exactText: policyOriginal },
+        modified: policyModified,
+        author: 'Reviewer',
+        existingRevisions: 'slice-cross-author'
+    }], 'Reviewer', null, { atomic: true, strictTargets: true });
+    assert.equal(policyBatch.status, 'ok', JSON.stringify(policyBatch.error));
+    assert.equal(policyBatch.results[0]?.status, 'applied');
+    const policyBatchAccepted = acceptTrackedChangesInOoxml(policyBatch.documentXml, { allAuthors: true });
+    assert.equal(acceptedParagraphText(policyBatchAccepted.oxml), policyModified);
+}
+
 // The document operation path used by CLI apply must preserve the same invariant.
 {
     const documentXml = `<w:document xmlns:w="${W}" xmlns:r="${R}"><w:body>${source}<w:sectPr/></w:body></w:document>`;

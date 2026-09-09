@@ -124,7 +124,42 @@ export function applySurgicalMode(xmlDoc, originalText, modifiedText, serializer
     let newPos = 0;
     let hasChanges = false;
 
-    for (let i = 0; i < diffs.length; i++) {
+    const insertionOperations = insertionOnlyDiffs
+        ? collectInsertionOperations(insertionOnlyDiffs)
+        : [];
+    if (insertionOperations.length > 1 && formatHints.length === 0) {
+        for (const operation of insertionOperations.slice().reverse()) {
+            const liveSpans = buildSurgicalTextSpans(allParagraphs).textSpans;
+            const liveSpanIndex = buildSpanIndex(liveSpans);
+            const textWithoutNewlines = operation.text.replace(/\n/g, ' ');
+            if (textWithoutNewlines.length === 0) continue;
+            const insertResult = processInsert(
+                xmlDoc,
+                liveSpanIndex,
+                operation.originalPos,
+                textWithoutNewlines,
+                author,
+                formatHints,
+                operation.newPos,
+                generateRedlines,
+                allParagraphs[0] || null,
+                null,
+                options?.insertionAffinity || null,
+                options?.existingRevisions || 'merge-same-author'
+            );
+            if (insertResult && typeof insertResult === 'object' && insertResult.error) {
+                return withOoxmlSourceType({
+                    oxml: serializer.serializeToString(xmlDoc),
+                    hasChanges: false,
+                    status: 'error',
+                    error: insertResult.error
+                });
+            }
+            if (insertResult === true) hasChanges = true;
+        }
+    } else {
+
+      for (let i = 0; i < diffs.length; i++) {
         const [op, text] = diffs[i];
         if (op === 0) {
             const len = text.length;
@@ -216,6 +251,7 @@ export function applySurgicalMode(xmlDoc, originalText, modifiedText, serializer
             }
             newPos += text.length;
         }
+      }
     }
 
     const actualText = allParagraphs.map(paragraph => extractCanonicalParagraphText(paragraph)).join('\n');
@@ -256,4 +292,22 @@ function excerptAt(text, offset, radius = 40) {
     const start = Math.max(0, offset - radius);
     const end = Math.min(text.length, offset + radius);
     return text.slice(start, end);
+}
+
+function collectInsertionOperations(diffs) {
+    const operations = [];
+    let originalPos = 0;
+    let newPos = 0;
+    for (const [op, text] of diffs) {
+        if (op === 0) {
+            originalPos += text.length;
+            newPos += text.length;
+        } else if (op === -1) {
+            originalPos += text.length;
+        } else if (op === 1) {
+            operations.push({ originalPos, newPos, text });
+            newPos += text.length;
+        }
+    }
+    return operations;
 }

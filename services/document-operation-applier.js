@@ -15,6 +15,7 @@ import {
     applyFormattingToParagraphByExactText,
     applyHighlightToParagraphByExactText,
     applyParagraphFormatToParagraphByExactText,
+    restoreDeletedParagraphByExactText,
     applyToParagraphByExactText
 } from './document-operation-mutations.js';
 import { applyCommentReplyToParts } from './comment-replies.js';
@@ -58,7 +59,13 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
     const operation = validation.operation || normalizeDocumentOperation(op);
     const authorUsed = resolveDocumentOperationAuthor(operation, author, getDefaultAuthor());
 
-    if (operation.operationKind !== 'comment_reply' && operation.targetDescriptor?.revisionView === 'rejected') {
+    if (
+        operation.operationKind !== 'comment_reply'
+        && (
+            operation.targetDescriptor?.revisionView === 'rejected'
+            || operation.targetEndDescriptor?.revisionView === 'rejected'
+        )
+    ) {
         return {
             documentXml,
             hasChanges: false,
@@ -160,6 +167,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
         ...(operation.insertionAffinity ? { insertionAffinity: operation.insertionAffinity } : {}),
         ...(operation.formattingRevisionPolicy ? { formattingRevisionPolicy: operation.formattingRevisionPolicy } : {}),
         targetDescriptor: operation.targetDescriptor,
+        targetEndDescriptor: operation.targetEndDescriptor,
         _resolutionCapture: resolutionCapture,
         _revisionIdAllocator: session.revisionIdAllocator,
         _documentOperationSession: session,
@@ -239,6 +247,17 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                 operation.properties,
                 authorUsed,
                 operation.targetRef,
+                runtimeContext,
+                operationOptions
+            );
+        } else if (operation.operationKind === 'restore') {
+            result = await restoreDeletedParagraphByExactText(
+                documentXml,
+                operation.target,
+                operation.modified,
+                authorUsed,
+                operation.targetRef,
+                operation.targetEndRef,
                 runtimeContext,
                 operationOptions
             );

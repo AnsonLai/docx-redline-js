@@ -526,6 +526,19 @@ const opResult = await applyOperationToDocumentXml(
   'Editor'
 );
 
+// Restoring another reviewer's pending whole-paragraph deletion requires
+// explicit intent. The restored counterproposal becomes a separately tracked
+// sibling paragraph; a normal redline operation remains fail-closed.
+const restoration = await applyOperationToDocumentXml(
+  documentXml,
+  {
+    type: 'restore',
+    target: { paragraphId: '1A2B3C4D' },
+    modified: 'Restored or adjusted paragraph text.'
+  },
+  'Editor'
+);
+
 // applyOperationToDocumentXml(...) returns a full w:document payload.
 zip.file('word/document.xml', opResult.documentXml);
 

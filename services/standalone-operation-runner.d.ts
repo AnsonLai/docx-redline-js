@@ -43,6 +43,13 @@ export interface RedlineDocumentOperation extends DocumentOperationBase {
   targetEndRef?: number | string | null;
 }
 
+export interface RestoreDocumentOperation extends DocumentOperationBase {
+  type: 'restore';
+  modified: string | string[];
+  targetEnd?: ParagraphTargetDescriptor;
+  targetEndRef?: number | string | null;
+}
+
 export interface DeleteDocumentOperation extends DocumentOperationBase {
   type: 'delete';
   modified?: '';
@@ -103,6 +110,7 @@ export interface ParagraphFormatDocumentOperation extends DocumentOperationBase 
 
 export type DocumentOperation =
   | RedlineDocumentOperation
+  | RestoreDocumentOperation
   | DeleteDocumentOperation
   | CommentDocumentOperation
   | CommentReplyDocumentOperation
