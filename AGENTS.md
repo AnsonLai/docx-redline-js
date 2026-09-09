@@ -263,12 +263,16 @@ docx-redline apply contract.docx --target "Original clause" --modified "New clau
 # 2. Direct edit without tracked changes (clean text, no revision clutter)
 docx-redline apply contract.docx --target "Typo fix" --modified "Fixed typo" --no-redlines --output clean.docx
 
-# 3. Batch operations with ops.json
+# 3. Cross-author edit inside another reviewer's pending insertion
+docx-redline apply contract.docx --target "Pending clause text" --modified "Updated clause text" --existing-revisions slice-cross-author --output reviewed.docx
+
+# 4. Batch operations with ops.json
 docx-redline apply contract.docx --operations operations.json --output reviewed.docx
 ```
 
 Key CLI defaults and behaviors:
 - **Author**: Automatically defaults to `'AI Redliner'` (overridable via `--author` or `DOCX_REDLINE_AUTHOR` environment variable).
+- **Existing revisions**: Defaults to `'merge-same-author'`. Pass `--existing-revisions slice-cross-author` to edit inside another reviewer's pending insertions with native carrier slicing.
 - **Overwrite behavior**: Destination files provided via `--output` overwrite by default. To protect existing destination files, pass `--no-overwrite` or `--no-clobber`. The source document is never overwritten unless `--in-place` is specified.
 - **Tracked changes**: Defaults to `generateRedlines: true`. When clean direct text is needed, pass `--no-redlines`.
 - **Atomic rollback (optional)**: Operations apply progressively by default (`atomic: false`). For all-or-nothing transactional rollback where any error halts and reverts all changes, pass `--atomic`.
@@ -392,7 +396,8 @@ When the CLI or runner returns an error code, follow these specific recovery act
 | `AMBIGUOUS_TARGET` | Multiple paragraphs match identical text. | Disambiguate by supplying `paragraphId`, `fingerprint`, `occurrence`, or `index` in the target descriptor. |
 | `ANCHOR_NOT_FOUND` / `AMBIGUOUS_ANCHOR` | Comment anchor text was not uniquely matched in paragraph. | Narrow `textToComment` to a unique exact substring, or omit `textToComment` to anchor the comment to the entire paragraph. |
 | `OVERLAPPING_TEXT_EDITS` | Multiple operations target the same paragraph concurrently. | Consolidate all changes to the same paragraph into a single `redline` or `replace` operation. |
-| `EXISTING_REVISIONS` | Target paragraph contains tracked changes from another author. | Fails closed to protect third-party review marks. Report the other reviewer's name to the user. Do not pass `accept-all-first` without explicit authorization. |
+| `EXISTING_REVISIONS` | Target paragraph contains tracked changes from another author. | Fails closed to protect third-party review marks. If editing inside that reviewer's pending insertion is intended, pass `--existing-revisions slice-cross-author` (or `existingRevisions: 'slice-cross-author'`). Do not pass `accept-all-first` without explicit user authorization. |
+| `PATCH_ROUNDTRIP_MISMATCH` | A cross-author surgical edit did not reconstruct the requested modified text exactly. | Treat the operation as unapplied. Re-extract the exact paragraph text and split the edit into a narrower operation that does not cross the reported structural boundary. |
 | `COMMENTED_CONTENT_MERGE` / `COMMENTED_CONTENT_DELETE` | Operation would overwrite, revert, or delete content with comments. | Fails closed to prevent orphaned comment threads. Report the comment author and text to the user; resolve the comment before re-editing. |
 | `INVALID_OPERATION` | Operation object violates schema or has incompatible fields. | Validate the JSON structure against [`document-operations.schema.json`](file:///c:/Users/Phara/Desktop/Projects/Docx%20Redline%20JS/docs/schemas/document-operations.schema.json) before targeting is attempted. |
 | `STRUCTURED_CONTENT_INVALID` | Malformed Markdown table or structure in replacement text. | Ensure tables include a separator row (`\| --- \| --- \|`) and consistent column counts; do not downgrade to raw text. |

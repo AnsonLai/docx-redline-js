@@ -233,6 +233,28 @@ export function computeWordDiffs(originalText, newText, options = {}) {
 }
 
 /**
+ * Returns a character-local diff only when the modified string can be made
+ * solely by inserting into the original. This prevents word-token cleanup
+ * from relocating small insertions between repeated phrases or containers.
+ *
+ * @param {string} originalText
+ * @param {string} newText
+ * @returns {Array<[number, string]>|null}
+ */
+export function computeInsertionOnlyDiffs(originalText, newText) {
+    if (originalText === newText) return [[0, originalText]];
+    if (!originalText) return [[1, newText]];
+    let originalIndex = 0;
+    for (let modifiedIndex = 0; modifiedIndex < newText.length && originalIndex < originalText.length; modifiedIndex++) {
+        if (newText[modifiedIndex] === originalText[originalIndex]) originalIndex++;
+    }
+    if (originalIndex !== originalText.length) return null;
+
+    const diffs = createDiffEngine().diff_main(originalText, newText);
+    return diffs.some(([op]) => op === -1) ? null : diffs;
+}
+
+/**
  * Computes word-level diff operations with offset tracking.
  * 
  * @param {string} originalText - Original text

@@ -143,12 +143,17 @@ docx-redline extract contract.docx --range 10:30
 docx-redline preflight contract.docx --operations operations.json --author "Editor"
 docx-redline apply contract.docx --operations operations.json --author "Editor" --output reviewed.docx
 docx-redline validate reviewed.docx
+```
+
 ```bash
 # Inline one-liner edit (no operations file needed)
 docx-redline apply contract.docx --target "Original clause text" --modified "New clause text" --output reviewed.docx
 
 # Direct edit without tracked changes
 docx-redline apply contract.docx --target "Typo fix" --modified "Fixed typo" --no-redlines --output clean.docx
+
+# Cross-author edit inside another reviewer's pending insertion
+docx-redline apply contract.docx --target "Another author's clause" --modified "Revised clause" --existing-revisions slice-cross-author --output reviewed.docx
 
 # High-assurance atomic batch
 docx-redline apply contract.docx --operations operations.json --atomic --output reviewed.docx
@@ -157,6 +162,7 @@ docx-redline apply contract.docx --operations operations.json --atomic --output 
 All commands emit JSON on stdout. `apply` defaults:
 - **Author**: Defaults to `'AI Redliner'` (or `DOCX_REDLINE_AUTHOR` environment variable).
 - **Output overwrite**: Destination files provided via `--output` overwrite by default. Pass `--no-overwrite` or `--no-clobber` to safeguard existing destination files. The source input is never overwritten unless `--in-place` is specified.
+- **Existing revisions**: Defaults to `'merge-same-author'`. Pass `--existing-revisions slice-cross-author` to edit inside another reviewer's pending insertions with native carrier slicing.
 - **Transactionality**: Defaults to `atomic: false` (applies valid operations and reports any failures). Pass `--atomic` for all-or-nothing rollback on any operation error.
 - **Tracked changes**: Defaults to `generateRedlines: true`. Pass `--no-redlines` when clean direct text edits are desired.
 - **Inline edits**: Use `--target <text>` with `--modified <text>` or `--comment <text>` for quick one-liners without creating a JSON file.
@@ -204,6 +210,24 @@ Word diffs are deterministic by default (no wall-clock timeout). Inputs above
 the safe ceiling of 262,144 unique diff tokens return `DIFF_TOKEN_LIMIT` with
 the original OOXML unchanged so callers can split the operation without risking
 silent text loss.
+
+### Editing inside existing revisions (cross-author slicing)
+
+During multi-round legal negotiations, a reviewer often needs to edit text that was previously inserted by another reviewer whose revision is still pending. Pass `existingRevisions: 'slice-cross-author'` (or `--existing-revisions slice-cross-author` via CLI) to edit inside another author's pending insertion without erasing their attribution or requiring prior acceptance:
+
+```js
+const result = await applyRedlineToOxml(paragraphOoxml, originalText, modifiedText, {
+  generateRedlines: true,
+  author: 'Anson Lai',
+  existingRevisions: 'slice-cross-author'
+});
+```
+
+The engine applies Microsoft Word Desktop-native tracked change structures:
+- **Insertions inside pending insertions**: The carrier `<w:ins>` is split into sibling `<w:ins>` containers at the paragraph level (`[ins(Author A), ins(Author B), ins(Author A)]`), maintaining strict schema compliance without illegal `ins/ins` nesting.
+- **Deletions inside pending insertions**: The new `<w:del>` is nested directly inside the carrier `<w:ins>` (valid under ECMA-376 Part 1 `CT_RunTrackChange`), ensuring that if Author A's insertion is rejected, Author B's dependent deletion is cleanly removed with it.
+- **Straddle deletions**: Deletions spanning between baseline text and pending insertions cleanly partition across their respective container contexts without invalid coalescing.
+- **Lifecycle parity**: Accepting or rejecting either reviewer independently produces identical results to Microsoft Word Desktop's native review pane.
 
 ### Replacing a heading with a tracked list
 
@@ -314,6 +338,14 @@ exception. Transforms return `status: 'error'` with `error.code === 'PARSE_ERROR
 validators return a `PARSE_ERROR` issue. Recoverable XML parser
 diagnostics are forwarded through the configured logger and included in
 `warnings` where the result shape supports them.
+
+Cross-author slicing also verifies its exact accepted-view text before success.
+If a structural boundary prevents exact reconstruction, the transform returns
+`status: 'error'` with `error.code === 'PATCH_ROUNDTRIP_MISMATCH'`,
+`hasChanges: false`, and the original OOXML unchanged.
+Pure insertion-only slicing uses an exact character-local diff so repeated words
+cannot move an insertion to a different occurrence. Leading/trailing spaces,
+tabs, and non-breaking spaces are treated as real changes rather than no-ops.
 
 ### Deep Imports
 

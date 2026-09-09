@@ -29,6 +29,7 @@ fixtures rarely contain.
 | Target hot-path parity | `node tests/performance_phase3_target_hot_paths_tests.mjs` | Cached and uncached resolution metadata parity, duplicate safety, snapshots, session invalidation, and pointer-based revision-ID seeding | Machine-independent latency thresholds |
 | List and text-walker parity | `node tests/performance_phase4_list_and_text_parity_tests.mjs` | One shared marker vocabulary and canonical/specialized visible-text agreement across structural characters and revision views | That all specialized mappings are interchangeable |
 | Route compatibility | `node tests/performance_phase5_route_consolidation_tests.mjs` | Direct/legacy list accepted-rejected parity, numbering artifacts, route selection, capability records, and stable public exports | Permission to migrate the retained multi-paragraph compatibility route |
+| Cross-author revision slicing | `node tests/cross_author_slicing_fixtures_tests.mjs`, `node tests/cross_author_carrier_splitting_tests.mjs`, `node tests/cross_author_slicing_synthetic_tests.mjs`, `node tests/cross_author_slicing_real_tests.mjs`, `node tests/cross_author_slicing_hyperlink_roundtrip_tests.mjs`, `node tests/cross_author_slicing_insertion_stress_tests.mjs` | Word-native `<w:ins>` splitting, `<w:del>` nesting, multi-author stacking, straddle boundaries, synthetic matrix (SYN-01..12d), strict package differential replay (PKG-01..06), exact hyperlink/NBSP round trips, and 76 insertion stress scenarios | Non-Word consumers beyond OpenXML XSD validation |
 
 The package-facade regression opens a real ZIP buffer, adds a comment beside an
 existing high ID, validates OPC wiring, and checks an unrelated binary part is
@@ -77,6 +78,23 @@ It writes `tmp/benchmarks/operation-session-latest.json`. The checked
 not correctness gates. Per-operation DOM savepoints are retained because
 redline accuracy, no-op isolation, and rollback fidelity take precedence over
 the aspirational speed target.
+
+## Cross-author revision slicing test suite
+
+The cross-author revision slicing subsystem introduces six complementary test lanes:
+
+1. **Native Word Desktop Fixtures (`tests/cross_author_slicing_fixtures_tests.mjs`)**:
+   Verifies 36 reference `.docx` and `.xml` files generated via Microsoft Word Desktop 365 COM automation across 6 golden scenarios (`insert-interior`, `delete-interior`, `delete-boundary-start`, `delete-boundary-end`, `delete-straddle-baseline-insertion`, and `multi-author-stacked`) in pending, accepted, and rejected states. Proves Word-native OOXML patterns (carrier `<w:ins>` splitting for insertions, direct `<w:del>` nesting inside `<w:ins>` for deletions) and lifecycle parity under `acceptTrackedChangesInOoxml` and `rejectTrackedChangesInOoxml`.
+2. **Carrier Splitting Unit Suite (`tests/cross_author_carrier_splitting_tests.mjs`)**:
+   Tests `splitTrackChangeCarrier` across interior and boundary cuts, multi-run formatting preservation, stable metadata cloning, independent revision ID allocation via `RevisionIdAllocator`, and immutable input handling.
+3. **Synthetic Boundary Matrix (`tests/cross_author_slicing_synthetic_tests.mjs`)**:
+   Executes the full SYN-01 through SYN-12d test matrix covering pure interior inserts, pure interior deletes, boundary start/end cuts, full-content annihilation, baseline/insertion straddles, multi-carrier straddles, formatting preservation, paired replacements, 3-author stacked revisions, and selective author accept/reject lifecycle oracles.
+4. **Checked-In Word Package Differential Suite (`tests/cross_author_slicing_real_tests.mjs`)**:
+   Reconstructs the pre-mutation document packages, applies `slice-cross-author` via the strict `openDocx` package facade, enforces atomic package validation, and compares engine `AcceptAll` and `RejectAll` output against Word Desktop-generated golden packages (PKG-01 through PKG-06).
+5. **Hyperlink and Exact-Text Regression (`tests/cross_author_slicing_hyperlink_roundtrip_tests.mjs`)**:
+   Reproduces the repeated-phrase, hyperlink-boundary, and NBSP-to-space failure through both the low-level engine and document operation runner. It requires exact accepted-view equality, preserves both hyperlink relationship containers, and proves that an unreconstructable slicing mutation returns `PATCH_ROUNDTRIP_MISMATCH` with the original OOXML unchanged.
+6. **Insertion Stress Matrix (`tests/cross_author_slicing_insertion_stress_tests.mjs`)**:
+   Runs 76 deterministic scenarios across carrier start/end/interior positions, repeated phrases, multi-run and formatted carriers, spaces/tabs/NBSP, XML-sensitive characters, emoji/combining Unicode, hyperlink interiors and boundaries, bookmarks, comments, nested deletions, adjacent authors, mixed same/foreign-author carriers, multiple structural containers, consecutive reviewer rounds, and the atomic document runner. Every supported case requires exact current-view, Accept-All, Reject-Current, schema, metadata, and non-empty-wrapper invariants; unsupported nested structures must fail without throwing or returning changed output.
 
 ## Coverage matrix and test selection
 

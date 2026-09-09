@@ -307,7 +307,9 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
     }
     const { cleanText: cleanModifiedText, formatHints } = preprocessMarkdown(sanitizedText);
 
-    const hasTextChanges = cleanModifiedText.trim() !== originalText.trim();
+    const hasTextChanges = existingRevisionsPolicy === 'slice-cross-author'
+        ? cleanModifiedText !== originalText
+        : cleanModifiedText.trim() !== originalText.trim();
     const hasFormatHints = formatHints.length > 0;
 
     const { existingFormatHints, textSpans, paragraphs } = extractFormattingFromOoxml(xmlDoc);
@@ -504,6 +506,10 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
             {},
             options
         );
+
+        if (result.status === 'error' && result.error?.code === 'PATCH_ROUNDTRIP_MISMATCH') {
+            return finalize({ ...result, oxml: inputOoxml, hasChanges: false });
+        }
 
         if (tableCellContext.hasTableWrapper && result.hasChanges && tableCellContext.targetParagraph) {
             log('[OxmlEngine] Stripping table wrapper for table cell paragraph (surgical mode)');

@@ -6,7 +6,7 @@
  */
 
 import { getApplicableFormatHints } from '../pipeline/markdown-processor.js';
-import { computeWordDiffs } from '../pipeline/diff-engine.js';
+import { computeInsertionOnlyDiffs, computeWordDiffs } from '../pipeline/diff-engine.js';
 import { getDocumentParagraphs } from './format-extraction.js';
 import { buildSpanIndex, buildSurgicalTextSpans, forEachOverlappingSpan } from './surgical-spans.js';
 import {
@@ -16,6 +16,7 @@ import {
 } from './surgical-diff-application.js';
 import { withOoxmlSourceType } from '../core/word-xml.js';
 import { createReplacementRevisionEvent } from '../core/types.js';
+import { extractCanonicalParagraphText } from '../core/paragraph-text.js';
 
 function checkSafeAdjacencyForPairing(spanIndex, startPos, endPos, allowInsertionCarrier = false) {
     const spans = [];
@@ -111,7 +112,10 @@ export function applySurgicalMode(xmlDoc, originalText, modifiedText, serializer
         : getDocumentParagraphs(xmlDoc);
 
     const { fullText, textSpans } = buildSurgicalTextSpans(allParagraphs);
-    const diffs = computeWordDiffs(fullText, modifiedText, diffOptions);
+    const insertionOnlyDiffs = options.existingRevisions === 'slice-cross-author'
+        ? computeInsertionOnlyDiffs(fullText, modifiedText)
+        : null;
+    const diffs = insertionOnlyDiffs || computeWordDiffs(fullText, modifiedText, diffOptions);
     const spanIndex = buildSpanIndex(textSpans);
     const pairReplacements = options.pairReplacements === true;
     const warnings = [];
@@ -151,7 +155,7 @@ export function applySurgicalMode(xmlDoc, originalText, modifiedText, serializer
             if (pairReplacements && generateRedlines && hasNextInsert) {
                 const nextText = diffs[i + 1][1];
                 const textWithoutNewlines = nextText.replace(/\n/g, ' ');
-                if (textWithoutNewlines.trim().length > 0) {
+                if (textWithoutNewlines.length > 0) {
                     const checkResult = checkSafeAdjacencyForPairing(
                         spanIndex,
                         originalPos,
@@ -178,7 +182,7 @@ export function applySurgicalMode(xmlDoc, originalText, modifiedText, serializer
                 i++;
                 const [, nextText] = diffs[i];
                 const textWithoutNewlines = nextText.replace(/\n/g, ' ');
-                if (textWithoutNewlines.trim().length > 0) {
+                if (textWithoutNewlines.length > 0) {
                     const insertResult = processInsert(xmlDoc, spanIndex, originalPos, textWithoutNewlines, author, formatHints, newPos, generateRedlines, allParagraphs[0] || null, insMetadata, options?.insertionAffinity || null, options?.existingRevisions || 'merge-same-author');
                     if (insertResult && typeof insertResult === 'object' && insertResult.error) {
                         return withOoxmlSourceType({
@@ -196,7 +200,7 @@ export function applySurgicalMode(xmlDoc, originalText, modifiedText, serializer
             }
         } else if (op === 1) {
             const textWithoutNewlines = text.replace(/\n/g, ' ');
-            if (textWithoutNewlines.trim().length > 0) {
+            if (textWithoutNewlines.length > 0) {
                 const insertResult = processInsert(xmlDoc, spanIndex, originalPos, textWithoutNewlines, author, formatHints, newPos, generateRedlines, allParagraphs[0] || null, null, options?.insertionAffinity || null, options?.existingRevisions || 'merge-same-author');
                 if (insertResult && typeof insertResult === 'object' && insertResult.error) {
                     return withOoxmlSourceType({
@@ -214,9 +218,42 @@ export function applySurgicalMode(xmlDoc, originalText, modifiedText, serializer
         }
     }
 
+    const actualText = allParagraphs.map(paragraph => extractCanonicalParagraphText(paragraph)).join('\n');
+    const expectedText = String(modifiedText).replace(/\r\n/g, '\n');
+    if (options.existingRevisions === 'slice-cross-author' && actualText !== expectedText) {
+        const mismatchOffset = firstMismatchOffset(expectedText, actualText);
+        return withOoxmlSourceType({
+            oxml: serializer.serializeToString(xmlDoc),
+            hasChanges: false,
+            status: 'error',
+            error: {
+                code: 'PATCH_ROUNDTRIP_MISMATCH',
+                message: 'Generated OOXML accepted-view text does not match the requested modified text; the mutation was rejected.',
+                mismatchOffset,
+                expectedExcerpt: excerptAt(expectedText, mismatchOffset),
+                actualExcerpt: excerptAt(actualText, mismatchOffset)
+            },
+            ...(warnings.length > 0 ? { warnings: [...new Set(warnings)] } : {})
+        });
+    }
+
     return withOoxmlSourceType({
         oxml: serializer.serializeToString(xmlDoc),
         hasChanges,
         ...(warnings.length > 0 ? { warnings: [...new Set(warnings)] } : {})
     });
+}
+
+function firstMismatchOffset(expected, actual) {
+    const limit = Math.min(expected.length, actual.length);
+    for (let index = 0; index < limit; index++) {
+        if (expected[index] !== actual[index]) return index;
+    }
+    return limit;
+}
+
+function excerptAt(text, offset, radius = 40) {
+    const start = Math.max(0, offset - radius);
+    const end = Math.min(text.length, offset + radius);
+    return text.slice(start, end);
 }

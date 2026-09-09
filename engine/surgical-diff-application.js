@@ -237,6 +237,12 @@ export function processInsert(xmlDoc, spanIndex, pos, text, author, formatHints 
             return true;
         }
 
+        const generateNestedRevision = !(
+            generateRedlines
+            && existingRevisions === 'slice-cross-author'
+            && isSameAuthorInsertion(parent, author)
+        );
+
         if (
             generateRedlines
             && existingRevisions === 'slice-cross-author'
@@ -267,14 +273,14 @@ export function processInsert(xmlDoc, spanIndex, pos, text, author, formatHints 
             const afterPieces = sliceRunPieces(xmlDoc, pieces, localInsertPos, getRunTextLength(pieces), false);
 
             insertRunPiecesBefore(xmlDoc, parent, targetSpan.runElement, beforePieces, targetSpan.rPr);
-            insertTextRuns(xmlDoc, parent, targetSpan.runElement, text, targetSpan.rPr, author, formatHints, insertOffset, generateRedlines, revisionMetadata);
+            insertTextRuns(xmlDoc, parent, targetSpan.runElement, text, targetSpan.rPr, author, formatHints, insertOffset, generateNestedRevision, revisionMetadata);
             insertRunPiecesBefore(xmlDoc, parent, targetSpan.runElement, afterPieces, targetSpan.rPr);
             parent.removeChild(targetSpan.runElement);
             return true;
         }
 
         const referenceNode = pos <= targetSpan.charStart ? targetSpan.runElement : targetSpan.runElement.nextSibling;
-        insertTextRuns(xmlDoc, parent, referenceNode, text, targetSpan.rPr, author, formatHints, insertOffset, generateRedlines, revisionMetadata);
+        insertTextRuns(xmlDoc, parent, referenceNode, text, targetSpan.rPr, author, formatHints, insertOffset, generateNestedRevision, revisionMetadata);
         return true;
     }
 
@@ -521,6 +527,12 @@ function isForeignInsertion(node, author) {
     if (!isWordElement(node, 'ins')) return false;
     const carrierAuthor = node.getAttribute('w:author') || node.getAttributeNS?.(NS_W, 'author') || '';
     return carrierAuthor.trim().toLowerCase() !== String(author || '').trim().toLowerCase();
+}
+
+function isSameAuthorInsertion(node, author) {
+    if (!isWordElement(node, 'ins')) return false;
+    const carrierAuthor = node.getAttribute('w:author') || node.getAttributeNS?.(NS_W, 'author') || '';
+    return carrierAuthor.trim().toLowerCase() === String(author || '').trim().toLowerCase();
 }
 
 function nextElementSibling(node) {

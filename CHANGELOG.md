@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.5.1
+
+### Highlights & New Features
+
+- **Cross-Author Revision Slicing (`existingRevisions: 'slice-cross-author'`)**: Adds native support for editing text inside another reviewer's pending tracked insertion without erasing their attribution or requiring prior acceptance.
+  - **Word-Native Insertion Slicing**: When inserting text inside another author's pending `<w:ins>`, the engine splits the outer carrier into sibling `<w:ins>` elements at the paragraph level (`[ins(A), ins(B), ins(A)]`), ensuring strict ECMA-376 schema compliance without illegal `ins/ins` nesting.
+  - **Word-Native Deletion Slicing**: When deleting text inside another author's pending `<w:ins>`, the engine nests `<w:del>` directly inside `<w:ins>` per ECMA-376 Part 1 `CT_RunTrackChange` Section 17.13.5.21 and Microsoft Word Desktop 365 native behavior.
+  - **Boundary & Straddle Deletions**: Deletions straddling baseline text and pending insertions cleanly partition into separate top-level and nested `<w:del>` containers while sharing unified event/author attribution.
+  - **Multi-Author Stacked Revisions**: Multiple reviewers can independently delete or insert content within the same carrier insertion without cross-author interference.
+  - **Cascading & Coalescing Lifecycles**: Full round-trip lifecycle parity with Microsoft Word Desktop:
+    - Rejecting Author A cleanly discards Author A's insertion and any dependent nested deletions by Author B.
+    - Accepting Author A unwraps the insertion into baseline text while leaving Author B's deletions pending against the baseline.
+    - Rejecting Author B restores Author B's deleted text within Author A's insertion, and coalesces adjacent split `<w:ins>` fragments back into a single continuous carrier.
+  - **CLI & Facade Integration**: Fully exposed via the `docx-redline` CLI (`--existing-revisions slice-cross-author`), Node facade (`openDocx`), and batch operation runner.
+
+### Non-breaking Changes & Improvements
+
+- **Validation Update (`validateRedlineOoxml`)**: Refined `NESTED_REVISION` checks to permit direct `<w:ins><w:del>...</w:del></w:ins>` nesting (standard ECMA-376 and Word Desktop behavior), while continuing to strictly reject `ins/ins`, `del/del`, and `del/ins` nesting.
+- **Slicing Round-Trip Guard**: Cross-author surgical edits now preserve whitespace-only insertions (including ordinary-space replacements for NBSP characters beside hyperlinks) and verify the exact accepted-view text before reporting success. A mismatch fails closed with `PATCH_ROUNDTRIP_MISMATCH` and returns the original OOXML unchanged.
+- **Insertion Stress Hardening**: Slicing now detects edge whitespace changes exactly, uses a character-local insertion-only diff when the original text is an exact subsequence of the modified text, and coalesces new text into an existing same-author carrier when foreign revisions are also present. This prevents repeated phrases from relocating insertions and prevents invalid `w:ins/w:ins` nesting in mixed-author paragraphs.
+- **Preflight Inspection**: `preflightOperations` now inspects and validates `slice-cross-author` batches, reporting pending foreign-author carrier targets as `ready` instead of `EXISTING_REVISIONS`.
+- **Test Suite Expansion**: Added 6 new test suites covering 36 Word Desktop COM golden fixtures, carrier splitting invariants, the SYN-01..12d synthetic test matrix, PKG-01..06 strict package differential replay, the repeated-text/hyperlink whitespace regression, and 76 deterministic insertion stress scenarios (expanding the suite from 88 to 94 passing suites).
+
 ## 0.5.0
 
 ### ⚠️ Breaking changes
