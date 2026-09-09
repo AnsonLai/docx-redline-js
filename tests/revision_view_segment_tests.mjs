@@ -5,6 +5,7 @@ import {
     extractCanonicalParagraphText,
     inspectDocumentParts
 } from '../index.js';
+import { createParagraphFingerprint } from '../core/paragraph-targeting.js';
 import { parseOoxmlSafe } from '../adapters/xml-adapter.js';
 
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
@@ -261,6 +262,35 @@ function parseParagraph(xmlString) {
     assert.equal(inspection.paragraphs[1].segments[1].author, 'Reviewer');
     assert.equal(inspection.paragraphs[1].segments[1].revisionId, '30');
     assert.equal(inspection.paragraphs[1].segments[2].text, 'para');
+}
+
+// Test 9: inspected text, fingerprint, and revisionView always describe the same view.
+{
+    const documentXml = `<w:document xmlns:w="${W}"><w:body>
+        <w:p>
+            <w:del w:id="40" w:author="Reviewer A"><w:r><w:delText>Original clause.</w:delText></w:r></w:del>
+            <w:ins w:id="41" w:author="Reviewer A"><w:r><w:t>Replacement clause.</w:t></w:r></w:ins>
+        </w:p>
+    </w:body></w:document>`;
+    const accepted = inspectDocumentParts({ documentXml }, { revisionView: 'accepted' }).paragraphs[0];
+    const rejected = inspectDocumentParts({ documentXml }, { revisionView: 'rejected' }).paragraphs[0];
+    const paragraph = parseParagraph(`
+        <w:p>
+            <w:del w:id="40" w:author="Reviewer A"><w:r><w:delText>Original clause.</w:delText></w:r></w:del>
+            <w:ins w:id="41" w:author="Reviewer A"><w:r><w:t>Replacement clause.</w:t></w:r></w:ins>
+        </w:p>`);
+
+    assert.equal(accepted.text, 'Replacement clause.');
+    assert.equal(accepted.revisionView, 'accepted');
+    assert.equal(accepted.fingerprint, createParagraphFingerprint(paragraph, {
+        text: accepted.text, index: 1, revisionView: 'accepted'
+    }));
+    assert.equal(rejected.text, 'Original clause.');
+    assert.equal(rejected.revisionView, 'rejected');
+    assert.equal(rejected.fingerprint, createParagraphFingerprint(paragraph, {
+        text: rejected.text, index: 1, revisionView: 'rejected'
+    }));
+    assert.notEqual(rejected.fingerprint, accepted.fingerprint);
 }
 
 console.log('revision view segment tests passed');

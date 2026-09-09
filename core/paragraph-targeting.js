@@ -424,9 +424,14 @@ export function resolveTargetParagraph(xmlDoc, options = {}) {
             );
         }
         if (descriptor.fingerprint && descriptor.fingerprint !== actualFingerprint) {
+            const alternateView = revisionView === 'rejected' ? 'accepted' : 'rejected';
+            const alternateFingerprint = createParagraphFingerprint(byId, { revisionView: alternateView });
+            const viewHint = descriptor.fingerprint === alternateFingerprint
+                ? ` The supplied fingerprint matches the ${alternateView} view; set target.revisionView to "${alternateView}" or use a fingerprint extracted from the ${revisionView} view.`
+                : '';
             throw createTargetError(
                 'TARGET_FINGERPRINT_MISMATCH',
-                `Target paragraphId "${descriptor.paragraphId}" no longer matches its source fingerprint.`,
+                `Target paragraphId "${descriptor.paragraphId}" no longer matches its source fingerprint.${viewHint}`,
                 cachedEntry ? [serializeTargetCandidate(cachedEntry)] : null
             );
         }
@@ -438,9 +443,16 @@ export function resolveTargetParagraph(xmlDoc, options = {}) {
             );
         }
         if (cleanTargetText && actualText !== normalizeWhitespaceForTargeting(cleanTargetText)) {
+            const alternateView = revisionView === 'rejected' ? 'accepted' : 'rejected';
+            const alternateText = normalizeWhitespaceForTargeting(
+                extractCanonicalParagraphText(byId, { revisionView: alternateView })
+            );
+            const viewHint = alternateText === normalizeWhitespaceForTargeting(cleanTargetText)
+                ? ` The supplied text matches the ${alternateView} view; set target.revisionView to "${alternateView}".`
+                : '';
             throw createTargetError(
                 'TARGET_TEXT_MISMATCH',
-                `Target paragraphId "${descriptor.paragraphId}" no longer matches the supplied text.`,
+                `Target paragraphId "${descriptor.paragraphId}" no longer matches the supplied text.${viewHint}`,
                 cachedEntry ? [serializeTargetCandidate(cachedEntry)] : null
             );
         }

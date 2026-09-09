@@ -199,9 +199,10 @@ export function inspectDocumentParts(parts, options = {}) {
     const resolveNumbering = createNumberingResolver(numberingPart.doc);
     let nearestHeading = null;
     const paragraphNodes = getDocumentParagraphNodes(documentPart.doc);
-    const commentAnchors = collectDocumentCommentAnchors(paragraphNodes, options.revisionView || 'accepted');
+    const revisionView = options.revisionView === 'rejected' ? 'rejected' : 'accepted';
+    const commentAnchors = collectDocumentCommentAnchors(paragraphNodes, revisionView);
     let paragraphs = paragraphNodes.map((paragraph, zeroIndex) => {
-        const text = extractCanonicalParagraphText(paragraph, { revisionView: options.revisionView || 'accepted' });
+        const text = extractCanonicalParagraphText(paragraph, { revisionView });
         const level = headingLevel(paragraph);
         if (level) nearestHeading = { level, text };
         const ids = [...new Set([...descendants(paragraph, 'commentRangeStart'), ...descendants(paragraph, 'commentReference')].map(node => attr(node, 'id')).filter(Boolean))];
@@ -215,7 +216,8 @@ export function inspectDocumentParts(parts, options = {}) {
         const humanReference = [provision, headingText, text.slice(0, options.excerptLength || 120)].filter(Boolean).join(' — ');
         const segments = extractParagraphRevisionSegments(paragraph);
         return {
-            index, ref: `P${index}`, paragraphId: getParagraphId(paragraph), fingerprint: createParagraphFingerprint(paragraph),
+            index, ref: `P${index}`, paragraphId: getParagraphId(paragraph),
+            fingerprint: createParagraphFingerprint(paragraph, { text, index, revisionView }), revisionView,
             text, exactText: text, excerpt: text.slice(0, options.excerptLength || 120), humanReference, inTable: hasAncestor(paragraph, 'tc'), table: structure.table,
             styleId, headingLevel: level, nearestHeading, list, structuralReferences: structure.references, hasRevisions: authors.length > 0, revisionAuthors: authors, commentIds: ids,
             segments

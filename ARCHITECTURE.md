@@ -334,6 +334,12 @@ still be re-exported from `index.js`.
 - Operation-level authors override the batch author. Runtime results expose
   `authorUsed`, `authorsUsed`, `operationType`, `resolvedBy`, and resolved target
   metadata so integrations can audit what the engine actually selected.
+- Target fingerprints are revision-view scoped. Inspection returns a
+  `revisionView` beside every paragraph and computes its fingerprint from the
+  same text/view pair. Restore normalization defaults omitted target and range
+  endpoint views to `rejected`; all other operations default to `accepted`.
+  Explicit views remain authoritative, and cross-view text/fingerprint mistakes
+  return an actionable mismatch hint rather than silently weakening targeting.
 - A normalized target match does not become an edit coordinate system for a
   text-bearing mutation. Mutation uses canonical accepted-view source text, and `resolvedTarget.targetTextMatch`
   records `exact`, `space_equivalent`, or `normalized` selection plus bounded

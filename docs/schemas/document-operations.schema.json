@@ -48,7 +48,11 @@
             "index": { "type": ["integer", "string"] }, "paragraphIndex": { "type": ["integer", "string"] },
             "paragraphId": { "type": "string" }, "occurrence": { "type": "integer", "minimum": 1 },
             "inTable": { "type": "boolean" }, "fingerprint": { "type": "string" }, "sourceFingerprint": { "type": "string" },
-            "revisionView": { "type": "string", "enum": ["accepted", "rejected"] },
+            "revisionView": {
+              "type": "string",
+              "enum": ["accepted", "rejected"],
+              "description": "Defaults to rejected for restore operations and accepted for other operation types."
+            },
             "captureRef": { "type": "string", "minLength": 1, "maxLength": 256 },
             "select": { "type": "string", "minLength": 1 }
           },

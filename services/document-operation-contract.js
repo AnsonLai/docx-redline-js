@@ -51,7 +51,8 @@ export function getCanonicalOperationType(operation) {
     return 'redline';
 }
 
-export function normalizeTargetDescriptor(target, legacyTargetRef = null) {
+export function normalizeTargetDescriptor(target, legacyTargetRef = null, defaultRevisionView = 'accepted') {
+    const fallbackRevisionView = defaultRevisionView === 'rejected' ? 'rejected' : 'accepted';
     if (!isRecord(target)) {
         return {
             text: typeof target === 'string' ? target : '',
@@ -60,7 +61,7 @@ export function normalizeTargetDescriptor(target, legacyTargetRef = null) {
             occurrence: null,
             inTable: null,
             fingerprint: null,
-            revisionView: 'accepted'
+            revisionView: fallbackRevisionView
         };
     }
 
@@ -77,7 +78,9 @@ export function normalizeTargetDescriptor(target, legacyTargetRef = null) {
         fingerprint: nonEmptyString(target.fingerprint)
             ? target.fingerprint.trim()
             : (nonEmptyString(target.sourceFingerprint) ? target.sourceFingerprint.trim() : null),
-        revisionView: target.revisionView === 'rejected' ? 'rejected' : 'accepted',
+        revisionView: target.revisionView === 'rejected'
+            ? 'rejected'
+            : (target.revisionView === 'accepted' ? 'accepted' : fallbackRevisionView),
         captureRef: nonEmptyString(target.captureRef) ? target.captureRef.trim() : null,
         select: typeof target.select === 'string' ? target.select : null
     };
@@ -85,11 +88,12 @@ export function normalizeTargetDescriptor(target, legacyTargetRef = null) {
 
 export function normalizeDocumentOperation(operation) {
     const source = isRecord(operation) ? operation : {};
-    const targetDescriptor = normalizeTargetDescriptor(source.target, source.targetRef);
-    const targetEndDescriptor = source.targetEnd != null
-        ? normalizeTargetDescriptor(source.targetEnd, source.targetEndRef)
-        : null;
     const kind = getCanonicalOperationType(source);
+    const defaultRevisionView = kind === 'restore' ? 'rejected' : 'accepted';
+    const targetDescriptor = normalizeTargetDescriptor(source.target, source.targetRef, defaultRevisionView);
+    const targetEndDescriptor = source.targetEnd != null
+        ? normalizeTargetDescriptor(source.targetEnd, source.targetEndRef, defaultRevisionView)
+        : null;
 
     return {
         ...source,

@@ -10,6 +10,7 @@ export interface ParagraphTargetDescriptor {
   inTable?: boolean;
   fingerprint?: string;
   sourceFingerprint?: string;
+  /** Defaults to rejected for restore operations and accepted for all other operations. */
   revisionView?: 'accepted' | 'rejected';
   captureRef?: string;
   select?: string;

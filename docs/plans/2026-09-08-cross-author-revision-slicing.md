@@ -796,7 +796,7 @@ Every successful fixture must assert exact current text, both-view body-scoped r
 
 ---
 
-### WP09 — Real-Document Mutation Reliability and Agent-Safe Failure Reporting [WP09a-e COMPLETE]
+### WP09 — Real-Document Mutation Reliability and Agent-Safe Failure Reporting [WP09a-f COMPLETE]
 
 #### Planning and characterization update (2026-09-08)
 
@@ -854,6 +854,68 @@ The first full serial compatibility run exposed two retained-contract requiremen
 - `node tests/plugin_wrapper_compatibility_tests.mjs` — PASS.
 - `node tests/standalone_operation_runner_tests.mjs` — PASS.
 - `$env:DOCX_TEST_CONCURRENCY='1'; npm test` — PASS, **98/98 test files** and 0 failed.
+- `npm run lint` — PASS.
+- `npm run check:types` — PASS; all 123 runtime exports have declarations.
+- `npm run build` — PASS.
+- `git diff --check` — PASS (line-ending conversion notices only; no whitespace errors).
+
+#### WP09f follow-up: revision-view-consistent restore targeting (completed 2026-09-09)
+
+A post-WP09 real-use report showed two safe but avoidable restore refusals. A
+caller copied deleted source text and a stable paragraph ID, but omitting
+`revisionView` made the text resolve against the empty accepted view. After the
+caller selected the rejected view, a fingerprint obtained from another view
+failed without explaining the view mismatch. Code inspection found a further
+defect: rejected-view inspection extracted rejected text but called
+`createParagraphFingerprint` without rejected-view metadata, so its own text and
+fingerprint could describe different views.
+
+The fix keeps strict targeting and fail-closed behavior. Restore start/end
+descriptors now default to the rejected view; callers can still explicitly
+select the accepted view. Inspection returns `revisionView` on every paragraph
+and computes its fingerprint from that same view, text, and document index.
+When a paragraph-ID text or fingerprint mismatch exactly matches the alternate
+view, the existing structured error now explains which `revisionView` to use.
+
+**Production files and functions touched:**
+
+- `services/document-operation-contract.js`
+  - `normalizeTargetDescriptor` accepts an operation-aware default view while
+    preserving an explicit caller view.
+  - `normalizeDocumentOperation` defaults both `target` and `targetEnd` to
+    `rejected` for `restore`; other operation kinds remain accepted-view by
+    default.
+- `services/document-inspection.js`
+  - `inspectDocumentParts` canonicalizes its inspection view once, uses it for
+    text/comment anchors/fingerprints, and exposes it as each paragraph's
+    `revisionView` metadata.
+- `core/paragraph-targeting.js`
+  - `resolveTargetParagraph` tests the alternate view only to improve
+    `TARGET_TEXT_MISMATCH` and `TARGET_FINGERPRINT_MISMATCH` messages. It does
+    not auto-switch views or bypass any descriptor check.
+- `services/standalone-operation-runner.d.ts` and
+  `docs/schemas/document-operations.schema.json`
+  - Documented the restore-specific default without changing the set of valid
+    public values.
+
+**Tests touched:**
+
+- `tests/paragraph_level_cross_author_restoration_tests.mjs`
+  - Covers rejected-view defaulting with exact deleted text plus paragraph ID,
+    the explicit accepted-view compatibility path, and actionable cross-view
+    text/fingerprint mismatch diagnostics.
+- `tests/revision_view_segment_tests.mjs`
+  - Proves accepted and rejected inspections return their exact view-specific
+    text and fingerprint together and that the fingerprints differ.
+
+**Documentation touched:** `README.md`, `CHANGELOG.md`, `ARCHITECTURE.md`,
+`AGENTS.md`, the JSON operation schema, declarations, and this plan.
+
+**Final WP09f verification:**
+
+- `node tests/revision_view_segment_tests.mjs` — PASS.
+- `node tests/paragraph_level_cross_author_restoration_tests.mjs` — PASS.
+- `$env:DOCX_TEST_CONCURRENCY='1'; npm test` — PASS, **99/99 test files** and 0 failed.
 - `npm run lint` — PASS.
 - `npm run check:types` — PASS; all 123 runtime exports have declarations.
 - `npm run build` — PASS.

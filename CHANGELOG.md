@@ -9,6 +9,7 @@
 - **Exact mismatch diagnostics**: `PATCH_ROUNDTRIP_MISMATCH` now includes the expected and actual code points at the first mismatch. Document-operation results also report bounded `targetTextMatch` diagnostics when target selection used equivalent whitespace.
 - **Baseline-delta validation (WP09c)**: Restoration, operation, and package validation now compare issue multisets against the source. Unchanged legacy defects remain visible without blocking safe work, while any added occurrence or mutation-envelope error fails closed with `GENERATED_OOXML_INVALID` before an operation is reported as applied.
 - **Revision identity sanitation (WP09d)**: New paragraph/list builders inherit effective `pPr`/`rPr` formatting without cloning historical revision descendants. Operation-level whole-document validation catches duplicate revision IDs and rolls back the operation savepoint before committing its receipt.
+- **View-consistent restore targeting**: `restore` targets now default to the rejected view, where a wholly deleted paragraph's source text exists. Rejected-view inspection now computes fingerprints from rejected-view text and reports the view beside each paragraph. Explicit cross-view text or fingerprint mistakes retain strict refusal while returning an actionable view hint.
 
 ### New Features
 

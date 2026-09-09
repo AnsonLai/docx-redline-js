@@ -541,7 +541,8 @@ const restoration = await applyOperationToDocumentXml(
   documentXml,
   {
     type: 'restore',
-    target: { paragraphId: '1A2B3C4D', revisionView: 'rejected' },
+    // restore targets default to the rejected view, where deleted text exists
+    target: { paragraphId: '1A2B3C4D', exactText: 'Original deleted paragraph text.' },
     modified: 'Restored or adjusted paragraph text.'
   },
   'Editor'
@@ -551,6 +552,8 @@ const restoration = await applyOperationToDocumentXml(
 // restoration follows the complete deleted source block. Unchanged legacy
 // validation defects are retained as baseline issues; newly generated errors
 // fail closed before commit.
+// inspect/extract descriptors report their revisionView, and each fingerprint
+// is computed from the same view as exactText. Keep those fields together.
 
 // To insert run-level text at a location visible only in the rejected view,
 // provide explicit rejected-view intent and an exact anchor-relative offset.

@@ -158,11 +158,17 @@ use explicit restoration intent. A normal `redline` remains fail-closed with
 ```js
 const restoration = {
   type: 'restore',
-  target: { paragraphId: '1A2B3C4D', revisionView: 'rejected' },
+  target: { paragraphId: '1A2B3C4D', exactText: 'Original deleted paragraph text.' },
   modified: 'Restored or adjusted paragraph text.',
   author: 'Editor'
 };
 ```
+
+`restore` targets default to `revisionView: 'rejected'`, because that is where
+the deleted source text is visible. Inspection/extraction fingerprints are
+view-scoped and returned with a matching `revisionView`; copy the fingerprint,
+exact text, and view together. Set `revisionView: 'accepted'` explicitly only
+when intentionally using an accepted-view descriptor.
 
 For a contiguous range, provide `targetEnd`/`targetEndRef` and one string per
 source paragraph in `modified`. Restoration always uses tracked changes,

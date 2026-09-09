@@ -314,13 +314,13 @@ async function restore(input, modified = 'Restored clause.', overrides = {}) {
     )).length, 1);
 }
 
-// Strict fingerprint targeting works from the accepted view; explicit restore also supports rejected-view text.
+// Restore defaults to rejected-view targeting, while explicit accepted-view targeting remains supported.
 {
     const input = baseDocument();
     const target = paragraphs(input)[1];
     const fingerprint = createParagraphFingerprint(target, { text: '', index: 2, revisionView: 'accepted' });
     const fingerprintResult = await applyOperationToDocumentXml(input, {
-        type: 'restore', target: { fingerprint }, modified: 'Restored clause.', author: B
+        type: 'restore', target: { fingerprint, revisionView: 'accepted' }, modified: 'Restored clause.', author: B
     }, B, null, { strictTargets: true });
     assert.equal(fingerprintResult.status, 'ok', JSON.stringify(fingerprintResult.error));
 
@@ -341,6 +341,33 @@ async function restore(input, modified = 'Restored clause.', overrides = {}) {
     }], B, { strictTargets: true });
     assert.equal(rejectedInspection.valid, true);
     assert.equal(rejectedInspection.results[0].resolvedTarget.revisionView, 'rejected');
+
+    const rejectedDefault = await applyOperationToDocumentXml(input, {
+        type: 'restore',
+        target: { exactText: 'Restored clause.', paragraphId: 'DEAD0001' },
+        modified: 'Adjusted clause.',
+        author: B
+    }, B, null, { strictTargets: true });
+    assert.equal(rejectedDefault.status, 'ok', JSON.stringify(rejectedDefault.error));
+    assert.deepEqual(paragraphTexts(rejectedDefault.documentXml), ['Before.', '', 'Adjusted clause.', 'After.']);
+
+    const wrongTextView = await applyOperationToDocumentXml(input, {
+        type: 'restore',
+        target: { exactText: 'Restored clause.', paragraphId: 'DEAD0001', revisionView: 'accepted' },
+        modified: 'Adjusted clause.',
+        author: B
+    }, B, null, { strictTargets: true });
+    assert.equal(wrongTextView.error.code, 'TARGET_TEXT_MISMATCH');
+    assert.match(wrongTextView.error.message, /matches the rejected view.*revisionView.*rejected/);
+
+    const wrongFingerprintView = await applyOperationToDocumentXml(input, {
+        type: 'restore',
+        target: { paragraphId: 'DEAD0001', fingerprint, revisionView: 'rejected' },
+        modified: 'Adjusted clause.',
+        author: B
+    }, B, null, { strictTargets: true });
+    assert.equal(wrongFingerprintView.error.code, 'TARGET_FINGERPRINT_MISMATCH');
+    assert.match(wrongFingerprintView.error.message, /fingerprint matches the accepted view.*revisionView.*accepted/);
 }
 
 // Non-triggering taxonomy rows retain their established ordinary editing paths.
