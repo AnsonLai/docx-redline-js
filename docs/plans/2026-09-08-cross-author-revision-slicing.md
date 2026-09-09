@@ -439,6 +439,76 @@ type ExistingRevisionsPolicy =
   - The repository does not contain the private `agreement.docx` referenced by REAL-01/REAL-02 or the exact `c5bb43ede5...` corpus package referenced by REAL-03. Those named cases remain external acceptance scenarios rather than silently skipped automated tests.
   - REAL-04/REAL-05 require Microsoft Word Desktop COM and visual review. The checked-in fixtures were produced by Word COM, while the normal automated suite deliberately remains deterministic and non-interactive.
 
+### Bug Follow-Up: Hyperlink Boundary Round-Trip Mismatch [FIXED 2026-09-08]
+* **Report Reproduced**: A slicing edit with repeated text, hyperlink runs, and NBSP-to-space substitutions could return `status: "ok"` even though its accepted-view text differed from `modified`.
+* **Root Cause**: `applySurgicalMode` discarded whitespace-only insertion diff segments by checking `textWithoutNewlines.trim().length`. The corresponding NBSP deletion still committed, changing `located at\u00a0example.com` to `located atexample.com`. Structural replacement paths could also proceed after `PAIRING_SKIPPED_STRUCTURAL_BOUNDARY` without a final exact-text oracle.
+* **Fix**:
+  - Whitespace-only insertions are now applied rather than silently skipped.
+  - Every `slice-cross-author` surgical result reconstructs canonical accepted-view text and compares it exactly with the requested clean modified text.
+  - A mismatch returns `PATCH_ROUNDTRIP_MISMATCH`, `hasChanges: false`, diagnostic excerpts and offset, and the exact original OOXML. The document runner/facade therefore treats the operation as unapplied and preserves transactional rollback.
+* **Files Touched**:
+  - `engine/surgical-mode.js`
+  - `engine/oxml-engine.js`
+  - `tests/cross_author_slicing_hyperlink_roundtrip_tests.mjs` (NEW)
+  - `CHANGELOG.md`
+  - `README.md`
+  - `AGENTS.md`
+  - `docs/TESTING.md`
+  - `docs/plans/2026-09-08-cross-author-revision-slicing.md`
+* **Functions Touched / Created**:
+  - `applySurgicalMode` (MODIFIED): retains whitespace-only insertions and enforces the slicing accepted-view postcondition.
+  - `firstMismatchOffset` (NEW): locates the first exact-text divergence.
+  - `excerptAt` (NEW): provides bounded expected/actual diagnostics without returning entire contract paragraphs.
+  - `applyRedlineToOxml` surgical result handling (MODIFIED): restores the exact input OOXML on `PATCH_ROUNDTRIP_MISMATCH`.
+  - Test helpers `run`, `insertion`, `hyperlink`, and `acceptedParagraphText` (NEW).
+* **Regression Coverage**:
+  - Low-level reproduction with two hyperlink relationship containers, repeated `Widget Policy`, and three NBSP-to-space edits.
+  - Full `applyOperationsToDocumentXml` atomic runner reproduction matching the CLI execution path.
+  - Exact Accept-All equality with the submitted modified string.
+  - Explicit fail-closed test proving mismatch status, error code, mismatch offset, and byte-exact original OOXML rollback.
+* **Verification**:
+  - `node tests/cross_author_slicing_hyperlink_roundtrip_tests.mjs` — PASS.
+  - `npm test` — PASS, 93 test files passed and 0 failed.
+  - `npm run lint` — PASS.
+  - `npm run check:types` — PASS; all 123 runtime exports have declarations.
+  - `git diff --check` — PASS (line-ending conversion notices only; no whitespace errors).
+
+### Insertion Stress Follow-Up [COMPLETED 2026-09-08]
+* **Motivation**: Real usage reported failures across a wider variety of insertions after the first hyperlink/NBSP bug. A generated matrix was added to exercise location, payload, structure, lifecycle, and repeated-review dimensions rather than relying on a few fixed examples.
+* **Defects Exposed and Fixed**:
+  1. Leading/trailing spaces, tabs, and NBSP-only additions were classified as no-ops because slicing inherited trim-based text-change detection. `applyRedlineToOxml` now uses exact comparison for `slice-cross-author`.
+  2. Word-token semantic diff cleanup could relocate a pure insertion between repeated phrases, especially inside a hyperlink. `computeInsertionOnlyDiffs` now selects a character-local, no-deletion diff whenever the original is an exact subsequence of the modified text; replacements retain the established word diff and exact round-trip guard.
+  3. In a paragraph containing both current-author and foreign insertion carriers, inserting into the current-author carrier produced illegal nested `w:ins`. `processInsert` now adds a normal run to that existing carrier while continuing to split foreign carriers into siblings.
+* **Coverage Added**:
+  - 76 deterministic scenarios spanning carrier start/end/interior positions; single-, multi-, and formatted runs; repeated tokens; double spaces, tabs, NBSP, XML-sensitive characters, emoji, ZWJ emoji, combining characters, citations, and punctuation.
+  - Hyperlink interiors and both hyperlink boundaries; bookmarks; comment anchors; nested prior deletions; adjacent foreign authors; mixed current/foreign authors; three-container edits; and consecutive second-/third-reviewer rounds.
+  - Exact accepted-view, Accept-All, Reject-Current, validation, unique metadata, hyperlink preservation, and zero-empty-insertion assertions.
+  - Twenty scenarios also execute through `applyOperationsToDocumentXml` with atomic and strict-target settings, matching the CLI runner path.
+  - Nested hyperlink/field structures are required either to produce exact valid output or fail closed without throwing.
+* **Files Touched**:
+  - `pipeline/diff-engine.js`
+  - `engine/oxml-engine.js`
+  - `engine/surgical-mode.js`
+  - `engine/surgical-diff-application.js`
+  - `tests/cross_author_slicing_insertion_stress_tests.mjs` (NEW)
+  - `CHANGELOG.md`
+  - `README.md`
+  - `docs/TESTING.md`
+  - `docs/plans/2026-09-08-cross-author-revision-slicing.md`
+* **Functions Touched / Created**:
+  - `computeInsertionOnlyDiffs` (NEW): detects insertion-only transforms and returns a character-local diff only when it contains no deletion.
+  - `applyRedlineToOxml` (MODIFIED): uses exact slicing change detection, including boundary whitespace.
+  - `applySurgicalMode` (MODIFIED): selects insertion-only versus word diff without changing replacement semantics.
+  - `processInsert` (MODIFIED): inserts directly into an existing same-author carrier in mixed-author paragraphs.
+  - `isSameAuthorInsertion` (NEW): namespace-safe author comparison for carrier coalescing.
+  - Stress helpers `escapeXml`, `run`, `insertion`, `paragraph`, `parsed`, `acceptedText`, `authorOf`, `assertValid`, and `assertInsertionRoundTrip` (NEW).
+* **Verification**:
+  - `node tests/cross_author_slicing_insertion_stress_tests.mjs` — PASS, 76 scenarios.
+  - `npm test` — PASS, 94 test files passed and 0 failed.
+  - `npm run lint` — PASS.
+  - `npm run check:types` — PASS; all 123 runtime exports have declarations.
+  - `git diff --check` — PASS (line-ending conversion notices only; no whitespace errors).
+
 ---
 
 ## 6. Comprehensive Verification Plan (Synthetic & Real Test Series)
