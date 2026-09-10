@@ -1,6 +1,6 @@
 # Structural Revisions, Stable Addressing, and Fidelity Oracles
 
-**Status:** Proposed — implementation-ready specification  
+**Status:** Completed — WP-00 through WP-18 implemented and released in v0.5.0  
 **Date:** 2026-09-05  
 **Target releases:** v0.5.0–v1.0.0  
 **Priority:** Correct accepted/rejected results and document fidelity over throughput or review-pane cosmetics
