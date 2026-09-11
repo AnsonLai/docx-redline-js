@@ -66,7 +66,7 @@ for (const scenario of scenarios) {
 
     assert.equal(applied.status, 'ok', `${scenario}: ${applied.error?.message || 'package application failed'}`);
     assert.equal(applied.written, true, `${scenario}: package was not written`);
-    assert.deepEqual(applied.inspection.revisionAuthors, ['Anson Lai', 'Barry Plasteras']);
+    assert.deepEqual(applied.inspection.revisionAuthors, ['Anson Lai', 'John Doe']);
     assert(applied.artifactsChanged.includes('word/document.xml'));
 
     const output = applied.toBuffer();
@@ -115,7 +115,7 @@ for (const scenario of scenarios) {
 
     assert.equal(chris.status, 'ok', chris.error?.message);
     assert.equal(chris.written, true);
-    assert.deepEqual(chris.inspection.revisionAuthors, ['Anson Lai', 'Barry Plasteras', 'Chris Davis']);
+    assert.deepEqual(chris.inspection.revisionAuthors, ['Anson Lai', 'Chris Davis', 'John Doe']);
     assert.equal(
         await resolvedText(chris.toBuffer(), 'accept'),
         visibleText(openDocx(fixtureBuffer('multi-author-stacked', 'accepted')))

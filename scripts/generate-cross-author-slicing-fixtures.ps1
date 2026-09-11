@@ -76,7 +76,7 @@ try {
 
     # -------------------------------------------------------------------------
     # Scenario 1: insert-interior
-    # Author A (Barry) inserts: "amended by this Agreement."
+    # Author A (John) inserts: "amended by this Agreement."
     # Author B (Anson) inserts "MASTER " before "Agreement"
     # -------------------------------------------------------------------------
     Write-Host "1. insert-interior"
@@ -85,8 +85,8 @@ try {
     $doc.Range(0, 0).Text = "Contract terms "
     
     # Author A insertion
-    $global:word.UserName = "Barry Plasteras"
-    $global:word.UserInitials = "BP"
+    $global:word.UserName = "John Doe"
+    $global:word.UserInitials = "JD"
     $doc.TrackRevisions = $true
     $endR = $doc.Range($doc.Content.End - 1, $doc.Content.End - 1)
     $endR.Text = "amended by this Agreement."
@@ -103,7 +103,7 @@ try {
 
     # -------------------------------------------------------------------------
     # Scenario 2: delete-interior
-    # Author A (Barry) inserts: "The Services will process the Input to generate outputs for Customer."
+    # Author A (John) inserts: "The Platform will process the Data to generate deliverables for Client."
     # Author B (Anson) deletes: "generate "
     # -------------------------------------------------------------------------
     Write-Host "2. delete-interior"
@@ -112,11 +112,11 @@ try {
     $doc.Range(0, 0).Text = "Background. "
     
     # Author A insertion
-    $global:word.UserName = "Barry Plasteras"
-    $global:word.UserInitials = "BP"
+    $global:word.UserName = "John Doe"
+    $global:word.UserInitials = "JD"
     $doc.TrackRevisions = $true
     $endR = $doc.Range($doc.Content.End - 1, $doc.Content.End - 1)
-    $endR.Text = "The Services will process the Input to generate outputs for Customer."
+    $endR.Text = "The Platform will process the Data to generate deliverables for Client."
     
     # Author B deletion inside Author A's insertion
     $global:word.UserName = "Anson Lai"
@@ -129,8 +129,8 @@ try {
 
     # -------------------------------------------------------------------------
     # Scenario 3: delete-boundary-start
-    # Author A (Barry) inserts: "Notwithstanding the foregoing, the NDA remains in effect."
-    # Author B (Anson) deletes: "Notwithstanding the foregoing, "
+    # Author A (John) inserts: "Notwithstanding anything to the contrary, the confidentiality terms remain in effect."
+    # Author B (Anson) deletes: "Notwithstanding anything to the contrary, "
     # -------------------------------------------------------------------------
     Write-Host "3. delete-boundary-start"
     $doc = $global:word.Documents.Add()
@@ -138,16 +138,16 @@ try {
     $doc.Range(0, 0).Text = "Section 1. "
     
     # Author A insertion
-    $global:word.UserName = "Barry Plasteras"
-    $global:word.UserInitials = "BP"
+    $global:word.UserName = "John Doe"
+    $global:word.UserInitials = "JD"
     $doc.TrackRevisions = $true
     $endR = $doc.Range($doc.Content.End - 1, $doc.Content.End - 1)
-    $endR.Text = "Notwithstanding the foregoing, the NDA remains in effect."
+    $endR.Text = "Notwithstanding anything to the contrary, the confidentiality terms remain in effect."
     
     # Author B deletion at start of insertion
     $global:word.UserName = "Anson Lai"
     $global:word.UserInitials = "AL"
-    $delWord = "Notwithstanding the foregoing, "
+    $delWord = "Notwithstanding anything to the contrary, "
     $foundPos = Find-RequiredText $doc $delWord "delete-boundary-start"
     $delRange = $doc.Range($foundPos, $foundPos + $delWord.Length)
     $delRange.Delete() | Out-Null
@@ -155,8 +155,8 @@ try {
 
     # -------------------------------------------------------------------------
     # Scenario 4: delete-boundary-end
-    # Author A (Barry) inserts: "subject to Section 2.8 and applicable law."
-    # Author B (Anson) deletes: " and applicable law."
+    # Author A (John) inserts: "subject to Section 4.2 and applicable standards."
+    # Author B (Anson) deletes: " and applicable standards."
     # -------------------------------------------------------------------------
     Write-Host "4. delete-boundary-end"
     $doc = $global:word.Documents.Add()
@@ -164,16 +164,16 @@ try {
     $doc.Range(0, 0).Text = "Compliance: "
     
     # Author A insertion
-    $global:word.UserName = "Barry Plasteras"
-    $global:word.UserInitials = "BP"
+    $global:word.UserName = "John Doe"
+    $global:word.UserInitials = "JD"
     $doc.TrackRevisions = $true
     $endR = $doc.Range($doc.Content.End - 1, $doc.Content.End - 1)
-    $endR.Text = "subject to Section 2.8 and applicable law."
+    $endR.Text = "subject to Section 4.2 and applicable standards."
     
     # Author B deletion at end of insertion
     $global:word.UserName = "Anson Lai"
     $global:word.UserInitials = "AL"
-    $delWord = " and applicable law."
+    $delWord = " and applicable standards."
     $foundPos = Find-RequiredText $doc $delWord "delete-boundary-end"
     $delRange = $doc.Range($foundPos, $foundPos + $delWord.Length)
     $delRange.Delete() | Out-Null
@@ -182,7 +182,7 @@ try {
     # -------------------------------------------------------------------------
     # Scenario 5: delete-straddle-baseline-insertion
     # Baseline: "Baseline start "
-    # Author A (Barry) inserts: "inserted finish."
+    # Author A (John) inserts: "inserted finish."
     # Author B (Anson) deletes: "start inserted" (straddling baseline and insertion)
     # -------------------------------------------------------------------------
     Write-Host "5. delete-straddle-baseline-insertion"
@@ -191,8 +191,8 @@ try {
     $doc.Range(0, 0).Text = "Baseline start "
     
     # Author A insertion
-    $global:word.UserName = "Barry Plasteras"
-    $global:word.UserInitials = "BP"
+    $global:word.UserName = "John Doe"
+    $global:word.UserInitials = "JD"
     $doc.TrackRevisions = $true
     $endR = $doc.Range($doc.Content.End - 1, $doc.Content.End - 1)
     $endR.Text = "inserted finish."
@@ -209,7 +209,7 @@ try {
     # -------------------------------------------------------------------------
     # Scenario 6: multi-author-stacked
     # Baseline: "Provision "
-    # Author A (Barry) inserts: "first draft of the proposal with initial metrics."
+    # Author A (John) inserts: "first draft of the proposal with initial metrics."
     # Author B (Anson) deletes: "of the proposal "
     # Author C (Chris) deletes: "initial " from the remaining text
     # -------------------------------------------------------------------------
@@ -219,8 +219,8 @@ try {
     $doc.Range(0, 0).Text = "Provision "
     
     # Author A insertion
-    $global:word.UserName = "Barry Plasteras"
-    $global:word.UserInitials = "BP"
+    $global:word.UserName = "John Doe"
+    $global:word.UserInitials = "JD"
     $doc.TrackRevisions = $true
     $endR = $doc.Range($doc.Content.End - 1, $doc.Content.End - 1)
     $endR.Text = "first draft of the proposal with initial metrics."

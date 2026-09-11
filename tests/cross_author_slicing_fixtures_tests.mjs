@@ -81,9 +81,9 @@ console.log('--- 2. Verifying Word Desktop native OOXML structures ---');
 
     const topIns = findChildrenByLocalName(p, 'ins');
     assert.equal(topIns.length, 3, 'Expected 3 sibling <w:ins> elements at <w:p> level');
-    assert.equal(topIns[0].getAttribute('w:author'), 'Barry Plasteras');
+    assert.equal(topIns[0].getAttribute('w:author'), 'John Doe');
     assert.equal(topIns[1].getAttribute('w:author'), 'Anson Lai');
-    assert.equal(topIns[2].getAttribute('w:author'), 'Barry Plasteras');
+    assert.equal(topIns[2].getAttribute('w:author'), 'John Doe');
 
     assert.equal(topIns[0].textContent.trim(), 'amended by this');
     assert.equal(topIns[1].textContent.trim(), 'MASTER');
@@ -98,11 +98,11 @@ console.log('--- 2. Verifying Word Desktop native OOXML structures ---');
     const p = findDescendantsByLocalName(doc, 'p')[0];
 
     const topIns = findChildrenByLocalName(p, 'ins');
-    assert.equal(topIns.length, 1, 'Expected 1 top-level <w:ins> by Barry Plasteras');
-    assert.equal(topIns[0].getAttribute('w:author'), 'Barry Plasteras');
+    assert.equal(topIns.length, 1, 'Expected 1 top-level <w:ins> by John Doe');
+    assert.equal(topIns[0].getAttribute('w:author'), 'John Doe');
 
     const nestedDels = findDescendantsByLocalName(topIns[0], 'del');
-    assert.equal(nestedDels.length, 1, 'Expected <w:del> nested inside Barry\'s <w:ins>');
+    assert.equal(nestedDels.length, 1, 'Expected <w:del> nested inside John\'s <w:ins>');
     assert.equal(nestedDels[0].getAttribute('w:author'), 'Anson Lai');
 
     const delTexts = findDescendantsByLocalName(nestedDels[0], 'delText');
@@ -119,12 +119,12 @@ console.log('--- 2. Verifying Word Desktop native OOXML structures ---');
 
     const topIns = findChildrenByLocalName(p, 'ins');
     assert.equal(topIns.length, 1);
-    assert.equal(topIns[0].getAttribute('w:author'), 'Barry Plasteras');
+    assert.equal(topIns[0].getAttribute('w:author'), 'John Doe');
 
     const firstChild = topIns[0].firstChild;
     assert.equal(getLocalName(firstChild), 'del', 'First child of <w:ins> should be <w:del>');
     assert.equal(firstChild.getAttribute('w:author'), 'Anson Lai');
-    assert.equal(firstChild.textContent.trim(), 'Notwithstanding the foregoing,');
+    assert.equal(firstChild.textContent.trim(), 'Notwithstanding anything to the contrary,');
     console.log('  PASS: delete-boundary-start places <w:del> at insertion head');
 }
 
@@ -136,12 +136,12 @@ console.log('--- 2. Verifying Word Desktop native OOXML structures ---');
 
     const topIns = findChildrenByLocalName(p, 'ins');
     assert.equal(topIns.length, 1);
-    assert.equal(topIns[0].getAttribute('w:author'), 'Barry Plasteras');
+    assert.equal(topIns[0].getAttribute('w:author'), 'John Doe');
 
     const lastChild = topIns[0].lastChild;
     assert.equal(getLocalName(lastChild), 'del', 'Last child of <w:ins> should be <w:del>');
     assert.equal(lastChild.getAttribute('w:author'), 'Anson Lai');
-    assert.equal(lastChild.textContent.trim(), 'and applicable law.');
+    assert.equal(lastChild.textContent.trim(), 'and applicable standards.');
     console.log('  PASS: delete-boundary-end places <w:del> at insertion tail');
 }
 
@@ -158,7 +158,7 @@ console.log('--- 2. Verifying Word Desktop native OOXML structures ---');
 
     const topIns = findChildrenByLocalName(p, 'ins');
     assert.equal(topIns.length, 1, 'Expected top-level <w:ins> for insertion');
-    assert.equal(topIns[0].getAttribute('w:author'), 'Barry Plasteras');
+    assert.equal(topIns[0].getAttribute('w:author'), 'John Doe');
 
     const nestedDels = findDescendantsByLocalName(topIns[0], 'del');
     assert.equal(nestedDels.length, 1, 'Expected nested <w:del> for insertion portion');
@@ -175,7 +175,7 @@ console.log('--- 2. Verifying Word Desktop native OOXML structures ---');
 
     const topIns = findChildrenByLocalName(p, 'ins');
     assert.equal(topIns.length, 1);
-    assert.equal(topIns[0].getAttribute('w:author'), 'Barry Plasteras');
+    assert.equal(topIns[0].getAttribute('w:author'), 'John Doe');
 
     const nestedDels = findDescendantsByLocalName(topIns[0], 'del');
     assert.equal(nestedDels.length, 2, 'Expected 2 nested <w:del> elements from distinct authors');
@@ -221,29 +221,29 @@ console.log('--- 4. Verifying Selective Author Accept/Reject Mechanics ---');
 {
     const pendingXml = loadFixtureXml('delete-interior', 'pending');
 
-    // Case A: Reject Author A (Barry Plasteras) only
-    // Barry's insertion is rejected; Anson's internal deletion is cascaded and removed.
-    const rejectBarry = rejectTrackedChangesInOoxml(pendingXml, { author: 'Barry Plasteras' });
-    const rejectBarryText = ingestWordOoxmlToPlainText(rejectBarry.oxml).trim();
-    assert.equal(rejectBarryText, 'Background.', 'Rejecting Barry should revert to baseline');
+    // Case A: Reject Author A (John Doe) only
+    // John's insertion is rejected; Anson's internal deletion is cascaded and removed.
+    const rejectJohn = rejectTrackedChangesInOoxml(pendingXml, { author: 'John Doe' });
+    const rejectJohnText = ingestWordOoxmlToPlainText(rejectJohn.oxml).trim();
+    assert.equal(rejectJohnText, 'Background.', 'Rejecting John should revert to baseline');
 
     // Case B: Reject Author B (Anson Lai) only
-    // Anson's deletion is unwrapped; Barry's insertion retains full text "generate"
+    // Anson's deletion is unwrapped; John's insertion retains full text "generate"
     const rejectAnson = rejectTrackedChangesInOoxml(pendingXml, { author: 'Anson Lai' });
     const rejectAnsonParsed = parseOoxmlSafe(rejectAnson.oxml, 'application/xml');
     const delsRemaining = findDescendantsByLocalName(rejectAnsonParsed.doc, 'del');
     assert.equal(delsRemaining.length, 0, 'Anson del should be unwrapped');
     const insRemaining = findDescendantsByLocalName(rejectAnsonParsed.doc, 'ins');
-    assert.equal(insRemaining.length, 1, 'Barry ins should remain');
-    assert.equal(insRemaining[0].textContent.includes('generate'), true, 'Barry ins should contain generate');
+    assert.equal(insRemaining.length, 1, 'John ins should remain');
+    assert.equal(insRemaining[0].textContent.includes('generate'), true, 'John ins should contain generate');
 
-    // Case C: Accept Author A (Barry Plasteras) only
-    // Barry's insertion unwraps into baseline text; Anson's deletion remains pending
-    const acceptBarry = acceptTrackedChangesInOoxml(pendingXml, { author: 'Barry Plasteras' });
-    const acceptBarryParsed = parseOoxmlSafe(acceptBarry.oxml, 'application/xml');
-    const topInsAfter = findChildrenByLocalName(findDescendantsByLocalName(acceptBarryParsed.doc, 'p')[0], 'ins');
-    assert.equal(topInsAfter.length, 0, 'Barry ins should be unwrapped');
-    const delsAfter = findDescendantsByLocalName(acceptBarryParsed.doc, 'del');
+    // Case C: Accept Author A (John Doe) only
+    // John's insertion unwraps into baseline text; Anson's deletion remains pending
+    const acceptJohn = acceptTrackedChangesInOoxml(pendingXml, { author: 'John Doe' });
+    const acceptJohnParsed = parseOoxmlSafe(acceptJohn.oxml, 'application/xml');
+    const topInsAfter = findChildrenByLocalName(findDescendantsByLocalName(acceptJohnParsed.doc, 'p')[0], 'ins');
+    assert.equal(topInsAfter.length, 0, 'John ins should be unwrapped');
+    const delsAfter = findDescendantsByLocalName(acceptJohnParsed.doc, 'del');
     assert.equal(delsAfter.length, 1, 'Anson del should remain pending');
     assert.equal(delsAfter[0].getAttribute('w:author'), 'Anson Lai');
 
@@ -291,11 +291,11 @@ for (const scenario of SCENARIOS.slice(0, 5)) {
         const topInsertions = findChildrenByLocalName(paragraph, 'ins');
         assert.deepEqual(
             topInsertions.map(node => node.getAttribute('w:author')),
-            ['Barry Plasteras', 'Anson Lai', 'Barry Plasteras']
+            ['John Doe', 'Anson Lai', 'John Doe']
         );
     } else {
         const foreignCarrier = findChildrenByLocalName(paragraph, 'ins')[0];
-        assert(foreignCarrier, `${scenario}: expected Barry insertion carrier`);
+        assert(foreignCarrier, `${scenario}: expected John insertion carrier`);
         const nestedDels = findDescendantsByLocalName(foreignCarrier, 'del');
         assert(nestedDels.some(node => node.getAttribute('w:author') === 'Anson Lai'),
             `${scenario}: expected nested Anson deletion`);

@@ -11,7 +11,7 @@ const DATE_UTC = '2026-09-08T16:29:00Z';
 
 function parseCarrier(content, attributes = '') {
     const xml = `<w:p xmlns:w="${NS_W}" xmlns:w16du="${NS_W16DU}">`
-        + `<w:ins w:id="7" w:author="Barry Plasteras" w:date="${DATE}" `
+        + `<w:ins w:id="7" w:author="John Doe" w:date="${DATE}" `
         + `w16du:dateUtc="${DATE_UTC}" ${attributes}>${content}</w:ins></w:p>`;
     const { doc, error } = parseOoxmlSafe(xml, 'application/xml');
     assert.equal(error, null);
@@ -58,7 +58,7 @@ function revisionIds(element) {
     assert.equal(text(result.rightCarrier), 'ement');
     assert.equal(wordAttribute(result.leftCarrier, 'id'), '7');
     assert.equal(wordAttribute(result.rightCarrier, 'id'), '1001');
-    assert.equal(wordAttribute(result.rightCarrier, 'author'), 'Barry Plasteras');
+    assert.equal(wordAttribute(result.rightCarrier, 'author'), 'John Doe');
     assert.equal(wordAttribute(result.rightCarrier, 'date'), DATE);
     assert.equal(result.rightCarrier.getAttributeNS(NS_W16DU, 'dateUtc'), DATE_UTC);
     assert.equal(result.rightCarrier.getElementsByTagNameNS(NS_W, 'b').length, 1);

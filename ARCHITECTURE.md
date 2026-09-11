@@ -69,7 +69,13 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 
 ## Entry Points
 
-- `index.js` (Root exports containing the reconciliation logic)
+- `index.js`: primary host-independent exports for OOXML reconciliation.
+- `services/standalone-operation-runner.js`: stable complete-document XML
+  operations, exported as `@ansonlai/docx-redline-js/standalone-runner`.
+- `node/index.js`: Node-only complete-DOCX buffer facade, exported as
+  `@ansonlai/docx-redline-js/node`.
+- `bin/docx-redline.js`: CLI launcher; command implementation lives in
+  `node/cli.js` and shared operation behavior lives in `services/`.
 
 ## Module Responsibilities
 

@@ -28,7 +28,8 @@ import { applySurgicalMode } from './surgical-mode.js';
 import { applyReconstructionMode } from './reconstruction-mode.js';
 import { applyTableReconciliation, applyTextToTableTransformation } from './table-mode.js';
 import { getDefaultAuthor } from '../adapters/config.js';
-import { containsTrackedChanges, getTrackedChangeAuthors, withOoxmlSourceType } from '../core/word-xml.js';
+import { containsTrackedChanges, createWordElement, getTrackedChangeAuthors, withOoxmlSourceType } from '../core/word-xml.js';
+import { clonePropertiesWithoutRevisionHistory } from '../core/revision-cloning.js';
 import {
     NS_W,
     RevisionIdAllocator,
@@ -51,6 +52,62 @@ function getCommentIdsInOoxml(node) {
         }
     }
     return [...ids].sort((a, b) => Number(a) - Number(b) || a.localeCompare(b));
+}
+
+function directWordChild(node, localName) {
+    return Array.from(node?.childNodes || []).find(child => (
+        child?.nodeType === 1
+        && child.namespaceURI === NS_W
+        && child.localName === localName
+    )) || null;
+}
+
+function insertedParagraphMarkMetadata(paragraph, author) {
+    const marker = directWordChild(directWordChild(directWordChild(paragraph, 'pPr'), 'rPr'), 'ins');
+    if (!marker) return null;
+    const markerAuthor = marker.getAttribute('w:author') || marker.getAttributeNS(NS_W, 'author') || '';
+    if (markerAuthor.trim().toLowerCase() !== String(author || '').trim().toLowerCase()) return null;
+    return {
+        id: marker.getAttribute('w:id') || marker.getAttributeNS(NS_W, 'id') || '',
+        author: markerAuthor,
+        date: marker.getAttribute('w:date') || marker.getAttributeNS(NS_W, 'date') || ''
+    };
+}
+
+function emptyParagraphBaseline(paragraph, serializer) {
+    const clone = paragraph.cloneNode(false);
+    const pPr = directWordChild(paragraph, 'pPr');
+    if (pPr) clone.appendChild(clonePropertiesWithoutRevisionHistory(pPr));
+    return serializer.serializeToString(clone);
+}
+
+function restoreInsertedParagraphMark(oxml, metadata) {
+    if (!metadata || typeof oxml !== 'string' || !oxml.trim()) return oxml;
+    const parsed = parseOoxmlSafe(oxml, 'text/xml');
+    if (!parsed.doc || parsed.error) return oxml;
+    const paragraph = parsed.doc.documentElement?.localName === 'p'
+        ? parsed.doc.documentElement
+        : getDocumentParagraphs(parsed.doc)[0];
+    if (!paragraph) return oxml;
+
+    let pPr = directWordChild(paragraph, 'pPr');
+    if (!pPr) {
+        pPr = createWordElement(parsed.doc, 'w:pPr');
+        paragraph.insertBefore(pPr, paragraph.firstChild);
+    }
+    let rPr = directWordChild(pPr, 'rPr');
+    if (!rPr) {
+        rPr = createWordElement(parsed.doc, 'w:rPr');
+        pPr.appendChild(rPr);
+    }
+    if (!directWordChild(rPr, 'ins')) {
+        const marker = createWordElement(parsed.doc, 'w:ins');
+        if (metadata.id) marker.setAttribute('w:id', metadata.id);
+        marker.setAttribute('w:author', metadata.author);
+        if (metadata.date) marker.setAttribute('w:date', metadata.date);
+        rPr.appendChild(marker);
+    }
+    return serializeXml(parsed.doc);
 }
 
 /**
@@ -78,6 +135,7 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
     let parseWarnings = [];
     const operationWarnings = [];
     let normalizedExistingRevisions = false;
+    let preservedInsertedParagraphMark = null;
     const existingRevisionsPolicy = options.existingRevisions || 'merge-same-author';
     const keepNormalizedNoOp = existingRevisionsPolicy === 'accept-all-first-keep-normalized';
     const finalize = result => {
@@ -107,6 +165,9 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
         }
         if (!withStatus.status) {
             withStatus.status = withStatus.hasChanges ? 'ok' : 'no-op';
+        }
+        if (preservedInsertedParagraphMark && withStatus.hasChanges && typeof withStatus.oxml === 'string') {
+            withStatus.oxml = restoreInsertedParagraphMark(withStatus.oxml, preservedInsertedParagraphMark);
         }
         return withOoxmlSourceType(withStatus);
     };
@@ -181,9 +242,13 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
                     });
                 }
                 log('[OxmlEngine] Existing revisions from same author detected; rejecting previous changes to merge against baseline');
+                const soleParagraph = inputParagraphs.length === 1 ? inputParagraphs[0] : null;
+                preservedInsertedParagraphMark = insertedParagraphMarkMetadata(soleParagraph, author);
                 const rejected = rejectTrackedChangesInOoxml(inputOoxml, { author });
                 if (rejected.status === 'error') return finalize(rejected);
-                workingOoxml = rejected.oxml;
+                workingOoxml = preservedInsertedParagraphMark && !String(rejected.oxml || '').trim()
+                    ? emptyParagraphBaseline(soleParagraph, serializer)
+                    : rejected.oxml;
                 normalizedExistingRevisions = true;
                 const rejectedParsed = parseOoxmlSafe(workingOoxml, 'text/xml');
                 parseWarnings.push(...rejectedParsed.warnings);

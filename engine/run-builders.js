@@ -9,6 +9,7 @@ import { extractFormatFromRPr, RPR_SCHEMA_ORDER } from './rpr-helpers.js';
 import { createRevisionMetadata } from '../core/types.js';
 import { getFirstElementByTag } from '../core/xml-query.js';
 import { createWordElement } from '../core/word-xml.js';
+import { clonePropertiesWithoutRevisionHistory } from '../core/revision-cloning.js';
 
 /**
  * Creates an insertion/deletion wrapper.
@@ -319,14 +320,9 @@ export function snapshotAndAttachRPrChange(xmlDoc, rPr, author, dateStr, sourceN
     rPrChange.setAttribute('w:author', metadata.author);
     rPrChange.setAttribute('w:date', dateStr || metadata.date);
 
-    const previousRPr = createWordElement(xmlDoc, 'w:rPr');
     const source = sourceNode || rPr;
-
-    Array.from(source.childNodes).forEach(child => {
-        if (child.nodeName !== 'w:rPrChange') {
-            previousRPr.appendChild(child.cloneNode(true));
-        }
-    });
+    const previousRPr = clonePropertiesWithoutRevisionHistory(source)
+        || createWordElement(xmlDoc, 'w:rPr');
 
     rPrChange.appendChild(previousRPr);
 
@@ -369,14 +365,9 @@ export function snapshotAndAttachPPrChange(xmlDoc, pPr, author, dateStr, sourceN
     pPrChange.setAttribute('w:author', metadata.author);
     pPrChange.setAttribute('w:date', dateStr || metadata.date);
 
-    const previousPPr = createWordElement(xmlDoc, 'w:pPr');
     const source = sourceNode || pPr;
-
-    Array.from(source.childNodes).forEach(child => {
-        if (child.nodeType === 1 && child.nodeName !== 'w:pPrChange' && child.localName !== 'pPrChange') {
-            previousPPr.appendChild(child.cloneNode(true));
-        }
-    });
+    const previousPPr = clonePropertiesWithoutRevisionHistory(source)
+        || createWordElement(xmlDoc, 'w:pPr');
 
     pPrChange.appendChild(previousPPr);
 
@@ -390,4 +381,3 @@ export function snapshotAndAttachPPrChange(xmlDoc, pPr, author, dateStr, sourceN
     pPr.appendChild(pPrChange);
     return pPrChange;
 }
-

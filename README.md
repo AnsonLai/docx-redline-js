@@ -23,10 +23,41 @@ Converts AI-generated or programmatic text/markdown edits into valid Office Open
 | Document | Description |
 |---|---|
 | **[README.md](./README.md)** | Library overview, installation, quick start, and public API reference |
-| **[AGENTS.md](./AGENTS.md)** | AI coding agent quick reference, targeting rules, and complete CLI workflow |
+| **[AGENTS.md](./AGENTS.md)** | Short launch card for coding agents: fast routes, operation selection, and focused verification |
+| **[docs/AGENT_KNOWLEDGE_BASE.md](./docs/AGENT_KNOWLEDGE_BASE.md)** | Full agent reference, CLI workflow, operation examples, error recovery, options, and gotchas |
 | **[ARCHITECTURE.md](./ARCHITECTURE.md)** | Contributor architecture, module responsibilities, end-to-end data flow, and contracts |
 | **[docs/TESTING.md](./docs/TESTING.md)** | Complete testing guide, test lanes, independent oracle validation, and Word visual review checklist |
 | **[CHANGELOG.md](./CHANGELOG.md)** | Release history, breaking changes, and migration notes |
+
+## Repository Layout
+
+The package exposes three levels of API:
+
+| Level | Entry point | Use it for |
+|---|---|---|
+| Host-independent OOXML API | `index.js` | Paragraph/range transforms and exported OOXML utilities in browsers, Node.js, or another DOM-capable runtime |
+| Standalone document XML runner | `services/standalone-operation-runner.js` | Applying operations to a complete `word/document.xml` string |
+| Node/DOCX API and CLI | `node/index.js`, `bin/docx-redline.js` | Reading, changing, validating, and writing complete `.docx` ZIP packages |
+
+Implementation folders have distinct roles: `core/` holds shared OOXML and
+targeting primitives; `pipeline/` handles ingestion, diffing, markdown, lists,
+and serialization; `engine/` performs reconciliation; `services/` coordinates
+document operations and package artifacts; `node/` contains Node-only ZIP and
+whole-document code. Tests are directly runnable `tests/*.mjs` files, while
+`tests/helpers/` and `tests/fixtures/` contain support code and data.
+
+Contributors and coding agents should start with the routing table in
+[AGENTS.md](./AGENTS.md#pick-the-route) before exploring the tree. The full
+dependency and ownership map is in [ARCHITECTURE.md](./ARCHITECTURE.md).
+
+For document-operation JSON, choose operations by the desired output structure,
+not by the everyday meaning of the type name. `redline` and `replace` provide
+ordinary text replacement; `list-change` and `table-reconciliation` provide
+structural intent; and ordinary `insert` is a compatibility alias of the
+redline path unless it includes a rejected-view target and anchor. In every
+ordinary text-bearing operation, `modified` is the complete desired content for
+the target. See the [operation TL;DR](./AGENTS.md#operation-tldr)
+and the [JSON schema](./docs/schemas/document-operations.schema.json).
 
 ## Install
 
@@ -168,7 +199,7 @@ All commands emit JSON on stdout. `apply` defaults:
 - **Inline edits**: Use `--target <text>` with `--modified <text>` or `--comment <text>` for quick one-liners without creating a JSON file.
 - **Compact mutation results**: `apply`, `accept`, `reject`, and `delete-comments` omit full OOXML/package payloads and inspection text from stdout. They report `written`, `outputPath`, per-operation results and receipts, compact validation counts, and a derived `completion` boolean. Use `validate` when full issue arrays are needed.
 
-See [the agent workflow in AGENTS.md](./AGENTS.md#agent-document-workflow-cli) and the
+See [the fast agent workflow in AGENTS.md](./AGENTS.md#fast-docx-workflow) and the
 [operation JSON Schema](docs/schemas/document-operations.schema.json).
 
 ### Configuration (call once at startup)
@@ -392,12 +423,13 @@ serialization. Accuracy remains the controlling constraint: each operation has
 an internal savepoint so an error or no-op cannot leak a partial edit or consumed
 revision ID into later operations.
 
-Batches are atomic by default: any operation error returns the original
+Batches are progressive by default (`atomic: false`): valid operations commit
+while failed operations remain unapplied and are reported in `results`. Pass
+`{ atomic: true }` when any operation error must return the original
 `documentXml`, `hasChanges: false`, empty package artifacts, and
 `rolledBack: true`. The default `continueOnError: true` still attempts the full
-batch so `results` describes what would have applied. Callers that intentionally
-consume partial results must pass `{ atomic: false }`; use
-`{ continueOnError: false }` to stop after the first error.
+batch so `results` describes every operation; use `{ continueOnError: false }`
+to stop after the first error.
 
 Comment anchors use exact matching first, then a unique ASCII-space/NBSP
 equivalent match that preserves source offsets and text. Missing anchors return
@@ -654,7 +686,8 @@ invariant with a fresh seed. See [Release validation in docs/TESTING.md](./docs/
 ## Architecture & Contributing
 
 - **[ARCHITECTURE.md](./ARCHITECTURE.md)**: Detailed module layout, end-to-end reconciliation flow, and contributor fast orientation.
-- **[AGENTS.md](./AGENTS.md)**: Concise quick reference for AI coding agents and CLI automation.
+- **[AGENTS.md](./AGENTS.md)**: Fast-start routing and operational guardrails for AI coding agents.
+- **[docs/AGENT_KNOWLEDGE_BASE.md](./docs/AGENT_KNOWLEDGE_BASE.md)**: Full agent reference for APIs, operations, CLI automation, recovery, and gotchas.
 - **[docs/TESTING.md](./docs/TESTING.md)**: Comprehensive testing model, test lanes, independent oracle checks, and visual review checklist.
 - **[CHANGELOG.md](./CHANGELOG.md)**: Version history, migration guides, and deprecation schedules.
 
