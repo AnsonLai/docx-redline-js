@@ -40,7 +40,16 @@ for (const route of [
 }
 
 assert(readme.includes('[docs/AGENT_FAST_START.md](./docs/AGENT_FAST_START.md)'));
-assert(packageJson.files.includes('docs/'));
+for (const publishedDoc of [
+    'docs/AGENT_FAST_START.md',
+    'docs/AGENT_KNOWLEDGE_BASE.md',
+    'docs/TESTING.md',
+    'docs/schemas/document-operations.schema.json',
+    'docs/validation-reports/2026-09-12-agent-protocol-rollout.md'
+]) {
+    assert(packageJson.files.includes(publishedDoc), `package omitted ${publishedDoc}`);
+}
+assert.equal(packageJson.files.includes('docs/'), false);
 assert.equal(packageJson.files.some(entry => entry === 'examples/' || entry.startsWith('examples/')), false);
 assert(packageJson.files.includes('!scripts/benchmark-agent-workflow.mjs'));
 
