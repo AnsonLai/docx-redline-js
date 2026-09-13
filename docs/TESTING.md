@@ -23,6 +23,7 @@ fixtures rarely contain.
 | XSD and LibreOffice | See [Release validation and independent oracles](#release-validation-and-independent-oracles) | Schema conformance and acceptance by a second consumer | Word-specific revision semantics |
 | Agent inspection and package facade | `node tests/document_inspection_tests.mjs`, `node tests/docx_package_facade_tests.mjs` | Canonical text, comment/list resolution, package-scoped IDs, untouched-part preservation, and atomic rollback | Desktop Word rendering |
 | Agent CLI | `node tests/agent_cli_tests.mjs` | JSON contracts, exact-text extraction, author requirements, safe output behavior, all command families, and operation-schema readability | Cross-platform CI beyond the current runner |
+| Example agent session | `node tests/agent_session_example_tests.mjs` | A non-package sample wrapper delegates to the Node facade, binds opaque handles to package revisions, returns context windows, preserves atomic rollback, and supports review resolution | LLM/provider latency or a production tool-server transport |
 | Agent edge cases | `node tests/canonical_paragraph_text_tests.mjs`, `node tests/document_inspection_edge_tests.mjs`, `node tests/docx_package_transaction_edge_tests.mjs`, `node tests/node_zip_archive_tests.mjs`, `node tests/agent_cli_edge_tests.mjs` | Revision-view semantics, cross-paragraph anchors, nested numbering, transaction reuse, multi-author cleanup, malformed ZIP handling, and destructive CLI safeguards | Desktop Word rendering and non-Windows CI |
 | Performance boundary regression | `node tests/performance_phase2_boundary_tests.mjs` | Stable facade re-exports, leaf imports, session rollback, isolated context commit, and comment-first scheduling | The Phase 1 one-parse/one-serialize performance target |
 | Live-session accuracy and instrumentation | `node tests/performance_phase1_session_tests.mjs` | One full parse/serialization, sequential semantic equivalence, exact accepted/rejected text, valid revisions, list/table/comment/highlight preservation, savepoint no-ops, and zero-serialization rollback | Desktop Word rendering |
@@ -78,6 +79,21 @@ It writes `tmp/benchmarks/operation-session-latest.json`. The checked
 not correctness gates. Per-operation DOM savepoints are retained because
 redline accuracy, no-op isolation, and rollback fidelity take precedence over
 the aspirational speed target.
+
+Run the observational agent-protocol benchmark with:
+
+```powershell
+npm run benchmark:agent
+```
+
+It writes `tmp/benchmarks/agent-workflow-latest.json` and compares canonical
+stateless Node requests with the development-only session example. It records
+native inspect/apply time, heap deltas, serialized request bytes, and exact
+accepted/rejected text fidelity. It also records the known early-split batch
+ordering failure and representative stale-handle, ambiguity, and foreign-
+revision errors. It does not measure or estimate LLM reasoning, tokenization,
+tool transport, Claude, or OpenCode wall time; collect those separately in the
+calling harness.
 
 ## Cross-author revision slicing test suite
 

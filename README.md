@@ -167,6 +167,36 @@ the root/browser dependency graph.
 Install `@xmldom/xmldom` alongside the package when using the Node facade or
 CLI; it remains an optional peer so browser consumers do not install a DOM shim.
 
+#### Example agent session wrapper (development only)
+
+[`examples/agent-session-wrapper.mjs`](./examples/agent-session-wrapper.mjs)
+demonstrates how a custom agent harness can keep one `DocxDocument` open, return
+short revision-bound target handles, apply safe defaults once, and translate a
+narrow edit request into canonical document operations:
+
+```js
+import { readFile } from 'node:fs/promises';
+import { createExampleAgentSession } from './examples/agent-session-wrapper.mjs';
+
+const session = createExampleAgentSession(await readFile('contract.docx'), {
+  profile: { author: 'Editor' }
+});
+const inspection = session.inspect({ search: 'termination', around: 2 });
+const clause = inspection.targets.find(target => target.role === 'match');
+const result = await session.applyEdits([{
+  target: clause.handle,
+  desiredText: 'Either party may terminate on 30 days\' written notice.'
+}]);
+```
+
+This file is a testable sample, not a package export or supported alternate
+mutation engine. It delegates to `@ansonlai/docx-redline-js/node`, is excluded
+from the published package files, and is intended to help MCP servers, Claude
+skills, OpenCode tools, and other custom harnesses design thin integrations.
+Run `npm run benchmark:agent` to compare its native execution and serialized
+request size with a canonical stateless Node workflow. The benchmark explicitly
+does not claim to measure LLM reasoning or provider/tool latency.
+
 ### Agent CLI
 
 ```bash

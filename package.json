@@ -77,10 +77,11 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "check:types": "tsc -p tsconfig.types.json && node scripts/check-types.mjs",
-    "lint": "eslint index.js adapters core engine pipeline services orchestration scripts tests",
+    "lint": "eslint index.js adapters core engine pipeline services orchestration scripts examples tests",
     "test:coverage": "c8 --reporter=text --reporter=json --reporter=json-summary --reports-dir=coverage node scripts/run-tests.mjs",
     "coverage:gaps": "node scripts/report-coverage-gaps.mjs",
     "benchmark:session": "node scripts/benchmark-operation-session.mjs",
+    "benchmark:agent": "node scripts/benchmark-agent-workflow.mjs",
     "benchmark:targeting": "node scripts/benchmark-targeting-hot-paths.mjs",
     "benchmark:tests": "node scripts/benchmark-test-runner.mjs",
     "profile:routes": "node scripts/profile-route-selection.mjs",
