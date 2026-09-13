@@ -11,6 +11,7 @@ import {
 configureLogger({ info() {}, warn() {}, error() {} });
 
 const fixture = await readFile(new URL('./fixtures/sample_doc_test.docx', import.meta.url));
+const packageConfig = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
 const sourceText = 'Notices. All notices must be in writing and sent to the addresses listed above.';
 const desiredText = 'Notices. All notices must be in writing and sent to the addresses listed above by email.';
 
@@ -19,6 +20,9 @@ assert.equal(
     false,
     'the demonstration agent must not become part of the published Node facade'
 );
+assert.equal(packageConfig.files.includes('examples/'), false);
+assert(packageConfig.files.includes('!scripts/benchmark-agent-workflow.mjs'));
+assert(packageConfig.files.includes('!scripts/lib/agent-performance-cases.mjs'));
 assert.equal(DEFAULT_AGENT_PROFILE.atomic, true);
 assert.equal(DEFAULT_AGENT_PROFILE.strictTargets, true);
 assert.equal(DEFAULT_AGENT_PROFILE.validate, true);
@@ -51,6 +55,11 @@ assert.equal(applied.effectiveProfile.strictTargets, true);
 assert.equal(applied.results[0].status, 'applied');
 assert(applied.outputBytes instanceof Buffer);
 assert.notEqual(applied.packageRevision.value, firstRevision);
+assert.equal(applied.refreshedTargets.length, 1);
+assert.equal(applied.refreshedTargets[0].operationId, 'notice-email');
+assert.equal(applied.refreshedTargets[0].previousHandle, match.handle);
+assert.notEqual(applied.refreshedTargets[0].target.handle, match.handle);
+assert.equal(applied.refreshedTargets[0].target.exactText, desiredText);
 
 const outputDocument = nodeFacade.openDocx(applied.outputBytes);
 assert(outputDocument.inspect().paragraphs.some(paragraph => paragraph.exactText === desiredText));
@@ -67,6 +76,7 @@ assert.equal(stale.outputBytes, null);
 const refreshed = session.inspect({ search: 'by email' });
 assert.equal(refreshed.counts.matches, 1);
 assert.notEqual(refreshed.targets[0].handle, match.handle);
+assert.equal(refreshed.targets[0].handle, applied.refreshedTargets[0].target.handle);
 const accepted = await session.resolveReview('accept', { allAuthors: true });
 assert.equal(accepted.ok, true);
 assert.equal(accepted.changed, true);

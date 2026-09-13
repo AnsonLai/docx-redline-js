@@ -57,8 +57,10 @@ function handleEdit(edit, handle) {
     return {
         operationId: edit.operationId,
         target: handle,
-        ...(typeof edit.desiredText === 'string'
-            ? { desiredText: edit.desiredText }
+        ...(Array.isArray(edit.replacements)
+            ? { replacements: edit.replacements }
+            : typeof edit.desiredText === 'string'
+                ? { desiredText: edit.desiredText }
             : { commentContent: edit.commentContent })
     };
 }

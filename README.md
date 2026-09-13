@@ -185,7 +185,10 @@ const inspection = session.inspect({ search: 'termination', around: 2 });
 const clause = inspection.targets.find(target => target.role === 'match');
 const result = await session.applyEdits([{
   target: clause.handle,
-  desiredText: 'Either party may terminate on 30 days\' written notice.'
+  replacements: [{
+    find: 'The Company may terminate',
+    replace: 'Either party may terminate'
+  }]
 }]);
 ```
 
@@ -193,9 +196,16 @@ This file is a testable sample, not a package export or supported alternate
 mutation engine. It delegates to `@ansonlai/docx-redline-js/node`, is excluded
 from the published package files, and is intended to help MCP servers, Claude
 skills, OpenCode tools, and other custom harnesses design thin integrations.
-Run `npm run benchmark:agent` to compare its native execution and serialized
-request size with a canonical stateless Node workflow. The benchmark explicitly
-does not claim to measure LLM reasoning or provider/tool latency.
+The sample binds each handle to the inspected package revision and view, returns
+new handles after successful mutations, and expands localized exact replacements
+into complete desired paragraph text before delegating to the canonical redline
+operation. Duplicate matches require an explicit `occurrence`; missing,
+ambiguous, overlapping, and conflicting patches fail before document mutation.
+From a source checkout, run `npm run benchmark:agent` to compare its native
+execution and serialized request size with a canonical stateless Node workflow.
+The example and its benchmark are excluded from the published package. The
+benchmark explicitly does not claim to measure LLM reasoning or provider/tool
+latency.
 
 ### Agent CLI
 

@@ -44,6 +44,8 @@
     "bin/",
     "orchestration/",
     "scripts/",
+    "!scripts/benchmark-agent-workflow.mjs",
+    "!scripts/lib/agent-performance-cases.mjs",
     "docs/",
     "index.js",
     "index.d.ts",

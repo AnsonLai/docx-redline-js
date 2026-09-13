@@ -1,6 +1,6 @@
 # Agent Performance and Execution Protocol Plan
 
-**Status:** In progress — WP-00 benchmark and WP-01 development sample implemented; external agent observations and WP-02+ remain  
+**Status:** In progress — WP-00 through WP-03 implemented as development-only benchmark/sample work; external agent observations and WP-04+ remain
 **Date:** 2026-09-12  
 **Priority:** Reduce AI-agent wall time, tool turns, generated tokens, and recovery
 reasoning without weakening targeting, revision fidelity, validation, rollback, or
@@ -674,9 +674,9 @@ heap, serialized request size, and lifecycle fidelity from explicitly unmeasured
 LLM/provider/transport latency and writes
 `tmp/benchmarks/agent-workflow-latest.json`. Real Claude and OpenCode observations
 remain external harness runs rather than simulated repository measurements.
-The checked seven-iteration/two-warmup run reduced serialized apply requests by
-71.90–87.11% across the five ordinary cases. Median native execution remained in
-the same approximately 41–53 ms range for both shapes, confirming that the
+The checked seven-iteration/two-warmup run is refreshed as each protocol work
+package lands. WP-03 measurements are recorded below. Native execution remains
+in the same tens-of-milliseconds range for both shapes, confirming that the
 sample's immediate benefit is protocol compactness rather than a claimed core
 engine speedup.
 
@@ -702,8 +702,10 @@ context-window inspection, narrow redline/delete/comment translation, atomic
 retry semantics, handle invalidation, and review resolution. Focused tests in
 `tests/agent_session_example_tests.mjs` verify delegation, accepted/rejected
 text, rollback, stale handles, context, and absence from `node/index.js`.
+`package.json` also excludes the development wrapper and its benchmark inputs
+from the published package contents.
 
-### WP-02: Add opaque handles and context-window inspection
+### WP-02: Add opaque handles and context-window inspection [COMPLETED 2026-09-12 AS DEVELOPMENT SAMPLE]
 
 **Goal:** Remove target-copying and search-then-range turns.
 
@@ -718,7 +720,17 @@ text, rollback, stale handles, context, and absence from `node/index.js`.
 the edit and enough hidden target state to apply it safely without a second
 extraction.
 
-### WP-03: Add localized exact-span edit compilation
+**Delivered:** The example session registry retains strict descriptors and the
+package revision while exposing only short handles and drafting context.
+`inspect({ search, around })` labels direct matches separately from context,
+supports accepted/rejected views, and returns the active package token and
+effective profile. A mutation retires old handles and returns `refreshedTargets`
+with new revision-bound handles for successful surviving targets. Focused tests
+verify context-window classification, stale-handle refusal, handle reuse within
+one revision, and a follow-up edit through a returned handle without another
+inspection.
+
+### WP-03: Add localized exact-span edit compilation [COMPLETED 2026-09-12 AS DEVELOPMENT SAMPLE]
 
 **Goal:** Let small wording changes produce small agent requests.
 
@@ -732,6 +744,23 @@ extraction.
 **Acceptance:** Punctuation, notice-period, and simple mutuality cases generate the
 same accepted text and valid tracked-change lifecycle as equivalent full-text
 operations while materially reducing generated request tokens.
+
+**Delivered:** `compileExactReplacements` resolves all exact matches against the
+immutable text stored with a handle, requires `occurrence` for duplicates,
+deduplicates identical patches, rejects missing/ambiguous/overlapping/conflicting
+patches with structured recovery actions, and constructs one complete `modified`
+value for the existing redline path. It does not write OOXML. Focused unit and
+fixture tests cover simultaneous length-changing replacements, term changes,
+simple mutuality, accepted/rejected lifecycle fidelity, failure immutability, and
+the refreshed-handle chain.
+
+In the checked seven-iteration/two-warmup benchmark, the development session
+reduced serialized apply-request bytes by 86.11% for punctuation, 89.96% for a
+term-duration phrase, and 82.22% for deterministic mutuality; the full rewrite
+and mixed batch remained supported.
+These are JSON byte measurements, not provider-token or end-to-end latency
+claims. The benchmark continues to report native time separately and leaves the
+WP-04 ordering diagnostic failing in the known split-first direction.
 
 ### WP-04: Compile and bind source-targeted batches
 

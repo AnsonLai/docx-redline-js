@@ -10,7 +10,8 @@ export const AGENT_PERFORMANCE_CASES = Object.freeze([
         buildEdits: ([paragraph]) => [{
             operationId: 'terminal-punctuation',
             paragraph,
-            desiredText: `${paragraph.exactText}.`
+            desiredText: `${paragraph.exactText}.`,
+            replacements: [{ find: 'Materials', replace: 'Materials.' }]
         }]
     },
     {
@@ -20,7 +21,8 @@ export const AGENT_PERFORMANCE_CASES = Object.freeze([
         buildEdits: ([paragraph]) => [{
             operationId: 'term-duration',
             paragraph,
-            desiredText: paragraph.exactText.replace('five (5) years', 'three (3) years')
+            desiredText: paragraph.exactText.replace('five (5) years', 'three (3) years'),
+            replacements: [{ find: 'five (5) years', replace: 'three (3) years' }]
         }]
     },
     {
@@ -32,7 +34,12 @@ export const AGENT_PERFORMANCE_CASES = Object.freeze([
             paragraph,
             desiredText: paragraph.exactText
                 .replaceAll('The Receiving Party', 'Each Party')
-                .replaceAll('the Disclosing Party', 'the other Party')
+                .replaceAll('the Disclosing Party', 'the other Party'),
+            replacements: [
+                { find: 'The Receiving Party', replace: 'Each Party' },
+                { find: 'the Disclosing Party', replace: 'the other Party', occurrence: 1 },
+                { find: 'the Disclosing Party', replace: 'the other Party', occurrence: 2 }
+            ]
         }]
     },
     {
@@ -58,9 +65,12 @@ export const AGENT_PERFORMANCE_CASES = Object.freeze([
             {
                 operationId: 'notice-email',
                 paragraph: notices,
-                desiredText: notices.exactText.replace('addresses listed above', 'addresses and email contacts listed above')
+                desiredText: notices.exactText.replace('addresses listed above', 'addresses and email contacts listed above'),
+                replacements: [{
+                    find: 'addresses listed above',
+                    replace: 'addresses and email contacts listed above'
+                }]
             }
         ]
     }
 ]);
-

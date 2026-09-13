@@ -89,6 +89,175 @@ function invalidRequest(message, field = null) {
     };
 }
 
+function patchError(code, message, field, recoveryAction, details = {}) {
+    return {
+        code,
+        message,
+        field,
+        ...details,
+        recovery: {
+            action: recoveryAction,
+            sameArgumentsSafe: false,
+            requiresReinspection: false,
+            requiresUserAuthorization: false
+        }
+    };
+}
+
+function occurrenceOffsets(sourceText, find) {
+    const offsets = [];
+    let from = 0;
+    while (from <= sourceText.length - find.length) {
+        const start = sourceText.indexOf(find, from);
+        if (start < 0) break;
+        offsets.push(start);
+        from = start + 1;
+    }
+    return offsets;
+}
+
+function offsetCandidate(sourceText, start, length) {
+    const excerptStart = Math.max(0, start - 40);
+    const excerptEnd = Math.min(sourceText.length, start + length + 40);
+    return {
+        start,
+        end: start + length,
+        excerpt: sourceText.slice(excerptStart, excerptEnd)
+    };
+}
+
+/**
+ * Compiles exact, source-relative replacement intents into complete desired text.
+ * All ranges are resolved before mutation so replacements are simultaneous.
+ */
+export function compileExactReplacements(sourceText, replacements, field = 'replacements') {
+    if (typeof sourceText !== 'string') {
+        return {
+            ok: false,
+            error: invalidRequest('Localized replacements require string source text.', field).error
+        };
+    }
+    if (!Array.isArray(replacements) || replacements.length === 0) {
+        return {
+            ok: false,
+            error: invalidRequest('replacements must be a non-empty array.', field).error
+        };
+    }
+
+    const resolved = [];
+    for (let index = 0; index < replacements.length; index += 1) {
+        const replacement = replacements[index];
+        const itemField = `${field}[${index}]`;
+        if (!replacement || typeof replacement !== 'object' || Array.isArray(replacement)) {
+            return { ok: false, error: invalidRequest(`${itemField} must be an object.`, itemField).error };
+        }
+        if (typeof replacement.find !== 'string' || replacement.find.length === 0) {
+            return { ok: false, error: invalidRequest(`${itemField}.find must be a non-empty string.`, `${itemField}.find`).error };
+        }
+        if (typeof replacement.replace !== 'string') {
+            return { ok: false, error: invalidRequest(`${itemField}.replace must be a string.`, `${itemField}.replace`).error };
+        }
+        const occurrence = replacement.occurrence == null ? null : Number(replacement.occurrence);
+        if (occurrence != null && (!Number.isInteger(occurrence) || occurrence < 1)) {
+            return { ok: false, error: invalidRequest(`${itemField}.occurrence must be a positive integer.`, `${itemField}.occurrence`).error };
+        }
+
+        const offsets = occurrenceOffsets(sourceText, replacement.find);
+        if (offsets.length === 0 || (occurrence != null && occurrence > offsets.length)) {
+            return {
+                ok: false,
+                error: patchError(
+                    'PATCH_SOURCE_NOT_FOUND',
+                    occurrence == null
+                        ? `Exact patch source was not found: "${replacement.find}".`
+                        : `Occurrence ${occurrence} of exact patch source was not found: "${replacement.find}".`,
+                    itemField,
+                    'change_patch',
+                    { matchCount: offsets.length }
+                )
+            };
+        }
+        if (occurrence == null && offsets.length > 1) {
+            return {
+                ok: false,
+                error: patchError(
+                    'AMBIGUOUS_PATCH_SOURCE',
+                    `Exact patch source matched ${offsets.length} locations; provide occurrence.`,
+                    itemField,
+                    'choose_occurrence',
+                    { candidates: offsets.map(start => offsetCandidate(sourceText, start, replacement.find.length)) }
+                )
+            };
+        }
+
+        const start = offsets[(occurrence || 1) - 1];
+        resolved.push({
+            requestIndex: index,
+            start,
+            end: start + replacement.find.length,
+            find: replacement.find,
+            replace: replacement.replace,
+            occurrence: occurrence || 1
+        });
+    }
+
+    resolved.sort((left, right) => left.start - right.start || left.end - right.end || left.requestIndex - right.requestIndex);
+    const unique = [];
+    for (const replacement of resolved) {
+        const previous = unique.at(-1);
+        if (previous && replacement.start === previous.start && replacement.end === previous.end) {
+            if (replacement.replace !== previous.replace) {
+                return {
+                    ok: false,
+                    error: patchError(
+                        'CONFLICTING_PATCHES',
+                        `Localized replacements ${previous.requestIndex + 1} and ${replacement.requestIndex + 1} assign different text to the same source range.`,
+                        field,
+                        'combine_patches',
+                        { replacementIndexes: [previous.requestIndex + 1, replacement.requestIndex + 1] }
+                    )
+                };
+            }
+            continue;
+        }
+        if (previous && replacement.start < previous.end) {
+            return {
+                ok: false,
+                error: patchError(
+                    'OVERLAPPING_PATCHES',
+                    `Localized replacements ${previous.requestIndex + 1} and ${replacement.requestIndex + 1} overlap.`,
+                    field,
+                    'combine_patches',
+                    { replacementIndexes: [previous.requestIndex + 1, replacement.requestIndex + 1] }
+                )
+            };
+        }
+        unique.push(replacement);
+    }
+
+    let cursor = 0;
+    let desiredText = '';
+    for (const replacement of unique) {
+        desiredText += sourceText.slice(cursor, replacement.start);
+        desiredText += replacement.replace;
+        cursor = replacement.end;
+    }
+    desiredText += sourceText.slice(cursor);
+
+    return {
+        ok: true,
+        desiredText,
+        replacements: unique.map(replacement => ({
+            requestIndex: replacement.requestIndex + 1,
+            start: replacement.start,
+            end: replacement.end,
+            occurrence: replacement.occurrence,
+            removedLength: replacement.end - replacement.start,
+            insertedLength: replacement.replace.length
+        }))
+    };
+}
+
 /**
  * Creates a stateful, demonstration-only agent session over one DOCX buffer.
  */
@@ -110,6 +279,42 @@ export class ExampleAgentDocumentSession {
 
     toBuffer() {
         return this.document.toBuffer();
+    }
+
+    registerParagraph(paragraph, role = 'match') {
+        const descriptor = targetDescriptor(paragraph);
+        const identity = [
+            this.packageRevision.value,
+            descriptor.revisionView,
+            descriptor.paragraphId || paragraph.index,
+            descriptor.fingerprint || ''
+        ].join(':');
+        let handle = this.handlesByIdentity.get(identity);
+        if (!handle) {
+            handle = `T${this.nextHandle++}`;
+            this.handlesByIdentity.set(identity, handle);
+            this.targets.set(handle, {
+                handle,
+                descriptor,
+                packageRevision: this.packageRevision.value,
+                paragraph
+            });
+        }
+        return {
+            handle,
+            exactText: paragraph.exactText,
+            humanReference: paragraph.humanReference,
+            nearestHeading: paragraph.nearestHeading,
+            inTable: paragraph.inTable,
+            list: paragraph.list,
+            role
+        };
+    }
+
+    retireCurrentHandles() {
+        for (const handle of this.targets.keys()) this.retiredHandles.add(handle);
+        this.targets.clear();
+        this.handlesByIdentity.clear();
     }
 
     inspect(options = {}) {
@@ -166,35 +371,10 @@ export class ExampleAgentDocumentSession {
         }
 
         const selected = paragraphs.filter(paragraph => selectedIndexes.has(paragraph.index));
-        const targets = selected.map(paragraph => {
-            const descriptor = targetDescriptor(paragraph);
-            const identity = [
-                this.packageRevision.value,
-                descriptor.revisionView,
-                descriptor.paragraphId || paragraph.index,
-                descriptor.fingerprint || ''
-            ].join(':');
-            let handle = this.handlesByIdentity.get(identity);
-            if (!handle) {
-                handle = `T${this.nextHandle++}`;
-                this.handlesByIdentity.set(identity, handle);
-                this.targets.set(handle, {
-                    handle,
-                    descriptor,
-                    packageRevision: this.packageRevision.value,
-                    paragraph
-                });
-            }
-            return {
-                handle,
-                exactText: paragraph.exactText,
-                humanReference: paragraph.humanReference,
-                nearestHeading: paragraph.nearestHeading,
-                inTable: paragraph.inTable,
-                list: paragraph.list,
-                role: directIndexes.has(paragraph.index) ? 'match' : 'context'
-            };
-        });
+        const targets = selected.map(paragraph => this.registerParagraph(
+            paragraph,
+            directIndexes.has(paragraph.index) ? 'match' : 'context'
+        ));
 
         return {
             ok: true,
@@ -257,11 +437,47 @@ export class ExampleAgentDocumentSession {
             ...(typeof edit.existingRevisions === 'string' ? { existingRevisions: edit.existingRevisions } : {})
         };
 
+        const intentCount = [
+            typeof edit.desiredText === 'string',
+            edit.replacements !== undefined,
+            edit.action === 'delete',
+            typeof edit.commentContent === 'string' && edit.commentContent.length > 0
+        ].filter(Boolean).length;
+        if (intentCount > 1) {
+            return {
+                error: invalidRequest(
+                    `Edit ${index + 1} must provide exactly one edit intent.`,
+                    `edits[${index}]`
+                ).error
+            };
+        }
+
         if (typeof edit.desiredText === 'string') {
-            return { operation: { ...common, type: 'redline', modified: edit.desiredText } };
+            return {
+                operation: { ...common, type: 'redline', modified: edit.desiredText },
+                sourceHandle: edit.target
+            };
+        }
+        if (edit.replacements !== undefined) {
+            const compiled = compileExactReplacements(
+                resolution.target.descriptor.exactText,
+                edit.replacements,
+                `edits[${index}].replacements`
+            );
+            if (!compiled.ok) return { error: compiled.error };
+            return {
+                operation: { ...common, type: 'redline', modified: compiled.desiredText },
+                sourceHandle: edit.target,
+                compilation: {
+                    operationId: common.operationId,
+                    sourceLength: resolution.target.descriptor.exactText.length,
+                    desiredLength: compiled.desiredText.length,
+                    replacements: compiled.replacements
+                }
+            };
         }
         if (edit.action === 'delete') {
-            return { operation: { ...common, type: 'delete' } };
+            return { operation: { ...common, type: 'delete' }, sourceHandle: edit.target };
         }
         if (typeof edit.commentContent === 'string' && edit.commentContent.length > 0) {
             return {
@@ -270,12 +486,13 @@ export class ExampleAgentDocumentSession {
                     type: 'comment',
                     commentContent: edit.commentContent,
                     ...(typeof edit.textToComment === 'string' ? { textToComment: edit.textToComment } : {})
-                }
+                },
+                sourceHandle: edit.target
             };
         }
         return {
             error: invalidRequest(
-                `Edit ${index + 1} must provide desiredText, action: "delete", or commentContent.`,
+                `Edit ${index + 1} must provide desiredText, replacements, action: "delete", or commentContent.`,
                 `edits[${index}]`
             ).error
         };
@@ -317,12 +534,30 @@ export class ExampleAgentDocumentSession {
         const ok = successfulResult(result);
         const packageChanged = result.written === true;
         const output = packageChanged ? result.toBuffer() : this.document.toBuffer();
+        let refreshedTargets = [];
 
         if (packageChanged) {
-            for (const handle of this.targets.keys()) this.retiredHandles.add(handle);
-            this.targets.clear();
-            this.handlesByIdentity.clear();
+            this.retireCurrentHandles();
             this.packageRevision = this.document.getRevisionToken();
+            const currentParagraphs = this.document.inspect().paragraphs || [];
+            refreshedTargets = translated.flatMap((item, index) => {
+                const operationResult = (result.results || []).find(entry => entry.index === index + 1);
+                if (!operationResult || operationResult.status === 'error' || item.operation.type === 'delete') return [];
+                const paragraphId = item.operation.target.paragraphId;
+                let paragraph = paragraphId
+                    ? currentParagraphs.find(candidate => candidate.paragraphId === paragraphId)
+                    : null;
+                if (!paragraph && typeof item.operation.modified === 'string') {
+                    const matches = currentParagraphs.filter(candidate => candidate.exactText === item.operation.modified);
+                    paragraph = matches.length === 1 ? matches[0] : null;
+                }
+                if (!paragraph || paragraph.exactText.trim().length === 0) return [];
+                return [{
+                    operationId: item.operation.operationId,
+                    previousHandle: item.sourceHandle,
+                    target: this.registerParagraph(paragraph)
+                }];
+            });
         }
 
         const executedIndexes = new Set((result.results || []).map(item => item.index));
@@ -348,6 +583,8 @@ export class ExampleAgentDocumentSession {
             error: result.error || null,
             results: result.results || [],
             receipts: result.receipts || [],
+            compiledEdits: translated.flatMap(item => item.compilation ? [item.compilation] : []),
+            refreshedTargets,
             warnings: result.warnings || [],
             validation: result.validation || null,
             retryPlan: ok ? null : {
@@ -378,9 +615,7 @@ export class ExampleAgentDocumentSession {
         const ok = successfulResult(result);
         const packageChanged = result.written === true;
         if (packageChanged) {
-            for (const handle of this.targets.keys()) this.retiredHandles.add(handle);
-            this.targets.clear();
-            this.handlesByIdentity.clear();
+            this.retireCurrentHandles();
             this.packageRevision = this.document.getRevisionToken();
         }
         return {
