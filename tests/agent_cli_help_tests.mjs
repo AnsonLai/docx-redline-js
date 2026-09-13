@@ -7,6 +7,7 @@ assert.equal(globalHelp.status, 'ok');
 assert.equal(globalHelp.command, 'help');
 assert.deepEqual(globalHelp.commands.map(item => item.name), CLI_COMMANDS);
 assert(globalHelp.documentation.includes('docs/AGENT_FAST_START.md'));
+assert(globalHelp.documentation.includes('docs/SKILL_AUTHORING.md'));
 assert(Buffer.byteLength(JSON.stringify(globalHelp, null, 2)) < 8000);
 
 const alternateGlobalHelp = await executeCli(['help']);
@@ -29,6 +30,8 @@ const applyHelp = await executeCli(['apply', '--help']);
 assert.match(applyHelp.notes.join(' '), /modified is complete desired accepted-view content/i);
 assert.match(applyHelp.notes.join(' '), /source is never overwritten unless --in-place/i);
 assert.match(applyHelp.notes.join(' '), /serializer-backed stdin/i);
+assert.match(applyHelp.notes.join(' '), /profile keeps progressive execution unless --atomic/i);
+assert(applyHelp.options.some(item => item.name === '--compact'));
 assert.deepEqual(applyHelp.examples.map(item => item.operation.type), ['redline', 'comment', 'restore']);
 assert.equal(applyHelp.examples[2].operation.target.revisionView, 'rejected');
 assert.equal(applyHelp.examples[0].operation.modified, 'Revised clause.');

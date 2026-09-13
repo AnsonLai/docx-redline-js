@@ -503,20 +503,23 @@ bundle before this route. If `apply` returns an error, use the recovery matrix
 below and make one cause-specific correction.
 
 ```bash
-# 1. Inline one-liner edit (fastest for 1–2 edits; no JSON file needed)
+# 1. Focused contextual discovery
+docx-redline extract contract.docx --search "termination" --around 3
+
+# 2. Inline one-liner edit (fastest for 1–2 edits; no JSON file needed)
 docx-redline apply contract.docx --target "Original clause" --modified "New clause" --output reviewed.docx
 
-# 2. Direct edit without tracked changes (clean text, no revision clutter)
+# 3. Direct edit without tracked changes (clean text, no revision clutter)
 docx-redline apply contract.docx --target "Typo fix" --modified "Fixed typo" --no-redlines --output clean.docx
 
-# 3. Cross-author edit inside another reviewer's pending insertion
+# 4. Cross-author edit inside another reviewer's pending insertion
 docx-redline apply contract.docx --target "Pending clause text" --modified "Updated clause text" --existing-revisions slice-cross-author --output reviewed.docx
 
-# 4. Batch operations with ops.json
+# 5. Batch operations with ops.json
 docx-redline apply contract.docx --operations operations.json --output reviewed.docx
 
-# 5. Shell-agent batch without an operations file
-node emit-operations.mjs | docx-redline apply contract.docx --operations - --profile agent --output reviewed.docx
+# 6. Serializer-backed stdin with compact stdout
+node emit-operations.mjs | docx-redline apply contract.docx --operations - --profile agent --compact --output reviewed.docx
 ```
 
 Key CLI defaults and behaviors:
@@ -526,9 +529,9 @@ Key CLI defaults and behaviors:
 - **Tracked changes**: Defaults to `generateRedlines: true`. When clean direct text is needed, pass `--no-redlines`.
 - **Atomic rollback (optional)**: Operations apply progressively by default (`atomic: false`). For all-or-nothing transactional rollback where any error halts and reverts all changes, pass `--atomic`.
 - **Complete-success exit (optional)**: Pass `--require-complete` when `partial` must exit nonzero (`3`). Errors exit `2`; the legacy zero exit for partial results remains when the flag is omitted.
-- **Agent profile**: `--profile agent` explicitly defaults `atomic` and complete-success behavior to true and reports `effectiveOptions`. Call flags override the profile. It does not enable authorization-sensitive revision normalization.
-- **Stdin operations**: `--operations -` accepts the same JSON array or `{ operations, expectedRevision }` envelope as a file. Supply UTF-8 JSON through a serializer/structured process API; do not interpolate legal text in the shell.
-- **Compact mutation JSON**: `apply`, `accept`, `reject`, and `delete-comments` omit document/package XML and full validation arrays. `validation.originalIssues` and `validation.generatedIssues` are code/count summaries; run `validate` for full issue records.
+- **Agent profile**: `--profile agent` enables complete-success exit behavior but preserves progressive execution and the ordinary revision policy. Compose it with `--atomic` or an explicit `--existing-revisions` choice when intended; resolved values appear in `effectiveOptions`.
+- **Operation transport**: A UTF-8 operations file and serializer-backed `--operations -` are peers. Use whichever the host can construct without interpolating legal text in the shell.
+- **Compact mutation JSON**: `apply`, `accept`, `reject`, and `delete-comments` omit document/package XML, full validation arrays, and duplicate nested receipts. Top-level `receipts` is authoritative. Pass `--compact` for one-line JSON; run `validate` for full issue records.
 - Check `completion: true`, `written: true`, and a non-null `outputPath` on stdout. `completion` is derived from the write result, top-level status, and every operation status, so failed, partial, and unwritten work cannot appear complete. If an error occurs, inspect `error.code` or `results[i].error.code` (e.g. `TARGET_NOT_FOUND`, `ANCHOR_NOT_FOUND`) before correcting the cause and re-applying.
 
 For multi-clause or multi-page reviews, apply edits **section-by-section** or clause-by-clause (e.g., using `--in-place` on a working copy) rather than bundling dozens of edits into one massive batch. This keeps context compact, simplifies error diagnosis, and prevents cascading anchor drift.

@@ -86,11 +86,11 @@ try {
     assert.equal(whitespaceApplied.written, true);
     assert.equal(whitespaceApplied.completion, true);
     assert.equal(whitespaceApplied.results[0].resolvedTarget.targetTextMatch.mode, 'space_equivalent');
+    assert.equal(whitespaceApplied.results[0].resolvedTarget.targetTextMatch.differenceCount, 2);
     assert.equal(whitespaceApplied.results[0].resolvedTarget.text, undefined, 'CLI must not echo resolved clause text');
-    assert.deepEqual(
-        whitespaceApplied.results[0].resolvedTarget.targetTextMatch.differences.map(item => item.sourceCodePoint),
-        ['U+00A0', 'U+00A0']
-    );
+    assert.equal(whitespaceApplied.results[0].resolvedTarget.targetTextMatch.differences, undefined);
+    assert.equal(whitespaceApplied.results[0].receipt, undefined);
+    assert.equal(whitespaceApplied.receipts.length, 1);
     assert.equal((await executeCli(['extract', whitespaceOutput])).paragraphs[0].exactText, requestedText);
     const whitespaceRejected = await executeCli(['reject', whitespaceOutput, '--author', 'Reviewer B']);
     assert.equal(whitespaceRejected.written, true);

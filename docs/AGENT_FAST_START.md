@@ -25,18 +25,18 @@ It is a development sample, not a package API.
 
    Search is case-insensitive. Direct hits are capped; follow `selection.nextAfter` with `--after`, and cite `humanReference`, not `P42`.
 
-2. Copy `exactText` with `paragraphId` or `fingerprint`. Serialize the final
-   operation array directly to stdin, then apply once:
+2. Copy `exactText` with `paragraphId` or `fingerprint`. Use a UTF-8 operations
+   file or serializer-backed stdin, then apply once:
 
    ```bash
-   node emit-operations.mjs | docx-redline apply contract.docx --operations - --profile agent --output reviewed.docx
+   node emit-operations.mjs | docx-redline apply contract.docx --operations - --profile agent --compact --output reviewed.docx
    ```
 
    `emit-operations.mjs` should use `JSON.stringify`; do not interpolate legal
    text through shell quoting. `modified` is the complete desired accepted-view
    paragraph, not only the inserted words.
 
-The `agent` profile uses atomic rollback, strict targets, validation, tracked changes, `merge-same-author`, and nonzero incomplete-work exits. Explicit flags take precedence; the result reports `effectiveOptions`.
+The `agent` profile preserves progressive execution and the ordinary revision policy while making incomplete work exit nonzero. Add `--atomic` deliberately; check `effectiveOptions`. Run `docx-redline apply --help` for redline, comment, and rejected-view restore shapes.
 
 ## Batch and result rules
 

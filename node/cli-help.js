@@ -7,6 +7,7 @@ const IN_PLACE = option('inPlace', '--in-place, -i', 'Explicitly overwrite the s
 const FORCE = option('force', '--force, -f', 'Allow replacement of an existing destination.');
 const NO_OVERWRITE = option('noOverwrite', '--no-overwrite, --no-clobber', 'Refuse replacement of an existing destination.');
 const ALL_AUTHORS = option('allAuthors', '--all-authors', 'Resolve review content for every author; requires explicit user authorization.');
+const COMPACT = option('compact', '--compact', 'Emit one-line JSON to reduce provider-visible output bytes.');
 
 const INSPECTION_OPTIONS = Object.freeze([
     HELP,
@@ -132,12 +133,14 @@ export const CLI_COMMAND_HELP = Object.freeze({
             option('generateRedlines', '--generate-redlines[=true|false]', 'Control tracked-change generation.'),
             option('noRedlines', '--no-redlines', 'Apply clean text without tracked-change markup.'),
             option('requireComplete', '--require-complete', 'Return exit code 3 for progressive partial completion.'),
-            option('profile', '--profile agent', 'Apply the named agent execution defaults; explicit flags take precedence.')
+            option('profile', '--profile agent', 'Require complete machine execution without selecting atomic/progressive or revision policy; explicit flags compose with it.'),
+            COMPACT
         ],
         notes: [
             'modified is complete desired accepted-view content, not only inserted words.',
             'Use a structured JSON file or serializer-backed stdin; never interpolate legal text through raw shell quoting.',
             'The source is never overwritten unless --in-place is explicit.',
+            'The agent profile keeps progressive execution unless --atomic is explicit and does not change existing-revision policy.',
             'Do not accept/reject foreign revisions or remove comments without user authorization.',
             'Inspect completion, written, outputPath, every result, error.recovery, and retryPlan.'
         ],
@@ -146,21 +149,21 @@ export const CLI_COMMAND_HELP = Object.freeze({
     accept: {
         summary: 'Accept tracked revisions by one author or all authors.',
         usage: 'docx-redline accept <file.docx> (--author <name>|--all-authors) [options]',
-        options: [HELP, ...MUTATION_DESTINATION_OPTIONS, option('allAuthors', '--all-authors', ALL_AUTHORS.description), option('noClobber', '--no-clobber', 'Alias of --no-overwrite.')],
+        options: [HELP, ...MUTATION_DESTINATION_OPTIONS, option('allAuthors', '--all-authors', ALL_AUTHORS.description), option('noClobber', '--no-clobber', 'Alias of --no-overwrite.'), COMPACT],
         notes: ['Accepting foreign review content requires explicit user authorization.'],
         examples: [{ command: 'docx-redline accept reviewed.docx --author "Editor"' }]
     },
     reject: {
         summary: 'Reject tracked revisions by one author or all authors.',
         usage: 'docx-redline reject <file.docx> (--author <name>|--all-authors) [options]',
-        options: [HELP, ...MUTATION_DESTINATION_OPTIONS, option('allAuthors', '--all-authors', ALL_AUTHORS.description), option('noClobber', '--no-clobber', 'Alias of --no-overwrite.')],
+        options: [HELP, ...MUTATION_DESTINATION_OPTIONS, option('allAuthors', '--all-authors', ALL_AUTHORS.description), option('noClobber', '--no-clobber', 'Alias of --no-overwrite.'), COMPACT],
         notes: ['Rejecting foreign review content requires explicit user authorization.'],
         examples: [{ command: 'docx-redline reject reviewed.docx --author "Editor"' }]
     },
     'delete-comments': {
         summary: 'Delete comments by one author or all authors.',
         usage: 'docx-redline delete-comments <file.docx> (--author <name>|--all-authors) [options]',
-        options: [HELP, ...MUTATION_DESTINATION_OPTIONS, option('allAuthors', '--all-authors', ALL_AUTHORS.description), option('noClobber', '--no-clobber', 'Alias of --no-overwrite.')],
+        options: [HELP, ...MUTATION_DESTINATION_OPTIONS, option('allAuthors', '--all-authors', ALL_AUTHORS.description), option('noClobber', '--no-clobber', 'Alias of --no-overwrite.'), COMPACT],
         notes: ['Removing reviewer comments requires explicit user authorization.'],
         examples: [{ command: 'docx-redline delete-comments reviewed.docx --author "Reviewer"' }]
     },
@@ -187,7 +190,7 @@ export function buildCliHelp(command = null) {
             usage: 'docx-redline <command> [file.docx] [options]',
             commands: CLI_COMMANDS.map(name => ({ name, summary: CLI_COMMAND_HELP[name].summary })),
             notes: ['Run docx-redline <command> --help for flags, semantics, and bounded examples.'],
-            documentation: ['AGENTS.md', 'docs/AGENT_FAST_START.md', 'docs/schemas/document-operations.schema.json']
+            documentation: ['AGENTS.md', 'docs/AGENT_FAST_START.md', 'docs/SKILL_AUTHORING.md', 'docs/schemas/document-operations.schema.json']
         };
     }
     const entry = CLI_COMMAND_HELP[command];
@@ -201,6 +204,6 @@ export function buildCliHelp(command = null) {
         options: entry.options.map(({ key: _key, ...publicOption }) => publicOption),
         notes: entry.notes,
         examples: entry.examples,
-        documentation: ['AGENTS.md', 'docs/AGENT_FAST_START.md', 'docs/schemas/document-operations.schema.json']
+        documentation: ['AGENTS.md', 'docs/AGENT_FAST_START.md', 'docs/SKILL_AUTHORING.md', 'docs/schemas/document-operations.schema.json']
     };
 }

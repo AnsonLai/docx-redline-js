@@ -60,11 +60,15 @@ win.
 
 ## Configuration decision
 
+> Historical note: this section records CLI contract version 5. Contract version
+> 7 decomposes `--profile agent`: it now supplies complete-success execution
+> without forcing atomic mode. Skills choose `--atomic` separately.
+
 No project or auto-discovered configuration file was added. The CLI already
 defaults author, strict targeting, validation, tracked changes, revision safety,
-and output naming. The explicit `--profile agent` flag captures the remaining
-atomic/complete-success policy and reports `effectiveOptions`. Removing that one
-flag would not justify hidden configuration discovery or precedence reasoning.
+and output naming. The explicit `--profile agent` flag reports
+`effectiveOptions`; hidden configuration discovery still would not justify its
+additional precedence reasoning.
 
 ## Remaining external measurement
 

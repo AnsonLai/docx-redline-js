@@ -235,7 +235,7 @@ docx-redline apply contract.docx --target "Another author's clause" --modified "
 docx-redline apply contract.docx --operations operations.json --atomic --require-complete --output reviewed.docx
 
 # Agent shell path: JSON is emitted by a serializer, not interpolated by the shell
-node emit-operations.mjs | docx-redline apply contract.docx --operations - --profile agent --output reviewed.docx
+node emit-operations.mjs | docx-redline apply contract.docx --operations - --profile agent --compact --output reviewed.docx
 ```
 
 All commands emit JSON on stdout. `apply` defaults:
@@ -244,11 +244,12 @@ All commands emit JSON on stdout. `apply` defaults:
 - **Existing revisions**: Defaults to `'merge-same-author'`. Pass `--existing-revisions slice-cross-author` to edit inside another reviewer's pending insertions with native carrier slicing.
 - **Transactionality**: Defaults to `atomic: false` (applies valid operations and reports any failures). Pass `--atomic` for all-or-nothing rollback on any operation error.
 - **Complete-success exit**: Pass `--require-complete` when a progressive `partial` result must exit with code `3`; errors exit with code `2`. Without the flag, partial results retain the legacy zero exit code, so always inspect `completion`.
-- **Agent profile**: `--profile agent` explicitly enables atomic rollback and complete-success exit behavior while retaining strict targeting, validation, tracked changes, and `merge-same-author`. It reports the resolved `effectiveOptions`; explicit flags take precedence.
+- **Agent profile**: `--profile agent` enables complete-success exit behavior while retaining the ordinary progressive transaction and existing-revision defaults. Compose it with `--atomic` or an explicit `--existing-revisions` policy when intended, and verify the resolved `effectiveOptions`.
 - **Operations from stdin**: `--operations -` reads the same array or `{ operations, expectedRevision }` envelope accepted from a file. Feed it from a JSON serializer or structured process API, not shell-interpolated legal text.
+- **Compact stdout**: `--compact` emits one-line mutation JSON. It changes serialization only, not operation semantics.
 - **Tracked changes**: Defaults to `generateRedlines: true`. Pass `--no-redlines` when clean direct text edits are desired.
 - **Inline edits**: Use `--target <text>` with `--modified <text>` or `--comment <text>` for quick one-liners without creating a JSON file.
-- **Compact mutation results**: `apply`, `accept`, `reject`, and `delete-comments` omit full OOXML/package payloads and inspection text from stdout. They report `written`, `outputPath`, per-operation results and receipts, compact validation counts, and a derived `completion` boolean. Use `validate` when full issue arrays are needed.
+- **Compact mutation results**: `apply`, `accept`, `reject`, and `delete-comments` omit full OOXML/package payloads and inspection text from stdout. CLI operation results omit duplicate nested receipt bodies; the ordered top-level `receipts` array is authoritative. Successful exact target-match diagnostics are omitted and equivalent-whitespace matches retain only mode/count. Node and standalone-runner results remain unchanged. Use `validate` when full issue arrays are needed.
 
 Inspection commands default to 20 direct matches and a 48 KiB soft response
 budget when no explicit positional scope is supplied. Use `--limit` with
@@ -259,15 +260,17 @@ paragraph is returned whole with an `oversizeItem` marker. Machine `index` and
 `ref` fields are for targeting and pagination, not user-facing Word locations;
 use `humanReference`, `provision`, or `nearestHeading` in reports.
 
-`docx-redline version` reports contract version 6 and the additive
+`docx-redline version` reports contract version 7 and the additive
 `command-help-v1`, `inspection-context-v1`, `bounded-inspection-v1`,
 `human-document-references-v1`, `batch-start-source-binding`,
-`recovery-envelope-v1`, `require-complete-exit`, `operations-stdin`, and
-`agent-profile-v1` capabilities. Wrappers should negotiate only the
+`recovery-envelope-v1`, `require-complete-exit`, `operations-stdin`,
+`agent-safety-profile-v2`, `deduplicated-cli-receipts`, and
+`compact-cli-json-v1` capabilities. Wrappers should negotiate only the
 capabilities they use. Run `docx-redline <command> --help` for that command's
 machine-readable options, behavior, exit codes, and compact examples.
 
-See the [compact agent fast start](./docs/AGENT_FAST_START.md) and the
+See the [compact agent fast start](./docs/AGENT_FAST_START.md), the
+[skill/harness authoring contract](./docs/SKILL_AUTHORING.md), and the
 [operation JSON Schema](docs/schemas/document-operations.schema.json).
 
 ### Configuration (call once at startup)
@@ -573,6 +576,10 @@ Both single-operation (`applyOperationToDocumentXml`) and batch
 (`applyOperationsToDocumentXml`) results expose commit-aware **Mutation Receipts**
 (`result.receipt` on single results and per-item `results[i].receipt`, plus `result.receipts`
 for the full batch).
+
+This full receipt shape is retained by the Node facade and standalone runner.
+Only compact CLI JSON removes duplicate `results[i].receipt` bodies and keeps
+the ordered top-level `receipts` array.
 
 ```js
 const result = await applyOperationsToDocumentXml(documentXml, operations, 'Agent');

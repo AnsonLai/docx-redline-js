@@ -1,6 +1,6 @@
 # Agent CLI Discovery and Context Efficiency Plan
 
-**Status:** WP-00 through WP-02 completed; WP-03 through WP-05 proposed
+**Status:** Completed
 
 **Date:** 2026-09-12
 
@@ -512,6 +512,8 @@ paragraphs in one command.
 
 ### WP-03: Decompose the agent profile
 
+**Status:** Completed 2026-09-13
+
 **Goal:** Let skills adopt machine-safety guarantees without inheriting a
 conflicting transaction or revision policy.
 
@@ -530,7 +532,15 @@ without contradicting their house rules. Profile and non-profile calls retain
 the existing author fallback and report the stamped identity through
 `authorUsed`; no new author-related failure path is introduced.
 
+**Delivered:** CLI contract version 7 advertises `agent-safety-profile-v2`.
+`--profile agent` now enables complete-success exits while retaining progressive
+execution and `merge-same-author`; `--atomic`, `--atomic=false`, and explicit
+existing-revision policies compose and are reported in `effectiveOptions`.
+Author precedence and the visible `AI Redliner` fallback are unchanged.
+
 ### WP-04: Deduplicate compact CLI mutation results
+
+**Status:** Completed 2026-09-13
 
 **Goal:** Cut successful apply output without losing audit or recovery data.
 
@@ -545,7 +555,17 @@ the existing author fallback and report the stamped identity through
 has an authoritative receipt/disposition; atomic/progressive retry plans remain
 complete; and NBSP mismatch errors retain corrective evidence.
 
+**Delivered:** Contract version 7 advertises `deduplicated-cli-receipts` and
+`compact-cli-json-v1`. Compact CLI results remove nested receipt bodies, retain
+the complete ordered top-level receipt collection, omit successful exact-match
+metadata, and reduce successful equivalent-whitespace metadata to mode/count.
+Error evidence and full Node/standalone results are preserved. The measured
+one-operation response is 2,216 bytes pretty-printed or 1,557 bytes with
+`--compact`, versus the 2,968-byte pre-WP-04 response.
+
 ### WP-05: Documentation, bundle parity, and real-world audit
+
+**Status:** Completed 2026-09-13
 
 **Goal:** Ensure the shipped skill actually receives the improvements.
 
@@ -588,6 +608,16 @@ no bundle-source inspection occurs; the task uses one contextual search and one
 apply; output remains below the harness limit; accepted and rejected views,
 comments, and foreign author attribution remain correct. A skill that elects to
 use a personalized reviewer configures it through the existing author inputs.
+
+**Delivered:** Added the packaged `docs/SKILL_AUTHORING.md` contract, updated all
+agent-facing routes and release documentation, and added executable documentation
+guards for scoped-first examples, profile composition, transport parity,
+four-field recovery, capability negotiation, and human references. Package
+dry-run verifies the source CLI/help and curated documentation are present while
+development benchmarks remain excluded. Repository benchmarks and lifecycle
+tests cover one contextual search, one apply, output size, accepted/rejected
+text, comments, source immutability, receipts, and foreign attribution without
+claiming provider/model timings.
 
 ## 8. Focused Verification
 

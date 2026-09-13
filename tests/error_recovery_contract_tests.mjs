@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { normalizeErrorWithRecovery } from '../services/error-recovery.js';
 import { openDocx } from '../node/index.js';
 import { executeCli, runCli } from '../node/cli.js';
+import { buildZip } from '../scripts/lib/minimal-zip.mjs';
 
 const invalid = normalizeErrorWithRecovery({
     code: 'INVALID_OPERATION',
@@ -108,12 +109,14 @@ assert.equal(conflictingResult.retryPlan.base, 'original');
 assert.equal(conflictingResult.retryPlan.replayWholeBatch, true);
 
 const version = await executeCli(['version']);
-assert.equal(version.contractVersion, 6);
+assert.equal(version.contractVersion, 7);
 assert(version.capabilities.includes('batch-start-source-binding'));
 assert(version.capabilities.includes('recovery-envelope-v1'));
 assert(version.capabilities.includes('require-complete-exit'));
 assert(version.capabilities.includes('operations-stdin'));
-assert(version.capabilities.includes('agent-profile-v1'));
+assert(version.capabilities.includes('agent-safety-profile-v2'));
+assert(version.capabilities.includes('deduplicated-cli-receipts'));
+assert(version.capabilities.includes('compact-cli-json-v1'));
 assert(version.capabilities.includes('command-help-v1'));
 assert(version.capabilities.includes('inspection-context-v1'));
 assert(version.capabilities.includes('bounded-inspection-v1'));
@@ -161,6 +164,39 @@ try {
     ], { stdout: { write: value => { legacyStdout += value; } } });
     assert.equal(legacyExit, 0, 'partial status retains legacy exit behavior without --require-complete');
     assert.equal(JSON.parse(legacyStdout).status, 'partial');
+
+    const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+    const mismatchInput = path.join(temp, 'mismatch.docx');
+    const mismatchOperations = path.join(temp, 'mismatch-operations.json');
+    const mismatchDocumentXml = `<w:document xmlns:w="${W}"><w:body><w:p w:paraId="A1"><w:ins w:id="10" w:author="Prior" w:date="2026-01-01T00:00:00Z"><w:r><w:t>Alpha Beta</w:t></w:r></w:ins></w:p><w:sectPr/></w:body></w:document>`;
+    await writeFile(mismatchInput, buildZip([
+        {
+            name: '[Content_Types].xml',
+            data: '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>'
+        },
+        { name: 'word/document.xml', data: mismatchDocumentXml },
+        { name: 'word/_rels/document.xml.rels', data: '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>' }
+    ]));
+    await writeFile(mismatchOperations, JSON.stringify([{
+        type: 'redline',
+        target: { exactText: 'Alpha Beta', paragraphId: 'A1' },
+        modified: 'Alpha\nBeta',
+        author: 'Reviewer',
+        existingRevisions: 'slice-cross-author'
+    }]));
+    const mismatchResult = await executeCli([
+        'apply', mismatchInput,
+        '--operations', mismatchOperations,
+        '--atomic'
+    ]);
+    const mismatchError = mismatchResult.results[0].error;
+    assert.equal(mismatchError.code, 'PATCH_ROUNDTRIP_MISMATCH');
+    assert.equal(mismatchError.mismatchOffset, 5);
+    assert.equal(mismatchError.expectedCodePoint, 'U+000A');
+    assert.equal(mismatchError.actualCodePoint, 'U+0020');
+    assert.match(mismatchError.expectedExcerpt, /Alpha\nBeta/);
+    assert.equal(mismatchResult.results[0].receipt, undefined);
+    assert.equal(mismatchResult.receipts[0].finalDisposition, 'refused');
 } finally {
     await rm(temp, { recursive: true, force: true });
 }

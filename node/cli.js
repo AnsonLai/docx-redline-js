@@ -10,7 +10,7 @@ import { normalizeErrorWithRecovery } from '../services/error-recovery.js';
 import { buildCliHelp, CLI_COMMANDS, commandOptionKeys } from './cli-help.js';
 
 const suffixes = { apply: 'redlined', accept: 'accepted', reject: 'rejected', 'delete-comments': 'comments-removed' };
-const CLI_CONTRACT_VERSION = 6;
+const CLI_CONTRACT_VERSION = 7;
 const DEFAULT_INSPECTION_LIMIT = 20;
 const INSPECTION_SOFT_BYTE_LIMIT = 48 * 1024;
 const CLI_CAPABILITIES = [
@@ -23,11 +23,13 @@ const CLI_CAPABILITIES = [
     'recovery-envelope-v1',
     'require-complete-exit',
     'operations-stdin',
-    'agent-profile-v1',
+    'agent-safety-profile-v2',
     'command-help-v1',
     'inspection-context-v1',
     'bounded-inspection-v1',
-    'human-document-references-v1'
+    'human-document-references-v1',
+    'deduplicated-cli-receipts',
+    'compact-cli-json-v1'
 ];
 const commandOptions = Object.fromEntries(CLI_COMMANDS.map(command => [command, new Set(commandOptionKeys(command))]));
 
@@ -346,7 +348,7 @@ function compactError(error) {
         compact.candidates = error.candidates.map(candidate => {
             if (!candidate || typeof candidate !== 'object') return candidate;
             const excerpt = boundedText(candidate.excerpt ?? candidate.exactText ?? candidate.text ?? '', 240);
-            return { ...compactResolvedTarget(candidate), ...(excerpt ? { excerpt } : {}) };
+            return { ...compactResolvedTarget(candidate, { preserveMatchDetails: true }), ...(excerpt ? { excerpt } : {}) };
         });
     }
     for (const field of ['recovery', 'issueSummary', 'expectedRevision', 'currentRevision']) {
@@ -357,7 +359,7 @@ function compactError(error) {
             ...error.context,
             ...(error.context.currentTarget ? {
                 currentTarget: {
-                    ...compactResolvedTarget(error.context.currentTarget),
+                    ...compactResolvedTarget(error.context.currentTarget, { preserveMatchDetails: true }),
                     excerpt: boundedText(
                         error.context.currentTarget.excerpt
                             ?? error.context.currentTarget.exactText
@@ -371,7 +373,7 @@ function compactError(error) {
     }
     if (error.sourceTarget && typeof error.sourceTarget === 'object') {
         compact.sourceTarget = {
-            ...compactResolvedTarget(error.sourceTarget),
+            ...compactResolvedTarget(error.sourceTarget, { preserveMatchDetails: true }),
             excerpt: boundedText(error.sourceTarget.text ?? error.sourceTarget.exactText ?? '', 240)
         };
     }
@@ -379,10 +381,32 @@ function compactError(error) {
     return compact;
 }
 
-function compactResolvedTarget(target) {
+function compactTargetTextMatch(match, preserveDetails = false) {
+    if (!match || typeof match !== 'object') return match;
+    if (preserveDetails) return match;
+    if (match.mode === 'exact') return undefined;
+    const differenceCount = Number.isInteger(match.differenceCount)
+        ? match.differenceCount
+        : (Array.isArray(match.differences) ? match.differences.length : 0);
+    return {
+        ...(match.mode ? { mode: match.mode } : {}),
+        differenceCount
+    };
+}
+
+function compactResolvedTarget(target, { preserveMatchDetails = false } = {}) {
     if (!target || typeof target !== 'object') return target;
-    const { text: _text, exactText: _exactText, ...compact } = target;
-    return compact;
+    const {
+        text: _text,
+        exactText: _exactText,
+        targetTextMatch,
+        ...compact
+    } = target;
+    const compactMatch = compactTargetTextMatch(targetTextMatch, preserveMatchDetails);
+    return {
+        ...compact,
+        ...(compactMatch ? { targetTextMatch: compactMatch } : {})
+    };
 }
 
 function compactReceipt(receipt) {
@@ -398,12 +422,13 @@ function compactReceipt(receipt) {
 
 function compactOperationResult(result) {
     if (!result || typeof result !== 'object') return result;
+    const { receipt: _receipt, ...withoutReceipt } = result;
+    const preserveMatchDetails = result.status === 'error' || !!result.error;
     return {
-        ...result,
-        ...(result.resolvedTarget ? { resolvedTarget: compactResolvedTarget(result.resolvedTarget) } : {}),
-        ...(result.resolvedAnchor ? { resolvedAnchor: compactResolvedTarget(result.resolvedAnchor) } : {}),
+        ...withoutReceipt,
+        ...(result.resolvedTarget ? { resolvedTarget: compactResolvedTarget(result.resolvedTarget, { preserveMatchDetails }) } : {}),
+        ...(result.resolvedAnchor ? { resolvedAnchor: compactResolvedTarget(result.resolvedAnchor, { preserveMatchDetails }) } : {}),
         ...(result.error ? { error: compactError(result.error) } : {}),
-        ...(result.receipt ? { receipt: compactReceipt(result.receipt) } : {}),
         ...(Array.isArray(result.warnings) ? { warnings: result.warnings.map(warning => boundedText(warning)) } : {})
     };
 }
@@ -617,7 +642,7 @@ export async function executeCli(argv, io = process) {
                 : (!flags.noRedlines);
             const atomic = flags.atomic !== undefined
                 ? (flags.atomic === true || flags.atomic === 'true')
-                : agentProfile;
+                : false;
             const requireComplete = flags.requireComplete !== undefined
                 ? (flags.requireComplete === true || flags.requireComplete === 'true')
                 : agentProfile;
@@ -661,7 +686,9 @@ export async function executeCli(argv, io = process) {
 
 export async function runCli(argv = process.argv.slice(2), io = process) {
     configureLogger({}, { level: 'silent' });
-    const result = await executeCli(argv, io); io.stdout.write(`${JSON.stringify(serializable(result), null, 2)}\n`);
+    const result = await executeCli(argv, io);
+    const compactJson = parseArgs(argv).flags.compact === true;
+    io.stdout.write(`${JSON.stringify(serializable(result), null, compactJson ? 0 : 2)}\n`);
     return Number.isInteger(result.exitCode) && result.exitCode !== 0
         ? result.exitCode
         : (result.status === 'error' ? 1 : 0);

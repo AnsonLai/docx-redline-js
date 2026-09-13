@@ -9,7 +9,7 @@ or an installed plugin bundle to infer public behavior.
 | Task | Start here |
 |---|---|
 | Edit or review a complete `.docx` | [Agent Fast Start](docs/AGENT_FAST_START.md) and the `docx-redline` CLI |
-| Build an agent/tool wrapper | [README wrapper example](README.md#example-agent-session-wrapper-development-only), then [knowledge base](docs/AGENT_KNOWLEDGE_BASE.md#designing-a-thin-agent-wrapper) |
+| Build or update an agent skill/tool wrapper | [Skill Authoring Contract](docs/SKILL_AUTHORING.md), then [README wrapper example](README.md#example-agent-session-wrapper-development-only) |
 | Change paragraph/range reconciliation | `index.js` → `engine/oxml-engine.js` → selected `engine/*-mode.js` |
 | Change complete-document operations | `services/standalone-operation-runner.js` → `services/document-operation-*.js` |
 | Change DOCX ZIP or CLI behavior | `node/index.js`, `node/docx-document.js`, `node/cli.js` |
@@ -22,12 +22,12 @@ specific advanced operation, API, or recovery topic you need.
 ## Ordinary document edits
 
 Use one focused extraction and one apply call. With a structured wrapper, use
-its revision-bound target handles. For shell-only work, serialize operations to
-stdin and use the explicit agent profile:
+its revision-bound target handles. For shell-only work, use a UTF-8 operations
+file or serializer-backed stdin and the explicit agent profile:
 
 ```bash
-docx-redline extract contract.docx --range 10:30
-node emit-operations.mjs | docx-redline apply contract.docx --operations - --profile agent --output reviewed.docx
+docx-redline extract contract.docx --search "termination" --around 3
+node emit-operations.mjs | docx-redline apply contract.docx --operations - --profile agent --compact --output reviewed.docx
 ```
 
 For every ordinary text operation, `modified` is the complete desired
@@ -42,6 +42,10 @@ per-operation errors. Follow `error.recovery.action` and `retryPlan`; never retr
 unchanged failed arguments. Do not accept/reject another reviewer's work or
 remove comments without explicit user authorization. The source is never
 overwritten unless `--in-place` is explicit.
+
+The agent profile preserves progressive execution and the ordinary revision
+policy. Add `--atomic` or `--existing-revisions slice-cross-author` only when
+that policy is intended, and confirm the resolved `effectiveOptions`.
 
 Advanced restore, rejected-view insertion, list, table, formatting, comments,
 revision policies, and failure examples live in the
