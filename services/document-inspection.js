@@ -309,6 +309,36 @@ export function inspectDocumentParts(parts, options = {}) {
         comments.set(id, definition);
     }
     const selected = selectInspectionParagraphs(paragraphs, options);
+    if (options.search && selected.selection && selected.selection.totalMatches === 0) {
+        const needle = String(options.search).toLowerCase();
+        const alternateView = revisionView === 'accepted' ? 'rejected' : 'accepted';
+        let rangeStart = 1;
+        let rangeEnd = paragraphNodes.length;
+        if (options.range) {
+            rangeStart = Number(options.range.start ?? options.range[0]);
+            rangeEnd = Number(options.range.end ?? options.range[1]);
+        }
+        let alternateMatches = 0;
+        for (let i = 0; i < paragraphNodes.length; i++) {
+            const index = i + 1;
+            if (options.range && (index < rangeStart || index > rangeEnd)) continue;
+            if (Array.isArray(options.indexes) && !options.indexes.includes(index)) continue;
+            const pNode = paragraphNodes[i];
+            if (options.table && !hasAncestor(pNode, 'tc')) continue;
+            if (options.body && hasAncestor(pNode, 'tc')) continue;
+            if (options.revised && revisionAuthors(pNode).length === 0) continue;
+            const altText = extractCanonicalParagraphText(pNode, { revisionView: alternateView });
+            if (options.skipEmpty && altText.length === 0) continue;
+            if (altText.toLowerCase().includes(needle)) {
+                alternateMatches++;
+            }
+        }
+        if (alternateMatches > 0) {
+            selected.selection.hint = revisionView === 'accepted'
+                ? `0 matches in accepted view, but ${alternateMatches} match${alternateMatches === 1 ? '' : 'es'} found in --view rejected. If searching for deleted text to restore, re-run with --view rejected.`
+                : `0 matches in rejected view, but ${alternateMatches} match${alternateMatches === 1 ? '' : 'es'} found in --view accepted. Re-run with --view accepted.`;
+        }
+    }
     paragraphs = selected.paragraphs;
     const allRevisionAuthors = [...new Set(paragraphs.flatMap(item => item.revisionAuthors))].sort();
     const coveredEntries = extractDocumentPartsEntries(parts);

@@ -68,6 +68,7 @@ try {
 
     const acceptedDeleted = await executeCli(['extract', input, '--search', 'deleted email', '--around', '1']);
     assert.equal(acceptedDeleted.selection.totalMatches, 0);
+    assert.match(acceptedDeleted.selection.hint, /0 matches in accepted view, but 1 match found in --view rejected/i);
     const rejectedDeleted = await executeCli(['extract', input, '--search', 'deleted email', '--view', 'rejected', '--around', '1']);
     assert.deepEqual(rejectedDeleted.paragraphs.map(item => item.index), [7, 8, 9]);
     assert.equal(rejectedDeleted.paragraphs[1].revisionView, 'rejected');

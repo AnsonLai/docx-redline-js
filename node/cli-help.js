@@ -182,6 +182,14 @@ export function commandOptionKeys(command) {
     return (CLI_COMMAND_HELP[command]?.options || []).map(item => item.key);
 }
 
+const DOCS_BASE_URL = 'https://github.com/AnsonLai/docx-redline-js/blob/main/';
+export const CLI_DOCUMENTATION_URLS = Object.freeze([
+    `${DOCS_BASE_URL}AGENTS.md`,
+    `${DOCS_BASE_URL}docs/AGENT_FAST_START.md`,
+    `${DOCS_BASE_URL}docs/SKILL_AUTHORING.md`,
+    `${DOCS_BASE_URL}docs/schemas/document-operations.schema.json`
+]);
+
 export function buildCliHelp(command = null) {
     if (!command) {
         return {
@@ -190,7 +198,7 @@ export function buildCliHelp(command = null) {
             usage: 'docx-redline <command> [file.docx] [options]',
             commands: CLI_COMMANDS.map(name => ({ name, summary: CLI_COMMAND_HELP[name].summary })),
             notes: ['Run docx-redline <command> --help for flags, semantics, and bounded examples.'],
-            documentation: ['AGENTS.md', 'docs/AGENT_FAST_START.md', 'docs/SKILL_AUTHORING.md', 'docs/schemas/document-operations.schema.json']
+            documentation: [...CLI_DOCUMENTATION_URLS]
         };
     }
     const entry = CLI_COMMAND_HELP[command];
@@ -204,6 +212,7 @@ export function buildCliHelp(command = null) {
         options: entry.options.map(({ key: _key, ...publicOption }) => publicOption),
         notes: entry.notes,
         examples: entry.examples,
-        documentation: ['AGENTS.md', 'docs/AGENT_FAST_START.md', 'docs/SKILL_AUTHORING.md', 'docs/schemas/document-operations.schema.json']
+        documentation: [...CLI_DOCUMENTATION_URLS]
     };
 }
+

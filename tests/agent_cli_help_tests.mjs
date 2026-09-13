@@ -6,8 +6,10 @@ const globalHelp = await executeCli(['--help']);
 assert.equal(globalHelp.status, 'ok');
 assert.equal(globalHelp.command, 'help');
 assert.deepEqual(globalHelp.commands.map(item => item.name), CLI_COMMANDS);
-assert(globalHelp.documentation.includes('docs/AGENT_FAST_START.md'));
-assert(globalHelp.documentation.includes('docs/SKILL_AUTHORING.md'));
+assert(globalHelp.documentation.some(url => url.includes('docs/AGENT_FAST_START.md')));
+assert(globalHelp.documentation.some(url => url.includes('docs/SKILL_AUTHORING.md')));
+assert(globalHelp.documentation.every(url => url.startsWith('https://github.com/AnsonLai/docx-redline-js/')));
+
 assert(Buffer.byteLength(JSON.stringify(globalHelp, null, 2)) < 8000);
 
 const alternateGlobalHelp = await executeCli(['help']);
