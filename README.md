@@ -23,7 +23,7 @@ Converts AI-generated or programmatic text/markdown edits into valid Office Open
 | Document | Description |
 |---|---|
 | **[README.md](./README.md)** | Library overview, installation, quick start, and public API reference |
-| **[AGENTS.md](./AGENTS.md)** | Short launch card for coding agents: fast routes, operation selection, and focused verification |
+| **[AGENTS.md](./AGENTS.md)** | Fast routes, a thin-wrapper blueprint, operation selection, and focused verification for coding agents |
 | **[docs/AGENT_KNOWLEDGE_BASE.md](./docs/AGENT_KNOWLEDGE_BASE.md)** | Full agent reference, CLI workflow, operation examples, error recovery, options, and gotchas |
 | **[ARCHITECTURE.md](./ARCHITECTURE.md)** | Contributor architecture, module responsibilities, end-to-end data flow, and contracts |
 | **[docs/TESTING.md](./docs/TESTING.md)** | Complete testing guide, test lanes, independent oracle validation, and Word visual review checklist |

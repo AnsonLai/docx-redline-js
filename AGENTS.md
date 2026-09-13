@@ -9,6 +9,7 @@ only for the specific topic you need.
 | Task | Start here |
 |---|---|
 | Edit or review a complete `.docx` | `docx-redline` CLI; follow the five-step workflow below |
+| Build a thin agent/tool wrapper | Use the wrapper blueprint below; normally wrap `@ansonlai/docx-redline-js/node` or the CLI |
 | Change paragraph/range reconciliation | `index.js` → `engine/oxml-engine.js` → selected `engine/*-mode.js` |
 | Change complete-document operations | `services/standalone-operation-runner.js` → `services/document-operation-*.js` |
 | Change DOCX ZIP handling or CLI behavior | `node/index.js`, `node/docx-document.js`, `node/cli.js` |
@@ -17,6 +18,133 @@ only for the specific topic you need.
 
 Never inspect `dist/`, a vendored CLI bundle, or an installed plugin bundle to
 learn public behavior. Use this file, the operation schema, and unbundled source.
+
+## Build a Thin Wrapper
+
+Keep wrappers thin: select an integration surface, translate ergonomic tool
+arguments into the library's operation schema, call the library once, and return
+its structured result. Do not reimplement DOCX ZIP handling, paragraph targeting,
+revision allocation, comment relationships, numbering merges, or validation.
+
+### Choose the Integration Surface
+
+| Wrapper environment | Wrap | Why |
+|---|---|---|
+| Shell-based skill or coding-agent command | `docx-redline` | Complete file I/O, compact JSON stdout, exit codes, safe output paths |
+| Node tool receiving/returning DOCX bytes | `openDocx` from `@ansonlai/docx-redline-js/node` | Complete package inspection, mutation, validation, rollback, and output buffer |
+| Host that already owns `word/document.xml` and related parts | `@ansonlai/docx-redline-js/standalone-runner` | Document-XML operations without ZIP or filesystem policy |
+| Browser/host editing paragraph OOXML | Root `@ansonlai/docx-redline-js` exports | Lowest-level host-independent paragraph/range transforms |
+
+For most new wrappers, prefer the Node facade. Use lower layers only when the
+host already owns the corresponding package boundary.
+
+If a skill vendors the CLI, run its `version` command before the first document
+operation. Declare the minimum `contractVersion` and capabilities the wrapper
+actually depends on, and fail closed with an upgrade instruction when they are
+missing. Do not compensate for a stale bundle by inspecting minified source or
+editing ZIP/XML parts directly.
+
+### Recommended Agent Tool Surface
+
+A general-purpose wrapper usually needs three tools:
+
+| Tool | Side effect | Underlying call | Return |
+|---|---|---|---|
+| `inspect_docx` | None | `openDocx(bytes).inspect(filters)` or CLI `extract`/`inspect` | Exact targets, IDs, structure, revisions, comments, and a document-version token |
+| `apply_docx_operations` | Produces new bytes/file; never overwrite source implicitly | `document.applyOperations(operations, options)` or CLI `apply` | Status, every operation result, receipts, warnings, validation, output |
+| `resolve_docx_review` | Produces new bytes/file | `resolveRevisions` / `deleteComments`, or CLI `accept`/`reject`/`delete-comments` | Counts, status, output |
+
+Add narrower convenience tools only for frequent workflows, such as
+`comment_docx`, `redline_clause`, or `restore_deleted_paragraph`. They should
+construct canonical operations and delegate to the same apply path. A restore
+tool should inspect the rejected view internally and emit an explicit
+`revisionView: "rejected"` target. Avoid a generic shell tool that forces the
+model to learn command syntax, and avoid exposing internal engine functions as a
+large tool catalog.
+
+Keep wrapper policy distinct from library behavior. A skill may deliberately
+choose its own author, revision policy, atomicity, or output-naming defaults, but
+its tool description should call those wrapper defaults out and pass them
+explicitly rather than presenting them as the library's defaults.
+
+Each wrapper tool description should state:
+
+- when to use it and when another wrapper tool is appropriate;
+- required inputs and whether text must come from inspection;
+- whether it is read-only or produces a new document;
+- that ordinary `modified` text is the complete desired target content;
+- success fields and common error codes;
+- whether retrying unchanged arguments is safe (an unchanged failed operation
+  must not be retried).
+
+### Minimal Node Wrapper
+
+```js
+import { openDocx } from '@ansonlai/docx-redline-js/node';
+
+export function inspectDocx(inputBytes, filters = {}) {
+  const document = openDocx(inputBytes);
+  return {
+    inspection: document.inspect(filters),
+    packageRevision: document.getRevisionToken()
+  };
+}
+
+export async function applyDocxOperations(inputBytes, operations, options = {}) {
+  const document = openDocx(inputBytes);
+  const result = await document.applyOperations(operations, {
+    author: options.author || 'AI Redliner',
+    atomic: options.atomic === true,
+    strictTargets: true,
+    validate: true,
+    ...(options.expectedRevision
+      ? { expectedRevision: options.expectedRevision }
+      : {}),
+    ...(options.existingRevisions
+      ? { existingRevisions: options.existingRevisions }
+      : {})
+  });
+
+  const failed = (result.results || []).filter(item => item.status === 'error');
+  const ok = result.status !== 'error' && result.status !== 'partial' && failed.length === 0;
+
+  return {
+    ok,
+    changed: result.hasChanges === true,
+    outputBytes: ok ? result.toBuffer() : null,
+    status: result.status,
+    error: result.error || null,
+    results: result.results || [],
+    receipts: result.receipts || [],
+    warnings: result.warnings || [],
+    validation: result.validation || null
+  };
+}
+```
+
+The facade's `written` means the in-memory package changed; it does not mean a
+wrapper wrote a filesystem destination. A file-based wrapper must perform its
+own destination write after `ok`, or delegate file I/O to the CLI. On an atomic
+or top-level failure, `toBuffer()` returns the rolled-back/original package, but
+a wrapper should expose `outputBytes: null` so callers cannot mistake failed
+work for completed output.
+
+Do not collapse the response to a boolean. Preserve `status`, top-level `error`,
+all per-operation `results`, `receipts`, warnings, and validation diagnostics.
+If a wrapper intentionally supports progressive partial output, expose it under
+an explicitly partial field and keep `ok: false`; never present a partially
+applied document as the completed result.
+
+Target descriptors are scoped to the exact package version that was inspected.
+Return the package-scoped token from `document.getRevisionToken()` and require it
+as `expectedRevision` when applying a planned operation. The token embedded in
+`document.inspect()` is scoped to document parts and is not interchangeable with
+the Node facade's package token. A shell wrapper that cannot bind a token must at
+least extract and apply against the same unchanged path, and re-extract whenever
+it switches to a derived working copy.
+
+The operation input should use the canonical
+[document-operations schema](docs/schemas/document-operations.schema.json).
 
 ## Fast DOCX Workflow
 
@@ -73,6 +201,41 @@ through the redline operation path while adding intent for routing.
 
 Canonical contract: [document-operations.schema.json](docs/schemas/document-operations.schema.json).
 
+### Restore a Wholly Deleted Paragraph
+
+A paragraph wholly deleted by another reviewer is empty in the accepted/current
+view. Its source text is discoverable in the rejected view:
+
+```bash
+docx-redline extract working.docx --range 50:60 --view rejected
+```
+
+Build the restore target from that result:
+
+```json
+{
+  "type": "restore",
+  "target": {
+    "exactText": "The deleted source paragraph.",
+    "paragraphId": "1A2B3C4D",
+    "fingerprint": "fnv1a32:12345678",
+    "revisionView": "rejected"
+  },
+  "modified": "The restored and revised paragraph.",
+  "author": "Jane Doe"
+}
+```
+
+`restore` preserves the foreign deletion and inserts the counterproposal after
+it as tracked content. It always generates tracked changes. Do not accept the
+deletion, use an ordinary `redline`, or use rejected-view `insert` for a whole
+paragraph restoration.
+
+Never reuse a restore descriptor extracted from another input or an earlier
+version of the working file. Re-extract from the exact file passed to `apply`.
+For a contiguous deleted range, add `targetEnd` and supply exactly one
+replacement string per source paragraph in `modified`.
+
 ### Append a Native List Item
 
 Use a `list-change` and provide the complete affected list as Markdown:
@@ -103,6 +266,8 @@ of unnumbered new-item text. Use `list-change` for multiple items or nesting.
 - `EXISTING_REVISIONS`: use `slice-cross-author` only when editing inside another
   reviewer's pending insertion is intended. Never accept revisions implicitly.
 - `PATCH_ROUNDTRIP_MISMATCH`: re-extract exact text and narrow the operation.
+- `TARGET_TEXT_MISMATCH` on `restore`: confirm the target explicitly uses the
+  rejected view and re-extract it from the exact DOCX version being applied.
 - `COMMENTED_CONTENT_MERGE` / `COMMENTED_CONTENT_DELETE`: report the comment and
   resolve it; do not silently remove reviewer content.
 - `TARGET_NOT_FOUND`, `AMBIGUOUS_TARGET`, or anchor errors: re-extract and add the

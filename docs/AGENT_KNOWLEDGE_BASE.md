@@ -364,6 +364,61 @@ This facade defaults to strict targets, allocates package-safe comment IDs,
 merges numbering, updates relationships/content types, and rolls back to the
 original buffer when an atomic transaction fails.
 
+### Designing a thin agent wrapper
+
+New wrappers should delegate at a package boundary instead of copying internal
+algorithms:
+
+- Shell/file wrappers invoke the `docx-redline` CLI and preserve its JSON stdout
+  and exit code.
+- Node byte-oriented wrappers use `openDocx`, `inspect`, `applyOperations`,
+  `resolveRevisions`, `deleteComments`, and `toBuffer`.
+- XML-only hosts use the standalone runner and remain responsible for package
+  artifacts returned beside `documentXml`.
+- Paragraph/range hosts use root exports and remain responsible for deciding how
+  the returned OOXML is inserted into a larger document.
+
+A wrapper that vendors the CLI should perform a startup compatibility handshake
+with `docx-redline version`. Pin the minimum CLI `contractVersion` and only the
+capabilities that the wrapper's workflow actually requires. If the runtime is
+too old, fail closed with an upgrade instruction; do not inspect the bundled
+implementation or fall back to direct ZIP/XML mutation.
+
+A wrapper may choose product defaults for author, atomic mode, output naming,
+and accepted operation subsets. It must preserve strict targeting, exact text,
+structured errors, per-operation results, receipts, warnings, validation, and
+rollback behavior. It must not infer success from `hasChanges` alone or turn a
+partial progressive result into an unconditional success.
+
+Document those choices as wrapper policy and pass them explicitly. In
+particular, do not describe a wrapper's preferred revision or atomicity policy
+as though it were the underlying CLI or facade default.
+
+Target handles are scoped to the exact package version that produced them. A
+Node wrapper should return the package-scoped token from
+`document.getRevisionToken()` with every inspection and pass it back as
+`expectedRevision` when applying the planned operations. Do not substitute the
+document-parts token included in `document.inspect()`; that token has a different
+scope and the Node facade rejects it. A shell wrapper should ensure extraction
+and application use the same unchanged path, and re-extract after switching to a
+derived working copy.
+
+For agent-facing function tools, prefer separate inspection, application, and
+review-resolution tools. Describe each tool's use case, required inputs, side
+effects, retry safety, success criteria, and common error codes. Convenience
+tools should build operations defined by
+`docs/schemas/document-operations.schema.json` and delegate to the same apply
+path rather than implementing custom mutations.
+
+For a `restore_deleted_paragraph` convenience tool, force inspection to
+`revisionView: 'rejected'`, copy the exact target descriptor from that view, and
+emit a canonical `restore` operation with the same explicit revision view.
+Wholly foreign-deleted paragraphs appear empty in accepted/current inspection;
+this is expected, not evidence that the paragraph is untargetable. Never reuse a
+restore descriptor from a different source or earlier working-copy version. On
+`TARGET_TEXT_MISMATCH`, re-extract from the exact package being applied rather
+than inspecting implementation bundles or retrying the same operation.
+
 ### Agent Document Workflow (CLI)
 
 Use the `docx-redline` CLI for complete `.docx` files. It emits JSON on stdout,
