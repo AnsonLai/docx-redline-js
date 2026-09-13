@@ -1,6 +1,6 @@
 # Agent Performance and Execution Protocol Plan
 
-**Status:** In progress — WP-00 through WP-03 implemented as development-only benchmark/sample work; external agent observations and WP-04+ remain
+**Status:** Repository implementation complete — WP-00 through WP-07 delivered; provider-specific Claude/OpenCode observations remain external
 **Date:** 2026-09-12  
 **Priority:** Reduce AI-agent wall time, tool turns, generated tokens, and recovery
 reasoning without weakening targeting, revision fidelity, validation, rollback, or
@@ -759,10 +759,10 @@ reduced serialized apply-request bytes by 86.11% for punctuation, 89.96% for a
 term-duration phrase, and 82.22% for deterministic mutuality; the full rewrite
 and mixed batch remained supported.
 These are JSON byte measurements, not provider-token or end-to-end latency
-claims. The benchmark continues to report native time separately and leaves the
-WP-04 ordering diagnostic failing in the known split-first direction.
+claims. The benchmark continues to report native time separately. After WP-04,
+both early-split ordering permutations pass.
 
-### WP-04: Compile and bind source-targeted batches
+### WP-04: Compile and bind source-targeted batches [COMPLETED 2026-09-12]
 
 **Goal:** Make independent operations caller-order agnostic.
 
@@ -778,7 +778,19 @@ WP-04 ordering diagnostic failing in the known split-first direction.
 **Acceptance:** The reproduced split-before-later-target case succeeds in either
 input order, while same-source conflicts fail before mutation with causal errors.
 
-### WP-05: Add the recovery registry and retry plan
+**Delivered:** `services/operation-batch-compiler.js` adds shared immutable-start
+compilation and a rollback-aware `SourceTargetRegistry`. Strong descriptors are
+resolved once, fingerprints are treated as source preconditions, and live nodes
+retain source identity through unrelated structural mutation and savepoint
+cloning. Preflight and apply share conflict analysis. Independent source edits
+now succeed in either caller order; unique references to paragraph text created
+by another operation are compiled into an internal capture dependency. Multiple
+complete writes to one source, incompatible text/format writes, and mutating
+capture fan-out without distinct selectors fail before mutation with both
+operation indexes. Dynamic occurrence-only and composite compatibility targets
+retain their prior sequential semantics.
+
+### WP-05: Add the recovery registry and retry plan [COMPLETED 2026-09-12]
 
 **Goal:** Make the next safe action machine-readable.
 
@@ -795,7 +807,21 @@ input order, while same-source conflicts fail before mutation with causal errors
 reinspect, change one field, choose a candidate, request authorization, report a
 library failure, or stop for manual resolution.
 
-### WP-06: Add shell fallback and tiered documentation
+**Delivered:** `services/error-recovery.js` centralizes recovery envelope version
+1 and retry-plan construction. Operation, preflight, package-facade, CLI, and
+development-session failures retain stable codes while adding stage, category,
+action, reinspection and authorization flags, structured revision mismatch
+tokens, bounded candidate/current-target context, and validation issue
+summaries. Atomic/no-commit failures name the original input as the retry base;
+progressive partial results name output plus committed, failed, and unattempted
+indexes. `EXISTING_REVISIONS` now distinguishes non-normalizing
+`slice-cross-author` from authorization-sensitive accept/reject choices. CLI
+contract version 4 introduced the binding/recovery capabilities (and was
+superseded by contract version 5 in WP-06); `apply --require-complete` returns
+exit code 3 for partial work without changing
+the legacy behavior when the flag is absent.
+
+### WP-06: Add shell fallback and tiered documentation [COMPLETED 2026-09-12]
 
 **Goal:** Reduce overhead where structured tools are unavailable.
 
@@ -811,7 +837,21 @@ library failure, or stop for manual resolution.
 operations-file management or repeated common flags, and the minimum required
 instructions fit within the quick-start budget.
 
-### WP-07: End-to-end rollout and regression audit
+**Delivered:** CLI contract version 5 adds `operations-stdin` and
+`agent-profile-v1`. `--operations -` reads the same UTF-8 array or
+`{ operations, expectedRevision }` envelope as the file path, with injectable
+stdin for harnesses and tests. The explicit `--profile agent` defaults atomic
+rollback and complete-success exits while preserving strict targeting,
+validation, tracked changes, and `merge-same-author`; call flags take precedence
+and results expose `effectiveOptions`. Ambient project configuration was
+deferred because it would remove only this explicit profile flag while adding
+hidden state and precedence work. `docs/AGENT_FAST_START.md` is 60 physical
+lines/349 words, and `AGENTS.md` is now a 527-word repository launch card that
+routes advanced material to the existing knowledge base. Documentation budget,
+required safety rules, and development-example package exclusion are enforced
+by `tests/agent_documentation_contract_tests.mjs`.
+
+### WP-07: End-to-end rollout and regression audit [COMPLETED 2026-09-12 — EXTERNAL PROVIDER OBSERVATIONS PENDING]
 
 **Goal:** Demonstrate speed improvements without accuracy regression.
 
@@ -827,6 +867,23 @@ instructions fit within the quick-start budget.
 **Acceptance:** The facade materially reduces ordinary tool calls and generated
 tokens, independent batches no longer require manual reordering, common errors
 provide deterministic next actions, and all fidelity gates remain green.
+
+**Delivered:** `scripts/benchmark-agent-workflow.mjs` now compares the canonical
+Node facade, legacy extract/file/apply CLI, compact extract/stdin-apply CLI, and
+development session example across the legal-edit corpus. It separately reports
+native/in-process CLI time, heap, request bytes, protocol calls, and instruction
+size, while refusing to estimate provider tokens or model/tool latency. Every
+path asserts accepted/rejected text; the mixed path also asserts comment
+preservation. Diagnostics verify both early-split permutations, ambiguous and
+stale recovery, cross-author refusal, surgical attribution preservation, and
+selective reject. The checked seven-iteration run records an 82.75% ordinary-
+instruction word reduction, a 33.33% shell protocol-call reduction, and
+localized session requests 82.22–89.96% smaller than canonical Node envelopes.
+Full results and limitations are published in
+`docs/validation-reports/2026-09-12-agent-protocol-rollout.md`. The automated
+suite passes 107/107 with types and dependency isolation green. Exact Claude and
+OpenCode wall time/tokens remain measurements for those external calling
+harnesses, not values simulated by this repository.
 
 ## 12. Focused Verification
 

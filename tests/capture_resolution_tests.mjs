@@ -209,7 +209,7 @@ const sampleDocXml = `<w:document xmlns:w="${W}"><w:body><w:p><w:r><w:t>First pa
     assert.equal(result.results[1].error.code, 'ANCHOR_NOT_FOUND');
 }
 
-// 8. Stale capture detection (CAPTURE_STALE) when intermediate op replaces captured paragraph
+// 8. Mutating capture fan-out is diagnosed before an intermediate replacement can stale it
 {
     const ops = [
         {
@@ -236,8 +236,10 @@ const sampleDocXml = `<w:document xmlns:w="${W}"><w:body><w:p><w:r><w:t>First pa
     const result = await applyOperationsToDocumentXml(sampleDocXml, ops, 'Author', null, { generateRedlines: false, atomic: true });
     assert.equal(result.rolledBack, true);
     assert.equal(result.hasChanges, false);
-    assert.equal(result.results[2].status, 'error');
-    assert.equal(result.results[2].error.code, 'CAPTURE_STALE');
+    assert.equal(result.error.code, 'CAPTURE_FANOUT_CONFLICT');
+    assert.deepEqual(result.error.operationIndexes, [2, 3]);
+    assert.deepEqual(result.executionOrder, []);
+    assert.equal(result.retryPlan.base, 'original');
 }
 
 // 9. Ambiguous selection in multi-paragraph capture

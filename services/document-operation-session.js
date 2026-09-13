@@ -42,6 +42,7 @@ export class DocumentOperationSession {
         this.executionOrder = [];
         this.authorsUsed = new Set();
         this.captureTable = new Map();
+        this.sourceTargetRegistry = null;
         this.nextCaptureParaId = 1;
         this.receiptCollector = new ReceiptCollector();
 
@@ -111,6 +112,7 @@ export class DocumentOperationSession {
             commentsXmlMode: this.commentsXmlMode,
             commentsExtendedXmlMode: this.commentsExtendedXmlMode,
             captureTable: cloneCaptureTable(this.captureTable),
+            sourceTargetRegistry: this.sourceTargetRegistry?.createSavepoint?.(this.document) || null,
             nextCaptureParaId: this.nextCaptureParaId,
             receiptCollector: this.receiptCollector ? this.receiptCollector.createSavepoint() : null
         };
@@ -127,6 +129,7 @@ export class DocumentOperationSession {
         this.commentsXmlMode = savepoint.commentsXmlMode || 'merge';
         this.commentsExtendedXmlMode = savepoint.commentsExtendedXmlMode || 'merge';
         this.captureTable = savepoint.captureTable ? cloneCaptureTable(savepoint.captureTable) : new Map();
+        this.sourceTargetRegistry?.restoreSavepoint?.(this.document, savepoint.sourceTargetRegistry);
         if (typeof savepoint.nextCaptureParaId === 'number') {
             this.nextCaptureParaId = savepoint.nextCaptureParaId;
         }
@@ -160,6 +163,7 @@ export class DocumentOperationSession {
         this.hasChanges = false;
         this.documentHasChanges = false;
         this.captureTable.clear();
+        this.sourceTargetRegistry = null;
         this.receiptCollector?.clear();
         return this.originalDocumentXml;
     }

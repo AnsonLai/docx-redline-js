@@ -23,6 +23,8 @@ import {
     createEmptyReceipt,
     reconcileReceiptsAgainstOutput
 } from './receipt-collector.js';
+import { compileOperationBatch } from './operation-batch-compiler.js';
+import { createRetryPlan } from './error-recovery.js';
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
@@ -73,6 +75,7 @@ export function buildOperationDependencyPlan(operations = []) {
     const inDegrees = new Array(list.length).fill(0);
     const dependents = Array.from({ length: list.length }, () => new Set());
     const dependencies = Array.from({ length: list.length }, () => new Set());
+    const mutatingCaptureConsumers = new Map();
 
     for (let i = 0; i < list.length; i++) {
         const op = list[i];
@@ -112,7 +115,34 @@ export function buildOperationDependencyPlan(operations = []) {
                 dependents[producerIndex].add(i);
                 inDegrees[i]++;
             }
+            const kind = normalizeDocumentOperation(op).operationKind;
+            if (kind !== 'comment' && kind !== 'comment_reply') {
+                if (!mutatingCaptureConsumers.has(ref)) mutatingCaptureConsumers.set(ref, []);
+                mutatingCaptureConsumers.get(ref).push({
+                    index: i,
+                    select: op?.target?.select ?? op?.targetDescriptor?.select ?? null
+                });
+            }
         }
+    }
+
+    for (const [captureRef, consumers] of mutatingCaptureConsumers) {
+        if (consumers.length < 2) continue;
+        const selectors = consumers.map(consumer => consumer.select);
+        const distinctSelectors = new Set(selectors);
+        if (selectors.every(selector => typeof selector === 'string' && selector.length > 0)
+            && distinctSelectors.size === selectors.length) {
+            continue;
+        }
+        return {
+            valid: false,
+            error: {
+                code: 'CAPTURE_FANOUT_CONFLICT',
+                message: `Capture "${captureRef}" has overlapping or unscoped mutating consumers at operation indices ${consumers.map(consumer => consumer.index + 1).join(', ')}.`,
+                operationIndexes: consumers.map(consumer => consumer.index + 1),
+                captureRef
+            }
+        };
     }
 
     // 3. Stable topological sort with comment priority among ready nodes
@@ -193,60 +223,54 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
         resolveDocumentOperationAuthor(op, author, defaultAuthor),
         'not_attempted'
     ));
-
-    if (options.existingRevisions != null && !isExistingRevisionsPolicy(options.existingRevisions)) {
+    const failedBeforeExecution = (error, extra = {}) => {
+        const receipts = emptyReceipts();
         return {
             documentXml,
             hasChanges: false,
             commentsXml: null,
             numberingXmlParts: [],
             results: [],
-            receipts: emptyReceipts(),
+            receipts,
             executionOrder: [],
             authorsUsed: [],
+            ...(options.atomic === true ? { rolledBack: true } : {}),
             status: 'error',
-            error: {
-                code: 'INVALID_OPERATION',
-                message: `Unsupported existingRevisions policy: "${String(options.existingRevisions)}".`
-            }
+            error: normalizeOperationError(error),
+            retryPlan: createRetryPlan({
+                atomic: options.atomic === true,
+                rolledBack: options.atomic === true,
+                results: [],
+                receipts,
+                operationCount: sourceOperations.length
+            }),
+            ...extra
         };
+    };
+
+    if (options.existingRevisions != null && !isExistingRevisionsPolicy(options.existingRevisions)) {
+        return failedBeforeExecution({
+            code: 'INVALID_OPERATION',
+            message: `Unsupported existingRevisions policy: "${String(options.existingRevisions)}".`,
+            field: 'existingRevisions'
+        });
     }
 
     if (options?.expectedRevision) {
         const tokenValidation = validateRevisionToken(options.expectedRevision);
         if (!tokenValidation.valid) {
-            return {
-                documentXml,
-                hasChanges: false,
-                commentsXml: null,
-                numberingXmlParts: [],
-                results: [],
-                receipts: emptyReceipts(),
-                executionOrder: [],
-                authorsUsed: [],
-                status: 'error',
-                error: {
-                    code: tokenValidation.error?.code || 'INVALID_REVISION_TOKEN',
-                    message: tokenValidation.error?.message || 'Invalid revision token.'
-                }
-            };
+            return failedBeforeExecution({
+                code: tokenValidation.error?.code || 'INVALID_REVISION_TOKEN',
+                message: tokenValidation.error?.message || 'Invalid revision token.'
+            });
         }
         if (options.expectedRevision.scope !== 'document-parts') {
-            return {
-                documentXml,
-                hasChanges: false,
-                commentsXml: null,
-                numberingXmlParts: [],
-                results: [],
-                receipts: emptyReceipts(),
-                executionOrder: [],
-                authorsUsed: [],
-                status: 'error',
-                error: {
-                    code: 'REVISION_TOKEN_SCOPE_MISMATCH',
-                    message: `Revision token scope mismatch: expected 'document-parts', got '${options.expectedRevision.scope}'.`
-                }
-            };
+            return failedBeforeExecution({
+                code: 'REVISION_TOKEN_SCOPE_MISMATCH',
+                message: `Revision token scope mismatch: expected 'document-parts', got '${options.expectedRevision.scope}'.`,
+                expectedScope: 'document-parts',
+                actualScope: options.expectedRevision.scope
+            });
         }
         const currentToken = await computeDocumentPartsRevisionToken({
             documentXml,
@@ -256,21 +280,12 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
             stylesXml: runtimeContext?.stylesXml || options.stylesXml
         }, options);
         if (!areRevisionTokensEqual(currentToken.value, options.expectedRevision.value)) {
-            return {
-                documentXml,
-                hasChanges: false,
-                commentsXml: null,
-                numberingXmlParts: [],
-                results: [],
-                receipts: emptyReceipts(),
-                executionOrder: [],
-                authorsUsed: [],
-                status: 'error',
-                error: {
-                    code: 'REVISION_MISMATCH',
-                    message: `Document revision mismatch: expected '${options.expectedRevision.value}', current is '${currentToken.value}'.`
-                }
-            };
+            return failedBeforeExecution({
+                code: 'REVISION_MISMATCH',
+                message: `Document revision mismatch: expected '${options.expectedRevision.value}', current is '${currentToken.value}'.`,
+                expectedRevision: options.expectedRevision,
+                currentRevision: currentToken
+            });
         }
     }
 
@@ -281,34 +296,73 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
             _deferDocumentSerialization: true
         });
     if (!session.valid) {
+        return failedBeforeExecution(session.parseResult.error, { warnings: session.parseResult.warnings });
+    }
+    const compilation = compileOperationBatch(session.document, sourceOperations, {
+        strictTargets: options.strictTargets !== false,
+        onInfo: options.onInfo,
+        onWarn: options.onWarn
+    });
+    session.sourceTargetRegistry = compilation.registry;
+    if (compilation.conflicts.length > 0) {
+        const conflictByIndex = new Map();
+        for (const conflict of compilation.conflicts) {
+            for (const index of conflict.operationIndexes) {
+                if (!conflictByIndex.has(index)) conflictByIndex.set(index, conflict);
+            }
+        }
+        const conflictResults = Array.from(conflictByIndex, ([index, conflict]) => {
+            const operation = sourceOperations[index - 1];
+            const authorUsed = resolveDocumentOperationAuthor(operation, author, defaultAuthor);
+            const normalizedConflict = normalizeOperationError(conflict, {
+                operationIndex: index,
+                ...(operation?.operationId ? { operationId: operation.operationId } : {})
+            });
+            return {
+                index,
+                type: operation?.type || 'redline',
+                operationType: normalizeDocumentOperation(operation).operationKind,
+                status: 'error',
+                authorUsed,
+                error: normalizedConflict,
+                receipt: createEmptyReceipt(index, operation?.operationId, authorUsed, 'refused')
+            };
+        }).sort((left, right) => left.index - right.index);
+        const receipts = sourceOperations.map((operation, index) => {
+            const conflictResult = conflictResults.find(result => result.index === index + 1);
+            return conflictResult?.receipt || createEmptyReceipt(
+                index + 1,
+                operation?.operationId,
+                resolveDocumentOperationAuthor(operation, author, defaultAuthor),
+                'not_attempted'
+            );
+        });
         return {
             documentXml,
             hasChanges: false,
             commentsXml: null,
             numberingXmlParts: [],
-            results: [],
-            receipts: emptyReceipts(),
+            results: conflictResults,
+            receipts,
             executionOrder: [],
             authorsUsed: [],
+            rolledBack: options.atomic === true,
             status: 'error',
-            error: session.parseResult.error,
-            warnings: session.parseResult.warnings
+            error: normalizeOperationError(compilation.conflicts[0]),
+            conflicts: compilation.conflicts.map(conflict => normalizeOperationError(conflict)),
+            retryPlan: createRetryPlan({
+                atomic: options.atomic === true,
+                rolledBack: options.atomic === true,
+                results: conflictResults,
+                receipts,
+                operationCount: sourceOperations.length
+            })
         };
     }
-    const dependencyPlan = buildOperationDependencyPlan(sourceOperations);
+    const executableOperations = compilation.compiledOperations;
+    const dependencyPlan = buildOperationDependencyPlan(executableOperations);
     if (!dependencyPlan.valid) {
-        return {
-            documentXml,
-            hasChanges: false,
-            commentsXml: null,
-            numberingXmlParts: [],
-            results: [],
-            receipts: emptyReceipts(),
-            executionOrder: [],
-            authorsUsed: [],
-            status: 'error',
-            error: dependencyPlan.error
-        };
+        return failedBeforeExecution(dependencyPlan.error);
     }
     const scheduled = dependencyPlan.scheduled;
 
@@ -334,6 +388,34 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
 
     for (const { operation, index } of scheduled) {
         executionOrder.push(index + 1);
+        const sourceBinding = compilation.bindings[index];
+        if (sourceBinding?.error) {
+            operationFailed = true;
+            const authorUsed = resolveDocumentOperationAuthor(operation, author, defaultAuthor);
+            const errorReceipt = createEmptyReceipt(
+                index + 1,
+                operation?.operationId,
+                authorUsed,
+                'refused'
+            );
+            const normalizedBindingError = normalizeOperationError(sourceBinding.error, {
+                operationIndex: index + 1,
+                ...(operation?.operationId ? { operationId: operation.operationId } : {})
+            });
+            errorReceipt.warnings.push(normalizedBindingError.message);
+            results.push({
+                index: index + 1,
+                type: operation?.type || 'redline',
+                status: 'error',
+                operationType: normalizeDocumentOperation(operation).operationKind,
+                authorUsed,
+                warnings: [normalizedBindingError.message],
+                error: normalizedBindingError,
+                receipt: errorReceipt
+            });
+            if (!continueOnError) break;
+            continue;
+        }
         try {
             const result = await applyOperationToDocumentXml(
                 session.currentDocumentXml,
@@ -375,7 +457,10 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
             });
             if (isError && !continueOnError) break;
         } catch (error) {
-            const normalizedError = normalizeOperationError(error);
+            const normalizedError = normalizeOperationError(error, {
+                operationIndex: index + 1,
+                ...(operation?.operationId ? { operationId: operation.operationId } : {})
+            });
             operationFailed = true;
             const authorUsed = resolveDocumentOperationAuthor(operation, author, getDefaultAuthor());
             const errorReceipt = createEmptyReceipt(
@@ -476,7 +561,7 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
 
     if (!rolledBack) commitBatchRuntimeContext(runtimeContext, context);
 
-    return {
+    const batchResult = {
         documentXml: rolledBack ? session.rollback() : outputDocumentXml,
         hasChanges: rolledBack ? false : hasChanges,
         commentsXml: rolledBack ? null : session.commentsXml,
@@ -491,23 +576,33 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
         ...(rolledBack ? {
             rolledBack: true,
             status: 'error',
-            error: {
+            error: normalizeOperationError({
                 code: reconciliationError ? reconciliationError.code : (serializationError ? 'DOCUMENT_SERIALIZATION_FAILED' : 'BATCH_OPERATION_FAILED'),
                 message: reconciliationError?.message
                     || serializationError?.message
                     || 'Atomic batch rolled back because one or more operations failed.'
-            }
+            })
         } : (reconciliationError ? {
             status: 'error',
-            error: reconciliationError
+            error: normalizeOperationError(reconciliationError)
         } : (operationFailed ? {
             status: hasChanges ? 'partial' : 'error',
-            error: {
+            error: normalizeOperationError({
                 code: 'BATCH_OPERATION_FAILED',
                 message: 'One or more operations failed.'
-            }
+            })
         } : {
             status: 'ok'
         })))
     };
+    if (batchResult.status === 'error' || batchResult.status === 'partial') {
+        batchResult.retryPlan = createRetryPlan({
+            atomic,
+            rolledBack,
+            results: batchResult.results,
+            receipts: batchResult.receipts,
+            operationCount: sourceOperations.length
+        });
+    }
+    return batchResult;
 }

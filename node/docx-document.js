@@ -12,10 +12,41 @@ import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { createHash } from 'node:crypto';
 import { MemoryZip, unzipDocx, zipDocx } from './zip-archive.js';
 import { computeRevisionTokenSync, validateRevisionToken, areRevisionTokensEqual } from '../services/revision-token.js';
+import { createRetryPlan, normalizeErrorWithRecovery } from '../services/error-recovery.js';
 
 configureXmlProvider({ DOMParser, XMLSerializer });
 const text = (entries, path) => entries.get(path)?.toString('utf8') || null;
 const cloneEntries = entries => new Map([...entries].map(([name, data]) => [name, Buffer.from(data)]));
+
+function rolledBackOperationPayload(operationResult, operationCount) {
+    const rollbackReceipt = receipt => {
+        if (!receipt || typeof receipt !== 'object') return receipt;
+        if (receipt.attemptedDisposition !== 'applied' && receipt.committed !== true) return { ...receipt };
+        return { ...receipt, committed: false, finalDisposition: 'rolled_back' };
+    };
+    const receipts = (operationResult?.receipts || []).map(rollbackReceipt);
+    const receiptByIndex = new Map(receipts.map(receipt => [receipt.operationIndex, receipt]));
+    const results = (operationResult?.results || []).map(result => ({
+        ...result,
+        ...(result.receipt ? {
+            receipt: receiptByIndex.get(result.index) || rollbackReceipt(result.receipt)
+        } : {})
+    }));
+    return {
+        results,
+        receipts,
+        executionOrder: operationResult?.executionOrder || [],
+        authorsUsed: [],
+        rolledBack: true,
+        retryPlan: createRetryPlan({
+            atomic: true,
+            rolledBack: true,
+            results,
+            receipts,
+            operationCount
+        })
+    };
+}
 
 /**
  * Computes a package-scoped revision token over all uncompressed entries in a DOCX archive.
@@ -85,59 +116,54 @@ export class DocxDocument {
     preflight(operations, author = getDefaultAuthor(), options = {}) { return preflightOperations(text(this.entries, 'word/document.xml'), operations, author || getDefaultAuthor(), { ...options, _existingCommentDetails: existingCommentDetails(this.entries) }); }
     toBuffer() { return zipDocx(this.entries); }
     async applyOperations(operations, options = {}) {
+        const failedApply = error => {
+            const results = [];
+            const receipts = [];
+            return {
+                status: 'error',
+                hasChanges: false,
+                written: false,
+                rolledBack: true,
+                results,
+                receipts,
+                artifactsChanged: [],
+                error: normalizeErrorWithRecovery(error),
+                retryPlan: createRetryPlan({
+                    atomic: true,
+                    rolledBack: true,
+                    results,
+                    receipts,
+                    operationCount: Array.isArray(operations) ? operations.length : 0
+                }),
+                validation: { originalIssues: [], generatedIssues: [] },
+                buffer: Buffer.from(this.originalBuffer),
+                toBuffer: () => Buffer.from(this.originalBuffer)
+            };
+        };
         if (options?.expectedRevision) {
             const tokenValidation = validateRevisionToken(options.expectedRevision);
             if (!tokenValidation.valid) {
-                return {
-                    status: 'error',
-                    hasChanges: false,
-                    written: false,
-                    rolledBack: true,
-                    results: [],
-                    artifactsChanged: [],
-                    error: {
-                        code: tokenValidation.error?.code || 'INVALID_REVISION_TOKEN',
-                        message: tokenValidation.error?.message || 'Invalid revision token.'
-                    },
-                    validation: { originalIssues: [], generatedIssues: [] },
-                    buffer: Buffer.from(this.originalBuffer),
-                    toBuffer: () => Buffer.from(this.originalBuffer)
-                };
+                return failedApply({
+                    code: tokenValidation.error?.code || 'INVALID_REVISION_TOKEN',
+                    message: tokenValidation.error?.message || 'Invalid revision token.'
+                });
             }
             if (options.expectedRevision.scope !== 'package') {
-                return {
-                    status: 'error',
-                    hasChanges: false,
-                    written: false,
-                    rolledBack: true,
-                    results: [],
-                    artifactsChanged: [],
-                    error: {
-                        code: 'REVISION_TOKEN_SCOPE_MISMATCH',
-                        message: `Revision token scope mismatch: expected 'package', got '${options.expectedRevision.scope}'.`
-                    },
-                    validation: { originalIssues: [], generatedIssues: [] },
-                    buffer: Buffer.from(this.originalBuffer),
-                    toBuffer: () => Buffer.from(this.originalBuffer)
-                };
+                return failedApply({
+                    code: 'REVISION_TOKEN_SCOPE_MISMATCH',
+                    message: `Revision token scope mismatch: expected 'package', got '${options.expectedRevision.scope}'.`,
+                    expectedScope: 'package',
+                    actualScope: options.expectedRevision.scope
+                });
             }
             const currentToken = computePackageRevisionToken(this.entries);
             if (!areRevisionTokensEqual(currentToken.value, options.expectedRevision.value)) {
-                return {
-                    status: 'error',
-                    hasChanges: false,
-                    written: false,
-                    rolledBack: true,
-                    results: [],
-                    artifactsChanged: [],
-                    error: {
-                        code: 'REVISION_MISMATCH',
-                        message: `Document revision mismatch: expected '${options.expectedRevision.value}', current is '${currentToken.value}'.`
-                    },
-                    validation: { originalIssues: [], generatedIssues: [] },
-                    buffer: Buffer.from(this.originalBuffer),
-                    toBuffer: () => Buffer.from(this.originalBuffer)
-                };
+                return failedApply({
+                    code: 'REVISION_MISMATCH',
+                    message: `Document revision mismatch: expected '${options.expectedRevision.value}', current is '${currentToken.value}'.`,
+                    expectedRevision: options.expectedRevision,
+                    currentRevision: currentToken
+                });
             }
         }
 
@@ -163,7 +189,17 @@ export class DocxDocument {
                 _existingCommentDetails: existingCommentDetails(working),
                 commentIdAllocator: nextCommentId(working)
             });
-            if (result.rolledBack || result.status === 'error') return { ...result, written: false, artifactsChanged: [], validation: { originalIssues, generatedIssues: [] }, buffer: this.originalBuffer, toBuffer: () => Buffer.from(this.originalBuffer) };
+            if (result.rolledBack || result.status === 'error') {
+                return {
+                    ...result,
+                    ...rolledBackOperationPayload(result, Array.isArray(operations) ? operations.length : 0),
+                    written: false,
+                    artifactsChanged: [],
+                    validation: { originalIssues, generatedIssues: [] },
+                    buffer: this.originalBuffer,
+                    toBuffer: () => Buffer.from(this.originalBuffer)
+                };
+            }
             if (!result.hasChanges) return { ...result, status: result.status || 'ok', written: false, artifactsChanged: [], validation: { originalIssues, generatedIssues: [] }, buffer: Buffer.from(this.originalBuffer), toBuffer: () => Buffer.from(this.originalBuffer) };
             working.set('word/document.xml', Buffer.from(result.documentXml));
             await ensureNumberingArtifactsInZip(zip, result.numberingXmlParts, { mergeNumberingXml: mergeNumberingXmlBySchemaOrder });
@@ -200,19 +236,22 @@ export class DocxDocument {
         } catch (error) {
             this.entries = originalEntries;
             const generatedIssues = error.issues || [{ source: 'package', code: 'PACKAGE_OPERATION_FAILED', severity: 'error', message: error.message }];
+            const rollbackPayload = rolledBackOperationPayload(
+                operationResult,
+                Array.isArray(operations) ? operations.length : 0
+            );
             return {
-                ...(operationResult ? {
-                    results: operationResult.results || [],
-                    receipts: operationResult.receipts || [],
-                    executionOrder: operationResult.executionOrder || [],
-                    authorsUsed: operationResult.authorsUsed || []
-                } : { results: [] }),
+                ...rollbackPayload,
                 status: 'error',
                 hasChanges: false,
                 written: false,
-                rolledBack: true,
                 artifactsChanged: [],
-                error: { code: 'PACKAGE_OPERATION_FAILED', message: error.message },
+                error: normalizeErrorWithRecovery({
+                    code: 'PACKAGE_OPERATION_FAILED',
+                    message: error.message,
+                    stage: 'package',
+                    issues: generatedIssues
+                }),
                 validation: { originalIssues, generatedIssues },
                 issues: generatedIssues,
                 buffer: Buffer.from(this.originalBuffer),
@@ -301,5 +340,17 @@ export class DocxDocument {
     }
 }
 
-function packageFailure(source, code, message) { return { status: 'error', hasChanges: false, written: false, rolledBack: true, error: { code, message }, artifactsChanged: [], buffer: Buffer.from(source), toBuffer: () => Buffer.from(source) }; }
+function packageFailure(source, code, message) {
+    return {
+        status: 'error',
+        hasChanges: false,
+        written: false,
+        rolledBack: true,
+        error: normalizeErrorWithRecovery({ code, message }),
+        retryPlan: createRetryPlan({ atomic: true, rolledBack: true }),
+        artifactsChanged: [],
+        buffer: Buffer.from(source),
+        toBuffer: () => Buffer.from(source)
+    };
+}
 export function openDocx(input) { return new DocxDocument(input); }

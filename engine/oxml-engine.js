@@ -296,7 +296,9 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
                     status: 'error',
                     error: {
                         code: 'EXISTING_REVISIONS',
-                        message: `Input OOXML contains tracked changes from another author (${authors.length ? authors.join(', ') : 'unattributed'}). Pass existingRevisions: "accept-all-first" or resolve revisions first.`
+                        message: `Input OOXML contains tracked changes from another author (${authors.length ? authors.join(', ') : 'unattributed'}). Use existingRevisions: "slice-cross-author" for a surgical edit that preserves reviewer history; accepting or rejecting revisions requires separate authorization.`,
+                        revisionAuthors: authors,
+                        currentPolicy: existingRevisionsPolicy
                     }
                 });
             } else {

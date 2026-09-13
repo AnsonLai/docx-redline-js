@@ -30,13 +30,10 @@ import {
 } from './receipt-collector.js';
 import { validateRedlineOoxml } from '../core/redline-validation.js';
 import { subtractValidationIssueMultiset, validationErrors } from '../core/validation-delta.js';
+import { normalizeErrorWithRecovery } from './error-recovery.js';
 
-export function normalizeOperationError(error) {
-    return {
-        code: typeof error?.code === 'string' && error.code ? error.code : 'OPERATION_ERROR',
-        message: error?.message || String(error),
-        ...(Array.isArray(error?.candidates) ? { candidates: error.candidates } : {})
-    };
+export function normalizeOperationError(error, context = {}) {
+    return normalizeErrorWithRecovery(error, context);
 }
 
 /**
@@ -45,6 +42,10 @@ export function normalizeOperationError(error) {
  * */
 export async function applyOperationToDocumentXml(documentXml, op, author, runtimeContext = null, options = {}) {
     const operationIndex = typeof options._operationIndex === 'number' ? options._operationIndex : 1;
+    const errorContext = {
+        operationIndex,
+        ...(typeof op?.operationId === 'string' ? { operationId: op.operationId } : {})
+    };
     const validation = validateDocumentOperation(op);
     if (!validation.valid) {
         const authorUsed = resolveDocumentOperationAuthor(op, author, getDefaultAuthor());
@@ -52,7 +53,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
             documentXml,
             hasChanges: false,
             status: 'error',
-            error: validation.error,
+            error: normalizeOperationError(validation.error, errorContext),
             operationType: normalizeDocumentOperation(op).operationKind,
             authorUsed,
             receipt: createEmptyReceipt(operationIndex, op?.operationId, authorUsed, 'refused')
@@ -75,10 +76,10 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
             documentXml,
             hasChanges: false,
             status: 'error',
-            error: {
+            error: normalizeOperationError({
                 code: 'UNSUPPORTED_REVISION_VIEW_MUTATION',
                 message: 'Targeting rejected revision view for mutation is not supported yet.'
-            },
+            }, errorContext),
             operationType: operation.operationKind,
             authorUsed,
             receipt: createEmptyReceipt(operationIndex, operation.operationId, authorUsed, 'refused')
@@ -92,10 +93,10 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                 documentXml,
                 hasChanges: false,
                 status: 'error',
-                error: {
+                error: normalizeOperationError({
                     code: tokenValidation.error?.code || 'INVALID_REVISION_TOKEN',
                     message: tokenValidation.error?.message || 'Invalid revision token.'
-                },
+                }, errorContext),
                 operationType: operation.operationKind,
                 authorUsed,
                 receipt: createEmptyReceipt(operationIndex, operation.operationId, authorUsed, 'refused')
@@ -106,10 +107,10 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                 documentXml,
                 hasChanges: false,
                 status: 'error',
-                error: {
+                error: normalizeOperationError({
                     code: 'REVISION_TOKEN_SCOPE_MISMATCH',
                     message: `Revision token scope mismatch: expected 'document-parts', got '${options.expectedRevision.scope}'.`
-                },
+                }, errorContext),
                 operationType: operation.operationKind,
                 authorUsed,
                 receipt: createEmptyReceipt(operationIndex, operation.operationId, authorUsed, 'refused')
@@ -127,10 +128,12 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                 documentXml,
                 hasChanges: false,
                 status: 'error',
-                error: {
+                error: normalizeOperationError({
                     code: 'REVISION_MISMATCH',
-                    message: `Document revision mismatch: expected '${options.expectedRevision.value}', current is '${currentToken.value}'.`
-                },
+                    message: `Document revision mismatch: expected '${options.expectedRevision.value}', current is '${currentToken.value}'.`,
+                    expectedRevision: options.expectedRevision,
+                    currentRevision: currentToken
+                }, errorContext),
                 operationType: operation.operationKind,
                 authorUsed,
                 receipt: createEmptyReceipt(operationIndex, operation.operationId, authorUsed, 'refused')
@@ -146,7 +149,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
             documentXml,
             hasChanges: false,
             status: 'error',
-            error: session.parseResult.error,
+            error: normalizeOperationError(session.parseResult.error, errorContext),
             warnings: session.parseResult.warnings,
             operationType: operation.operationKind,
             authorUsed,
@@ -161,7 +164,9 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
         operation.operationId,
         authorUsed
     );
-    const operationWarnings = [];
+    const operationWarnings = Array.isArray(operation._compiledWarnings)
+        ? [...operation._compiledWarnings]
+        : [];
     const operationOptions = {
         ...options,
         ...(typeof operation.generateRedlines === 'boolean' ? { generateRedlines: operation.generateRedlines } : {}),
@@ -173,6 +178,10 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
         ...(operation.formattingRevisionPolicy ? { formattingRevisionPolicy: operation.formattingRevisionPolicy } : {}),
         targetDescriptor: operation.targetDescriptor,
         targetEndDescriptor: operation.targetEndDescriptor,
+        _compiledSourceId: operation._compiledSourceId || null,
+        _compiledSourceEndId: operation._compiledSourceEndId || null,
+        _compiledResolvedBy: operation._compiledResolvedBy || null,
+        _sourceTargetRegistry: session.sourceTargetRegistry || null,
         _resolutionCapture: resolutionCapture,
         _revisionIdAllocator: session.revisionIdAllocator,
         _documentOperationSession: session,
@@ -345,12 +354,12 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                     documentXml,
                     hasChanges: false,
                     status: 'error',
-                    error: {
+                    error: normalizeOperationError({
                         code: 'GENERATED_OOXML_INVALID',
                         stage: 'validation',
                         message: `Operation introduced invalid OOXML (${codes}).`,
                         generatedIssues: generatedErrors
-                    },
+                    }, errorContext),
                     operationType: operation.operationKind,
                     authorUsed,
                     receipt: operationReceipt,
@@ -358,6 +367,14 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                 };
             }
             session.markMutationCommitted(operation.operationKind !== 'comment_reply');
+            if (operation._compiledSourceId && session.sourceTargetRegistry) {
+                session.sourceTargetRegistry.commitMutation(
+                    operation._compiledSourceId,
+                    operationOptions._mutationRemovedNodes,
+                    operationOptions._mutationLiveNodes,
+                    operationIndex
+                );
+            }
             if (operation.captureKey && session.captureTable) {
                 session.captureTable.set(
                     operation.captureKey,
@@ -394,7 +411,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                         documentXml,
                         hasChanges: false,
                         status: 'error',
-                        error: reconciliation.error,
+                        error: normalizeOperationError(reconciliation.error, errorContext),
                         warnings: [reconciliation.error.message],
                         operationType: operation.operationKind,
                         authorUsed,
@@ -404,6 +421,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                 }
             }
         }
+        if (result?.error) result.error = normalizeOperationError(result.error, errorContext);
         return {
             ...result,
             operationType: operation.operationKind,
@@ -413,7 +431,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
         };
     } catch (error) {
         session.restoreSavepoint(savepoint);
-        const normalizedError = normalizeOperationError(error);
+        const normalizedError = normalizeOperationError(error, errorContext);
         const operationReceipt = createEmptyReceipt(
             operationIndex,
             operation.operationId,

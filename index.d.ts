@@ -1,5 +1,5 @@
 export type OoxmlSourceType = 'package' | 'document' | 'fragment';
-export type RedlineStatus = 'ok' | 'no-op' | 'error';
+export type RedlineStatus = 'ok' | 'no-op' | 'partial' | 'error';
 export type ExistingRevisionsPolicy = 'merge-same-author' | 'slice-cross-author' | 'reject-input' | 'accept-all-first' | 'accept-all-first-keep-normalized';
 export type RevisionView = 'accepted' | 'rejected';
 
@@ -68,6 +68,22 @@ export interface RedlineError {
   actual?: unknown;
   commentIds?: string[];
   comments?: Array<{ id: string; author: string; text: string }>;
+  recoveryVersion?: number;
+  category?: 'request_fixable' | 'target_refresh_required' | 'candidate_selection_required' | 'policy_choice_required' | 'user_authorization_required' | 'source_conflict' | 'library_or_builder_failure' | 'manual_document_resolution' | string;
+  context?: Record<string, unknown>;
+  recovery?: {
+    action: string;
+    sameArgumentsSafe: boolean;
+    requiresReinspection: boolean;
+    requiresUserAuthorization: boolean;
+    field?: string;
+    recommendedValue?: unknown;
+  };
+  expectedRevision?: RevisionToken;
+  currentRevision?: RevisionToken;
+  issueSummary?: { total: number; byCode: Array<{ code: string; count: number }> };
+  candidates?: unknown[];
+  [key: string]: unknown;
 }
 
 export interface RedlineOptions {

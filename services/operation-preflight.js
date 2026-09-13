@@ -30,13 +30,11 @@ import {
     validateDocumentOperation
 } from './document-operation-contract.js';
 import { buildOperationDependencyPlan } from './batch-operation-orchestrator.js';
+import { compileOperationBatch } from './operation-batch-compiler.js';
+import { normalizeErrorWithRecovery } from './error-recovery.js';
 
-function normalizedError(error) {
-    return {
-        code: typeof error?.code === 'string' && error.code ? error.code : 'OPERATION_ERROR',
-        message: error?.message || String(error),
-        ...(Array.isArray(error?.candidates) ? { candidates: error.candidates } : {})
-    };
+function normalizedError(error, context = {}) {
+    return normalizeErrorWithRecovery(error, context);
 }
 
 function operationNeedsNumbering(operation) {
@@ -70,10 +68,6 @@ function targetMetadata(xmlDoc, paragraph, resolvedBy, suppliedText, paragraphMe
     };
 }
 
-function buildConflict(code, message, operationIndexes, target) {
-    return { code, message, operationIndexes, target };
-}
-
 function getCommentIdsInParagraph(paragraph) {
     const ids = new Set();
     for (const localName of ['commentRangeStart', 'commentRangeEnd', 'commentReference']) {
@@ -90,10 +84,10 @@ export function preflightOperations(documentXml, operations, author, options = {
         return {
             valid: false,
             status: 'error',
-            error: {
+            error: normalizedError({
                 code: 'INVALID_OPERATION',
                 message: `Unsupported existingRevisions policy: "${String(options.existingRevisions)}".`
-            },
+            }),
             results: [],
             conflicts: [],
             authorsUsed: [],
@@ -105,7 +99,7 @@ export function preflightOperations(documentXml, operations, author, options = {
         return {
             valid: false,
             status: 'error',
-            error: parsed.error,
+            error: normalizedError(parsed.error),
             results: [],
             conflicts: [],
             authorsUsed: [],
@@ -119,19 +113,23 @@ export function preflightOperations(documentXml, operations, author, options = {
         rejected: null
     };
     const sourceOperations = Array.isArray(operations) ? operations : [];
-    const dependencyPlan = buildOperationDependencyPlan(sourceOperations);
+    const batchCompilation = compileOperationBatch(xmlDoc, sourceOperations, {
+        strictTargets: options.strictTargets !== false,
+        onInfo: options.onInfo,
+        onWarn: options.onWarn
+    });
+    const dependencyPlan = buildOperationDependencyPlan(batchCompilation.compiledOperations);
     if (!dependencyPlan.valid) {
         return {
             valid: false,
             status: 'error',
-            error: dependencyPlan.error,
+            error: normalizedError(dependencyPlan.error),
             results: [],
             conflicts: [],
             authorsUsed: [],
             requiredArtifacts: { comments: false, numbering: false }
         };
     }
-
     const strictTargets = options.strictTargets !== false;
     const results = [];
     const authorsUsed = new Set();
@@ -189,23 +187,61 @@ export function preflightOperations(documentXml, operations, author, options = {
             continue;
         }
 
+        const compiledBinding = batchCompilation.bindings[index];
+        if (compiledBinding?.error) {
+            results.push({
+                index: index + 1,
+                type: sourceOperation?.type || 'redline',
+                operationType: operation.operationKind,
+                status: 'error',
+                authorUsed,
+                error: compiledBinding.error
+            });
+            continue;
+        }
+        if (compiledBinding?.createdByOperation) {
+            results.push({
+                index: index + 1,
+                type: sourceOperation?.type || 'redline',
+                operationType: operation.operationKind,
+                status: 'deferred',
+                authorUsed,
+                resolvedBy: 'created_content_dependency',
+                captureRef: compiledBinding.captureRef,
+                select: operation.targetDescriptor.text,
+                createdByOperation: compiledBinding.createdByOperation
+            });
+            continue;
+        }
+
         const targetView = operation.targetDescriptor?.revisionView === 'rejected' ? 'rejected' : 'accepted';
         let currentMetadataIndex = targetView === 'rejected'
             ? (metadataIndices.rejected || (metadataIndices.rejected = buildParagraphMetadataIndex(xmlDoc, { revisionView: 'rejected' })))
             : metadataIndices.accepted;
 
         try {
-            const resolved = resolveTargetParagraph(xmlDoc, {
-                targetText: operation.target,
-                targetRef: operation.targetRef,
-                targetDescriptor: operation.targetDescriptor,
-                opType: operation.operationKind,
-                strictAmbiguity: strictTargets,
-                paragraphMetadataIndex: currentMetadataIndex,
-                metadataIndices,
-                onInfo: options.onInfo,
-                onWarn: options.onWarn
-            });
+            let resolved;
+            if (compiledBinding.dynamic) {
+                resolved = resolveTargetParagraph(xmlDoc, {
+                    targetText: operation.target,
+                    targetRef: operation.targetRef,
+                    targetDescriptor: operation.targetDescriptor,
+                    opType: operation.operationKind,
+                    strictAmbiguity: strictTargets,
+                    paragraphMetadataIndex: currentMetadataIndex,
+                    metadataIndices,
+                    onInfo: options.onInfo,
+                    onWarn: options.onWarn
+                });
+            } else {
+                const bound = batchCompilation.registry.resolve(compiledBinding.sourceIds[0], xmlDoc);
+                if (bound.error) throw Object.assign(new Error(bound.error.message), bound.error);
+                resolved = {
+                    paragraph: bound.paragraph,
+                    resolvedBy: compiledBinding.resolvedBy,
+                    warnings: compiledBinding.warnings
+                };
+            }
             const paragraph = resolved.paragraph;
             const metadata = targetMetadata(xmlDoc, paragraph, resolved.resolvedBy, operation.target, currentMetadataIndex, targetView);
             const paragraphText = metadata.resolvedTarget.text;
@@ -314,7 +350,9 @@ export function preflightOperations(documentXml, operations, author, options = {
                     if (!allSame && existingPolicy === 'merge-same-author') {
                         error = {
                             code: 'EXISTING_REVISIONS',
-                            message: `Target paragraph contains tracked changes from another author (${authors.length ? authors.join(', ') : 'unattributed'}). Pass existingRevisions: "accept-all-first" or resolve revisions first.`
+                            message: `Target paragraph contains tracked changes from another author (${authors.length ? authors.join(', ') : 'unattributed'}). Use existingRevisions: "slice-cross-author" for a surgical edit that preserves reviewer history; accepting or rejecting revisions requires separate authorization.`,
+                            revisionAuthors: authors,
+                            currentPolicy: existingPolicy
                         };
                     } else if (allSame) {
                         const mergeCommentIds = getCommentIdsInParagraph(paragraph);
@@ -408,43 +446,24 @@ export function preflightOperations(documentXml, operations, author, options = {
         }
     }
 
-    const conflicts = [];
-    const byTarget = new Map();
-    for (const result of results) {
-        const targetIndex = result.resolvedTarget?.index;
-        if (!targetIndex) continue;
-        if (!byTarget.has(targetIndex)) byTarget.set(targetIndex, []);
-        byTarget.get(targetIndex).push(result);
-    }
+    const conflicts = batchCompilation.conflicts;
 
-    for (const [targetIndex, targetResults] of byTarget) {
-        const redlines = targetResults.filter(result => ['redline', 'restore', 'rejected-insert'].includes(result.operationType));
-        const highlights = targetResults.filter(result => result.operationType === 'highlight');
-        const target = targetResults[0].resolvedTarget;
-        if (redlines.length > 1) {
-            conflicts.push(buildConflict(
-                'OVERLAPPING_TEXT_EDITS',
-                `Multiple text edits target paragraph ${targetIndex}; later operations may use a stale anchor.`,
-                redlines.map(result => result.index),
-                target
-            ));
-        }
-        if (redlines.length > 0 && highlights.length > 0) {
-            conflicts.push(buildConflict(
-                'REVISION_ORDER_CONFLICT',
-                `A text edit and highlight target paragraph ${targetIndex}; operation order can invalidate the target or existing-revision policy.`,
-                [...redlines, ...highlights].map(result => result.index).sort((a, b) => a - b),
-                target
-            ));
-        }
-    }
-
-    const hasErrors = results.some(result => result.status === 'error');
+    const enrichedResults = results.map(result => result.error ? {
+        ...result,
+        error: normalizedError(result.error, {
+            operationIndex: result.index,
+            ...(sourceOperations[result.index - 1]?.operationId
+                ? { operationId: sourceOperations[result.index - 1].operationId }
+                : {})
+        })
+    } : result);
+    const enrichedConflicts = conflicts.map(conflict => normalizedError(conflict));
+    const hasErrors = enrichedResults.some(result => result.status === 'error');
     return {
-        valid: !hasErrors && conflicts.length === 0,
-        status: !hasErrors && conflicts.length === 0 ? 'ok' : 'error',
-        results,
-        conflicts,
+        valid: !hasErrors && enrichedConflicts.length === 0,
+        status: !hasErrors && enrichedConflicts.length === 0 ? 'ok' : 'error',
+        results: enrichedResults,
+        conflicts: enrichedConflicts,
         authorsUsed: Array.from(authorsUsed),
         requiredArtifacts: {
             comments: commentsRequired,

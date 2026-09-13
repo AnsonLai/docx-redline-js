@@ -905,13 +905,12 @@ async function testOverlappingBatchAnchorFailsInsteadOfEditingWrongSpan() {
         { generateRedlines: false, atomic: false }
     );
 
-    assert.deepStrictEqual(result.results.map(entry => entry.status), ['applied', 'error']);
-    assert.strictEqual(result.results[1].error?.code, 'TARGET_NOT_FOUND',
-        'stale overlapping anchor should be reported explicitly');
-    const resultDoc = parseXmlStrict(result.documentXml, 'overlapping batch output');
-    const paragraph = resultDoc.getElementsByTagNameNS(NS_W, 'p')[0];
-    assert.strictEqual(getParagraphText(paragraph), firstModified,
-        'failed overlapping operation must not silently edit the stale paragraph');
+    assert.deepStrictEqual(result.results.map(entry => entry.status), ['error', 'error']);
+    assert.strictEqual(result.error?.code, 'OVERLAPPING_SOURCE_TARGETS',
+        'overlapping source writes should be rejected before mutation');
+    assert.deepStrictEqual(result.error?.operationIndexes, [1, 2]);
+    assert.strictEqual(result.documentXml, inputXml,
+        'a source conflict must leave the document byte-identical');
 }
 
 async function testNumberedHeadingConversionKeepsBatchRevisionIdsUnique() {

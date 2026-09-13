@@ -6,29 +6,35 @@ import { validateDocxPackage } from '../services/standalone-docx-plumbing.js';
 import { validateRedlineOoxml } from '../core/redline-validation.js';
 import { configureLogger } from '../adapters/logger.js';
 import { isExistingRevisionsPolicy } from '../services/document-operation-contract.js';
+import { normalizeErrorWithRecovery } from '../services/error-recovery.js';
 
 const suffixes = { apply: 'redlined', accept: 'accepted', reject: 'rejected', 'delete-comments': 'comments-removed' };
-const CLI_CONTRACT_VERSION = 3;
+const CLI_CONTRACT_VERSION = 5;
 const CLI_CAPABILITIES = [
     'atomic-batch-results-on-package-failure',
     'baseline-aware-validation',
     'compact-mutation-results',
     'cross-author-revision-slicing',
-    'document-scoped-list-revision-ids'
+    'document-scoped-list-revision-ids',
+    'batch-start-source-binding',
+    'recovery-envelope-v1',
+    'require-complete-exit',
+    'operations-stdin',
+    'agent-profile-v1'
 ];
 const commandOptions = {
     version: new Set(['help']),
     inspect: new Set(['help', 'search', 'revised', 'table', 'body', 'nonEmpty', 'index', 'indexes', 'range', 'view']),
     extract: new Set(['help', 'search', 'revised', 'table', 'body', 'nonEmpty', 'index', 'indexes', 'range', 'view']),
     preflight: new Set(['help', 'operations', 'author', 'strictTargets', 'target', 'modified', 'comment', 'textToComment', 'targetRef', 'existingRevisions']),
-    apply: new Set(['help', 'operations', 'author', 'output', 'inPlace', 'force', 'noOverwrite', 'noClobber', 'expectedRevision', 'target', 'modified', 'comment', 'textToComment', 'targetRef', 'existingRevisions', 'atomic', 'generateRedlines', 'noRedlines']),
+    apply: new Set(['help', 'operations', 'author', 'output', 'inPlace', 'force', 'noOverwrite', 'noClobber', 'expectedRevision', 'target', 'modified', 'comment', 'textToComment', 'targetRef', 'existingRevisions', 'atomic', 'generateRedlines', 'noRedlines', 'requireComplete', 'profile']),
     accept: new Set(['help', 'author', 'allAuthors', 'output', 'inPlace', 'force', 'noOverwrite', 'noClobber']),
     reject: new Set(['help', 'author', 'allAuthors', 'output', 'inPlace', 'force', 'noOverwrite', 'noClobber']),
     'delete-comments': new Set(['help', 'author', 'allAuthors', 'output', 'inPlace', 'force', 'noOverwrite', 'noClobber']),
     validate: new Set(['help', 'baseline'])
 };
 
-function cliError(code, message, exitCode = 2, details) { return { status: 'error', error: { code, message, ...(details ? { details } : {}) }, exitCode }; }
+function cliError(code, message, exitCode = 2, details) { return { status: 'error', error: normalizeErrorWithRecovery({ code, message, ...(details ? { details } : {}) }), exitCode }; }
 const optionAliases = new Map([
     ['operationsFile', 'operations'],
     ['o', 'output'],
@@ -39,7 +45,8 @@ const optionAliases = new Map([
     ['no-overwrite', 'noOverwrite'],
     ['no-clobber', 'noClobber'],
     ['no-redlines', 'noRedlines'],
-    ['generate-redlines', 'generateRedlines']
+    ['generate-redlines', 'generateRedlines'],
+    ['require-complete', 'requireComplete']
 ]);
 function parseArgs(argv) {
     const positionals = []; const flags = {};
@@ -51,7 +58,7 @@ function parseArgs(argv) {
         const normalizedKey = rawKey.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
         const key = optionAliases.get(normalizedKey) || normalizedKey;
         if (inline !== undefined) flags[key] = inline;
-        else if (argv[index + 1] && (!argv[index + 1].startsWith('-') || /^-\d/.test(argv[index + 1]))) flags[key] = argv[++index];
+        else if (argv[index + 1] && (argv[index + 1] === '-' || !argv[index + 1].startsWith('-') || /^-\d/.test(argv[index + 1]))) flags[key] = argv[++index];
         else flags[key] = true;
     }
     return { command: positionals[0], input: positionals[1], extraPositionals: positionals.slice(2), flags };
@@ -113,7 +120,16 @@ function inspectionOptions(flags) {
     }
     return options;
 }
-async function readOperations(file, flags = {}) {
+async function readUtf8Stream(stream) {
+    if (!stream || typeof stream[Symbol.asyncIterator] !== 'function') {
+        throw new Error('No readable stdin stream was provided.');
+    }
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+    return Buffer.concat(chunks).toString('utf8');
+}
+
+async function readOperations(file, flags = {}, stdin = process.stdin) {
     if (!file && flags?.target) {
         let op;
         if (flags.comment) {
@@ -138,7 +154,14 @@ async function readOperations(file, flags = {}) {
         return { operations: [op], expectedRevision: null };
     }
     if (!file) throw Object.assign(new Error('Use --operations <file.json> or --target <text>.'), { code: 'OPERATIONS_REQUIRED' });
-    let parsed; try { parsed = JSON.parse(await readFile(file, 'utf8')); } catch (error) { throw Object.assign(new Error(`Could not read operations JSON: ${error.message}`), { code: 'INVALID_OPERATIONS_FILE' }); }
+    let parsed;
+    try {
+        const source = file === '-' ? await readUtf8Stream(stdin) : await readFile(file, 'utf8');
+        parsed = JSON.parse(source);
+    } catch (error) {
+        const location = file === '-' ? ' from stdin' : '';
+        throw Object.assign(new Error(`Could not read operations JSON${location}: ${error.message}`), { code: 'INVALID_OPERATIONS_FILE' });
+    }
     const operations = Array.isArray(parsed) ? parsed : (parsed?.operations || parsed?.changes);
     if (!Array.isArray(operations)) throw Object.assign(new Error('Operations JSON must be an array or an object with an operations or changes array.'), { code: 'INVALID_OPERATIONS_FILE' });
     return { operations, expectedRevision: parsed?.expectedRevision || null };
@@ -177,7 +200,9 @@ function compactError(error) {
     if (!error || typeof error !== 'object') return error;
     const fields = [
         'code', 'stage', 'mismatchOffset', 'expectedExcerpt', 'actualExcerpt',
-        'expectedCodePoint', 'actualCodePoint', 'ownerAuthor', 'commentIds'
+        'expectedCodePoint', 'actualCodePoint', 'ownerAuthor', 'commentIds',
+        'recoveryVersion', 'category', 'field', 'captureRef', 'operationIndexes',
+        'consumedByOperation', 'expectedScope', 'actualScope'
     ];
     const compact = {};
     for (const field of fields) {
@@ -191,7 +216,37 @@ function compactError(error) {
         }));
     }
     if (Array.isArray(error.candidates)) {
-        compact.candidates = error.candidates.map(compactResolvedTarget);
+        compact.candidates = error.candidates.map(candidate => {
+            if (!candidate || typeof candidate !== 'object') return candidate;
+            const excerpt = boundedText(candidate.excerpt ?? candidate.exactText ?? candidate.text ?? '', 240);
+            return { ...compactResolvedTarget(candidate), ...(excerpt ? { excerpt } : {}) };
+        });
+    }
+    for (const field of ['recovery', 'issueSummary', 'expectedRevision', 'currentRevision']) {
+        if (error[field] !== undefined) compact[field] = error[field];
+    }
+    if (error.context && typeof error.context === 'object') {
+        compact.context = {
+            ...error.context,
+            ...(error.context.currentTarget ? {
+                currentTarget: {
+                    ...compactResolvedTarget(error.context.currentTarget),
+                    excerpt: boundedText(
+                        error.context.currentTarget.excerpt
+                            ?? error.context.currentTarget.exactText
+                            ?? error.context.currentTarget.text
+                            ?? '',
+                        240
+                    )
+                }
+            } : {})
+        };
+    }
+    if (error.sourceTarget && typeof error.sourceTarget === 'object') {
+        compact.sourceTarget = {
+            ...compactResolvedTarget(error.sourceTarget),
+            excerpt: boundedText(error.sourceTarget.text ?? error.sourceTarget.exactText ?? '', 240)
+        };
     }
     compact.message = boundedText(error.message || String(error));
     return compact;
@@ -314,7 +369,7 @@ function subtractValidationIssues(issues, baselineIssues) {
     });
 }
 
-export async function executeCli(argv) {
+export async function executeCli(argv, io = process) {
     const { command, input: rawInput, extraPositionals, flags } = parseArgs(argv);
     if (command === 'help' || flags.help) return { status: 'ok', command: 'help', usage: 'docx-redline <version|inspect|extract|preflight|apply|accept|reject|delete-comments|validate> [file.docx] [options]' };
     if (!command) return cliError('COMMAND_REQUIRED', 'A command is required.');
@@ -335,6 +390,10 @@ export async function executeCli(argv) {
     if (optionError) return optionError;
     if (flags.existingRevisions != null && !isExistingRevisionsPolicy(flags.existingRevisions)) {
         return cliError('INVALID_OPERATION', `Unsupported existing-revisions policy: "${String(flags.existingRevisions)}".`);
+    }
+    const profile = flags.profile == null ? null : String(flags.profile);
+    if (profile && profile !== 'agent') {
+        return cliError('INVALID_PROFILE', `Unknown execution profile: "${profile}". Supported profiles: agent.`);
     }
     let inspectOptions = null;
     if (command === 'inspect' || command === 'extract') {
@@ -374,7 +433,9 @@ export async function executeCli(argv) {
             const hasErrors = issues.some(issue => issue.severity === 'error');
             return { status: hasErrors ? 'error' : 'ok', command, input, valid: !hasErrors, issues };
         }
-        const opsData = command === 'preflight' || command === 'apply' ? await readOperations(flags.operations, flags) : null;
+        const opsData = command === 'preflight' || command === 'apply'
+            ? await readOperations(flags.operations, flags, io.stdin || process.stdin)
+            : null;
         const operations = opsData?.operations || null;
         let expectedRevision = opsData?.expectedRevision || null;
         if (flags.expectedRevision) {
@@ -402,13 +463,29 @@ export async function executeCli(argv) {
             input
         };
         if (command === 'apply') {
+            const agentProfile = profile === 'agent';
             const author = flags.author || process.env.DOCX_REDLINE_AUTHOR || 'AI Redliner';
             const generateRedlines = flags.generateRedlines !== undefined
                 ? (flags.generateRedlines !== 'false' && flags.generateRedlines !== false)
                 : (!flags.noRedlines);
+            const atomic = flags.atomic !== undefined
+                ? (flags.atomic === true || flags.atomic === 'true')
+                : agentProfile;
+            const requireComplete = flags.requireComplete !== undefined
+                ? (flags.requireComplete === true || flags.requireComplete === 'true')
+                : agentProfile;
+            const effectiveOptions = {
+                author,
+                atomic,
+                strictTargets: true,
+                validate: true,
+                generateRedlines,
+                existingRevisions: flags.existingRevisions || 'merge-same-author',
+                requireComplete
+            };
             const result = await document.applyOperations(operations, {
                 author,
-                atomic: flags.atomic === true || flags.atomic === 'true',
+                atomic,
                 validate: true,
                 strictTargets: true,
                 generateRedlines,
@@ -420,7 +497,12 @@ export async function executeCli(argv) {
                 command,
                 input,
                 ...serializable(mutationResult),
-                ...(result.status === 'error' || result.error ? { exitCode: 2 } : {})
+                ...(profile ? { executionProfile: profile, effectiveOptions } : {}),
+                ...(result.status === 'error'
+                    ? { exitCode: 2 }
+                    : (result.status === 'partial' && requireComplete
+                        ? { exitCode: 3 }
+                        : {}))
             });
         }
         const filter = flags.allAuthors ? { allAuthors: true } : flags.author ? { author: String(flags.author) } : null;
@@ -432,6 +514,8 @@ export async function executeCli(argv) {
 
 export async function runCli(argv = process.argv.slice(2), io = process) {
     configureLogger({}, { level: 'silent' });
-    const result = await executeCli(argv); io.stdout.write(`${JSON.stringify(serializable(result), null, 2)}\n`);
-    return result.status === 'error' ? (result.exitCode || 1) : 0;
+    const result = await executeCli(argv, io); io.stdout.write(`${JSON.stringify(serializable(result), null, 2)}\n`);
+    return Number.isInteger(result.exitCode) && result.exitCode !== 0
+        ? result.exitCode
+        : (result.status === 'error' ? 1 : 0);
 }

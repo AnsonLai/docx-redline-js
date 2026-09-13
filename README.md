@@ -23,7 +23,8 @@ Converts AI-generated or programmatic text/markdown edits into valid Office Open
 | Document | Description |
 |---|---|
 | **[README.md](./README.md)** | Library overview, installation, quick start, and public API reference |
-| **[AGENTS.md](./AGENTS.md)** | Fast routes, a thin-wrapper blueprint, operation selection, and focused verification for coding agents |
+| **[docs/AGENT_FAST_START.md](./docs/AGENT_FAST_START.md)** | Compact ordinary-edit protocol for structured tools and shell-only agents |
+| **[AGENTS.md](./AGENTS.md)** | Short repository launch card for task routing and contributor verification |
 | **[docs/AGENT_KNOWLEDGE_BASE.md](./docs/AGENT_KNOWLEDGE_BASE.md)** | Full agent reference, CLI workflow, operation examples, error recovery, options, and gotchas |
 | **[ARCHITECTURE.md](./ARCHITECTURE.md)** | Contributor architecture, module responsibilities, end-to-end data flow, and contracts |
 | **[docs/TESTING.md](./docs/TESTING.md)** | Complete testing guide, test lanes, independent oracle validation, and Word visual review checklist |
@@ -56,7 +57,7 @@ ordinary text replacement; `list-change` and `table-reconciliation` provide
 structural intent; and ordinary `insert` is a compatibility alias of the
 redline path unless it includes a rejected-view target and anchor. In every
 ordinary text-bearing operation, `modified` is the complete desired content for
-the target. See the [operation TL;DR](./AGENTS.md#operation-tldr)
+the target. See the [operation model](./docs/AGENT_KNOWLEDGE_BASE.md#operation-model-choose-by-output-shape)
 and the [JSON schema](./docs/schemas/document-operations.schema.json).
 
 ## Install
@@ -205,7 +206,8 @@ From a source checkout, run `npm run benchmark:agent` to compare its native
 execution and serialized request size with a canonical stateless Node workflow.
 The example and its benchmark are excluded from the published package. The
 benchmark explicitly does not claim to measure LLM reasoning or provider/tool
-latency.
+latency. Checked comparative results are in the
+[agent protocol rollout audit](./docs/validation-reports/2026-09-12-agent-protocol-rollout.md).
 
 ### Agent CLI
 
@@ -226,8 +228,11 @@ docx-redline apply contract.docx --target "Typo fix" --modified "Fixed typo" --n
 # Cross-author edit inside another reviewer's pending insertion
 docx-redline apply contract.docx --target "Another author's clause" --modified "Revised clause" --existing-revisions slice-cross-author --output reviewed.docx
 
-# High-assurance atomic batch
-docx-redline apply contract.docx --operations operations.json --atomic --output reviewed.docx
+# High-assurance atomic batch with nonzero exit on any incomplete result
+docx-redline apply contract.docx --operations operations.json --atomic --require-complete --output reviewed.docx
+
+# Agent shell path: JSON is emitted by a serializer, not interpolated by the shell
+node emit-operations.mjs | docx-redline apply contract.docx --operations - --profile agent --output reviewed.docx
 ```
 
 All commands emit JSON on stdout. `apply` defaults:
@@ -235,11 +240,19 @@ All commands emit JSON on stdout. `apply` defaults:
 - **Output overwrite**: Destination files provided via `--output` overwrite by default. Pass `--no-overwrite` or `--no-clobber` to safeguard existing destination files. The source input is never overwritten unless `--in-place` is specified.
 - **Existing revisions**: Defaults to `'merge-same-author'`. Pass `--existing-revisions slice-cross-author` to edit inside another reviewer's pending insertions with native carrier slicing.
 - **Transactionality**: Defaults to `atomic: false` (applies valid operations and reports any failures). Pass `--atomic` for all-or-nothing rollback on any operation error.
+- **Complete-success exit**: Pass `--require-complete` when a progressive `partial` result must exit with code `3`; errors exit with code `2`. Without the flag, partial results retain the legacy zero exit code, so always inspect `completion`.
+- **Agent profile**: `--profile agent` explicitly enables atomic rollback and complete-success exit behavior while retaining strict targeting, validation, tracked changes, and `merge-same-author`. It reports the resolved `effectiveOptions`; explicit flags take precedence.
+- **Operations from stdin**: `--operations -` reads the same array or `{ operations, expectedRevision }` envelope accepted from a file. Feed it from a JSON serializer or structured process API, not shell-interpolated legal text.
 - **Tracked changes**: Defaults to `generateRedlines: true`. Pass `--no-redlines` when clean direct text edits are desired.
 - **Inline edits**: Use `--target <text>` with `--modified <text>` or `--comment <text>` for quick one-liners without creating a JSON file.
 - **Compact mutation results**: `apply`, `accept`, `reject`, and `delete-comments` omit full OOXML/package payloads and inspection text from stdout. They report `written`, `outputPath`, per-operation results and receipts, compact validation counts, and a derived `completion` boolean. Use `validate` when full issue arrays are needed.
 
-See [the fast agent workflow in AGENTS.md](./AGENTS.md#fast-docx-workflow) and the
+`docx-redline version` reports contract version 5 and the additive
+`batch-start-source-binding`, `recovery-envelope-v1`, and
+`require-complete-exit`, `operations-stdin`, and `agent-profile-v1`
+capabilities. Wrappers should negotiate only the capabilities they use.
+
+See the [compact agent fast start](./docs/AGENT_FAST_START.md) and the
 [operation JSON Schema](docs/schemas/document-operations.schema.json).
 
 ### Configuration (call once at startup)
@@ -274,7 +287,7 @@ Common result fields:
 | Field | Purpose |
 |-------|---------|
 | `status` | Operation status: `'ok'`, `'partial'`, `'no-op'`, or `'error'`. |
-| `error` | Present on failure; includes a stable `code` such as `PARSE_ERROR`, `TARGET_NOT_FOUND`, `PARTIAL_TARGET`, `EXISTING_REVISIONS`, `DIFF_TOKEN_LIMIT`, or `BATCH_OPERATION_FAILED`. |
+| `error` | Present on failure; retains a stable `code` and adds recovery envelope version, stage, category, bounded context, and a machine-readable recovery action. |
 | `written` | CLI/facade boolean indicating whether the output file was successfully written to disk. |
 | `completion` | CLI-only boolean that is `true` only when a destination was written, top-level status is neither error nor partial, and no operation result failed. |
 | `rolledBack` | Present and `true` when an atomic batch encountered an error and rolled back all changes. |
@@ -442,6 +455,16 @@ import { getParagraphText } from '@ansonlai/docx-redline-js/core/paragraph-targe
 
 Use `applyOperationsToDocumentXml(...)` for mixed batches. It stably runs comments before text-changing operations so replacements cannot invalidate their original anchors. Other operation types retain their relative order. Batch results retain each operation's original 1-based index and expose the actual `executionOrder`.
 
+Before mutation, the runner resolves strong source descriptors against the
+immutable batch-start document and binds them to session-local source
+identities. Independent edits therefore do not need to be manually sorted when
+an earlier structural rewrite changes later paragraph indexes or fingerprints.
+Targets that deliberately refer to uniquely created paragraph text are compiled
+into an internal capture dependency. True overlap is not guessed: incompatible
+writes to one source fail before mutation with `OVERLAPPING_SOURCE_TARGETS` or
+`REVISION_ORDER_CONFLICT`, and mutating capture fan-out without distinct
+selectors fails with `CAPTURE_FANOUT_CONFLICT`.
+
 Threaded replies use a comment operation with no body target:
 
 ```js
@@ -470,6 +493,16 @@ while failed operations remain unapplied and are reported in `results`. Pass
 `rolledBack: true`. The default `continueOnError: true` still attempts the full
 batch so `results` describes every operation; use `{ continueOnError: false }`
 to stop after the first error.
+
+Every failed or partial mutation includes `retryPlan`. Its `base` is `original`
+after rollback/no commit and `output` after a progressive partial commit;
+`committedIndexes`, `failedIndexes`, and `unattemptedIndexes` identify the safe
+replay scope. Errors use recovery envelope version 1 and always report
+`sameArgumentsSafe: false`. Follow `error.recovery.action`; do not infer a retry
+from prose. Authorization-sensitive actions, such as resolving comments, are
+marked with `requiresUserAuthorization: true`. For `EXISTING_REVISIONS`, the
+non-normalizing surgical recommendation is `slice-cross-author`; accepting or
+rejecting prior revisions still requires explicit authority.
 
 Comment anchors use exact matching first, then a unique ASCII-space/NBSP
 equivalent match that preserves source offsets and text. Missing anchors return
@@ -727,6 +760,7 @@ invariant with a fresh seed. See [Release validation in docs/TESTING.md](./docs/
 
 - **[ARCHITECTURE.md](./ARCHITECTURE.md)**: Detailed module layout, end-to-end reconciliation flow, and contributor fast orientation.
 - **[AGENTS.md](./AGENTS.md)**: Fast-start routing and operational guardrails for AI coding agents.
+- **[docs/AGENT_FAST_START.md](./docs/AGENT_FAST_START.md)**: Minimal ordinary-edit contract for agent integrations.
 - **[docs/AGENT_KNOWLEDGE_BASE.md](./docs/AGENT_KNOWLEDGE_BASE.md)**: Full agent reference for APIs, operations, CLI automation, recovery, and gotchas.
 - **[docs/TESTING.md](./docs/TESTING.md)**: Comprehensive testing model, test lanes, independent oracle checks, and visual review checklist.
 - **[CHANGELOG.md](./CHANGELOG.md)**: Version history, migration guides, and deprecation schedules.

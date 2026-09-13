@@ -230,6 +230,31 @@ function resolveTargetParagraph(xmlDoc, targetText, targetRef, opType, runtimeCo
     const session = options?._documentOperationSession || null;
     const paragraphMetadataIndex = session?.getParagraphMetadataIndex?.() || null;
 
+    if (options?._compiledSourceId && options?._sourceTargetRegistry) {
+        const resolved = options._sourceTargetRegistry.resolve(options._compiledSourceId, xmlDoc);
+        if (resolved?.error || !resolved?.paragraph) return resolved;
+        resolved.resolvedBy = options._compiledResolvedBy || resolved.resolvedBy;
+        if (options?._resolutionCapture) {
+            const paragraph = resolved.paragraph;
+            const metadata = paragraphMetadataIndex?.byParagraph?.get(paragraph) || null;
+            Object.assign(options._resolutionCapture, {
+                resolvedBy: resolved.resolvedBy,
+                resolvedTarget: {
+                    index: metadata?.index ?? getDocumentParagraphNodes(xmlDoc).indexOf(paragraph) + 1,
+                    paragraphId: metadata?.paragraphId ?? getParagraphId(paragraph),
+                    text: metadata?.text ?? getParagraphText(paragraph),
+                    fingerprint: metadata?.fingerprint ?? createParagraphFingerprint(paragraph),
+                    inTable: metadata?.inTable ?? !!findContainingWordElement(paragraph, 'tbl'),
+                    targetTextMatch: describeTargetTextMatch(
+                        metadata?.text ?? getParagraphText(paragraph),
+                        options?.targetDescriptor?.exactText ?? targetText
+                    )
+                }
+            });
+        }
+        return resolved;
+    }
+
     if (options?.targetDescriptor?.captureRef) {
         try {
             const resolved = resolveTargetFromCapture(xmlDoc, session, options.targetDescriptor, opType, options);
@@ -1106,7 +1131,22 @@ export async function restoreDeletedParagraphByExactText(
 
     const firstSource = resolved.paragraph;
     let sourceParagraphs = [firstSource];
-    if (targetEndRef) {
+    if (options._compiledSourceEndId) {
+        const endResolved = resolveTargetParagraph(
+            xmlDoc,
+            options.targetEndDescriptor?.text || '',
+            targetEndRef,
+            'restore',
+            runtimeContext,
+            { ...options, _compiledSourceId: options._compiledSourceEndId }
+        );
+        const allParagraphs = endResolved?.paragraph ? getDocumentParagraphNodes(xmlDoc) : [];
+        const startIndex = allParagraphs.indexOf(firstSource);
+        const endIndex = allParagraphs.indexOf(endResolved?.paragraph);
+        sourceParagraphs = startIndex >= 0 && endIndex >= startIndex
+            ? allParagraphs.slice(startIndex, endIndex + 1)
+            : null;
+    } else if (targetEndRef) {
         sourceParagraphs = resolveParagraphRangeByRefs(xmlDoc, targetRef, targetEndRef, {
             opType: 'restore',
             targetRefSnapshot: runtimeContext?.targetRefSnapshot || null,
@@ -1120,7 +1160,11 @@ export async function restoreDeletedParagraphByExactText(
             options.targetEndDescriptor.index,
             'restore',
             runtimeContext,
-            { ...options, targetDescriptor: options.targetEndDescriptor }
+            {
+                ...options,
+                targetDescriptor: options.targetEndDescriptor,
+                _compiledSourceId: options._compiledSourceEndId || null
+            }
         );
         const allParagraphs = endResolved?.paragraph ? getDocumentParagraphNodes(xmlDoc) : [];
         const startIndex = allParagraphs.indexOf(firstSource);
@@ -1669,7 +1713,9 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
                     status: 'error',
                     error: {
                         code: 'EXISTING_REVISIONS',
-                        message: `Target paragraph contains tracked changes from another author (${authors.length ? authors.join(', ') : 'unattributed'}). Pass existingRevisions: "accept-all-first" or resolve revisions first.`
+                        message: `Target paragraph contains tracked changes from another author (${authors.length ? authors.join(', ') : 'unattributed'}). Use existingRevisions: "slice-cross-author" for a surgical edit that preserves reviewer history; accepting or rejecting revisions requires separate authorization.`,
+                        revisionAuthors: authors,
+                        currentPolicy: existingPolicy
                     }
                 };
             }

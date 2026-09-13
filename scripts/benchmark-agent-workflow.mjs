@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { performance } from 'node:perf_hooks';
+import { Readable } from 'node:stream';
 import { configureLogger } from '../adapters/logger.js';
 import { createExampleAgentSession } from '../examples/agent-session-wrapper.mjs';
+import { executeCli } from '../node/cli.js';
 import { openDocx } from '../node/index.js';
 import { AGENT_PERFORMANCE_CASES } from './lib/agent-performance-cases.mjs';
 
@@ -14,6 +18,9 @@ const fixture = await readFile(fixtureUrl);
 const iterations = Math.max(3, Number.parseInt(process.env.DOCX_AGENT_BENCH_ITERATIONS || '7', 10));
 const warmups = Math.max(1, Number.parseInt(process.env.DOCX_AGENT_BENCH_WARMUPS || '2', 10));
 const author = 'Agent Performance Benchmark';
+const benchmarkDirectory = await mkdtemp(path.join(tmpdir(), 'docx-agent-rollout-'));
+const cliInput = path.join(benchmarkDirectory, 'input.docx');
+await writeFile(cliInput, fixture);
 
 function percentile(values, ratio) {
     const sorted = [...values].sort((left, right) => left - right);
@@ -73,12 +80,20 @@ function resultBuffer(result) {
 
 function verifyLifecycle(output, edits) {
     const document = openDocx(output);
-    const acceptedTexts = new Set(document.inspect().paragraphs.map(paragraph => paragraph.exactText));
+    const inspection = document.inspect();
+    const acceptedTexts = new Set(inspection.paragraphs.map(paragraph => paragraph.exactText));
     const rejectedTexts = new Set(document.inspect({ revisionView: 'rejected' }).paragraphs.map(paragraph => paragraph.exactText));
     for (const edit of edits) {
         if (typeof edit.desiredText !== 'string') continue;
         assert(acceptedTexts.has(edit.desiredText), `${edit.operationId} accepted text did not match.`);
         assert(rejectedTexts.has(edit.paragraph.exactText), `${edit.operationId} rejected text did not restore source.`);
+    }
+    for (const edit of edits) {
+        if (!edit.commentContent) continue;
+        assert(
+            inspection.comments.some(comment => comment.text === edit.commentContent),
+            `${edit.operationId} comment content was not preserved.`
+        );
     }
 }
 
@@ -138,27 +153,123 @@ async function runExampleSession(task) {
     };
 }
 
+async function runLegacyCli(task) {
+    const heapBefore = process.memoryUsage().heapUsed;
+    const started = performance.now();
+    const inspection = await executeCli([
+        'extract', cliInput, '--indexes', task.indexes.join(',')
+    ]);
+    assert.equal(inspection.status, 'ok');
+    const edits = task.buildEdits(inspection.paragraphs);
+    const operations = edits.map(canonicalOperation);
+    const payload = JSON.stringify({ operations });
+    const operationsPath = path.join(benchmarkDirectory, `${task.id}-operations.json`);
+    const outputPath = path.join(benchmarkDirectory, `${task.id}-legacy.docx`);
+    await writeFile(operationsPath, payload, 'utf8');
+    const result = await executeCli([
+        'apply', cliInput,
+        '--operations', operationsPath,
+        '--author', author,
+        '--atomic',
+        '--require-complete',
+        '--output', outputPath
+    ]);
+    const output = await readFile(outputPath);
+    const elapsedMs = performance.now() - started;
+    assert.equal(result.status, 'ok');
+    assert.equal(result.completion, true);
+    verifyLifecycle(output, edits);
+    return {
+        elapsedMs,
+        heapDeltaBytes: process.memoryUsage().heapUsed - heapBefore,
+        applyRequestBytes: Buffer.byteLength(payload),
+        protocolCalls: 3,
+        outputBytes: output.length
+    };
+}
+
+async function runCompactShell(task) {
+    const heapBefore = process.memoryUsage().heapUsed;
+    const started = performance.now();
+    const inspection = await executeCli([
+        'extract', cliInput, '--indexes', task.indexes.join(',')
+    ]);
+    assert.equal(inspection.status, 'ok');
+    const edits = task.buildEdits(inspection.paragraphs);
+    const operations = edits.map(canonicalOperation);
+    const payload = JSON.stringify({ operations });
+    const outputPath = path.join(benchmarkDirectory, `${task.id}-compact.docx`);
+    const result = await executeCli([
+        'apply', cliInput,
+        '--operations', '-',
+        '--profile', 'agent',
+        '--author', author,
+        '--output', outputPath
+    ], { stdin: Readable.from([payload]) });
+    const output = await readFile(outputPath);
+    const elapsedMs = performance.now() - started;
+    assert.equal(result.status, 'ok');
+    assert.equal(result.completion, true);
+    assert.equal(result.executionProfile, 'agent');
+    verifyLifecycle(output, edits);
+    return {
+        elapsedMs,
+        heapDeltaBytes: process.memoryUsage().heapUsed - heapBefore,
+        applyRequestBytes: Buffer.byteLength(payload),
+        protocolCalls: 2,
+        outputBytes: output.length
+    };
+}
+
 async function measureTask(task) {
     for (let index = 0; index < warmups; index += 1) {
         await runCanonical(task);
+        await runLegacyCli(task);
+        await runCompactShell(task);
         await runExampleSession(task);
     }
     const canonicalSamples = [];
+    const legacyCliSamples = [];
+    const compactShellSamples = [];
     const sessionSamples = [];
     for (let index = 0; index < iterations; index += 1) {
         canonicalSamples.push(await runCanonical(task));
+        legacyCliSamples.push(await runLegacyCli(task));
+        compactShellSamples.push(await runCompactShell(task));
         sessionSamples.push(await runExampleSession(task));
     }
     const canonical = summarize(canonicalSamples);
+    const legacyCli = summarize(legacyCliSamples);
+    const compactShell = summarize(compactShellSamples);
     const exampleSession = summarize(sessionSamples);
     return {
         id: task.id,
         description: task.description,
         canonical,
+        legacyCli,
+        compactShell,
         exampleSession,
         applyRequestByteReductionPercent: Number(
             ((1 - exampleSession.applyRequestBytes / canonical.applyRequestBytes) * 100).toFixed(2)
+        ),
+        exampleSessionApplyRequestByteReductionVsLegacyCliPercent: Number(
+            ((1 - exampleSession.applyRequestBytes / legacyCli.applyRequestBytes) * 100).toFixed(2)
+        ),
+        compactShellToolCallReductionPercent: Number(
+            ((1 - compactShell.protocolCalls / legacyCli.protocolCalls) * 100).toFixed(2)
+        ),
+        exampleSessionToolCallReductionPercent: Number(
+            ((1 - exampleSession.protocolCalls / legacyCli.protocolCalls) * 100).toFixed(2)
         )
+    };
+}
+
+function textStats(value) {
+    const text = String(value);
+    return {
+        lines: text.split(/\r?\n/).length,
+        words: text.trim().split(/\s+/).filter(Boolean).length,
+        bytes: Buffer.byteLength(text)
     };
 }
 
@@ -205,7 +316,7 @@ async function orderDependencyDiagnostic() {
             rolledBack: splitLast.rolledBack === true,
             errorCodes: (splitLast.results || []).map(item => item.error?.code).filter(Boolean)
         },
-        expectedFutureBehavior: 'Both permutations succeed after WP-04 source-target binding.'
+        verifiedBehavior: 'Both permutations succeed with WP-04 source-target binding.'
     };
 }
 
@@ -250,18 +361,56 @@ async function foreignRevisionDiagnostic() {
         validate: true,
         existingRevisions: 'merge-same-author'
     });
-    return {
-        case: 'foreign-revision-policy',
+    const protectedFailure = {
         status: result.status,
         code: result.results?.[0]?.error?.code,
         written: result.written
     };
+    const surgicalDocument = openDocx(input);
+    const surgical = await surgicalDocument.applyOperations([{
+        type: 'redline',
+        target: canonicalTarget(paragraph),
+        modified: `${paragraph.exactText} Confirmed.`
+    }], {
+        author,
+        atomic: true,
+        strictTargets: true,
+        validate: true,
+        existingRevisions: 'slice-cross-author'
+    });
+    assert.equal(surgical.status, 'ok');
+    const originalAuthors = paragraph.revisionAuthors;
+    const pendingAuthors = surgicalDocument.inspect({ revisedOnly: true }).revisionAuthors;
+    const preservesOriginalAuthors = originalAuthors.every(name => pendingAuthors.includes(name));
+    assert.equal(preservesOriginalAuthors, true);
+    const rejected = await surgicalDocument.resolveRevisions('reject', { author });
+    assert.equal(rejected.status, 'ok');
+    const afterRejectAuthors = surgicalDocument.inspect({ revisedOnly: true }).revisionAuthors;
+    const preservesOriginalAuthorsAfterReject = originalAuthors.every(
+        name => afterRejectAuthors.includes(name)
+    );
+    assert.equal(preservesOriginalAuthorsAfterReject, true);
+    return {
+        case: 'foreign-revision-policy',
+        protectedFailure,
+        surgicalEdit: {
+            status: surgical.status,
+            originalAuthors,
+            pendingAuthors,
+            preservesOriginalAuthors,
+            preservesOriginalAuthorsAfterReject
+        }
+    };
 }
 
-const taskResults = [];
-for (const task of AGENT_PERFORMANCE_CASES) taskResults.push(await measureTask(task));
-
-const report = {
+let report;
+try {
+    const taskResults = [];
+    for (const task of AGENT_PERFORMANCE_CASES) taskResults.push(await measureTask(task));
+    const launchCardStats = textStats(await readFile(new URL('../AGENTS.md', import.meta.url), 'utf8'));
+    const fastStartStats = textStats(await readFile(new URL('../docs/AGENT_FAST_START.md', import.meta.url), 'utf8'));
+    const legacyAgentInstructions = { lines: 262, words: 2023, source: 'Recorded immediately before WP-06 slimming.' };
+    report = {
     generatedAt: new Date().toISOString(),
     environment: {
         node: process.version,
@@ -274,26 +423,40 @@ const report = {
         warmups,
         measured: [
             'native inspect-and-apply wall time',
+            'CLI file/stdin transport wall time in the current process',
             'heap delta',
             'serialized apply request bytes',
+            'protocol calls',
+            'instruction file bytes, words, and lines',
             'accepted/rejected text fidelity'
         ],
         notMeasured: [
             'LLM reasoning time',
-            'provider tokenization',
+            'provider tokenization or exact token counts',
             'tool transport latency',
             'Claude or OpenCode end-to-end wall time'
         ]
     },
-    taskResults,
-    diagnostics: [
-        await orderDependencyDiagnostic(),
-        await staleHandleDiagnostic(),
-        await ambiguousTargetDiagnostic(),
-        await foreignRevisionDiagnostic()
-    ],
-    note: 'This benchmark is observational. Timing and heap values are not correctness gates; automated fidelity tests remain authoritative.'
-};
+        instructionSurface: {
+            legacyAgentInstructions,
+            currentLaunchCard: launchCardStats,
+            ordinaryEditFastStart: fastStartStats,
+            ordinaryEditWordReductionPercent: Number(
+                ((1 - fastStartStats.words / legacyAgentInstructions.words) * 100).toFixed(2)
+            )
+        },
+        taskResults,
+        diagnostics: [
+            await orderDependencyDiagnostic(),
+            await staleHandleDiagnostic(),
+            await ambiguousTargetDiagnostic(),
+            await foreignRevisionDiagnostic()
+        ],
+        note: 'This benchmark is observational. Timing and heap values are not correctness gates; automated fidelity tests remain authoritative.'
+    };
+} finally {
+    await rm(benchmarkDirectory, { recursive: true, force: true });
+}
 
 await mkdir(new URL('../tmp/benchmarks/', import.meta.url), { recursive: true });
 await writeFile(

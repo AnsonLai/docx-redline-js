@@ -23,7 +23,7 @@ const sampleDocXml = `<w:document xmlns:w="${W}"><w:body><w:p><w:r><w:t>First pa
     assert.deepEqual(plan.scheduled.map(s => s.index), [0, 1, 2]);
 }
 
-// 2. Diamond dependency (Op1 -> Op2, Op3; Op2, Op3 -> Op4)
+// 2. Mutating capture fan-out is rejected before execution
 {
     const ops = [
         { operationId: 'op1', captureKey: 'cap1', type: 'redline', target: 'First paragraph.', modified: 'A' },
@@ -33,11 +33,21 @@ const sampleDocXml = `<w:document xmlns:w="${W}"><w:body><w:p><w:r><w:t>First pa
     ];
 
     const plan = buildOperationDependencyPlan(ops);
-    assert.equal(plan.valid, true);
-    const order = plan.scheduled.map(s => s.index);
-    assert.ok(order.indexOf(0) < order.indexOf(1));
-    assert.ok(order.indexOf(0) < order.indexOf(2));
-    assert.ok(order.indexOf(1) < order.indexOf(3));
+    assert.equal(plan.valid, false);
+    assert.equal(plan.error.code, 'CAPTURE_FANOUT_CONFLICT');
+    assert.deepEqual(plan.error.operationIndexes, [2, 3]);
+    assert.equal(plan.error.captureRef, 'cap1');
+
+    const result = await applyOperationsToDocumentXml(sampleDocXml, ops, 'Author', null, {
+        atomic: false,
+        generateRedlines: false
+    });
+    assert.equal(result.status, 'error');
+    assert.equal(result.hasChanges, false);
+    assert.equal(result.documentXml, sampleDocXml);
+    assert.equal(result.error.code, 'CAPTURE_FANOUT_CONFLICT');
+    assert.equal(result.error.category, 'source_conflict');
+    assert.equal(result.retryPlan.base, 'original');
 }
 
 // 3. Independent comments run first before producer, but dependent comments wait for producer

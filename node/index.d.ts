@@ -27,5 +27,9 @@ export class DocxDocument {
 }
 export function computePackageRevisionToken(input: unknown): RevisionToken;
 export function openDocx(input: Uint8Array): DocxDocument;
-export function executeCli(argv: string[]): Promise<Record<string, unknown>>;
-export function runCli(argv?: string[], io?: { stdout: { write(value: string): unknown } }): Promise<number>;
+export interface CliIo {
+  stdin?: AsyncIterable<string | Uint8Array>;
+  stdout: { write(value: string): unknown };
+}
+export function executeCli(argv: string[], io?: Partial<CliIo>): Promise<Record<string, unknown>>;
+export function runCli(argv?: string[], io?: CliIo): Promise<number>;

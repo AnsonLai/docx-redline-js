@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { openDocx } from '../node/index.js';
+import { normalizeErrorWithRecovery } from '../services/error-recovery.js';
 
 /**
  * Demonstration-only defaults for an AI-agent document session.
@@ -76,7 +77,7 @@ function invalidRequest(message, field = null) {
         status: 'error',
         outputBytes: null,
         partialOutputBytes: null,
-        error: {
+        error: normalizeErrorWithRecovery({
             code: 'INVALID_AGENT_REQUEST',
             message,
             ...(field ? { field } : {}),
@@ -85,12 +86,12 @@ function invalidRequest(message, field = null) {
                 sameArgumentsSafe: false,
                 requiresUserAuthorization: false
             }
-        }
+        })
     };
 }
 
 function patchError(code, message, field, recoveryAction, details = {}) {
-    return {
+    return normalizeErrorWithRecovery({
         code,
         message,
         field,
@@ -101,7 +102,7 @@ function patchError(code, message, field, recoveryAction, details = {}) {
             requiresReinspection: false,
             requiresUserAuthorization: false
         }
-    };
+    });
 }
 
 function occurrenceOffsets(sourceText, find) {
@@ -397,7 +398,7 @@ export class ExampleAgentDocumentSession {
         if (target && target.packageRevision === this.packageRevision.value) return { target };
         if (target || this.retiredHandles.has(handle)) {
             return {
-                error: {
+                error: normalizeErrorWithRecovery({
                     code: 'STALE_TARGET_HANDLE',
                     message: `Target handle ${String(handle)} belongs to an earlier document revision.`,
                     recovery: {
@@ -406,11 +407,11 @@ export class ExampleAgentDocumentSession {
                         requiresReinspection: true,
                         requiresUserAuthorization: false
                     }
-                }
+                })
             };
         }
         return {
-            error: {
+            error: normalizeErrorWithRecovery({
                 code: 'TARGET_HANDLE_NOT_FOUND',
                 message: `Target handle ${String(handle)} is not registered in session ${this.id}.`,
                 recovery: {
@@ -419,7 +420,7 @@ export class ExampleAgentDocumentSession {
                     requiresReinspection: true,
                     requiresUserAuthorization: false
                 }
-            }
+            })
         };
     }
 

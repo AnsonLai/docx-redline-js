@@ -14,6 +14,7 @@ export interface ParagraphTargetDescriptor {
   revisionView?: 'accepted' | 'rejected';
   captureRef?: string;
   select?: string;
+  createdByOperation?: number;
 }
 
 export interface InsertionAffinity {
@@ -239,6 +240,17 @@ export interface DocumentOperationBatchResult {
   status?: RedlineStatus;
   error?: RedlineError;
   warnings?: string[];
+  conflicts?: OperationConflict[];
+  retryPlan?: MutationRetryPlan;
+}
+
+export interface MutationRetryPlan {
+  base: 'original' | 'output';
+  committedIndexes: number[];
+  failedIndexes: number[];
+  unattemptedIndexes: number[];
+  replayWholeBatch: boolean;
+  sameArgumentsSafe: false;
 }
 
 export interface OperationPreflightItemResult {
@@ -272,10 +284,13 @@ export interface OperationPreflightItemResult {
 }
 
 export interface OperationConflict {
-  code: 'OVERLAPPING_TEXT_EDITS' | 'REVISION_ORDER_CONFLICT' | string;
+  code: 'OVERLAPPING_SOURCE_TARGETS' | 'OVERLAPPING_TEXT_EDITS' | 'REVISION_ORDER_CONFLICT' | 'CAPTURE_FANOUT_CONFLICT' | string;
   message: string;
   operationIndexes: number[];
   target: ResolvedDocumentTarget;
+  recoveryVersion?: number;
+  category?: string;
+  recovery?: RedlineError['recovery'];
 }
 
 export interface OperationPreflightResult {

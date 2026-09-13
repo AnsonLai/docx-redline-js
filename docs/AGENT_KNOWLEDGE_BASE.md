@@ -1,8 +1,9 @@
 # Agent Knowledge Base
 
 > Detailed reference for @ansonlai/docx-redline-js. All code and command paths
-> are relative to the repository root. Start with `../AGENTS.md`; open this file
-> only when the quick guide points here or the task needs deeper behavior.
+> are relative to the repository root. Start with `../AGENTS.md` for repository
+> work or `AGENT_FAST_START.md` for ordinary document edits; open this file only
+> when the quick guide points here or the task needs deeper behavior.
 
 ## Start Here: Repository Layout
 
@@ -485,8 +486,12 @@ The short route for a document-editing request is:
    `exactText` plus `paragraphId` or `fingerprint`.
 2. Build the final operations from the operation table above. Use one operation
    per target paragraph, and consolidate multiple changes to that paragraph.
-3. Run `apply` once per stable batch. Split into sequential batches only when a
-   later operation intentionally targets text created by an earlier operation.
+3. Run `apply` once per stable batch. Strong inspected targets are bound against
+   the batch-start document, so independent operations do not need manual
+   bottom-up sorting around structural edits. Consolidate multiple complete
+   desired states for the same source. A unique exact reference to paragraph
+   text created elsewhere in the batch is scheduled automatically; use explicit
+   captures/selectors for non-unique or advanced created-content dependencies.
 4. Walk every result and require `completion: true`, `written: true`, and no
    per-operation error.
 5. Run a focused `extract` on changed clauses only when placement or list/table
@@ -508,6 +513,9 @@ docx-redline apply contract.docx --target "Pending clause text" --modified "Upda
 
 # 4. Batch operations with ops.json
 docx-redline apply contract.docx --operations operations.json --output reviewed.docx
+
+# 5. Shell-agent batch without an operations file
+node emit-operations.mjs | docx-redline apply contract.docx --operations - --profile agent --output reviewed.docx
 ```
 
 Key CLI defaults and behaviors:
@@ -516,6 +524,9 @@ Key CLI defaults and behaviors:
 - **Overwrite behavior**: Destination files provided via `--output` overwrite by default. To protect existing destination files, pass `--no-overwrite` or `--no-clobber`. The source document is never overwritten unless `--in-place` is specified.
 - **Tracked changes**: Defaults to `generateRedlines: true`. When clean direct text is needed, pass `--no-redlines`.
 - **Atomic rollback (optional)**: Operations apply progressively by default (`atomic: false`). For all-or-nothing transactional rollback where any error halts and reverts all changes, pass `--atomic`.
+- **Complete-success exit (optional)**: Pass `--require-complete` when `partial` must exit nonzero (`3`). Errors exit `2`; the legacy zero exit for partial results remains when the flag is omitted.
+- **Agent profile**: `--profile agent` explicitly defaults `atomic` and complete-success behavior to true and reports `effectiveOptions`. Call flags override the profile. It does not enable authorization-sensitive revision normalization.
+- **Stdin operations**: `--operations -` accepts the same JSON array or `{ operations, expectedRevision }` envelope as a file. Supply UTF-8 JSON through a serializer/structured process API; do not interpolate legal text in the shell.
 - **Compact mutation JSON**: `apply`, `accept`, `reject`, and `delete-comments` omit document/package XML and full validation arrays. `validation.originalIssues` and `validation.generatedIssues` are code/count summaries; run `validate` for full issue records.
 - Check `completion: true`, `written: true`, and a non-null `outputPath` on stdout. `completion` is derived from the write result, top-level status, and every operation status, so failed, partial, and unwritten work cannot appear complete. If an error occurs, inspect `error.code` or `results[i].error.code` (e.g. `TARGET_NOT_FOUND`, `ANCHOR_NOT_FOUND`) before correcting the cause and re-applying.
 
@@ -603,7 +614,7 @@ must use the JSON status and process exit code; failed atomic work has
 
 #### Safe Operations File Creation (JSON vs. Shell Heredocs)
 
-When composing batch operations files (`operations.json`):
+When composing batch operation JSON, whether for a file or stdin:
 
 - **Use structured file-writing tools or JSON serializers**: Write operations files via your environment's file-creation tools or a language JSON serializer (`JSON.stringify`).
 - **Never compose operations in raw shell heredocs** (e.g., `cat << 'EOF'` in bash or PowerShell `@" ... "@`): Legal clauses routinely contain curly quotes (`“ ”`), smart apostrophes (`’`), em-dashes (`—`), section symbols (`§`), non-breaking spaces, and backslashes. Shell heredocs frequently mangle Unicode character encodings, quote escaping, and whitespace formatting, causing immediate `TARGET_NOT_FOUND` failures.
@@ -615,6 +626,8 @@ In default progressive mode (`atomic: false`), operations execute independently:
 - **Do not rely solely on top-level `written: true` or `status !== "error"`**: A progressive batch can return `status: "partial"` with `written: true` when some operations succeed and others fail.
 - **Walk every entry in `results`**: Check `results[i].status` and `results[i].error`. Any `status: "error"` entry in `results` represents an unapplied change that must be investigated and resolved.
 - **`written: false`**: Indicates that zero operations were committed (or an atomic rollback occurred). Never treat or present an unwritten or partial output file as complete.
+- **Follow `retryPlan`**: `base: "original"` means use the unchanged source and replay the corrected batch. `base: "output"` means retain committed progressive edits and submit only failed/unattempted indexes. `sameArgumentsSafe` is always false for failures.
+- **Follow the recovery envelope**: Use `error.recovery.action`, `requiresReinspection`, and `requiresUserAuthorization` rather than deriving a retry from the prose message. The envelope is versioned by `recoveryVersion`.
 
 #### Human-Readable References vs. Internal Machine Handles
 
@@ -636,7 +649,9 @@ When the CLI or runner returns an error code, follow these specific recovery act
 | `TARGET_NOT_FOUND` | Target text did not match any paragraph. | **Do NOT retry with paraphrased text.** Re-run `extract`/`inspect`, copy `exactText` verbatim (including exact whitespace/punctuation), and add a discriminator (`paragraphId`, `fingerprint`, or `occurrence`). |
 | `AMBIGUOUS_TARGET` | Multiple paragraphs match identical text. | Disambiguate by supplying `paragraphId`, `fingerprint`, `occurrence`, or `index` in the target descriptor. |
 | `ANCHOR_NOT_FOUND` / `AMBIGUOUS_ANCHOR` | A comment or rejected-view insertion anchor was not uniquely matched. | For comments, narrow `textToComment` or omit it to anchor the whole paragraph. For rejected-view insertion, copy exact rejected text and provide `anchor.occurrence`. |
-| `OVERLAPPING_TEXT_EDITS` | Multiple operations target the same paragraph concurrently. | Consolidate all changes to the same paragraph into a single `redline` or `replace` operation. |
+| `OVERLAPPING_SOURCE_TARGETS` / `OVERLAPPING_TEXT_EDITS` | Multiple complete text operations target the same batch-start source. | Consolidate all changes to that paragraph into one `redline` or `replace`; the library cannot choose between incompatible complete desired states. |
+| `REVISION_ORDER_CONFLICT` | A text rewrite and formatting/highlight operation overlap the same source. | Consolidate or split the work at an intentional created-content dependency; do not try a different arbitrary order. |
+| `CAPTURE_FANOUT_CONFLICT` | Multiple mutating consumers share one capture without distinct selectors. | Give consumers distinct selectors, chain them explicitly, or split the batch. |
 | `EXISTING_REVISIONS` | Target paragraph contains tracked changes from another author. | Fails closed to protect third-party review marks. If editing inside that reviewer's pending insertion is intended, pass `--existing-revisions slice-cross-author` (or `existingRevisions: 'slice-cross-author'`). Do not pass `accept-all-first` without explicit user authorization. |
 | `PATCH_ROUNDTRIP_MISMATCH` | A cross-author surgical edit did not reconstruct the requested modified text exactly. | Treat the operation as unapplied. Re-extract the exact paragraph text and split the edit into a narrower operation that does not cross the reported structural boundary. |
 | `FOREIGN_PARAGRAPH_MARK_DELETION` | A normal edit attempted to write into a paragraph wholly deleted by another reviewer. | Use an explicit `restore` operation if the user intends to counterpropose that paragraph; otherwise leave the deletion unresolved. |
