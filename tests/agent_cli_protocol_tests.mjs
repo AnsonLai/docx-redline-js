@@ -23,9 +23,13 @@ try {
     const input = path.join(directory, 'input.docx');
     await writeFile(input, fixture);
     const version = await executeCli(['version']);
-    assert.equal(version.contractVersion, 5);
+    assert.equal(version.contractVersion, 6);
     assert(version.capabilities.includes('operations-stdin'));
     assert(version.capabilities.includes('agent-profile-v1'));
+    assert(version.capabilities.includes('command-help-v1'));
+    assert(version.capabilities.includes('inspection-context-v1'));
+    assert(version.capabilities.includes('bounded-inspection-v1'));
+    assert(version.capabilities.includes('human-document-references-v1'));
 
     const inspected = await executeCli(['extract', input, '--index', '53']);
     const target = inspected.paragraphs[0];

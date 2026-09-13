@@ -20,8 +20,10 @@ It is a development sample, not a package API.
 1. Extract only the relevant clause or range:
 
    ```bash
-   docx-redline extract contract.docx --search "termination"
+   docx-redline extract contract.docx --search "termination" --around 3
    ```
+
+   Search is case-insensitive. Direct hits are capped; follow `selection.nextAfter` with `--after`, and cite `humanReference`, not `P42`.
 
 2. Copy `exactText` with `paragraphId` or `fingerprint`. Serialize the final
    operation array directly to stdin, then apply once:
@@ -34,9 +36,7 @@ It is a development sample, not a package API.
    text through shell quoting. `modified` is the complete desired accepted-view
    paragraph, not only the inserted words.
 
-The `agent` profile is explicit and reproducible. It uses atomic rollback,
-strict targets, validation, tracked changes, `merge-same-author`, and nonzero
-exit codes for incomplete work. The result reports `effectiveOptions`.
+The `agent` profile uses atomic rollback, strict targets, validation, tracked changes, `merge-same-author`, and nonzero incomplete-work exits. Explicit flags take precedence; the result reports `effectiveOptions`.
 
 ## Batch and result rules
 

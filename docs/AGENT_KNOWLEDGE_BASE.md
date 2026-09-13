@@ -482,8 +482,9 @@ Use this for everything by default. `apply` is fast, progressive, and self-valid
 
 The short route for a document-editing request is:
 
-1. Run one focused `extract` for the clauses or range being edited and copy
-   `exactText` plus `paragraphId` or `fingerprint`.
+1. Run one focused `extract` for the clauses or range being edited. Search is a
+   case-insensitive substring match; add `--around 3` when surrounding drafting
+   context is needed. Copy `exactText` plus `paragraphId` or `fingerprint`.
 2. Build the final operations from the operation table above. Use one operation
    per target paragraph, and consolidate multiple changes to that paragraph.
 3. Run `apply` once per stable batch. Strong inspected targets are bound against
@@ -570,12 +571,18 @@ normalize or reconstruct `exactText`. Operation files follow
 
 Paragraph indexes are 1-based. Inspection filters are `--index 12`,
 `--range 10:30`, `--indexes 2,5,8`, `--search text`, `--revised`, `--table`,
-`--body`, `--non-empty`, and `--view accepted|rejected|current`. A malformed
-filter or unknown option is an error rather than an unfiltered fallback.
+`--body`, `--non-empty`, and `--view accepted|rejected|current`. Search is
+case-insensitive. Add `--around N` (`--context N` or `-C N`) to a search;
+context records are labeled separately and do not consume the direct-hit
+`--limit`. Continue a bounded result with `--after <paragraph-index>`. Ordinary
+unscoped CLI inspection defaults to 20 direct records and a 48 KiB soft budget;
+`--all` deliberately opts out. A malformed filter or unknown option is an error
+rather than an unfiltered fallback.
 
-Mutating commands require `--author`, authors on every operation, or
-`--all-authors` where applicable. Without `--output`, a sibling such as
-`contract.redlined.docx` is chosen. Existing outputs are refused unless
+Mutating commands use `--author`, operation-level authors, then
+`DOCX_REDLINE_AUTHOR`, falling back visibly to `AI Redliner`; review-resolution
+commands may use `--all-authors` where applicable. Without `--output`, a sibling
+such as `contract.redlined.docx` is chosen. Existing outputs are refused unless
 `--force` is present. `--in-place` is the only way to overwrite the input.
 
 Treat a nonzero exit code or JSON `status: "error"` as failure. A failed atomic

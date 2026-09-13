@@ -278,13 +278,15 @@ export function getTrackedChangeAuthors(xmlDocOrElement: Document | Element | nu
 export interface InspectedParagraph {
   index: number; ref: string; paragraphId: string | null; fingerprint: string | null;
   text: string; exactText: string; excerpt: string; inTable: boolean;
-  humanReference: string; styleId: string | null;
+  humanReference: string; provision: string | null; styleId: string | null;
   table: { tableIndex: number; rowIndex: number; cellIndex: number } | null;
   structuralReferences: Array<{ type: 'footnote' | 'endnote' | 'comment'; id: string | null }>;
   headingLevel: number | null; nearestHeading: { level: number; text: string } | null;
   list: { numId: string; level: number; label: string | null; format: string | null } | null;
   hasRevisions: boolean; revisionAuthors: string[]; commentIds: string[];
   segments: RevisionTextSegment[];
+  selectionRole?: 'match' | 'context';
+  contextFor?: number[];
 }
 export interface RevisionToken {
   algorithm: 'sha256';
@@ -295,10 +297,17 @@ export interface RevisionToken {
 }
 
 export interface InspectedComment { id: string; author: string | null; date: string | null; text: string; paraId?: string | null; parentParaId?: string; parentCommentId?: string | null; done?: boolean; paragraphIndex?: number; targetRef?: string; anchoredText?: string; }
-export interface DocumentInspectionOptions { revisionView?: 'accepted' | 'rejected' | 'current'; excerptLength?: number; revisedOnly?: boolean; inTable?: boolean; skipEmpty?: boolean; search?: string; indexes?: number[]; range?: { start: number; end: number } | [number, number]; digestFn?: (bytes: Uint8Array) => string; }
+export interface DocumentInspectionOptions { revisionView?: 'accepted' | 'rejected' | 'current'; excerptLength?: number; revisedOnly?: boolean; inTable?: boolean; skipEmpty?: boolean; search?: string; indexes?: number[]; range?: { start: number; end: number } | [number, number]; around?: number; limit?: number; after?: number; digestFn?: (bytes: Uint8Array) => string; }
+export interface DocumentInspectionSelection {
+  search?: string; caseSensitive?: false; totalMatches: number; returnedMatches: number;
+  returnedParagraphs: number; truncated: boolean; nextAfter: number | null;
+  limit?: number; after?: number; around?: number; softByteLimit?: number;
+  oversizeItem?: boolean; contextTruncated?: boolean;
+}
 export interface DocumentInspectionResult {
   status: 'ok' | 'error'; paragraphs: InspectedParagraph[]; comments: InspectedComment[];
   revisionAuthors?: string[]; commentAuthors?: string[]; counts?: { paragraphs: number; comments: number; revisedParagraphs: number };
+  selection?: DocumentInspectionSelection;
   revisionToken?: RevisionToken | null;
   coveredParts?: string[];
   warnings: string[]; error?: RedlineError;

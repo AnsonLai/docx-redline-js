@@ -147,7 +147,10 @@ const inventory = inspectDocumentParts({ documentXml, commentsXml, numberingXml 
 Inspection returns exact paragraph text, target IDs/fingerprints, headings,
 table/list context, revision authors, and joined comment anchors. Filters such
 as `search`, `indexes`, `range`, `revisedOnly`, `inTable`, and `skipEmpty`
-limit output. `revisionView` accepts `accepted`, `rejected`, or `current`.
+limit output. Search is a case-insensitive substring match; `around` adds nearby
+drafting context, while `limit` and `after` page direct hits. `revisionView`
+accepts `accepted`, `rejected`, or `current`. Returned paragraphs identify
+matches versus context and include `humanReference` for user-facing summaries.
 
 For complete `.docx` buffers in Node:
 
@@ -212,7 +215,7 @@ latency. Checked comparative results are in the
 ### Agent CLI
 
 ```bash
-docx-redline extract contract.docx --range 10:30
+docx-redline extract contract.docx --search "termination" --around 3
 docx-redline preflight contract.docx --operations operations.json --author "Editor"
 docx-redline apply contract.docx --operations operations.json --author "Editor" --output reviewed.docx
 docx-redline validate reviewed.docx
@@ -247,10 +250,22 @@ All commands emit JSON on stdout. `apply` defaults:
 - **Inline edits**: Use `--target <text>` with `--modified <text>` or `--comment <text>` for quick one-liners without creating a JSON file.
 - **Compact mutation results**: `apply`, `accept`, `reject`, and `delete-comments` omit full OOXML/package payloads and inspection text from stdout. They report `written`, `outputPath`, per-operation results and receipts, compact validation counts, and a derived `completion` boolean. Use `validate` when full issue arrays are needed.
 
-`docx-redline version` reports contract version 5 and the additive
-`batch-start-source-binding`, `recovery-envelope-v1`, and
-`require-complete-exit`, `operations-stdin`, and `agent-profile-v1`
-capabilities. Wrappers should negotiate only the capabilities they use.
+Inspection commands default to 20 direct matches and a 48 KiB soft response
+budget when no explicit positional scope is supplied. Use `--limit` with
+`--after <paragraph-index>` to continue, `--around N` (aliases `--context` and
+`-C`) to include nearby paragraphs, and `--all` only for deliberate unbounded
+inspection. Every retained target is complete; an individually oversized
+paragraph is returned whole with an `oversizeItem` marker. Machine `index` and
+`ref` fields are for targeting and pagination, not user-facing Word locations;
+use `humanReference`, `provision`, or `nearestHeading` in reports.
+
+`docx-redline version` reports contract version 6 and the additive
+`command-help-v1`, `inspection-context-v1`, `bounded-inspection-v1`,
+`human-document-references-v1`, `batch-start-source-binding`,
+`recovery-envelope-v1`, `require-complete-exit`, `operations-stdin`, and
+`agent-profile-v1` capabilities. Wrappers should negotiate only the
+capabilities they use. Run `docx-redline <command> --help` for that command's
+machine-readable options, behavior, exit codes, and compact examples.
 
 See the [compact agent fast start](./docs/AGENT_FAST_START.md) and the
 [operation JSON Schema](docs/schemas/document-operations.schema.json).

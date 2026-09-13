@@ -7,9 +7,12 @@ import { validateRedlineOoxml } from '../core/redline-validation.js';
 import { configureLogger } from '../adapters/logger.js';
 import { isExistingRevisionsPolicy } from '../services/document-operation-contract.js';
 import { normalizeErrorWithRecovery } from '../services/error-recovery.js';
+import { buildCliHelp, CLI_COMMANDS, commandOptionKeys } from './cli-help.js';
 
 const suffixes = { apply: 'redlined', accept: 'accepted', reject: 'rejected', 'delete-comments': 'comments-removed' };
-const CLI_CONTRACT_VERSION = 5;
+const CLI_CONTRACT_VERSION = 6;
+const DEFAULT_INSPECTION_LIMIT = 20;
+const INSPECTION_SOFT_BYTE_LIMIT = 48 * 1024;
 const CLI_CAPABILITIES = [
     'atomic-batch-results-on-package-failure',
     'baseline-aware-validation',
@@ -20,19 +23,13 @@ const CLI_CAPABILITIES = [
     'recovery-envelope-v1',
     'require-complete-exit',
     'operations-stdin',
-    'agent-profile-v1'
+    'agent-profile-v1',
+    'command-help-v1',
+    'inspection-context-v1',
+    'bounded-inspection-v1',
+    'human-document-references-v1'
 ];
-const commandOptions = {
-    version: new Set(['help']),
-    inspect: new Set(['help', 'search', 'revised', 'table', 'body', 'nonEmpty', 'index', 'indexes', 'range', 'view']),
-    extract: new Set(['help', 'search', 'revised', 'table', 'body', 'nonEmpty', 'index', 'indexes', 'range', 'view']),
-    preflight: new Set(['help', 'operations', 'author', 'strictTargets', 'target', 'modified', 'comment', 'textToComment', 'targetRef', 'existingRevisions']),
-    apply: new Set(['help', 'operations', 'author', 'output', 'inPlace', 'force', 'noOverwrite', 'noClobber', 'expectedRevision', 'target', 'modified', 'comment', 'textToComment', 'targetRef', 'existingRevisions', 'atomic', 'generateRedlines', 'noRedlines', 'requireComplete', 'profile']),
-    accept: new Set(['help', 'author', 'allAuthors', 'output', 'inPlace', 'force', 'noOverwrite', 'noClobber']),
-    reject: new Set(['help', 'author', 'allAuthors', 'output', 'inPlace', 'force', 'noOverwrite', 'noClobber']),
-    'delete-comments': new Set(['help', 'author', 'allAuthors', 'output', 'inPlace', 'force', 'noOverwrite', 'noClobber']),
-    validate: new Set(['help', 'baseline'])
-};
+const commandOptions = Object.fromEntries(CLI_COMMANDS.map(command => [command, new Set(commandOptionKeys(command))]));
 
 function cliError(code, message, exitCode = 2, details) { return { status: 'error', error: normalizeErrorWithRecovery({ code, message, ...(details ? { details } : {}) }), exitCode }; }
 const optionAliases = new Map([
@@ -46,7 +43,9 @@ const optionAliases = new Map([
     ['no-clobber', 'noClobber'],
     ['no-redlines', 'noRedlines'],
     ['generate-redlines', 'generateRedlines'],
-    ['require-complete', 'requireComplete']
+    ['require-complete', 'requireComplete'],
+    ['context', 'around'],
+    ['C', 'around']
 ]);
 function parseArgs(argv) {
     const positionals = []; const flags = {};
@@ -72,6 +71,14 @@ function invalidFilter(message) {
     const error = new Error(message);
     error.code = 'INVALID_FILTER';
     return error;
+}
+function boundedPositiveInteger(value, optionName, maximum = Number.MAX_SAFE_INTEGER) {
+    const parsed = positiveInteger(value);
+    if (parsed == null || parsed > maximum) {
+        const upperBound = maximum < Number.MAX_SAFE_INTEGER ? ` no greater than ${maximum}` : '';
+        throw invalidFilter(`${optionName} must be a positive integer${upperBound}.`);
+    }
+    return parsed;
 }
 function parseIndexes(value) {
     const tokens = String(value).split(',');
@@ -112,6 +119,18 @@ function inspectionOptions(flags) {
     }
     if (flags.indexes !== undefined) options.indexes = parseIndexes(flags.indexes);
     if (flags.range !== undefined) options.range = parseRange(flags.range);
+    if (flags.around !== undefined) {
+        const text = String(flags.around).trim();
+        if (!/^\d+$/.test(text) || Number(text) > 20) {
+            throw invalidFilter('--around must be an integer from 0 through 20.');
+        }
+        options.around = Number(text);
+        if (!flags.search) throw invalidFilter('--around requires --search.');
+    }
+    if (flags.limit !== undefined) options.limit = boundedPositiveInteger(flags.limit, '--limit', 200);
+    if (flags.after !== undefined) options.after = boundedPositiveInteger(flags.after, '--after');
+    if (flags.all && flags.limit !== undefined) throw invalidFilter('Use --all or --limit, not both.');
+    if (!flags.all && flags.limit === undefined && selectors.length === 0) options.limit = DEFAULT_INSPECTION_LIMIT;
     if (flags.view) {
         if (!['accepted', 'rejected', 'current'].includes(String(flags.view))) {
             throw invalidFilter('--view must be accepted, rejected, or current.');
@@ -189,6 +208,114 @@ async function writeMutation(command, input, flags, result) {
 function serializable(value) {
     const { buffer: _buffer, toBuffer: _toBuffer, ...rest } = value || {};
     return rest;
+}
+
+function compactExtractParagraph(paragraph) {
+    const {
+        humanReference, provision, nearestHeading, index, ref, paragraphId,
+        fingerprint, revisionView, exactText, inTable, list, selectionRole,
+        contextFor
+    } = paragraph;
+    return {
+        humanReference,
+        provision,
+        nearestHeading,
+        index,
+        ref,
+        paragraphId,
+        fingerprint,
+        revisionView,
+        exactText,
+        inTable,
+        list,
+        ...(selectionRole ? { selectionRole } : {}),
+        ...(Array.isArray(contextFor) ? { contextFor } : {})
+    };
+}
+
+function inspectionResponseBytes(value) {
+    return Buffer.byteLength(JSON.stringify(value, null, 2), 'utf8') + 1;
+}
+
+function boundInspectionResponse(value, { bypass = false, broadDetailed = false } = {}) {
+    const base = {
+        ...value,
+        machineReferencesAreNotUserLocations: true,
+        ...(broadDetailed ? {
+            notes: [
+                'This detailed inspection was bounded. Prefer extract --search or an explicit --range for ordinary targeting.'
+            ]
+        } : {})
+    };
+    if (bypass) return base;
+
+    let paragraphs = [...(base.paragraphs || [])];
+    const sourceSelection = base.selection || {};
+    const totalMatches = Number.isInteger(sourceSelection.totalMatches)
+        ? sourceSelection.totalMatches
+        : paragraphs.filter(item => item.selectionRole !== 'context').length;
+    const initialReturnedMatches = Number.isInteger(sourceSelection.returnedMatches)
+        ? sourceSelection.returnedMatches
+        : paragraphs.filter(item => item.selectionRole !== 'context').length;
+    let contextTruncated = false;
+
+    const assemble = (oversizeItem = false) => {
+        const directIndexes = new Set(paragraphs
+            .filter(item => item.selectionRole !== 'context')
+            .map(item => item.index));
+        paragraphs = paragraphs
+            .map(item => item.selectionRole === 'context'
+                ? { ...item, contextFor: (item.contextFor || []).filter(index => directIndexes.has(index)) }
+                : item)
+            .filter(item => item.selectionRole !== 'context' || item.contextFor.length > 0);
+        const direct = paragraphs.filter(item => item.selectionRole !== 'context');
+        const lastDirect = direct[direct.length - 1] || null;
+        const paragraphIndexes = new Set(paragraphs.map(item => item.index));
+        const comments = Array.isArray(base.comments)
+            ? base.comments.filter(comment => paragraphIndexes.has(comment.paragraphIndex))
+            : base.comments;
+        const budgetTruncated = direct.length < initialReturnedMatches;
+        return {
+            ...base,
+            paragraphs,
+            ...(Array.isArray(base.comments) ? { comments } : {}),
+            selection: {
+                ...sourceSelection,
+                totalMatches,
+                returnedMatches: direct.length,
+                returnedParagraphs: paragraphs.length,
+                truncated: sourceSelection.truncated === true || budgetTruncated || contextTruncated,
+                nextAfter: sourceSelection.truncated === true || budgetTruncated
+                    ? (lastDirect?.index ?? sourceSelection.nextAfter ?? null)
+                    : null,
+                softByteLimit: INSPECTION_SOFT_BYTE_LIMIT,
+                oversizeItem,
+                ...(contextTruncated ? { contextTruncated: true } : {})
+            }
+        };
+    };
+
+    let result = assemble();
+    while (inspectionResponseBytes(result) > INSPECTION_SOFT_BYTE_LIMIT) {
+        const directPositions = paragraphs
+            .map((item, position) => item.selectionRole !== 'context' ? position : -1)
+            .filter(position => position >= 0);
+        if (directPositions.length > 1) {
+            paragraphs.splice(directPositions[directPositions.length - 1], 1);
+            result = assemble();
+            continue;
+        }
+        const contextPosition = paragraphs.findLastIndex(item => item.selectionRole === 'context');
+        if (contextPosition >= 0) {
+            paragraphs.splice(contextPosition, 1);
+            contextTruncated = true;
+            result = assemble();
+            continue;
+        }
+        result = assemble(true);
+        break;
+    }
+    return result;
 }
 
 function boundedText(value, limit = 512) {
@@ -371,9 +498,13 @@ function subtractValidationIssues(issues, baselineIssues) {
 
 export async function executeCli(argv, io = process) {
     const { command, input: rawInput, extraPositionals, flags } = parseArgs(argv);
-    if (command === 'help' || flags.help) return { status: 'ok', command: 'help', usage: 'docx-redline <version|inspect|extract|preflight|apply|accept|reject|delete-comments|validate> [file.docx] [options]' };
+    if (command === 'help' || flags.help) {
+        const requestedCommand = command === 'help' ? rawInput : command;
+        const help = buildCliHelp(requestedCommand || null);
+        return help || cliError('UNKNOWN_COMMAND', `Unknown command: ${requestedCommand}`);
+    }
     if (!command) return cliError('COMMAND_REQUIRED', 'A command is required.');
-    if (!['version','inspect','extract','preflight','apply','accept','reject','delete-comments','validate'].includes(command)) return cliError('UNKNOWN_COMMAND', `Unknown command: ${command}`);
+    if (!CLI_COMMANDS.includes(command)) return cliError('UNKNOWN_COMMAND', `Unknown command: ${command}`);
     if (command === 'version') {
         if (rawInput || extraPositionals.length > 0) return cliError('UNEXPECTED_ARGUMENT', `Unexpected argument: ${rawInput || extraPositionals[0]}`);
         const optionError = validateCommandOptions(command, flags, []);
@@ -404,10 +535,26 @@ export async function executeCli(argv, io = process) {
     let buffer; try { buffer = await readFile(input); } catch (error) { return cliError('INPUT_READ_FAILED', error.message); }
     try {
         const document = openDocx(buffer);
-        if (command === 'inspect') return { ...document.inspect(inspectOptions), command, input, indexBase: 1 };
+        if (command === 'inspect') {
+            const inspected = document.inspect(inspectOptions);
+            const broadDetailed = !flags.search && flags.index === undefined
+                && flags.indexes === undefined && flags.range === undefined;
+            return boundInspectionResponse(
+                { ...inspected, command, input, indexBase: 1 },
+                { bypass: !!flags.all, broadDetailed }
+            );
+        }
         if (command === 'extract') {
             const inspected = document.inspect(inspectOptions);
-            return { status: inspected.status, command, input, indexBase: 1, paragraphs: inspected.paragraphs.map(({ index, ref, paragraphId, fingerprint, exactText, inTable, list, nearestHeading }) => ({ index, ref, paragraphId, fingerprint, exactText, inTable, list, nearestHeading })), warnings: inspected.warnings };
+            return boundInspectionResponse({
+                status: inspected.status,
+                command,
+                input,
+                indexBase: 1,
+                paragraphs: inspected.paragraphs.map(compactExtractParagraph),
+                ...(inspected.selection ? { selection: inspected.selection } : {}),
+                warnings: inspected.warnings
+            }, { bypass: !!flags.all });
         }
         if (command === 'validate') {
             const issues = await collectValidationIssues(buffer);

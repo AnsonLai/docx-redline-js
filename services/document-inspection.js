@@ -183,6 +183,80 @@ function collectDocumentCommentAnchors(paragraphNodes, revisionView) {
     return anchors;
 }
 
+function selectInspectionParagraphs(allParagraphs, options) {
+    let matches = allParagraphs;
+    if (options.revisedOnly) matches = matches.filter(item => item.hasRevisions);
+    if (options.inTable != null) matches = matches.filter(item => item.inTable === !!options.inTable);
+    if (options.skipEmpty) matches = matches.filter(item => item.text.length > 0);
+    if (options.search) {
+        const needle = String(options.search).toLowerCase();
+        matches = matches.filter(item => item.text.toLowerCase().includes(needle));
+    }
+    if (Array.isArray(options.indexes)) {
+        const indexes = new Set(options.indexes);
+        matches = matches.filter(item => indexes.has(item.index));
+    }
+    let rangeStart = 1;
+    let rangeEnd = allParagraphs.length;
+    if (options.range) {
+        rangeStart = Number(options.range.start ?? options.range[0]);
+        rangeEnd = Number(options.range.end ?? options.range[1]);
+        matches = matches.filter(item => item.index >= rangeStart && item.index <= rangeEnd);
+    }
+
+    const totalMatches = matches.length;
+    const after = Number.isInteger(options.after) && options.after > 0 ? options.after : null;
+    const remaining = after == null ? matches : matches.filter(item => item.index > after);
+    const limit = Number.isInteger(options.limit) && options.limit > 0 ? options.limit : null;
+    const selectedMatches = limit == null ? remaining : remaining.slice(0, limit);
+    const truncated = selectedMatches.length < remaining.length;
+    const around = Number.isInteger(options.around) && options.around > 0 ? options.around : 0;
+    const exposeSelection = !!options.search || around > 0 || limit != null || after != null;
+
+    let paragraphs = selectedMatches;
+    if (around > 0 && options.search) {
+        const directIndexes = new Set(selectedMatches.map(item => item.index));
+        const contextFor = new Map();
+        for (const match of selectedMatches) {
+            const start = Math.max(rangeStart, match.index - around);
+            const end = Math.min(rangeEnd, match.index + around);
+            for (let index = start; index <= end; index++) {
+                if (directIndexes.has(index)) continue;
+                const owners = contextFor.get(index) || [];
+                owners.push(match.index);
+                contextFor.set(index, owners);
+            }
+        }
+        const returnedIndexes = new Set([...directIndexes, ...contextFor.keys()]);
+        paragraphs = allParagraphs
+            .filter(item => returnedIndexes.has(item.index))
+            .map(item => directIndexes.has(item.index)
+                ? { ...item, selectionRole: 'match' }
+                : { ...item, selectionRole: 'context', contextFor: contextFor.get(item.index) || [] });
+    } else if (exposeSelection) {
+        paragraphs = selectedMatches.map(item => ({ ...item, selectionRole: 'match' }));
+    }
+
+    return {
+        paragraphs,
+        ...(exposeSelection ? {
+            selection: {
+                ...(options.search ? { search: String(options.search), caseSensitive: false } : {}),
+                totalMatches,
+                returnedMatches: selectedMatches.length,
+                returnedParagraphs: paragraphs.length,
+                truncated,
+                nextAfter: truncated && selectedMatches.length > 0
+                    ? selectedMatches[selectedMatches.length - 1].index
+                    : null,
+                ...(limit != null ? { limit } : {}),
+                ...(after != null ? { after } : {}),
+                ...(around > 0 ? { around } : {})
+            }
+        } : {})
+    };
+}
+
 /** Read-only, stable document-parts inspection for agents and package adapters. */
 export function inspectDocumentParts(parts, options = {}) {
     const documentPart = parseXml(parts?.documentXml, 'word/document.xml', true);
@@ -213,12 +287,17 @@ export function inspectDocumentParts(parts, options = {}) {
         const index = zeroIndex + 1;
         const provision = list?.label && list.format !== 'bullet' ? list.label : null;
         const headingText = nearestHeading?.text || null;
-        const humanReference = [provision, headingText, text.slice(0, options.excerptLength || 120)].filter(Boolean).join(' — ');
+        const excerpt = text.slice(0, options.excerptLength || 120);
+        const humanReference = level
+            ? text
+            : (provision
+                ? [provision, headingText].filter(Boolean).join(' — ')
+                : (headingText ? [headingText, excerpt].filter(Boolean).join(' — ') : excerpt));
         const segments = extractParagraphRevisionSegments(paragraph);
         return {
             index, ref: `P${index}`, paragraphId: getParagraphId(paragraph),
             fingerprint: createParagraphFingerprint(paragraph, { text, index, revisionView }), revisionView,
-            text, exactText: text, excerpt: text.slice(0, options.excerptLength || 120), humanReference, inTable: hasAncestor(paragraph, 'tc'), table: structure.table,
+            text, exactText: text, excerpt, humanReference, provision, inTable: hasAncestor(paragraph, 'tc'), table: structure.table,
             styleId, headingLevel: level, nearestHeading, list, structuralReferences: structure.references, hasRevisions: authors.length > 0, revisionAuthors: authors, commentIds: ids,
             segments
         };
@@ -229,12 +308,8 @@ export function inspectDocumentParts(parts, options = {}) {
         definition.anchoredText ??= commentAnchors.get(id) || paragraph.text;
         comments.set(id, definition);
     }
-    if (options.revisedOnly) paragraphs = paragraphs.filter(item => item.hasRevisions);
-    if (options.inTable != null) paragraphs = paragraphs.filter(item => item.inTable === !!options.inTable);
-    if (options.skipEmpty) paragraphs = paragraphs.filter(item => item.text.length > 0);
-    if (options.search) { const needle = String(options.search).toLowerCase(); paragraphs = paragraphs.filter(item => item.text.toLowerCase().includes(needle)); }
-    if (Array.isArray(options.indexes)) { const indexes = new Set(options.indexes); paragraphs = paragraphs.filter(item => indexes.has(item.index)); }
-    if (options.range) { const start = Number(options.range.start ?? options.range[0]); const end = Number(options.range.end ?? options.range[1]); paragraphs = paragraphs.filter(item => item.index >= start && item.index <= end); }
+    const selected = selectInspectionParagraphs(paragraphs, options);
+    paragraphs = selected.paragraphs;
     const allRevisionAuthors = [...new Set(paragraphs.flatMap(item => item.revisionAuthors))].sort();
     const coveredEntries = extractDocumentPartsEntries(parts);
     const coveredParts = coveredEntries.map(e => e.name).sort();
@@ -251,6 +326,7 @@ export function inspectDocumentParts(parts, options = {}) {
         revisionToken,
         coveredParts,
         paragraphs,
+        ...(selected.selection ? { selection: selected.selection } : {}),
         comments: [...comments.values()],
         revisionAuthors: allRevisionAuthors,
         commentAuthors: [...new Set([...comments.values()].map(item => item.author).filter(Boolean))].sort(),

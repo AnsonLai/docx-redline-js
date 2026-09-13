@@ -22,7 +22,7 @@ fixtures rarely contain.
 | Multimodal LLM visual spot check | On-demand / sampled | Evaluates rendered real-document pages with vision models for layout, table alignment, and typography regressions | Full-corpus automated coverage (intentionally decoupled and sampled due to cost/time) |
 | XSD and LibreOffice | See [Release validation and independent oracles](#release-validation-and-independent-oracles) | Schema conformance and acceptance by a second consumer | Word-specific revision semantics |
 | Agent inspection and package facade | `node tests/document_inspection_tests.mjs`, `node tests/docx_package_facade_tests.mjs` | Canonical text, comment/list resolution, package-scoped IDs, untouched-part preservation, and atomic rollback | Desktop Word rendering |
-| Agent CLI | `node tests/agent_cli_tests.mjs`, `node tests/agent_cli_protocol_tests.mjs` | JSON contracts, exact-text extraction, stdin operations, named agent-profile defaults, UTF-8 fidelity, complete-success exits, source safety, all command families, and operation-schema readability | Cross-platform CI beyond the current runner |
+| Agent CLI | `node tests/agent_cli_tests.mjs`, `node tests/agent_cli_protocol_tests.mjs`, `node tests/agent_cli_help_tests.mjs`, `node tests/agent_cli_inspection_context_tests.mjs`, `node tests/agent_cli_output_budget_tests.mjs` | JSON contracts, command-specific help, exact-text contextual extraction, bounded pagination, stdin operations, named agent-profile defaults, UTF-8 fidelity, complete-success exits, source safety, all command families, and operation-schema readability | Cross-platform CI beyond the current runner |
 | Example agent session | `node tests/agent_session_example_tests.mjs`, `node tests/localized_edit_example_tests.mjs` | A non-package sample wrapper delegates to the Node facade, binds and refreshes opaque handles across package revisions, returns context windows, compiles exact localized edits, preserves accepted/rejected lifecycle and atomic rollback, and supports review resolution | LLM/provider latency or a production tool-server transport |
 | Batch compilation and recovery | `node tests/batch_source_binding_tests.mjs`, `node tests/error_recovery_contract_tests.mjs`, `node tests/capture_dependency_graph_tests.mjs` | Batch-start source identity survives structural index drift and savepoint restoration; true overlap and capture fan-out fail before mutation; recovery envelopes, retry bases, bounded CLI diagnostics, and complete-success exits remain stable | Whether a model follows the returned recovery action correctly |
 | Agent documentation contract | `node tests/agent_documentation_contract_tests.mjs` | The ordinary fast start stays within its 40–60 line/600-word budget, retains required safety contracts, and the launch card routes to detailed sources while the development wrapper stays outside package files | Whether a particular model reads or follows the instructions |
@@ -97,6 +97,18 @@ cross-author attribution. It does not measure or estimate LLM reasoning, exact
 tokens, tool transport, Claude, or OpenCode wall time; collect those separately
 in the calling harness. The checked WP-07 results are summarized in the
 [agent protocol rollout audit](validation-reports/2026-09-12-agent-protocol-rollout.md).
+
+Run the CLI discovery/output benchmark with:
+
+```powershell
+npm run benchmark:agent-cli
+```
+
+It records command-specific help size, broad inspect/search response size,
+context-window call count, pagination metadata, case-insensitive match parity,
+and native elapsed time in `tmp/benchmarks/agent-cli-discovery-latest.json`.
+The checked WP-00 through WP-02 before/after measurements are in the
+[agent CLI discovery baseline](validation-reports/2026-09-12-agent-cli-discovery-baseline.md).
 
 ## Cross-author revision slicing test suite
 

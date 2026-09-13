@@ -19,6 +19,9 @@ assert(fastStartStats.words <= 600, JSON.stringify(fastStartStats));
 for (const contract of [
     '--operations -',
     '--profile agent',
+    '--around 3',
+    'selection.nextAfter',
+    'humanReference',
     'completion: true',
     'error.recovery.action',
     'retryPlan.base: "original"',
@@ -45,7 +48,8 @@ for (const publishedDoc of [
     'docs/AGENT_KNOWLEDGE_BASE.md',
     'docs/TESTING.md',
     'docs/schemas/document-operations.schema.json',
-    'docs/validation-reports/2026-09-12-agent-protocol-rollout.md'
+    'docs/validation-reports/2026-09-12-agent-protocol-rollout.md',
+    'docs/validation-reports/2026-09-12-agent-cli-discovery-baseline.md'
 ]) {
     assert(packageJson.files.includes(publishedDoc), `package omitted ${publishedDoc}`);
 }
