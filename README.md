@@ -25,8 +25,9 @@ Converts AI-generated or programmatic text/markdown edits into valid Office Open
 Version 0.7.0 adds a contract-8 fast path for exact mechanical edits. Agents can
 send a small `find`/`replace` request instead of reproducing a complete legal
 paragraph, and may omit a strong target when the source literal resolves to one
-accepted-view paragraph. Visible headings can narrow the attempt with a signed
-directional window such as `--search "Section 4.1" --context-range 1:3`.
+accepted-view paragraph. A longer, fairly unique nearby phrase can narrow the
+attempt with a signed directional window. Generic or repeated anchors widen the
+unioned scope and may cause a safe ambiguity failure and another tool turn.
 
 Speculative edits fail without writing when the anchor, paragraph, or source
 span is missing or ambiguous. Successful localized results include a committed
@@ -244,8 +245,8 @@ latency. Checked comparative results are in the
 # One-turn exact mechanical edit; fails closed unless one paragraph matches
 docx-redline apply contract.docx --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
 
-# Directional context after a visible heading; repeated cross-references are safe
-docx-redline apply contract.docx --search "Section 4.1" --context-range 1:3 --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
+# Directional context using a longer phrase with a higher chance of uniqueness
+docx-redline apply contract.docx --search "distinctive nearby heading or phrase" --context-range 1:3 --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
 
 # Semantic drafting still starts with focused context
 docx-redline extract contract.docx --search "termination" --around 3
@@ -282,7 +283,7 @@ All commands emit JSON on stdout. `apply` defaults:
 - **Compact stdout**: `--compact` emits one-line mutation JSON. It changes serialization only, not operation semantics.
 - **Tracked changes**: Defaults to `generateRedlines: true`. Pass `--no-redlines` when clean direct text edits are desired.
 - **Inline edits**: Use `--target <text>` with `--modified <text>` or `--comment <text>` for quick one-liners without creating a JSON file.
-- **Localized edits**: Use `--find`/`--replace` with a known strong target, or omit the target for fail-closed global resolution. Add `--search` with `--context-range 1:3` for text strictly after a visible heading; `--around 3` is symmetric. Successful localized results include bounded before/after excerpts and post-mutation accepted-view verification in `results[i].change`.
+- **Localized edits**: Use `--find`/`--replace` with a known strong target, or omit the target for fail-closed global resolution. Add a longer, fairly unique `--search` phrase with `--context-range 1:3` for directional scope; `--around 3` is symmetric. Generic or repeated anchors can widen the unioned scope until multiple paragraphs contain `find`, producing a safe `AMBIGUOUS_TARGET` failure and an extra recovery turn. On success, `results[i].change.context.anchorMatchCount > 1` signals a non-unique anchor; confirm the returned location and bounded before/after evidence.
 - **Compact mutation results**: `apply`, `accept`, `reject`, and `delete-comments` omit full OOXML/package payloads and inspection text from stdout. CLI operation results omit duplicate nested receipt bodies; the ordered top-level `receipts` array is authoritative. Successful exact target-match diagnostics are omitted and equivalent-whitespace matches retain only mode/count. Node and standalone-runner results remain unchanged. Use `validate` when full issue arrays are needed.
 
 Inspection commands default to 20 direct matches and a 48 KiB soft response

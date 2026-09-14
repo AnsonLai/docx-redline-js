@@ -21,6 +21,7 @@ const launchCard = await readFile(new URL('../AGENTS.md', import.meta.url), 'utf
 const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
 const knowledgeBase = await readFile(new URL('../docs/AGENT_KNOWLEDGE_BASE.md', import.meta.url), 'utf8');
 const skillAuthoring = await readFile(new URL('../docs/SKILL_AUTHORING.md', import.meta.url), 'utf8');
+const releaseNotes = await readFile(new URL('../docs/releases/0.7.0.md', import.meta.url), 'utf8');
 const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
 
 const fastStartStats = stats(fastStart);
@@ -35,7 +36,10 @@ for (const contract of [
     'humanReference',
     'docx-redline apply --help',
     'completion: true',
+    'results[i].change.committed: true',
+    'finalDisposition: "applied"',
     'acceptedViewMatchesCompiledText: true',
+    'anchorMatchCount > 1',
     'error.recovery.action',
     'retryPlan.base: "original"',
     'slice-cross-author'
@@ -89,6 +93,13 @@ for (const recoveryField of [
 assert.equal(skillAuthoring.includes('TARGET_NOT_FOUND'), false, 'skill guidance must not duplicate an error-code matrix');
 assert.match(skillAuthoring, /operations file and serializer-backed stdin are peer transports/i);
 assert.match(skillAuthoring, /AI Redliner.*valid visible fallback/);
+for (const guidance of [launchCard, fastStart, readme, knowledgeBase, skillAuthoring]) {
+    assert.match(guidance, /longer, fairly unique/i);
+    assert(guidance.includes('anchorMatchCount'), 'anchor guidance omitted anchorMatchCount');
+}
+assert(releaseNotes.includes('"results": ['));
+assert(releaseNotes.includes('"change": {'));
+assert.match(releaseNotes, /excerpts come from the resolved batch-start source and compiled desired\s+text/i);
 
 for (const [text, heading] of [
     [launchCard, '## Ordinary document edits'],

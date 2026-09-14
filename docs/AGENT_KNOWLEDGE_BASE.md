@@ -484,9 +484,10 @@ The short route for a document-editing request is:
 
 1. For an exact mechanical change with known old and new literals, use localized
    `--find`/`--replace`. Omit the target for global fail-closed resolution, or
-   scope a visible heading with `--search` and a directional range such as
-   `--context-range 1:3`. Repeated anchor matches are unioned; one eligible patch
-   paragraph is still required. `--occurrence` selects only within that paragraph.
+   scope it with a longer, fairly unique nearby `--search` phrase and a
+   directional range such as `--context-range 1:3`. Generic or repeated anchors
+   widen the unioned scope and may fail with `AMBIGUOUS_TARGET`, costing another
+   turn. `--occurrence` selects only within one uniquely resolved paragraph.
 2. For semantic drafting, run one focused `extract`. Add `--around 3` when
    surrounding context on either side is needed, then copy `exactText` plus
    `paragraphId` or `fingerprint`.
@@ -499,8 +500,10 @@ The short route for a document-editing request is:
    text created elsewhere in the batch is scheduled automatically; use explicit
    captures/selectors for non-unique or advanced created-content dependencies.
 5. Walk every result and require `completion: true`, `written: true`, and no
-   per-operation error. For localized patches also require committed `change`
-   evidence and positive accepted-view verification.
+   per-operation error. For localized patches also require
+   `results[i].change.committed: true`, `finalDisposition: "applied"`, and
+   positive accepted-view verification. If `anchorMatchCount > 1`, confirm the
+   returned location and excerpts because the anchor was repeated.
 6. Run a focused `extract` on changed clauses only when placement or list/table
    structure needs confirmation.
 
@@ -512,8 +515,8 @@ below and make one cause-specific correction.
 # 1. Globally unique mechanical edit in one call
 docx-redline apply contract.docx --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
 
-# 2. Mechanical edit strictly within three paragraphs after a visible heading
-docx-redline apply contract.docx --search "Section 4.1" --context-range 1:3 --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
+# 2. Directional edit using a longer phrase with a higher chance of uniqueness
+docx-redline apply contract.docx --search "distinctive nearby heading or phrase" --context-range 1:3 --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
 
 # 3. Focused contextual discovery for semantic drafting
 docx-redline extract contract.docx --search "termination" --around 3

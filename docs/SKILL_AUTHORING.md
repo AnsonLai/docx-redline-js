@@ -101,12 +101,13 @@ the first executable example should use the one-turn fast path:
 docx-redline apply input.docx --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
 ```
 
-If the literal is not globally unique, scope it with a meaningful visible
-anchor. A heading followed by a multi-paragraph provision should use a
-directional window such as `--search "Section 4.1" --context-range 1:3`;
-`--around 3` is symmetric and should be used only when either side is eligible.
-Require the returned localized `change` evidence, including `committed: true`
-and `verification.acceptedViewMatchesCompiledText: true`.
+If the literal is not globally unique, use a longer, fairly unique nearby phrase
+as `--search` context. Generic or repeated anchors widen the unioned scope and
+may cause `AMBIGUOUS_TARGET`, wasting a recovery turn. Use a directional window
+such as `1:3`; use symmetric `--around 3` only when either side is eligible. On
+success, `anchorMatchCount > 1` signals a repeated anchor: confirm the returned
+location and excerpts. Require `results[i].change` with `committed: true`,
+`finalDisposition: "applied"`, and positive accepted-view verification.
 
 Semantic requests such as “make this provision mutual” still begin with focused
 contextual extraction because the agent must identify and draft the complete

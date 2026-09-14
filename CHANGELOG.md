@@ -14,7 +14,9 @@
 - **One-turn speculative apply:** `docx-redline apply --find ... --replace ...`
   can resolve a globally unique source literal without preliminary extraction.
   `--search` plus signed `--context-range START:END` scopes visible headings and
-  multi-paragraph provisions; `--around N` is symmetric shorthand.
+  nearby content; `--around N` is symmetric shorthand. Longer, distinctive
+  anchors are recommended because generic or repeated phrases widen the unioned
+  scope and may cost an ambiguity-recovery turn.
 - **Fail-closed selection:** Missing anchors and patch sources, multiple eligible
   paragraphs, ambiguous occurrences, overlaps, conflicts, and unsupported
   localized shapes refuse mutation. A failed speculative command never writes

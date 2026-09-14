@@ -22,12 +22,17 @@ specific advanced operation, API, or recovery topic you need.
 ## Ordinary document edits
 
 For a literal mechanical edit with known old and new text, try one fail-closed
-apply call. Use a visible heading plus a directional range when global matching
-is too broad:
+apply call. When global matching is too broad, use a longer, fairly unique
+nearby phrase plus a directional range:
 
 ```bash
-docx-redline apply contract.docx --search "Section 4.1" --context-range 1:3 --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
+docx-redline apply contract.docx --search "distinctive nearby heading or phrase" --context-range 1:3 --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
 ```
+
+Generic or repeated anchors widen the unioned scope and may return
+`AMBIGUOUS_TARGET`, costing a recovery turn. On success, treat
+`results[i].change.context.anchorMatchCount > 1` as a signal to confirm the
+returned location and excerpts.
 
 For semantic drafting, inspect once and apply once. With a structured wrapper,
 use revision-bound handles. For shell-only work, use serializer-backed stdin:
@@ -45,8 +50,9 @@ Consolidate incompatible writes to the same source; use captures for intentional
 created-content dependencies.
 
 Require `completion: true`, `written: true`, a non-null output path, and no
-per-operation errors. Localized edits also require `change.committed: true` and
-`change.verification.acceptedViewMatchesCompiledText: true`. Follow
+per-operation errors. Localized edits also require
+`results[i].change.committed: true`, `finalDisposition: "applied"`, and
+`verification.acceptedViewMatchesCompiledText: true`. Follow
 `error.recovery.action` and `retryPlan`; never retry unchanged failed arguments.
 Follow `selection.hint` for restorable text. Do not accept/reject another
 reviewer's work or remove comments without explicit user authorization. The

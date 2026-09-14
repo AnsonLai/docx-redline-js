@@ -21,8 +21,8 @@ It is a development sample, not a package API.
    docx-redline apply contract.docx --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
    ```
 
-   The source must occur in one eligible paragraph. For text after a heading, add `--search "Section 4.1" --context-range 1:3`.
-   `--around 3` is symmetric; use it only when either side is eligible.
+   The source must occur in one eligible paragraph. To narrow it, use a longer, fairly unique phrase: `--search "distinctive nearby heading or phrase" --context-range 1:3`.
+   Generic/repeated anchors can cause `AMBIGUOUS_TARGET` and waste a recovery turn. If `anchorMatchCount > 1`, confirm the returned location and excerpts. `--around 3` is symmetric.
 
 2. For semantic drafting such as “make this provision mutual,” extract enough
    context, then copy `exactText` with `paragraphId` or `fingerprint`:
@@ -46,8 +46,9 @@ The `agent` profile preserves progressive execution and the ordinary revision po
 - Strong inspected targets bind to the batch start; independent edits need no bottom-up sorting.
 - Consolidate writes to one source; use captures for created-content dependencies.
 - Require `completion: true`, `written: true`, a non-null `outputPath`, and no
-  per-operation error. For localized edits also require `change.committed: true`
-  and `change.verification.acceptedViewMatchesCompiledText: true`. The source is
+  per-operation error. For localized edits also require
+  `results[i].change.committed: true`, `finalDisposition: "applied"`, and
+  `verification.acceptedViewMatchesCompiledText: true`. The source is
   not overwritten unless `--in-place` is explicit.
 - On failure, follow `error.recovery.action`. Never retry unchanged arguments.
 - `retryPlan.base: "original"` means replay the batch; `"output"` means retain committed work and retry reported indexes.
