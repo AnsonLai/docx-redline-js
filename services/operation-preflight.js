@@ -138,7 +138,12 @@ export function preflightOperations(documentXml, operations, author, options = {
 
     for (let index = 0; index < sourceOperations.length; index++) {
         const sourceOperation = sourceOperations[index];
-        const validation = validateDocumentOperation(sourceOperation);
+        const compiledBinding = batchCompilation.bindings[index];
+        const compiledOperation = batchCompilation.compiledOperations[index];
+        const operationInput = !compiledBinding?.error && compiledOperation?._localizedReplacementCompilation
+            ? compiledOperation
+            : sourceOperation;
+        const validation = validateDocumentOperation(operationInput);
         const fallbackOperation = normalizeDocumentOperation(sourceOperation);
         const operation = validation.operation || fallbackOperation;
         const authorUsed = resolveDocumentOperationAuthor(operation, author, getDefaultAuthor());
@@ -187,7 +192,6 @@ export function preflightOperations(documentXml, operations, author, options = {
             continue;
         }
 
-        const compiledBinding = batchCompilation.bindings[index];
         if (compiledBinding?.error) {
             results.push({
                 index: index + 1,

@@ -451,6 +451,7 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
                 ...(result.resolvedBy ? { resolvedBy: result.resolvedBy } : {}),
                 ...(result.resolvedTarget ? { resolvedTarget: result.resolvedTarget } : {}),
                 ...(result.resolvedAnchor ? { resolvedAnchor: result.resolvedAnchor } : {}),
+                ...(result.change ? { change: result.change } : {}),
                 ...(Array.isArray(result.warnings) && result.warnings.length > 0 ? { warnings: result.warnings } : {}),
                 ...(result.error ? { error: result.error } : {}),
                 ...(result.receipt ? { receipt: result.receipt } : {})
@@ -537,6 +538,10 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
                 r.receipt.finalDisposition = 'rolled_back';
                 r.receipt.committed = false;
             }
+            if (r.change) {
+                r.change.finalDisposition = 'rolled_back';
+                r.change.committed = false;
+            }
         }
         for (const receipt of allReceipts) {
             if (receipt.attemptedDisposition === 'applied') {
@@ -549,6 +554,10 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
             if (r.receipt && r.receipt.attemptedDisposition === 'applied') {
                 r.receipt.committed = true;
                 r.receipt.finalDisposition = 'applied';
+            }
+            if (r.change) {
+                r.change.finalDisposition = 'applied';
+                r.change.committed = true;
             }
         }
         for (const receipt of allReceipts) {

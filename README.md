@@ -215,9 +215,23 @@ benchmark explicitly does not claim to measure LLM reasoning or provider/tool
 latency. Checked comparative results are in the
 [agent protocol rollout audit](./docs/validation-reports/2026-09-12-agent-protocol-rollout.md).
 
+> **Pre-1.0 integration warning:** Agent skills, MCP servers, and harnesses
+> should pin the exact `@ansonlai/docx-redline-js` release they were tested
+> against and declare the CLI contract version/capabilities they require. Do
+> not treat a newly installed release or contract as verified until the
+> integration's compatibility tests pass. See the
+> [skill-authoring contract](./docs/SKILL_AUTHORING.md#runtime-negotiation).
+
 ### Agent CLI
 
 ```bash
+# One-turn exact mechanical edit; fails closed unless one paragraph matches
+docx-redline apply contract.docx --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
+
+# Directional context after a visible heading; repeated cross-references are safe
+docx-redline apply contract.docx --search "Section 4.1" --context-range 1:3 --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
+
+# Semantic drafting still starts with focused context
 docx-redline extract contract.docx --search "termination" --around 3
 docx-redline preflight contract.docx --operations operations.json --author "Editor"
 docx-redline apply contract.docx --operations operations.json --author "Editor" --output reviewed.docx
@@ -252,6 +266,7 @@ All commands emit JSON on stdout. `apply` defaults:
 - **Compact stdout**: `--compact` emits one-line mutation JSON. It changes serialization only, not operation semantics.
 - **Tracked changes**: Defaults to `generateRedlines: true`. Pass `--no-redlines` when clean direct text edits are desired.
 - **Inline edits**: Use `--target <text>` with `--modified <text>` or `--comment <text>` for quick one-liners without creating a JSON file.
+- **Localized edits**: Use `--find`/`--replace` with a known strong target, or omit the target for fail-closed global resolution. Add `--search` with `--context-range 1:3` for text strictly after a visible heading; `--around 3` is symmetric. Successful localized results include bounded before/after excerpts and post-mutation accepted-view verification in `results[i].change`.
 - **Compact mutation results**: `apply`, `accept`, `reject`, and `delete-comments` omit full OOXML/package payloads and inspection text from stdout. CLI operation results omit duplicate nested receipt bodies; the ordered top-level `receipts` array is authoritative. Successful exact target-match diagnostics are omitted and equivalent-whitespace matches retain only mode/count. Node and standalone-runner results remain unchanged. Use `validate` when full issue arrays are needed.
 
 Inspection commands default to 20 direct matches and a 48 KiB soft response
@@ -266,12 +281,14 @@ marker. Machine `index` and `ref` fields are for targeting and pagination, not
 user-facing Word locations; use `humanReference`, `provision`, or
 `nearestHeading` in reports.
 
-`docx-redline version` reports contract version 7 and the additive
+`docx-redline version` reports contract version 8 and the additive
 `command-help-v1`, `inspection-context-v1`, `bounded-inspection-v1`,
 `human-document-references-v1`, `batch-start-source-binding`,
 `recovery-envelope-v1`, `require-complete-exit`, `operations-stdin`,
 `agent-safety-profile-v2`, `deduplicated-cli-receipts`, and
-`compact-cli-json-v1` capabilities. Wrappers should negotiate only the
+`compact-cli-json-v1`, `localized-replacements-v1`,
+`speculative-search-apply-v1`, and `localized-change-summary-v1` capabilities.
+Wrappers should negotiate only the
 capabilities they use. Run `docx-redline <command> --help` for that command's
 machine-readable options, behavior, exit codes, canonical GitHub documentation links, and compact examples.
 

@@ -5,6 +5,8 @@
  * logic can operate on one internal shape.
  */
 
+import { validateExactReplacementRequests } from './localized-replacement-compiler.js';
+
 const SUPPORTED_OPERATION_TYPES = new Set([
     'redline',
     'replace',
@@ -215,11 +217,60 @@ export function validateDocumentOperation(operation) {
         };
     }
 
-    if (normalized.operationKind === 'redline' && typeof normalized.modified !== 'string') {
-        return {
-            valid: false,
-            error: { code: 'INVALID_OPERATION', message: 'Redline operations require a string "modified" field.' }
-        };
+    if (normalized.operationKind === 'redline') {
+        const hasModified = typeof normalized.modified === 'string';
+        const hasReplacements = normalized.replacements !== undefined;
+        if (hasModified === hasReplacements) {
+            return {
+                valid: false,
+                error: {
+                    code: 'INVALID_OPERATION',
+                    message: 'Redline operations require exactly one of string "modified" or non-empty "replacements".'
+                }
+            };
+        }
+        if (hasReplacements) {
+            if (rawType != null && rawType !== '' && !['redline', 'replace'].includes(rawType)) {
+                return {
+                    valid: false,
+                    error: {
+                        code: 'INVALID_OPERATION',
+                        message: 'Localized replacements are supported only for redline or replace operations.'
+                    }
+                };
+            }
+            if (
+                target.revisionView !== 'accepted'
+                || target.captureRef
+                || target.occurrence != null
+                || normalized.captureKey
+                || normalized.targetEndDescriptor
+                || normalized.targetEndRef != null
+                || /\r|\n/.test(target.text || '')
+            ) {
+                return {
+                    valid: false,
+                    error: {
+                        code: 'INVALID_OPERATION',
+                        message: 'Localized replacements v1 require one batch-start accepted-view paragraph target without captures, target occurrence, or a target range.'
+                    }
+                };
+            }
+            const replacementValidation = validateExactReplacementRequests(normalized.replacements);
+            if (!replacementValidation.ok) {
+                return { valid: false, error: replacementValidation.error };
+            }
+            if (replacementValidation.replacements.some(replacement => /\r|\n/.test(replacement.replace))) {
+                return {
+                    valid: false,
+                    error: {
+                        code: 'INVALID_OPERATION',
+                        message: 'Localized replacements v1 cannot insert paragraph breaks.'
+                    }
+                };
+            }
+            normalized.replacements = replacementValidation.replacements;
+        }
     }
 
     if (normalized.operationKind === 'rejected-insert') {

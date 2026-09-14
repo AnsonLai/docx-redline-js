@@ -30,10 +30,12 @@ for (const contract of [
     '--operations -',
     '--profile agent',
     '--around 3',
+    '--context-range 1:3',
     'selection.nextAfter',
     'humanReference',
     'docx-redline apply --help',
     'completion: true',
+    'acceptedViewMatchesCompiledText: true',
     'error.recovery.action',
     'retryPlan.base: "original"',
     'slice-cross-author'
@@ -66,10 +68,13 @@ for (const heading of [
     assert(skillAuthoring.includes(heading), `skill authoring omitted ${heading}`);
 }
 for (const capability of [
-    'contract version 7',
+    'contract version 8',
     'agent-safety-profile-v2',
     'deduplicated-cli-receipts',
-    'recovery-envelope-v1'
+    'recovery-envelope-v1',
+    'localized-replacements-v1',
+    'speculative-search-apply-v1',
+    'localized-change-summary-v1'
 ]) {
     assert(skillAuthoring.includes(capability), `skill authoring omitted ${capability}`);
 }
@@ -85,15 +90,17 @@ assert.equal(skillAuthoring.includes('TARGET_NOT_FOUND'), false, 'skill guidance
 assert.match(skillAuthoring, /operations file and serializer-backed stdin are peer transports/i);
 assert.match(skillAuthoring, /AI Redliner.*valid visible fallback/);
 
+const launchCommand = firstBashCommandAfter(launchCard, '## Ordinary document edits');
+assert.match(launchCommand, /^docx-redline extract .*--search .*--around/, launchCommand);
+
 for (const [text, heading] of [
-    [launchCard, '## Ordinary document edits'],
     [fastStart, '## CLI fallback'],
     [readme, '### Agent CLI'],
     [knowledgeBase, '#### Standard Workflow (Fast & Direct)'],
     [skillAuthoring, '## Ordinary generated workflow']
 ]) {
     const firstCommand = firstBashCommandAfter(text, heading);
-    assert.match(firstCommand, /^docx-redline extract .*--search .*--around/, `${heading}: ${firstCommand}`);
+    assert.match(firstCommand, /^docx-redline apply .*--find .*--replace/, `${heading}: ${firstCommand}`);
 }
 
 for (const publishedDoc of [
@@ -104,12 +111,14 @@ for (const publishedDoc of [
     'docs/schemas/document-operations.schema.json',
     'docs/validation-reports/2026-09-12-agent-protocol-rollout.md',
     'docs/validation-reports/2026-09-12-agent-cli-discovery-baseline.md',
-    'docs/validation-reports/2026-09-13-agent-cli-efficiency-rollout.md'
+    'docs/validation-reports/2026-09-13-agent-cli-efficiency-rollout.md',
+    'docs/validation-reports/2026-09-14-localized-patching-rollout.md'
 ]) {
     assert(packageJson.files.includes(publishedDoc), `package omitted ${publishedDoc}`);
 }
 assert.equal(packageJson.files.includes('docs/'), false);
 assert.equal(packageJson.files.some(entry => entry === 'examples/' || entry.startsWith('examples/')), false);
 assert(packageJson.files.includes('!scripts/benchmark-agent-workflow.mjs'));
+assert(packageJson.files.includes('!scripts/benchmark-localized-turn-reduction.mjs'));
 
 console.log('agent documentation contract tests passed');

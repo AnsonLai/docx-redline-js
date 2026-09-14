@@ -23,7 +23,7 @@ try {
     const input = path.join(directory, 'input.docx');
     await writeFile(input, fixture);
     const version = await executeCli(['version']);
-    assert.equal(version.contractVersion, 7);
+    assert.equal(version.contractVersion, 8);
     assert(version.capabilities.includes('operations-stdin'));
     assert(version.capabilities.includes('agent-safety-profile-v2'));
     assert(version.capabilities.includes('deduplicated-cli-receipts'));
@@ -33,6 +33,9 @@ try {
     assert(version.capabilities.includes('inspection-context-v1'));
     assert(version.capabilities.includes('bounded-inspection-v1'));
     assert(version.capabilities.includes('human-document-references-v1'));
+    assert(version.capabilities.includes('localized-replacements-v1'));
+    assert(version.capabilities.includes('speculative-search-apply-v1'));
+    assert(version.capabilities.includes('localized-change-summary-v1'));
 
     const inspected = await executeCli(['extract', input, '--index', '53']);
     const target = inspected.paragraphs[0];

@@ -31,6 +31,12 @@ export interface RejectedTextInsertionAnchor {
   offset: number;
 }
 
+export interface LocalizedReplacement {
+  find: string;
+  replace: string;
+  occurrence?: number;
+}
+
 export interface DocumentOperationBase {
   operationId?: string;
   captureKey?: string;
@@ -43,15 +49,31 @@ export interface DocumentOperationBase {
   insertionAffinity?: InsertionAffinity;
 }
 
-export interface RedlineDocumentOperation extends DocumentOperationBase {
-  type: 'redline' | 'replace' | 'format' | 'list-change' | 'table-reconciliation' | 'insert';
-  modified: string;
+interface RedlineDocumentOperationCommon extends DocumentOperationBase {
   structuredContent?: boolean;
   targetEnd?: ParagraphTargetDescriptor;
   targetEndRef?: number | string | null;
   /** Required when type is insert and target.revisionView is rejected. */
   anchor?: RejectedTextInsertionAnchor;
 }
+
+export type RedlineDocumentOperation =
+  | (RedlineDocumentOperationCommon & {
+      type: 'redline' | 'replace';
+      modified: string;
+      replacements?: never;
+    })
+  | (RedlineDocumentOperationCommon & {
+      type: 'redline' | 'replace';
+      modified?: never;
+      /** Exact, case-sensitive replacements in one batch-start accepted-view paragraph. */
+      replacements: LocalizedReplacement[];
+    })
+  | (RedlineDocumentOperationCommon & {
+      type: 'format' | 'list-change' | 'table-reconciliation' | 'insert';
+      modified: string;
+      replacements?: never;
+    });
 
 export interface RestoreDocumentOperation extends DocumentOperationBase {
   type: 'restore';
@@ -190,6 +212,34 @@ export interface MutationReceipt {
   warnings: string[];
 }
 
+export interface LocalizedReplacementChange {
+  kind: 'localized_replacement';
+  committed: boolean;
+  finalDisposition: 'applied' | 'rolled_back';
+  target: {
+    paragraphId?: string;
+    index?: number;
+    fingerprint?: string;
+    humanReference?: string;
+  };
+  context?: {
+    search?: string;
+    range?: string;
+    anchorMatchCount?: number;
+    humanReference?: string;
+  };
+  replacements: Array<{
+    find: string;
+    replace: string;
+    occurrence?: number;
+    beforeExcerpt: string;
+    afterExcerpt: string;
+  }>;
+  verification: {
+    acceptedViewMatchesCompiledText: boolean;
+  };
+}
+
 export interface DocumentOperationResult {
   documentXml: string;
   hasChanges: boolean;
@@ -207,6 +257,7 @@ export interface DocumentOperationResult {
   resolvedTarget?: ResolvedDocumentTarget;
   resolvedAnchor?: ResolvedCommentAnchor;
   receipt?: MutationReceipt;
+  change?: LocalizedReplacementChange;
 }
 
 export interface BatchOperationItemResult {
@@ -221,6 +272,7 @@ export interface BatchOperationItemResult {
   warnings?: string[];
   error?: RedlineError;
   receipt?: MutationReceipt;
+  change?: LocalizedReplacementChange;
 }
 
 export interface DocumentOperationBatchResult {

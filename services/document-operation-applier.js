@@ -5,6 +5,7 @@ import {
     validateDocumentOperation
 } from './document-operation-contract.js';
 import { DocumentOperationSession } from './document-operation-session.js';
+import { compileOperationBatch } from './operation-batch-compiler.js';
 import {
     validateRevisionToken,
     computeDocumentPartsRevisionToken,
@@ -31,6 +32,8 @@ import {
 import { validateRedlineOoxml } from '../core/redline-validation.js';
 import { subtractValidationIssueMultiset, validationErrors } from '../core/validation-delta.js';
 import { normalizeErrorWithRecovery } from './error-recovery.js';
+import { extractCanonicalParagraphText } from '../core/paragraph-text.js';
+import { buildLocalizedReplacementChange } from './localized-replacement-compiler.js';
 
 export function normalizeOperationError(error, context = {}) {
     return normalizeErrorWithRecovery(error, context);
@@ -60,7 +63,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
         };
     }
 
-    const operation = validation.operation || normalizeDocumentOperation(op);
+    let operation = validation.operation || normalizeDocumentOperation(op);
     const authorUsed = resolveDocumentOperationAuthor(operation, author, getDefaultAuthor());
 
     if (
@@ -157,7 +160,42 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
         };
     }
 
+    if (Array.isArray(operation.replacements)) {
+        const compilation = compileOperationBatch(session.document, [op], {
+            strictTargets: options.strictTargets !== false,
+            onInfo: options.onInfo,
+            onWarn: options.onWarn
+        });
+        const compilationError = compilation.bindings[0]?.error || compilation.conflicts[0] || null;
+        if (compilationError) {
+            return {
+                documentXml,
+                hasChanges: false,
+                status: 'error',
+                error: normalizeOperationError(compilationError, errorContext),
+                operationType: operation.operationKind,
+                authorUsed,
+                receipt: createEmptyReceipt(operationIndex, operation.operationId, authorUsed, 'refused')
+            };
+        }
+        const compiledValidation = validateDocumentOperation(compilation.compiledOperations[0]);
+        if (!compiledValidation.valid) {
+            return {
+                documentXml,
+                hasChanges: false,
+                status: 'error',
+                error: normalizeOperationError(compiledValidation.error, errorContext),
+                operationType: operation.operationKind,
+                authorUsed,
+                receipt: createEmptyReceipt(operationIndex, operation.operationId, authorUsed, 'refused')
+            };
+        }
+        session.sourceTargetRegistry = compilation.registry;
+        operation = compiledValidation.operation;
+    }
+
     const resolutionCapture = {};
+    let localizedChange = null;
     const savepoint = session.createSavepoint();
     session.receiptCollector?.beginOperation(
         operationIndex,
@@ -375,6 +413,26 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                     operationIndex
                 );
             }
+            if (operation._localizedReplacementCompilation) {
+                let outputText = null;
+                if (operation._compiledSourceId && session.sourceTargetRegistry) {
+                    const bound = session.sourceTargetRegistry.resolve(
+                        operation._compiledSourceId,
+                        session.document
+                    );
+                    if (bound.paragraph) {
+                        outputText = extractCanonicalParagraphText(bound.paragraph, {
+                            revisionView: 'accepted'
+                        });
+                    }
+                }
+                localizedChange = buildLocalizedReplacementChange(
+                    operation._localizedReplacementCompilation,
+                    outputText,
+                    resolutionCapture.resolvedTarget || {},
+                    operation._speculativeContext || null
+                );
+            }
             if (operation.captureKey && session.captureTable) {
                 session.captureTable.set(
                     operation.captureKey,
@@ -427,6 +485,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
             operationType: operation.operationKind,
             authorUsed,
             receipt: operationReceipt,
+            ...(localizedChange ? { change: localizedChange } : {}),
             ...resolutionCapture
         };
     } catch (error) {

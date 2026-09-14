@@ -34,9 +34,16 @@ assert.match(applyHelp.notes.join(' '), /source is never overwritten unless --in
 assert.match(applyHelp.notes.join(' '), /serializer-backed stdin/i);
 assert.match(applyHelp.notes.join(' '), /profile keeps progressive execution unless --atomic/i);
 assert(applyHelp.options.some(item => item.name === '--compact'));
-assert.deepEqual(applyHelp.examples.map(item => item.operation.type), ['redline', 'comment', 'restore']);
-assert.equal(applyHelp.examples[2].operation.target.revisionView, 'rejected');
+assert(applyHelp.options.some(item => item.name.includes('--target-id')));
+assert(applyHelp.options.some(item => item.name.includes('--find')));
+assert(applyHelp.options.some(item => item.name.includes('--replace')));
+assert(applyHelp.options.some(item => item.name.includes('--occurrence')));
+assert.deepEqual(applyHelp.examples.map(item => item.operation.type), ['redline', 'redline', 'comment', 'restore']);
+assert.equal(applyHelp.examples[3].operation.target.revisionView, 'rejected');
 assert.equal(applyHelp.examples[0].operation.modified, 'Revised clause.');
+assert.deepEqual(applyHelp.examples[1].operation.replacements, [
+    { find: 'thirty (30) days', replace: 'sixty (60) days' }
+]);
 
 const extractHelp = await executeCli(['extract', '--help']);
 assert.match(extractHelp.notes.join(' '), /case-insensitive/i);

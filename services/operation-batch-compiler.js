@@ -9,15 +9,23 @@ import {
     normalizeTargetDescriptor,
     validateDocumentOperation
 } from './document-operation-contract.js';
+import { compileExactReplacements } from './localized-replacement-compiler.js';
 
 const TEXT_WRITE_KINDS = new Set(['redline', 'restore', 'rejected-insert']);
 const FORMAT_WRITE_KINDS = new Set(['highlight', 'format', 'paragraph-format']);
 
 function normalizedError(error) {
+    const details = {};
+    if (error && typeof error === 'object') {
+        for (const [key, value] of Object.entries(error)) {
+            if (key === 'name' || key === 'stack' || key === 'message' || key === 'code') continue;
+            details[key] = value;
+        }
+    }
     return {
         code: typeof error?.code === 'string' && error.code ? error.code : 'OPERATION_ERROR',
         message: error?.message || String(error),
-        ...(Array.isArray(error?.candidates) ? { candidates: error.candidates } : {})
+        ...details
     };
 }
 
@@ -265,6 +273,30 @@ export function compileOperationBatch(xmlDoc, operations = [], options = {}) {
                 compiled._compiledSourceId = startId;
                 compiled._compiledResolvedBy = start.resolvedBy;
                 if (binding.warnings.length > 0) compiled._compiledWarnings = binding.warnings;
+
+                if (Array.isArray(operation.replacements)) {
+                    const patchCompilation = compileExactReplacements(
+                        start.metadata.text,
+                        operation.replacements
+                    );
+                    if (!patchCompilation.ok) {
+                        throw Object.assign(new Error(patchCompilation.error.message), patchCompilation.error);
+                    }
+                    compiled.modified = patchCompilation.desiredText;
+                    delete compiled.replacements;
+                    compiled._localizedReplacementCompilation = {
+                        sourceText: start.metadata.text,
+                        desiredText: patchCompilation.desiredText,
+                        replacements: patchCompilation.replacements
+                    };
+                    const canonicalValidation = validateDocumentOperation(compiled);
+                    if (!canonicalValidation.valid) {
+                        throw Object.assign(
+                            new Error(canonicalValidation.error.message),
+                            canonicalValidation.error
+                        );
+                    }
+                }
 
                 const targetEndDescriptor = operation.targetEndDescriptor
                     || (operation.targetEndRef != null

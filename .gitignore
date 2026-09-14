@@ -15,7 +15,7 @@ docs/releases/*
 !docs/plans/2026-09-05-structural-revisions-and-fidelity-oracles.md
 !docs/plans/2026-09-08-cross-author-revision-slicing.md
 !docs/plans/2026-09-12-agent-performance-and-execution-protocol.md
-!docs/plans/2026-09-12-agent-cli-discovery-and-context-efficiency.md
+!docs/plans/2026-09-14-localized-patching-and-turn-reduction.md
 !docs/plans/structural-revision-capability-matrix.md
 !docs/plans/completed/
 docs/plans/completed/*

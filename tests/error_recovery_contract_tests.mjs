@@ -109,7 +109,7 @@ assert.equal(conflictingResult.retryPlan.base, 'original');
 assert.equal(conflictingResult.retryPlan.replayWholeBatch, true);
 
 const version = await executeCli(['version']);
-assert.equal(version.contractVersion, 7);
+assert.equal(version.contractVersion, 8);
 assert(version.capabilities.includes('batch-start-source-binding'));
 assert(version.capabilities.includes('recovery-envelope-v1'));
 assert(version.capabilities.includes('require-complete-exit'));
@@ -121,6 +121,9 @@ assert(version.capabilities.includes('command-help-v1'));
 assert(version.capabilities.includes('inspection-context-v1'));
 assert(version.capabilities.includes('bounded-inspection-v1'));
 assert(version.capabilities.includes('human-document-references-v1'));
+assert(version.capabilities.includes('localized-replacements-v1'));
+assert(version.capabilities.includes('speculative-search-apply-v1'));
+assert(version.capabilities.includes('localized-change-summary-v1'));
 
 const temp = await mkdtemp(path.join(tmpdir(), 'docx-recovery-contract-'));
 try {

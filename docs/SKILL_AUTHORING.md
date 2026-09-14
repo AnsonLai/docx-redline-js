@@ -4,6 +4,31 @@ Use this page when creating or updating an agent skill, MCP server, or custom
 harness for `@ansonlai/docx-redline-js`. Ordinary document-editing agents should
 load [Agent Fast Start](AGENT_FAST_START.md), not this design contract.
 
+> [!WARNING]
+> Before 1.0, every skill or harness must identify and pin its exact tested
+> library release and required CLI contract/capabilities. Treat any different
+> release or contract as unverified until compatibility tests pass.
+
+For example, an integration authored for the planned contract-8 release should
+record a compatibility declaration equivalent to:
+
+```json
+{
+  "testedLibraryRelease": "0.7.0",
+  "requiredCliContractVersion": 8,
+  "requiredCapabilities": [
+    "command-help-v1",
+    "recovery-envelope-v1",
+    "localized-replacements-v1",
+    "speculative-search-apply-v1",
+    "localized-change-summary-v1"
+  ]
+}
+```
+
+The package pin anchors the release; runtime negotiation proves the executable
+exposes the required contract. A new release cannot inherit an old claim.
+
 ## Runtime negotiation
 
 Run this before the first document operation when the skill vendors or invokes
@@ -13,14 +38,11 @@ the CLI:
 docx-redline version
 ```
 
-Require contract version 7 and only the capabilities the integration uses. A
-typical shell skill should require `command-help-v1`, `inspection-context-v1`,
-`bounded-inspection-v1`, `human-document-references-v1`,
+Require contract version 8 (the currently declared contract) and only the
+capabilities the integration uses. A typical shell skill should require
 `agent-safety-profile-v2`, `deduplicated-cli-receipts`, and
-`recovery-envelope-v1`. Require `operations-stdin` or `compact-cli-json-v1` only
-when the host uses those features. Fail closed with an upgrade instruction when
-a required capability is absent. Never inspect `dist/`, minified source, or ZIP
-parts to compensate for a stale runtime.
+`recovery-envelope-v1`. Require other capabilities only when used. Fail closed
+when one is absent; never inspect bundles or ZIP parts as a fallback.
 
 ## Safety invariants
 
@@ -52,14 +74,6 @@ Choose and document these separately from safety invariants:
 | Reviewer identity | flag, operation author, environment, or fallback | `AI Redliner` is a valid visible fallback. `DOCX_REDLINE_AUTHOR` is an optional harness preference, not a guard. |
 | Output naming | derived sibling or explicit destination | Keep source immutability unless in-place mutation is deliberately authorized. |
 
-Examples of valid profile composition:
-
-```bash
-docx-redline apply input.docx --operations operations.json --profile agent --output reviewed.docx
-docx-redline apply input.docx --operations operations.json --profile agent --atomic --output reviewed.docx
-docx-redline apply input.docx --operations operations.json --profile agent --existing-revisions slice-cross-author --output reviewed.docx
-```
-
 Check `effectiveOptions` rather than assuming the resolved transaction,
 revision, author, or redline policy.
 
@@ -80,11 +94,26 @@ return the full structured result rather than recreating the CLI serializer.
 
 ## Ordinary generated workflow
 
-The first executable document-editing example in a generated skill should be a
-focused contextual extraction:
+For an exact mechanical edit whose existing and replacement literals are known,
+the first executable example should use the one-turn fast path:
 
 ```bash
-docx-redline extract input.docx --search "force majeure" --around 3
+docx-redline apply input.docx --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
+```
+
+If the literal is not globally unique, scope it with a meaningful visible
+anchor. A heading followed by a multi-paragraph provision should use a
+directional window such as `--search "Section 4.1" --context-range 1:3`;
+`--around 3` is symmetric and should be used only when either side is eligible.
+Require the returned localized `change` evidence, including `committed: true`
+and `verification.acceptedViewMatchesCompiledText: true`.
+
+Semantic requests such as “make this provision mutual” still begin with focused
+contextual extraction because the agent must identify and draft the complete
+legal change:
+
+```bash
+docx-redline extract input.docx --search "termination" --around 3
 ```
 
 Use `selection.nextAfter` with `--after` when truncated. When a search for
@@ -119,8 +148,15 @@ an exact machine target with a human-facing reference.
 
 ## Generation checklist
 
+- The exact tested library release is recorded and pinned; floating installs
+  are rejected while the library remains before 1.0.
+- The required CLI contract version and minimum capability set are declared,
+  checked at runtime, and updated only after compatibility tests pass.
 - Runtime version and required capabilities are checked once.
-- The first ordinary edit command is focused `extract --search ... --around`.
+- Literal edits use localized replacements and one-turn speculative apply;
+  semantic drafting starts with focused extraction.
+- Successful localized edits require committed, post-mutation `change`
+  verification before completion is reported.
 - Safety invariants are not mixed with transaction or revision-policy choices.
 - Operations-file and stdin examples use structured serialization.
 - The four-field recovery contract precedes any diagnostic commentary.

@@ -23,6 +23,8 @@ export type {
   DocumentOperationBatchResult,
   HighlightDocumentOperation,
   InsertionAffinity,
+  LocalizedReplacement,
+  LocalizedReplacementChange,
   OperationConflict,
   OperationDependencyPlan,
   OperationPreflightItemResult,

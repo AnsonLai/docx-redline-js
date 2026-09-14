@@ -40,6 +40,14 @@ const APPLY_EXAMPLES = Object.freeze([
         }
     },
     {
+        description: 'Localized tracked replacement in one strong accepted-view paragraph target.',
+        operation: {
+            type: 'redline',
+            target: { paragraphId: '1A2B3C4D' },
+            replacements: [{ find: 'thirty (30) days', replace: 'sixty (60) days' }]
+        }
+    },
+    {
         description: 'Comment the complete target paragraph.',
         operation: {
             type: 'comment',
@@ -116,7 +124,7 @@ export const CLI_COMMAND_HELP = Object.freeze({
     },
     apply: {
         summary: 'Apply canonical document operations and write a derived DOCX.',
-        usage: 'docx-redline apply <file.docx> --operations <file.json|-> [options]',
+        usage: 'docx-redline apply <file.docx> (--operations <file.json|->|<inline operation>) [options]',
         options: [
             HELP,
             option('operations', '--operations <file.json|->, --operations-file <file>', 'Read an operation array/envelope from a UTF-8 file or serializer-backed stdin.'),
@@ -124,7 +132,14 @@ export const CLI_COMMAND_HELP = Object.freeze({
             option('noClobber', '--no-clobber', 'Alias of --no-overwrite.'),
             option('expectedRevision', '--expected-revision <token|json>', 'Reject a stale package revision.'),
             option('target', '--target <text>', 'Inline one-operation target text.'),
+            option('targetId', '--target-id <paragraphId>', 'Strong inline target using a paragraphId from fresh inspection.'),
             option('modified', '--modified <text>', 'Complete desired accepted-view target content.'),
+            option('find', '--find <exact text>', 'Exact case-sensitive source span for one localized replacement.'),
+            option('replace', '--replace <text>', 'Replacement text for --find; an empty string deletes the span.'),
+            option('occurrence', '--occurrence <N>', 'Positive 1-based --find occurrence within the uniquely resolved target paragraph.'),
+            option('search', '--search <text>', 'Case-insensitive context anchor for speculative find/replace; all matching anchors are considered.'),
+            option('contextRange', '--context-range <START:END>', 'Signed inclusive paragraph offsets (-20..20) from each --search anchor; 1:3 means strictly the next three paragraphs.'),
+            option('around', '--around <N>', 'With --search, shorthand for symmetric --context-range -N:N (0-20).'),
             option('comment', '--comment <text>', 'Create an inline comment operation.'),
             option('textToComment', '--text-to-comment <text>', 'Anchor an inline comment to an exact subspan.'),
             option('targetRef', '--target-ref <N>', 'Disambiguate an inline target with a 1-based machine index.'),
@@ -138,6 +153,10 @@ export const CLI_COMMAND_HELP = Object.freeze({
         ],
         notes: [
             'modified is complete desired accepted-view content, not only inserted words.',
+            'Use either modified or find/replace. A strong accepted-view target is preferred when already known.',
+            'Without a strong target, find/replace may resolve globally or within --search plus a directional context range; it fails unless exactly one paragraph is eligible.',
+            '--occurrence disambiguates repeated text only within one uniquely selected paragraph, never between paragraphs.',
+            'Inline find/replace accepts one replacement; use operations JSON for multiple simultaneous replacements.',
             'Use a structured JSON file or serializer-backed stdin; never interpolate legal text through raw shell quoting.',
             'The source is never overwritten unless --in-place is explicit.',
             'The agent profile keeps progressive execution unless --atomic is explicit and does not change existing-revision policy.',
@@ -215,4 +234,3 @@ export function buildCliHelp(command = null) {
         documentation: [...CLI_DOCUMENTATION_URLS]
     };
 }
-

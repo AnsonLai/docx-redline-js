@@ -482,20 +482,26 @@ Use this for everything by default. `apply` is fast, progressive, and self-valid
 
 The short route for a document-editing request is:
 
-1. Run one focused `extract` for the clauses or range being edited. Search is a
-   case-insensitive substring match; add `--around 3` when surrounding drafting
-   context is needed. Copy `exactText` plus `paragraphId` or `fingerprint`.
-2. Build the final operations from the operation table above. Use one operation
+1. For an exact mechanical change with known old and new literals, use localized
+   `--find`/`--replace`. Omit the target for global fail-closed resolution, or
+   scope a visible heading with `--search` and a directional range such as
+   `--context-range 1:3`. Repeated anchor matches are unioned; one eligible patch
+   paragraph is still required. `--occurrence` selects only within that paragraph.
+2. For semantic drafting, run one focused `extract`. Add `--around 3` when
+   surrounding context on either side is needed, then copy `exactText` plus
+   `paragraphId` or `fingerprint`.
+3. Build the final operations from the operation table above. Use one operation
    per target paragraph, and consolidate multiple changes to that paragraph.
-3. Run `apply` once per stable batch. Strong inspected targets are bound against
+4. Run `apply` once per stable batch. Strong inspected targets are bound against
    the batch-start document, so independent operations do not need manual
    bottom-up sorting around structural edits. Consolidate multiple complete
    desired states for the same source. A unique exact reference to paragraph
    text created elsewhere in the batch is scheduled automatically; use explicit
    captures/selectors for non-unique or advanced created-content dependencies.
-4. Walk every result and require `completion: true`, `written: true`, and no
-   per-operation error.
-5. Run a focused `extract` on changed clauses only when placement or list/table
+5. Walk every result and require `completion: true`, `written: true`, and no
+   per-operation error. For localized patches also require committed `change`
+   evidence and positive accepted-view verification.
+6. Run a focused `extract` on changed clauses only when placement or list/table
    structure needs confirmation.
 
 Do not probe operation behavior with disposable apply commands or read a vendor
@@ -503,22 +509,28 @@ bundle before this route. If `apply` returns an error, use the recovery matrix
 below and make one cause-specific correction.
 
 ```bash
-# 1. Focused contextual discovery
+# 1. Globally unique mechanical edit in one call
+docx-redline apply contract.docx --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
+
+# 2. Mechanical edit strictly within three paragraphs after a visible heading
+docx-redline apply contract.docx --search "Section 4.1" --context-range 1:3 --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
+
+# 3. Focused contextual discovery for semantic drafting
 docx-redline extract contract.docx --search "termination" --around 3
 
-# 2. Inline one-liner edit (fastest for 1–2 edits; no JSON file needed)
+# 4. Inline complete-paragraph edit
 docx-redline apply contract.docx --target "Original clause" --modified "New clause" --output reviewed.docx
 
-# 3. Direct edit without tracked changes (clean text, no revision clutter)
+# 5. Direct edit without tracked changes (clean text, no revision clutter)
 docx-redline apply contract.docx --target "Typo fix" --modified "Fixed typo" --no-redlines --output clean.docx
 
-# 4. Cross-author edit inside another reviewer's pending insertion
+# 6. Cross-author edit inside another reviewer's pending insertion
 docx-redline apply contract.docx --target "Pending clause text" --modified "Updated clause text" --existing-revisions slice-cross-author --output reviewed.docx
 
-# 5. Batch operations with ops.json
+# 7. Batch operations with ops.json
 docx-redline apply contract.docx --operations operations.json --output reviewed.docx
 
-# 6. Serializer-backed stdin with compact stdout
+# 8. Serializer-backed stdin with compact stdout
 node emit-operations.mjs | docx-redline apply contract.docx --operations - --profile agent --compact --output reviewed.docx
 ```
 

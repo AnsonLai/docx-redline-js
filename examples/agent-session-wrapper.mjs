@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { openDocx } from '../node/index.js';
 import { normalizeErrorWithRecovery } from '../services/error-recovery.js';
+import { compileExactReplacements as compileCoreExactReplacements } from '../services/localized-replacement-compiler.js';
 
 /**
  * Demonstration-only defaults for an AI-agent document session.
@@ -90,173 +91,14 @@ function invalidRequest(message, field = null) {
     };
 }
 
-function patchError(code, message, field, recoveryAction, details = {}) {
-    return normalizeErrorWithRecovery({
-        code,
-        message,
-        field,
-        ...details,
-        recovery: {
-            action: recoveryAction,
-            sameArgumentsSafe: false,
-            requiresReinspection: false,
-            requiresUserAuthorization: false
-        }
-    });
-}
-
-function occurrenceOffsets(sourceText, find) {
-    const offsets = [];
-    let from = 0;
-    while (from <= sourceText.length - find.length) {
-        const start = sourceText.indexOf(find, from);
-        if (start < 0) break;
-        offsets.push(start);
-        from = start + 1;
-    }
-    return offsets;
-}
-
-function offsetCandidate(sourceText, start, length) {
-    const excerptStart = Math.max(0, start - 40);
-    const excerptEnd = Math.min(sourceText.length, start + length + 40);
-    return {
-        start,
-        end: start + length,
-        excerpt: sourceText.slice(excerptStart, excerptEnd)
-    };
-}
-
 /**
  * Compiles exact, source-relative replacement intents into complete desired text.
  * All ranges are resolved before mutation so replacements are simultaneous.
  */
 export function compileExactReplacements(sourceText, replacements, field = 'replacements') {
-    if (typeof sourceText !== 'string') {
-        return {
-            ok: false,
-            error: invalidRequest('Localized replacements require string source text.', field).error
-        };
-    }
-    if (!Array.isArray(replacements) || replacements.length === 0) {
-        return {
-            ok: false,
-            error: invalidRequest('replacements must be a non-empty array.', field).error
-        };
-    }
-
-    const resolved = [];
-    for (let index = 0; index < replacements.length; index += 1) {
-        const replacement = replacements[index];
-        const itemField = `${field}[${index}]`;
-        if (!replacement || typeof replacement !== 'object' || Array.isArray(replacement)) {
-            return { ok: false, error: invalidRequest(`${itemField} must be an object.`, itemField).error };
-        }
-        if (typeof replacement.find !== 'string' || replacement.find.length === 0) {
-            return { ok: false, error: invalidRequest(`${itemField}.find must be a non-empty string.`, `${itemField}.find`).error };
-        }
-        if (typeof replacement.replace !== 'string') {
-            return { ok: false, error: invalidRequest(`${itemField}.replace must be a string.`, `${itemField}.replace`).error };
-        }
-        const occurrence = replacement.occurrence == null ? null : Number(replacement.occurrence);
-        if (occurrence != null && (!Number.isInteger(occurrence) || occurrence < 1)) {
-            return { ok: false, error: invalidRequest(`${itemField}.occurrence must be a positive integer.`, `${itemField}.occurrence`).error };
-        }
-
-        const offsets = occurrenceOffsets(sourceText, replacement.find);
-        if (offsets.length === 0 || (occurrence != null && occurrence > offsets.length)) {
-            return {
-                ok: false,
-                error: patchError(
-                    'PATCH_SOURCE_NOT_FOUND',
-                    occurrence == null
-                        ? `Exact patch source was not found: "${replacement.find}".`
-                        : `Occurrence ${occurrence} of exact patch source was not found: "${replacement.find}".`,
-                    itemField,
-                    'change_patch',
-                    { matchCount: offsets.length }
-                )
-            };
-        }
-        if (occurrence == null && offsets.length > 1) {
-            return {
-                ok: false,
-                error: patchError(
-                    'AMBIGUOUS_PATCH_SOURCE',
-                    `Exact patch source matched ${offsets.length} locations; provide occurrence.`,
-                    itemField,
-                    'choose_occurrence',
-                    { candidates: offsets.map(start => offsetCandidate(sourceText, start, replacement.find.length)) }
-                )
-            };
-        }
-
-        const start = offsets[(occurrence || 1) - 1];
-        resolved.push({
-            requestIndex: index,
-            start,
-            end: start + replacement.find.length,
-            find: replacement.find,
-            replace: replacement.replace,
-            occurrence: occurrence || 1
-        });
-    }
-
-    resolved.sort((left, right) => left.start - right.start || left.end - right.end || left.requestIndex - right.requestIndex);
-    const unique = [];
-    for (const replacement of resolved) {
-        const previous = unique.at(-1);
-        if (previous && replacement.start === previous.start && replacement.end === previous.end) {
-            if (replacement.replace !== previous.replace) {
-                return {
-                    ok: false,
-                    error: patchError(
-                        'CONFLICTING_PATCHES',
-                        `Localized replacements ${previous.requestIndex + 1} and ${replacement.requestIndex + 1} assign different text to the same source range.`,
-                        field,
-                        'combine_patches',
-                        { replacementIndexes: [previous.requestIndex + 1, replacement.requestIndex + 1] }
-                    )
-                };
-            }
-            continue;
-        }
-        if (previous && replacement.start < previous.end) {
-            return {
-                ok: false,
-                error: patchError(
-                    'OVERLAPPING_PATCHES',
-                    `Localized replacements ${previous.requestIndex + 1} and ${replacement.requestIndex + 1} overlap.`,
-                    field,
-                    'combine_patches',
-                    { replacementIndexes: [previous.requestIndex + 1, replacement.requestIndex + 1] }
-                )
-            };
-        }
-        unique.push(replacement);
-    }
-
-    let cursor = 0;
-    let desiredText = '';
-    for (const replacement of unique) {
-        desiredText += sourceText.slice(cursor, replacement.start);
-        desiredText += replacement.replace;
-        cursor = replacement.end;
-    }
-    desiredText += sourceText.slice(cursor);
-
-    return {
-        ok: true,
-        desiredText,
-        replacements: unique.map(replacement => ({
-            requestIndex: replacement.requestIndex + 1,
-            start: replacement.start,
-            end: replacement.end,
-            occurrence: replacement.occurrence,
-            removedLength: replacement.end - replacement.start,
-            insertedLength: replacement.replace.length
-        }))
-    };
+    return compileCoreExactReplacements(sourceText, replacements, field, {
+        invalidCode: 'INVALID_AGENT_REQUEST'
+    });
 }
 
 /**

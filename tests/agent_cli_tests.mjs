@@ -60,6 +60,44 @@ try {
     const inlineExtracted = await executeCli(['extract', inlineOutput]);
     assert.ok(inlineExtracted.paragraphs[0].exactText.includes('Inline Replaced'));
 
+    // WP-02: one exact localized replacement may use a strong inline target.
+    const localizedOutput = path.join(directory, 'localized_output.docx');
+    const localizedApplied = await executeCli([
+        'apply', input,
+        '--target-id', 'A1',
+        '--find', 'Exact',
+        '--replace', 'Precise',
+        '--author', 'Inline Author',
+        '--output', localizedOutput
+    ]);
+    assert.equal(localizedApplied.status, 'ok', JSON.stringify(localizedApplied));
+    assert.equal(localizedApplied.written, true);
+    assert.equal(localizedApplied.completion, true);
+    assert.equal((await executeCli(['extract', localizedOutput])).paragraphs[0].exactText, '  Precise\ttext  ');
+
+    const localizedDeleteOutput = path.join(directory, 'localized_delete_output.docx');
+    const localizedDeleted = await executeCli([
+        'apply', input,
+        '--target-ref', '1',
+        '--find', 'Exact',
+        '--replace', '',
+        '--output', localizedDeleteOutput
+    ]);
+    assert.equal(localizedDeleted.status, 'ok', JSON.stringify(localizedDeleted));
+    assert.equal((await executeCli(['extract', localizedDeleteOutput])).paragraphs[0].exactText, '  \ttext  ');
+
+    const speculativeInlinePatch = await executeCli([
+        'apply', input, '--find', 'Exact', '--replace', 'Precise'
+    ]);
+    assert.equal(speculativeInlinePatch.status, 'ok', JSON.stringify(speculativeInlinePatch));
+    assert.equal(speculativeInlinePatch.completion, true);
+    assert.equal(speculativeInlinePatch.results[0].change.verification.acceptedViewMatchesCompiledText, true);
+    const mixedInlineForms = await executeCli([
+        'apply', input, '--target-id', 'A1', '--modified', 'Complete',
+        '--find', 'Exact', '--replace', 'Precise'
+    ]);
+    assert.equal(mixedInlineForms.error.code, 'INVALID_OPERATION');
+
     // WP09a: target matching may treat ASCII spaces and NBSPs as equivalent,
     // but mutation coordinates and Reject must use the exact resolved source.
     const whitespaceInput = path.join(directory, 'whitespace-source.docx');
@@ -102,6 +140,8 @@ try {
     const schemaText = await readFile(new URL('../docs/schemas/document-operations.schema.json', import.meta.url), 'utf8');
     const schema = JSON.parse(schemaText);
     assert(schema.$defs.base.properties.existingRevisions.enum.includes('slice-cross-author'));
+    assert.equal(schema.$defs.localizedReplacement.required.includes('find'), true);
+    assert.equal(schema.$defs.localizedReplacement.required.includes('replace'), true);
 } finally {
     await rm(directory, { recursive: true, force: true });
 }

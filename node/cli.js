@@ -10,7 +10,7 @@ import { normalizeErrorWithRecovery } from '../services/error-recovery.js';
 import { buildCliHelp, CLI_COMMANDS, commandOptionKeys } from './cli-help.js';
 
 const suffixes = { apply: 'redlined', accept: 'accepted', reject: 'rejected', 'delete-comments': 'comments-removed' };
-const CLI_CONTRACT_VERSION = 7;
+const CLI_CONTRACT_VERSION = 8;
 const DEFAULT_INSPECTION_LIMIT = 20;
 const INSPECTION_SOFT_BYTE_LIMIT = 48 * 1024;
 const CLI_CAPABILITIES = [
@@ -28,12 +28,25 @@ const CLI_CAPABILITIES = [
     'inspection-context-v1',
     'bounded-inspection-v1',
     'human-document-references-v1',
+    'localized-replacements-v1',
+    'speculative-search-apply-v1',
+    'localized-change-summary-v1',
     'deduplicated-cli-receipts',
     'compact-cli-json-v1'
 ];
 const commandOptions = Object.fromEntries(CLI_COMMANDS.map(command => [command, new Set(commandOptionKeys(command))]));
 
-function cliError(code, message, exitCode = 2, details) { return { status: 'error', error: normalizeErrorWithRecovery({ code, message, ...(details ? { details } : {}) }), exitCode }; }
+function cliError(code, message, exitCode = 2, details) {
+    return {
+        status: 'error',
+        error: normalizeErrorWithRecovery({
+            ...(details && typeof details === 'object' ? details : {}),
+            code,
+            message
+        }),
+        exitCode
+    };
+}
 const optionAliases = new Map([
     ['operationsFile', 'operations'],
     ['o', 'output'],
@@ -59,7 +72,7 @@ function parseArgs(argv) {
         const normalizedKey = rawKey.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
         const key = optionAliases.get(normalizedKey) || normalizedKey;
         if (inline !== undefined) flags[key] = inline;
-        else if (argv[index + 1] && (argv[index + 1] === '-' || !argv[index + 1].startsWith('-') || /^-\d/.test(argv[index + 1]))) flags[key] = argv[++index];
+        else if (argv[index + 1] !== undefined && (argv[index + 1] === '-' || !argv[index + 1].startsWith('-') || /^-\d/.test(argv[index + 1]))) flags[key] = argv[++index];
         else flags[key] = true;
     }
     return { command: positionals[0], input: positionals[1], extraPositionals: positionals.slice(2), flags };
@@ -150,31 +163,232 @@ async function readUtf8Stream(stream) {
     return Buffer.concat(chunks).toString('utf8');
 }
 
-async function readOperations(file, flags = {}, stdin = process.stdin) {
-    if (!file && flags?.target) {
+function parseContextRange(value) {
+    const match = String(value).match(/^\s*(-?\d+)\s*:\s*(-?\d+)\s*$/);
+    if (!match) throw invalidFilter('--context-range must use START:END with signed integer offsets from -20 through 20.');
+    const start = Number(match[1]);
+    const end = Number(match[2]);
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < -20 || end > 20 || start > end) {
+        throw invalidFilter('--context-range requires START <= END and both offsets from -20 through 20.');
+    }
+    return { start, end, text: `${start}:${end}` };
+}
+
+function speculativeCandidate(paragraph) {
+    return {
+        excerpt: boundedText(paragraph.exactText, 240),
+        index: paragraph.index,
+        ref: paragraph.ref,
+        paragraphId: paragraph.paragraphId,
+        fingerprint: paragraph.fingerprint,
+        revisionView: 'accepted',
+        inTable: paragraph.inTable,
+        humanReference: paragraph.humanReference,
+        provision: paragraph.provision,
+        nearestHeading: paragraph.nearestHeading
+    };
+}
+
+function speculativeError(code, message, details = {}) {
+    return Object.assign(new Error(message), { code, ...details });
+}
+
+function resolveSpeculativePatchTarget(document, flags) {
+    if (!document) throw speculativeError('INVALID_OPERATION', 'Speculative localized replacement requires an open document.');
+    if (flags.contextRange !== undefined && flags.around !== undefined) {
+        throw invalidFilter('Use --context-range or --around, not both.');
+    }
+    const search = flags.search === undefined ? null : String(flags.search).trim();
+    if (flags.search !== undefined && (!search || flags.search === true)) {
+        throw invalidFilter('--search must be non-empty text.');
+    }
+    if ((flags.contextRange !== undefined || flags.around !== undefined) && !search) {
+        throw invalidFilter('--context-range and --around require --search.');
+    }
+    let range = { start: 0, end: 0, text: '0:0' };
+    if (flags.contextRange !== undefined) range = parseContextRange(flags.contextRange);
+    if (flags.around !== undefined) {
+        const text = String(flags.around).trim();
+        if (!/^\d+$/.test(text) || Number(text) > 20) {
+            throw invalidFilter('--around must be an integer from 0 through 20.');
+        }
+        const around = Number(text);
+        range = { start: -around, end: around, text: `${-around}:${around}` };
+    }
+
+    const inspected = document.inspect({ revisionView: 'accepted' });
+    const paragraphs = Array.isArray(inspected.paragraphs) ? inspected.paragraphs : [];
+    let anchors = [];
+    let eligible = paragraphs;
+    if (search) {
+        const folded = search.toLowerCase();
+        anchors = paragraphs.filter(paragraph => paragraph.exactText.toLowerCase().includes(folded));
+        if (anchors.length === 0) {
+            throw speculativeError('TARGET_NOT_FOUND', `No paragraph matched search query: "${search}".`, {
+                context: { search, range: range.text },
+                recovery: { action: 'reinspect', requiresReinspection: true, sameArgumentsSafe: false }
+            });
+        }
+        const eligibleIndexes = new Set();
+        for (const anchor of anchors) {
+            const anchorPosition = anchor.index - 1;
+            for (let offset = range.start; offset <= range.end; offset += 1) {
+                const position = anchorPosition + offset;
+                if (position >= 0 && position < paragraphs.length) eligibleIndexes.add(position);
+            }
+        }
+        eligible = [...eligibleIndexes].sort((a, b) => a - b).map(position => paragraphs[position]);
+    }
+
+    const find = String(flags.find);
+    const matches = eligible.filter(paragraph => paragraph.exactText.includes(find));
+    const context = {
+        ...(search ? { search, range: range.text, anchorMatchCount: anchors.length } : {})
+    };
+    if (matches.length === 0) {
+        throw speculativeError('PATCH_SOURCE_NOT_FOUND', search
+            ? `No paragraph in the contextual range contains the exact patch source: "${find}".`
+            : `No paragraph contains the exact patch source: "${find}".`, {
+            context,
+            ...(anchors.length ? { candidates: anchors.map(speculativeCandidate) } : {}),
+            recovery: { action: 'reinspect', requiresReinspection: true, sameArgumentsSafe: false }
+        });
+    }
+    if (matches.length > 1) {
+        throw speculativeError('AMBIGUOUS_TARGET', `The exact patch source matched ${matches.length} eligible paragraphs.`, {
+            context,
+            candidates: matches.map(speculativeCandidate),
+            recovery: { action: 'choose_candidate', requiresReinspection: false, sameArgumentsSafe: false }
+        });
+    }
+    const selected = matches[0];
+    return {
+        target: {
+            exactText: selected.exactText,
+            ...(selected.paragraphId ? { paragraphId: selected.paragraphId } : {}),
+            fingerprint: selected.fingerprint,
+            revisionView: 'accepted',
+            inTable: selected.inTable
+        },
+        context: {
+            ...context,
+            humanReference: selected.humanReference
+        }
+    };
+}
+
+async function readOperations(file, flags = {}, stdin = process.stdin, document = null) {
+    const hasInlineTarget = flags?.target !== undefined
+        || flags?.targetId !== undefined
+        || flags?.targetRef !== undefined;
+    const hasInlinePatch = flags?.find !== undefined
+        || flags?.replace !== undefined
+        || flags?.occurrence !== undefined;
+    const hasSpeculativeScope = flags?.search !== undefined
+        || flags?.contextRange !== undefined
+        || flags?.around !== undefined;
+    if (file && (hasInlinePatch || hasSpeculativeScope)) {
+        throw Object.assign(new Error('Use --operations or inline speculative find/replace options, not both.'), {
+            code: 'INVALID_OPERATION'
+        });
+    }
+    if (hasInlineTarget && hasSpeculativeScope) {
+        throw Object.assign(new Error('Use a strong inline target or --search/--context-range, not both.'), {
+            code: 'INVALID_OPERATION'
+        });
+    }
+    if (!file && (hasInlineTarget || hasInlinePatch || hasSpeculativeScope)) {
+        if (hasSpeculativeScope && !hasInlinePatch) {
+            throw Object.assign(new Error('--search, --context-range, and --around are only valid with inline --find/--replace.'), {
+                code: 'INVALID_OPERATION'
+            });
+        }
+        const targetRef = flags.targetRef === undefined ? null : positiveInteger(flags.targetRef);
+        if (flags.targetRef !== undefined && targetRef == null) {
+            throw Object.assign(new Error('--target-ref must be a positive 1-based integer.'), {
+                code: 'INVALID_OPERATION'
+            });
+        }
+        const targetId = flags.targetId === undefined ? null : String(flags.targetId).trim();
+        if (flags.targetId !== undefined && (!targetId || flags.targetId === true)) {
+            throw Object.assign(new Error('--target-id must be a non-empty paragraphId.'), {
+                code: 'INVALID_OPERATION'
+            });
+        }
+        const targetText = flags.target === undefined ? null : String(flags.target);
+        let target = targetId
+            ? { ...(targetText == null ? {} : { exactText: targetText }), paragraphId: targetId }
+            : targetText;
+        let speculativeContext = null;
         let op;
         if (flags.comment) {
+            if (hasInlinePatch) {
+                throw Object.assign(new Error('Inline comments cannot be combined with --find/--replace.'), {
+                    code: 'INVALID_OPERATION'
+                });
+            }
             op = {
                 type: 'comment',
-                target: String(flags.target),
+                ...(target == null ? {} : { target }),
                 commentContent: String(flags.comment),
                 ...(flags.textToComment ? { textToComment: String(flags.textToComment) } : {}),
-                ...(flags.targetRef ? { targetRef: positiveInteger(flags.targetRef) } : {}),
+                ...(targetRef == null ? {} : { targetRef }),
                 ...(flags.author ? { author: String(flags.author) } : {})
+            };
+        } else if (hasInlinePatch) {
+            if (flags.modified !== undefined) {
+                throw Object.assign(new Error('Use --modified or --find/--replace, not both.'), {
+                    code: 'INVALID_OPERATION'
+                });
+            }
+            if (
+                flags.find === undefined
+                || flags.find === true
+                || String(flags.find).length === 0
+                || flags.replace === undefined
+                || flags.replace === true
+            ) {
+                throw Object.assign(new Error('Inline localized replacement requires non-empty --find and string --replace values.'), {
+                    code: 'INVALID_OPERATION'
+                });
+            }
+            const occurrence = flags.occurrence === undefined ? null : positiveInteger(flags.occurrence);
+            if (flags.occurrence !== undefined && occurrence == null) {
+                throw Object.assign(new Error('--occurrence must be a positive 1-based integer.'), {
+                    code: 'INVALID_OPERATION'
+                });
+            }
+            if (!hasInlineTarget) {
+                const resolution = resolveSpeculativePatchTarget(document, flags);
+                target = resolution.target;
+                speculativeContext = resolution.context;
+            }
+            op = {
+                type: 'redline',
+                ...(target == null ? {} : { target }),
+                ...(targetRef == null ? {} : { targetRef }),
+                replacements: [{
+                    find: String(flags.find),
+                    replace: String(flags.replace),
+                    ...(occurrence == null ? {} : { occurrence })
+                }],
+                ...(speculativeContext ? { _speculativeContext: speculativeContext } : {}),
+                ...(flags.author ? { author: String(flags.author) } : {}),
+                ...(flags.existingRevisions ? { existingRevisions: String(flags.existingRevisions) } : {})
             };
         } else {
             op = {
                 type: 'replace',
-                target: String(flags.target),
+                ...(target == null ? {} : { target }),
                 modified: flags.modified !== undefined ? String(flags.modified) : '',
-                ...(flags.targetRef ? { targetRef: positiveInteger(flags.targetRef) } : {}),
+                ...(targetRef == null ? {} : { targetRef }),
                 ...(flags.author ? { author: String(flags.author) } : {}),
                 ...(flags.existingRevisions ? { existingRevisions: String(flags.existingRevisions) } : {})
             };
         }
         return { operations: [op], expectedRevision: null };
     }
-    if (!file) throw Object.assign(new Error('Use --operations <file.json> or --target <text>.'), { code: 'OPERATIONS_REQUIRED' });
+    if (!file) throw Object.assign(new Error('Use --operations <file.json> or an inline operation.'), { code: 'OPERATIONS_REQUIRED' });
     let parsed;
     try {
         const source = file === '-' ? await readUtf8Stream(stdin) : await readFile(file, 'utf8');
@@ -470,6 +684,11 @@ function compactMutationResult(value) {
     } = serialized;
     const results = Array.isArray(compact.results) ? compact.results.map(compactOperationResult) : [];
     const status = compact.status || 'ok';
+    const localizedChangesVerified = results.every(result => !result?.change || (
+        result.change.committed === true
+        && result.change.finalDisposition === 'applied'
+        && result.change.verification?.acceptedViewMatchesCompiledText === true
+    ));
     return {
         ...compact,
         ...(Array.isArray(compact.results) ? { results } : {}),
@@ -486,6 +705,7 @@ function compactMutationResult(value) {
             && status !== 'error'
             && status !== 'partial'
             && results.every(result => result?.status !== 'error')
+            && localizedChangesVerified
     };
 }
 
@@ -606,7 +826,7 @@ export async function executeCli(argv, io = process) {
             return { status: hasErrors ? 'error' : 'ok', command, input, valid: !hasErrors, issues };
         }
         const opsData = command === 'preflight' || command === 'apply'
-            ? await readOperations(flags.operations, flags, io.stdin || process.stdin)
+            ? await readOperations(flags.operations, flags, io.stdin || process.stdin, document)
             : null;
         const operations = opsData?.operations || null;
         let expectedRevision = opsData?.expectedRevision || null;
@@ -664,6 +884,11 @@ export async function executeCli(argv, io = process) {
                 ...(flags.existingRevisions ? { existingRevisions: flags.existingRevisions } : {}),
                 ...(expectedRevision ? { expectedRevision } : {})
             });
+            const localizedVerificationFailed = (result.results || []).some(item => item?.change && (
+                item.change.committed !== true
+                || item.change.finalDisposition !== 'applied'
+                || item.change.verification?.acceptedViewMatchesCompiledText !== true
+            ));
             const mutationResult = await writeMutation(command, input, flags, result);
             return compactMutationResult({
                 command,
@@ -672,7 +897,7 @@ export async function executeCli(argv, io = process) {
                 ...(profile ? { executionProfile: profile, effectiveOptions } : {}),
                 ...(result.status === 'error'
                     ? { exitCode: 2 }
-                    : (result.status === 'partial' && requireComplete
+                    : ((result.status === 'partial' || localizedVerificationFailed) && requireComplete
                         ? { exitCode: 3 }
                         : {}))
             });
@@ -681,7 +906,7 @@ export async function executeCli(argv, io = process) {
         if (!filter) return cliError('AUTHOR_REQUIRED', 'Use --author <name> or --all-authors.');
         const result = command === 'delete-comments' ? await document.deleteComments(filter) : await document.resolveRevisions(command, filter);
         return compactMutationResult({ command, input, ...serializable(await writeMutation(command, input, flags, result)) });
-    } catch (error) { return cliError(error.code || 'CLI_FAILED', error.message); }
+    } catch (error) { return cliError(error.code || 'CLI_FAILED', error.message, 2, error); }
 }
 
 export async function runCli(argv = process.argv.slice(2), io = process) {
