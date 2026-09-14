@@ -21,10 +21,16 @@ specific advanced operation, API, or recovery topic you need.
 
 ## Ordinary document edits
 
-Use one focused extraction and one apply call. With a structured wrapper, use
-its revision-bound target handles. Follow `selection.hint` when a search for
-restorable text yields 0 matches in accepted view. For shell-only work, use a
-UTF-8 operations file or serializer-backed stdin and the explicit agent profile:
+For a literal mechanical edit with known old and new text, try one fail-closed
+apply call. Use a visible heading plus a directional range when global matching
+is too broad:
+
+```bash
+docx-redline apply contract.docx --search "Section 4.1" --context-range 1:3 --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
+```
+
+For semantic drafting, inspect once and apply once. With a structured wrapper,
+use revision-bound handles. For shell-only work, use serializer-backed stdin:
 
 ```bash
 docx-redline extract contract.docx --search "termination" --around 3
@@ -39,10 +45,12 @@ Consolidate incompatible writes to the same source; use captures for intentional
 created-content dependencies.
 
 Require `completion: true`, `written: true`, a non-null output path, and no
-per-operation errors. Follow `error.recovery.action` and `retryPlan`; never retry
-unchanged failed arguments. Do not accept/reject another reviewer's work or
-remove comments without explicit user authorization. The source is never
-overwritten unless `--in-place` is explicit.
+per-operation errors. Localized edits also require `change.committed: true` and
+`change.verification.acceptedViewMatchesCompiledText: true`. Follow
+`error.recovery.action` and `retryPlan`; never retry unchanged failed arguments.
+Follow `selection.hint` for restorable text. Do not accept/reject another
+reviewer's work or remove comments without explicit user authorization. The
+source is never overwritten unless `--in-place` is explicit.
 
 The agent profile preserves progressive execution and the ordinary revision
 policy. Add `--atomic` or `--existing-revisions slice-cross-author` only when
@@ -64,7 +72,9 @@ targeting, revision allocation, comments, numbering, validation, or rollback.
 The stateful wrapper in `examples/agent-session-wrapper.mjs` is a testable
 development demonstration only. It is excluded from package files and exports.
 Production harnesses own their transport and negotiate the minimum CLI
-`contractVersion`/capabilities they use.
+`contractVersion`/capabilities they use. The 0.7.0 localized fast path requires
+contract 8 and its localized replacement, speculative apply, and change-summary
+capabilities.
 
 ## Code map
 

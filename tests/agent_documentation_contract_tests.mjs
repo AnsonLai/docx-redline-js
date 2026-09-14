@@ -90,10 +90,8 @@ assert.equal(skillAuthoring.includes('TARGET_NOT_FOUND'), false, 'skill guidance
 assert.match(skillAuthoring, /operations file and serializer-backed stdin are peer transports/i);
 assert.match(skillAuthoring, /AI Redliner.*valid visible fallback/);
 
-const launchCommand = firstBashCommandAfter(launchCard, '## Ordinary document edits');
-assert.match(launchCommand, /^docx-redline extract .*--search .*--around/, launchCommand);
-
 for (const [text, heading] of [
+    [launchCard, '## Ordinary document edits'],
     [fastStart, '## CLI fallback'],
     [readme, '### Agent CLI'],
     [knowledgeBase, '#### Standard Workflow (Fast & Direct)'],
@@ -108,6 +106,7 @@ for (const publishedDoc of [
     'docs/AGENT_KNOWLEDGE_BASE.md',
     'docs/SKILL_AUTHORING.md',
     'docs/TESTING.md',
+    'docs/releases/0.7.0.md',
     'docs/schemas/document-operations.schema.json',
     'docs/validation-reports/2026-09-12-agent-protocol-rollout.md',
     'docs/validation-reports/2026-09-12-agent-cli-discovery-baseline.md',

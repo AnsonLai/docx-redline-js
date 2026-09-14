@@ -23,4 +23,4 @@ docs/plans/completed/*
 !docs/plans/completed/2026-09-05-structural-revisions-and-fidelity-oracles.md
 !docs/plans/completed/2026-09-08-cross-author-revision-slicing.md
 *.bat
-docs/releases/0.6.1.md
+!docs/releases/0.7.0.md

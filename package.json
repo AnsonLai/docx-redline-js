@@ -1,6 +1,6 @@
 {
   "name": "@ansonlai/docx-redline-js",
-  "version": "0.6.2",
+  "version": "0.7.0",
   "description": "Host-independent OOXML reconciliation engine for .docx manipulation with track changes",
   "license": "MIT",
   "type": "module",
@@ -52,6 +52,7 @@
     "docs/AGENT_KNOWLEDGE_BASE.md",
     "docs/SKILL_AUTHORING.md",
     "docs/TESTING.md",
+    "docs/releases/0.7.0.md",
     "docs/schemas/document-operations.schema.json",
     "docs/validation-reports/2026-09-12-agent-protocol-rollout.md",
     "docs/validation-reports/2026-09-12-agent-cli-discovery-baseline.md",

@@ -16,8 +16,24 @@ Converts AI-generated or programmatic text/markdown edits into valid Office Open
 - Highlights: apply highlight colors to runs
 - Markdown and OOXML conversion in both directions
 - Status/error result fields for parse, targeting, and existing-revision failures
+- Localized exact replacements and fail-closed one-turn CLI edits with verified before/after evidence
 - Package plumbing helpers for numbering.xml, comments.xml, content types, and relationships
 - Zero host dependencies: works in Node.js, browsers, Deno, and similar JS runtimes with DOM parsing support
+
+## What's New in 0.7.0
+
+Version 0.7.0 adds a contract-8 fast path for exact mechanical edits. Agents can
+send a small `find`/`replace` request instead of reproducing a complete legal
+paragraph, and may omit a strong target when the source literal resolves to one
+accepted-view paragraph. Visible headings can narrow the attempt with a signed
+directional window such as `--search "Section 4.1" --context-range 1:3`.
+
+Speculative edits fail without writing when the anchor, paragraph, or source
+span is missing or ambiguous. Successful localized results include a committed
+`change` object with the selected legal location, bounded before/after excerpts,
+and actual accepted-view verification. Existing full-paragraph operations,
+tracked-change semantics, validation, rollback, and review policies remain
+available unchanged. See the [complete 0.7.0 release notes](./docs/releases/0.7.0.md).
 ## Documentation Index
 
 | Document | Description |

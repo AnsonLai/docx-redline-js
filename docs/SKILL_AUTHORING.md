@@ -9,7 +9,7 @@ load [Agent Fast Start](AGENT_FAST_START.md), not this design contract.
 > library release and required CLI contract/capabilities. Treat any different
 > release or contract as unverified until compatibility tests pass.
 
-For example, an integration authored for the planned contract-8 release should
+For example, an integration authored for the current contract-8 release should
 record a compatibility declaration equivalent to:
 
 ```json

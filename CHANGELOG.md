@@ -2,6 +2,49 @@
 
 ## Unreleased
 
+## 0.7.0
+
+### Agent Performance and Localized Editing
+
+- **Localized exact replacements:** `redline`/`replace` operations may provide
+  `replacements: [{ find, replace, occurrence? }]` instead of a complete
+  `modified` paragraph. The compiler resolves the accepted-view source once,
+  applies non-overlapping exact replacements simultaneously, synthesizes the
+  canonical desired paragraph, and delegates to the unchanged OOXML engine.
+- **One-turn speculative apply:** `docx-redline apply --find ... --replace ...`
+  can resolve a globally unique source literal without preliminary extraction.
+  `--search` plus signed `--context-range START:END` scopes visible headings and
+  multi-paragraph provisions; `--around N` is symmetric shorthand.
+- **Fail-closed selection:** Missing anchors and patch sources, multiple eligible
+  paragraphs, ambiguous occurrences, overlaps, conflicts, and unsupported
+  localized shapes refuse mutation. A failed speculative command never writes
+  or truncates its output path.
+- **Verified change evidence:** Localized operation results include a compact
+  `change` object with target location, contextual anchor/range, exact
+  replacement entries, bounded before/after excerpts, commit disposition, and
+  post-mutation accepted-view verification. Atomic rollback marks the evidence
+  non-committed and `rolled_back`.
+- **CLI contract version 8:** Adds `localized-replacements-v1`,
+  `speculative-search-apply-v1`, and `localized-change-summary-v1`. Skills and
+  harnesses should pin version 0.7.0 and negotiate only the capabilities used.
+- **Measured workflow reduction:** The checked benchmark records 50% fewer tool
+  turns and a 64.77%–78.98% smaller deterministic request-token proxy across
+  three literal-edit cases. Median native engine/I/O time remained effectively
+  neutral; provider reasoning and network latency were not estimated.
+
+### Compatibility
+
+- Existing `modified` operations, strong targets, operations files/stdin,
+  tracked-change generation, package validation, rollback, comments,
+  Accept/Reject, and revision policies remain supported.
+- Localized replacement fields and successful `change` evidence are additive.
+  Wrappers that adopt them must require CLI contract 8; integrations using only
+  earlier capabilities can continue using their existing operation shapes.
+- The implementation remains OOXML-only and adds no runtime dependency or Word,
+  Office automation, COM, or proprietary document API requirement.
+
+## 0.6.0–0.6.2
+
 ### Safety Fixes
 
 - **Foreign deleted-paragraph resurrection guard**: Refuses non-empty same-paragraph edits when another author owns the paragraph-mark deletion and all existing paragraph content is deleted. The operation now returns `FOREIGN_PARAGRAPH_MARK_DELETION` with the owning author instead of emitting lifecycle-unsafe OOXML; atomic document operations roll back byte-for-byte. `validateRedlineOoxml` reports already-authored instances as warnings.
