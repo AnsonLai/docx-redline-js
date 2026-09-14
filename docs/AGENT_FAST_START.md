@@ -23,7 +23,7 @@ It is a development sample, not a package API.
    docx-redline extract contract.docx --search "termination" --around 3
    ```
 
-   Search is case-insensitive. Direct hits are capped; follow `selection.nextAfter` with `--after`, and cite `humanReference`, not `P42`.
+   Search is case-insensitive; follow `selection.hint` if 0 matches were found for restorable text. Direct hits are capped; follow `selection.nextAfter` with `--after`, and cite `humanReference`, not `P42`.
 
 2. Copy `exactText` with `paragraphId` or `fingerprint`. Use a UTF-8 operations
    file or serializer-backed stdin, then apply once:

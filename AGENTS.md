@@ -22,8 +22,9 @@ specific advanced operation, API, or recovery topic you need.
 ## Ordinary document edits
 
 Use one focused extraction and one apply call. With a structured wrapper, use
-its revision-bound target handles. For shell-only work, use a UTF-8 operations
-file or serializer-backed stdin and the explicit agent profile:
+its revision-bound target handles. Follow `selection.hint` when a search for
+restorable text yields 0 matches in accepted view. For shell-only work, use a
+UTF-8 operations file or serializer-backed stdin and the explicit agent profile:
 
 ```bash
 docx-redline extract contract.docx --search "termination" --around 3

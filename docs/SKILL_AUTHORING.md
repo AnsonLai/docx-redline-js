@@ -87,9 +87,12 @@ focused contextual extraction:
 docx-redline extract input.docx --search "force majeure" --around 3
 ```
 
-Use `selection.nextAfter` with `--after` when truncated. Apply once per stable
-batch. Run `docx-redline apply --help` for canonical redline, whole-paragraph
-comment, and rejected-view restore shapes; the operation schema remains
+Use `selection.nextAfter` with `--after` when truncated. When a search for
+deleted or restorable content yields 0 matches in accepted view, follow
+`selection.hint` and re-run with `--view rejected`. Apply once per stable batch.
+Run `docx-redline apply --help` for canonical redline, whole-paragraph comment,
+and rejected-view restore shapes; CLI help documentation fields return canonical
+GitHub URLs. The operation schema remains
 [document-operations.schema.json](schemas/document-operations.schema.json).
 
 ## Recovery contract

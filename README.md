@@ -147,10 +147,13 @@ const inventory = inspectDocumentParts({ documentXml, commentsXml, numberingXml 
 Inspection returns exact paragraph text, target IDs/fingerprints, headings,
 table/list context, revision authors, and joined comment anchors. Filters such
 as `search`, `indexes`, `range`, `revisedOnly`, `inTable`, and `skipEmpty`
-limit output. Search is a case-insensitive substring match; `around` adds nearby
-drafting context, while `limit` and `after` page direct hits. `revisionView`
-accepts `accepted`, `rejected`, or `current`. Returned paragraphs identify
-matches versus context and include `humanReference` for user-facing summaries.
+limit output. Search is a case-insensitive substring match; `around` adds nearby drafting
+context, while `limit` and `after` page direct hits. When a search yields 0
+matches in the active view, `selection.hint` provides guidance if matches exist
+in the alternate revision view (such as searching for deleted text to restore).
+`revisionView` accepts `accepted`, `rejected`, or `current`. Returned
+paragraphs identify matches versus context and include `humanReference` for
+user-facing summaries.
 
 For complete `.docx` buffers in Node:
 
@@ -252,13 +255,16 @@ All commands emit JSON on stdout. `apply` defaults:
 - **Compact mutation results**: `apply`, `accept`, `reject`, and `delete-comments` omit full OOXML/package payloads and inspection text from stdout. CLI operation results omit duplicate nested receipt bodies; the ordered top-level `receipts` array is authoritative. Successful exact target-match diagnostics are omitted and equivalent-whitespace matches retain only mode/count. Node and standalone-runner results remain unchanged. Use `validate` when full issue arrays are needed.
 
 Inspection commands default to 20 direct matches and a 48 KiB soft response
-budget when no explicit positional scope is supplied. Use `--limit` with
-`--after <paragraph-index>` to continue, `--around N` (aliases `--context` and
-`-C`) to include nearby paragraphs, and `--all` only for deliberate unbounded
-inspection. Every retained target is complete; an individually oversized
-paragraph is returned whole with an `oversizeItem` marker. Machine `index` and
-`ref` fields are for targeting and pagination, not user-facing Word locations;
-use `humanReference`, `provision`, or `nearestHeading` in reports.
+budget when no explicit positional scope is supplied. When a search returns 0
+matches in the requested view, `selection.hint` provides immediate guidance if
+matches exist in the alternate view (such as searching for a deleted clause to
+restore). Use `--limit` with `--after <paragraph-index>` to continue, `--around N`
+(aliases `--context` and `-C`) to include nearby paragraphs, and `--all` only
+for deliberate unbounded inspection. Every retained target is complete; an
+individually oversized paragraph is returned whole with an `oversizeItem`
+marker. Machine `index` and `ref` fields are for targeting and pagination, not
+user-facing Word locations; use `humanReference`, `provision`, or
+`nearestHeading` in reports.
 
 `docx-redline version` reports contract version 7 and the additive
 `command-help-v1`, `inspection-context-v1`, `bounded-inspection-v1`,
@@ -267,7 +273,7 @@ use `humanReference`, `provision`, or `nearestHeading` in reports.
 `agent-safety-profile-v2`, `deduplicated-cli-receipts`, and
 `compact-cli-json-v1` capabilities. Wrappers should negotiate only the
 capabilities they use. Run `docx-redline <command> --help` for that command's
-machine-readable options, behavior, exit codes, and compact examples.
+machine-readable options, behavior, exit codes, canonical GitHub documentation links, and compact examples.
 
 See the [compact agent fast start](./docs/AGENT_FAST_START.md), the
 [skill/harness authoring contract](./docs/SKILL_AUTHORING.md), and the

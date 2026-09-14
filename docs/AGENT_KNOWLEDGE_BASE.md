@@ -575,12 +575,17 @@ normalize or reconstruct `exactText`. Operation files follow
 Paragraph indexes are 1-based. Inspection filters are `--index 12`,
 `--range 10:30`, `--indexes 2,5,8`, `--search text`, `--revised`, `--table`,
 `--body`, `--non-empty`, and `--view accepted|rejected|current`. Search is
-case-insensitive. Add `--around N` (`--context N` or `-C N`) to a search;
+case-insensitive. When a search returns 0 matches in the active view but matches
+exist in the alternate view (such as searching for a deleted clause to restore),
+`selection.hint` provides immediate guidance to re-run with `--view rejected`.
+Add `--around N` (`--context N` or `-C N`) to a search;
 context records are labeled separately and do not consume the direct-hit
 `--limit`. Continue a bounded result with `--after <paragraph-index>`. Ordinary
 unscoped CLI inspection defaults to 20 direct records and a 48 KiB soft budget;
 `--all` deliberately opts out. A malformed filter or unknown option is an error
-rather than an unfiltered fallback.
+rather than an unfiltered fallback. CLI help commands (`apply --help`,
+`extract --help`, `--help`) report canonical GitHub repository URLs in their
+`documentation` array.
 
 Mutating commands use `--author`, operation-level authors, then
 `DOCX_REDLINE_AUTHOR`, falling back visibly to `AI Redliner`; review-resolution
