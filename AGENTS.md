@@ -42,6 +42,10 @@ docx-redline extract contract.docx --search "termination" --around 3
 node emit-operations.mjs | docx-redline apply contract.docx --operations - --profile agent --compact --output reviewed.docx
 ```
 
+A single deleted paragraph found in rejected view can be restored verbatim with
+`apply --restore --target-id ID`; add one `--find`/`--replace` pair for a small
+exact correction. This shortcut does not infer ranges or companion paragraphs.
+
 For every ordinary text operation, `modified` is the complete desired
 accepted-view content. Copy inspected `exactText` verbatim and include
 `paragraphId` or `fingerprint`. Independent strong targets are bound against the
@@ -80,7 +84,8 @@ development demonstration only. It is excluded from package files and exports.
 Production harnesses own their transport and negotiate the minimum CLI
 `contractVersion`/capabilities they use. The 0.7.0 localized fast path requires
 contract 8 and its localized replacement, speculative apply, and change-summary
-capabilities.
+capabilities; the narrow restore shortcut additionally requires
+`restore-shortcuts-v1`.
 
 ## Code map
 

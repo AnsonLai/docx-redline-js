@@ -307,18 +307,65 @@ export function validateDocumentOperation(operation) {
     }
 
     if (normalized.operationKind === 'restore') {
+        const hasModified = operation.modified !== undefined;
+        const hasReplacements = operation.replacements !== undefined;
         const validSingle = nonEmptyString(normalized.modified);
         const validRange = Array.isArray(normalized.modified)
             && normalized.modified.length > 0
             && normalized.modified.every(nonEmptyString);
-        if (!validSingle && !validRange) {
+        if (hasModified && hasReplacements) {
             return {
                 valid: false,
                 error: {
                     code: 'INVALID_OPERATION',
-                    message: 'Restore operations require a non-empty string or non-empty string array in "modified".'
+                    message: 'Restore operations accept modified or replacements, not both.'
                 }
             };
+        }
+        if (hasModified && !validSingle && !validRange) {
+            return {
+                valid: false,
+                error: {
+                    code: 'INVALID_OPERATION',
+                    message: 'Restore modified must be a non-empty string or non-empty string array.'
+                }
+            };
+        }
+        if (!hasModified) {
+            if (
+                target.revisionView !== 'rejected'
+                || (!target.paragraphId && !target.fingerprint)
+                || target.captureRef
+                || target.occurrence != null
+                || normalized.captureKey
+                || normalized.targetEndDescriptor
+                || normalized.targetEndRef != null
+                || /\r|\n/.test(target.text || '')
+            ) {
+                return {
+                    valid: false,
+                    error: {
+                        code: 'INVALID_OPERATION',
+                        message: 'Verbatim and localized restore require one strong batch-start rejected-view paragraph target without captures, target occurrence, or a target range.'
+                    }
+                };
+            }
+        }
+        if (hasReplacements) {
+            const replacementValidation = validateExactReplacementRequests(normalized.replacements);
+            if (!replacementValidation.ok) {
+                return { valid: false, error: replacementValidation.error };
+            }
+            if (replacementValidation.replacements.some(replacement => /\r|\n/.test(replacement.replace))) {
+                return {
+                    valid: false,
+                    error: {
+                        code: 'INVALID_OPERATION',
+                        message: 'Localized restore cannot insert paragraph breaks.'
+                    }
+                };
+            }
+            normalized.replacements = replacementValidation.replacements;
         }
         if (normalized.generateRedlines === false) {
             return {

@@ -31,6 +31,7 @@ const CLI_CAPABILITIES = [
     'localized-replacements-v1',
     'speculative-search-apply-v1',
     'localized-change-summary-v1',
+    'restore-shortcuts-v1',
     'deduplicated-cli-receipts',
     'compact-cli-json-v1'
 ];
@@ -278,6 +279,7 @@ function resolveSpeculativePatchTarget(document, flags) {
 }
 
 async function readOperations(file, flags = {}, stdin = process.stdin, document = null) {
+    const inlineRestore = flags?.restore !== undefined;
     const hasInlineTarget = flags?.target !== undefined
         || flags?.targetId !== undefined
         || flags?.targetRef !== undefined;
@@ -287,8 +289,8 @@ async function readOperations(file, flags = {}, stdin = process.stdin, document 
     const hasSpeculativeScope = flags?.search !== undefined
         || flags?.contextRange !== undefined
         || flags?.around !== undefined;
-    if (file && (hasInlinePatch || hasSpeculativeScope)) {
-        throw Object.assign(new Error('Use --operations or inline speculative find/replace options, not both.'), {
+    if (file && (hasInlinePatch || hasSpeculativeScope || inlineRestore)) {
+        throw Object.assign(new Error('Use --operations or inline restore/find/replace options, not both.'), {
             code: 'INVALID_OPERATION'
         });
     }
@@ -297,7 +299,12 @@ async function readOperations(file, flags = {}, stdin = process.stdin, document 
             code: 'INVALID_OPERATION'
         });
     }
-    if (!file && (hasInlineTarget || hasInlinePatch || hasSpeculativeScope)) {
+    if (!file && (hasInlineTarget || hasInlinePatch || hasSpeculativeScope || inlineRestore)) {
+        if (inlineRestore && flags.restore !== true) {
+            throw Object.assign(new Error('--restore is a boolean flag and does not take a value.'), {
+                code: 'INVALID_OPERATION'
+            });
+        }
         if (hasSpeculativeScope && !hasInlinePatch) {
             throw Object.assign(new Error('--search, --context-range, and --around are only valid with inline --find/--replace.'), {
                 code: 'INVALID_OPERATION'
@@ -319,9 +326,22 @@ async function readOperations(file, flags = {}, stdin = process.stdin, document 
         let target = targetId
             ? { ...(targetText == null ? {} : { exactText: targetText }), paragraphId: targetId }
             : targetText;
+        if (inlineRestore) {
+            if (!targetId) {
+                throw Object.assign(new Error('Inline --restore requires --target-id from rejected-view extraction.'), {
+                    code: 'INVALID_OPERATION'
+                });
+            }
+            target = { ...target, revisionView: 'rejected' };
+        }
         let speculativeContext = null;
         let op;
         if (flags.comment) {
+            if (inlineRestore) {
+                throw Object.assign(new Error('Use --restore or --comment, not both.'), {
+                    code: 'INVALID_OPERATION'
+                });
+            }
             if (hasInlinePatch) {
                 throw Object.assign(new Error('Inline comments cannot be combined with --find/--replace.'), {
                     code: 'INVALID_OPERATION'
@@ -364,7 +384,7 @@ async function readOperations(file, flags = {}, stdin = process.stdin, document 
                 speculativeContext = resolution.context;
             }
             op = {
-                type: 'redline',
+                type: inlineRestore ? 'restore' : 'redline',
                 ...(target == null ? {} : { target }),
                 ...(targetRef == null ? {} : { targetRef }),
                 replacements: [{
@@ -373,6 +393,14 @@ async function readOperations(file, flags = {}, stdin = process.stdin, document 
                     ...(occurrence == null ? {} : { occurrence })
                 }],
                 ...(speculativeContext ? { _speculativeContext: speculativeContext } : {}),
+                ...(flags.author ? { author: String(flags.author) } : {}),
+                ...(flags.existingRevisions ? { existingRevisions: String(flags.existingRevisions) } : {})
+            };
+        } else if (inlineRestore) {
+            op = {
+                type: 'restore',
+                target,
+                ...(flags.modified === undefined ? {} : { modified: String(flags.modified) }),
                 ...(flags.author ? { author: String(flags.author) } : {}),
                 ...(flags.existingRevisions ? { existingRevisions: String(flags.existingRevisions) } : {})
             };

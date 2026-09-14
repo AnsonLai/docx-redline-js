@@ -56,15 +56,14 @@ const APPLY_EXAMPLES = Object.freeze([
         }
     },
     {
-        description: 'Counterpropose a wholly foreign-deleted paragraph found through --view rejected.',
+        description: 'Restore one wholly foreign-deleted paragraph verbatim from a strong rejected-view target.',
         operation: {
             type: 'restore',
             target: {
                 exactText: 'Deleted source paragraph.',
                 paragraphId: '3A2B3C4D',
                 revisionView: 'rejected'
-            },
-            modified: 'Restored and revised paragraph.'
+            }
         }
     }
 ]);
@@ -133,6 +132,7 @@ export const CLI_COMMAND_HELP = Object.freeze({
             option('expectedRevision', '--expected-revision <token|json>', 'Reject a stale package revision.'),
             option('target', '--target <text>', 'Inline one-operation target text.'),
             option('targetId', '--target-id <paragraphId>', 'Strong inline target using a paragraphId from fresh inspection.'),
+            option('restore', '--restore', 'Restore one rejected-view paragraph identified by --target-id; omit --modified for verbatim restoration.'),
             option('modified', '--modified <text>', 'Complete desired accepted-view target content.'),
             option('find', '--find <exact text>', 'Exact case-sensitive source span for one localized replacement.'),
             option('replace', '--replace <text>', 'Replacement text for --find; an empty string deletes the span.'),
@@ -154,6 +154,7 @@ export const CLI_COMMAND_HELP = Object.freeze({
         notes: [
             'modified is complete desired accepted-view content, not only inserted words.',
             'Use either modified or find/replace. A strong accepted-view target is preferred when already known.',
+            '--restore requires --target-id from rejected-view extraction; omit modified for verbatim restore or use one inline find/replace.',
             'Without a strong target, find/replace may resolve globally or within --search plus a directional context range; it fails unless exactly one paragraph is eligible.',
             'Generic or repeated search anchors widen the unioned scope and may cause AMBIGUOUS_TARGET; on success, anchorMatchCount greater than 1 signals that the returned location and excerpts should be confirmed.',
             '--occurrence disambiguates repeated text only within one uniquely selected paragraph, never between paragraphs.',

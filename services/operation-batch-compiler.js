@@ -296,6 +296,15 @@ export function compileOperationBatch(xmlDoc, operations = [], options = {}) {
                             canonicalValidation.error
                         );
                     }
+                } else if (operation.operationKind === 'restore' && sourceOperation.modified === undefined) {
+                    compiled.modified = start.metadata.text;
+                    const canonicalValidation = validateDocumentOperation(compiled);
+                    if (!canonicalValidation.valid) {
+                        throw Object.assign(
+                            new Error(canonicalValidation.error.message),
+                            canonicalValidation.error
+                        );
+                    }
                 }
 
                 const targetEndDescriptor = operation.targetEndDescriptor

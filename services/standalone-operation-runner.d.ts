@@ -75,12 +75,31 @@ export type RedlineDocumentOperation =
       replacements?: never;
     });
 
-export interface RestoreDocumentOperation extends DocumentOperationBase {
+interface RestoreDocumentOperationCommon extends DocumentOperationBase {
   type: 'restore';
-  modified: string | string[];
-  targetEnd?: ParagraphTargetDescriptor;
-  targetEndRef?: number | string | null;
 }
+
+export type RestoreDocumentOperation =
+  | (RestoreDocumentOperationCommon & {
+      modified: string | string[];
+      replacements?: never;
+      targetEnd?: ParagraphTargetDescriptor;
+      targetEndRef?: number | string | null;
+    })
+  | (RestoreDocumentOperationCommon & {
+      modified?: never;
+      /** Exact, case-sensitive replacements in one strong rejected-view paragraph. */
+      replacements: LocalizedReplacement[];
+      targetEnd?: never;
+      targetEndRef?: never;
+    })
+  | (RestoreDocumentOperationCommon & {
+      /** Omit modified to restore one strong rejected-view paragraph verbatim. */
+      modified?: never;
+      replacements?: never;
+      targetEnd?: never;
+      targetEndRef?: never;
+    });
 
 export interface DeleteDocumentOperation extends DocumentOperationBase {
   type: 'delete';

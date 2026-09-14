@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Added a narrow single-paragraph restore shortcut. A restore with a strong
+  rejected-view target may omit `modified` for verbatim restoration or provide
+  exact `replacements`; the CLI exposes the same path through `apply --restore
+  --target-id ID`. Ranges, captures, weak targets, and inferred companion
+  content remain excluded.
+
 - Fixed rejected-view restore receipts so `resolvedTarget` text, fingerprint,
   revision view, and match diagnostics describe the view actually used to
   resolve the target.

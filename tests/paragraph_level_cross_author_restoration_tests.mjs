@@ -132,6 +132,42 @@ async function restore(input, modified = 'Restored clause.', overrides = {}) {
     assert.equal(result.receipt.revisionItems.length, 2);
     assert(result.receipt.revisionItems.every(item => item.kind === 'ins'));
 
+    const verbatim = await applyOperationToDocumentXml(input, {
+        type: 'restore',
+        target: { paragraphId: 'DEAD0001' },
+        author: B
+    }, B, null, { strictTargets: true });
+    assert.equal(verbatim.status, 'ok', JSON.stringify(verbatim.error));
+    assert.deepEqual(paragraphTexts(verbatim.documentXml), ['Before.', '', 'Restored clause.', 'After.']);
+
+    const localized = await applyOperationToDocumentXml(input, {
+        type: 'restore',
+        target: { paragraphId: 'DEAD0001' },
+        replacements: [{ find: 'Restored', replace: 'Recovered' }],
+        author: B
+    }, B, null, { strictTargets: true });
+    assert.equal(localized.status, 'ok', JSON.stringify(localized.error));
+    assert.deepEqual(paragraphTexts(localized.documentXml), ['Before.', '', 'Recovered clause.', 'After.']);
+    assert.equal(localized.change.verification.acceptedViewMatchesCompiledText, true);
+
+    for (const invalid of [
+        { type: 'restore', target: { index: 2 } },
+        { type: 'restore', target: { paragraphId: 'DEAD0001', revisionView: 'accepted' } },
+        { type: 'restore', target: { paragraphId: 'DEAD0001' }, targetEndRef: 2 },
+        { type: 'restore', target: { captureRef: 'deleted' } },
+        {
+            type: 'restore',
+            target: { paragraphId: 'DEAD0001' },
+            modified: 'Restored clause.',
+            replacements: [{ find: 'Restored', replace: 'Recovered' }]
+        }
+    ]) {
+        const refused = await applyOperationToDocumentXml(input, invalid, B, null, { strictTargets: true });
+        assert.equal(refused.status, 'error');
+        assert.equal(refused.error.code, 'INVALID_OPERATION');
+        assert.equal(refused.documentXml, input);
+    }
+
     const resultDoc = parse(result.documentXml);
     const allIds = ['ins', 'del'].flatMap(localName => (
         Array.from(resultDoc.getElementsByTagNameNS(W, localName)).map(node => node.getAttribute('w:id'))

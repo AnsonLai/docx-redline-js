@@ -78,7 +78,40 @@ try {
     assert.equal(bodyPara.paragraphId, '00000005');
     assert.equal(bodyPara.exactText, 'Customer will not submit or process payment card information, health records subject to HIPAA, or social security numbers.');
 
-    // --- Scenario C: Restore the deleted clause with wordsmithing ---
+    // --- Scenario C: One-line verbatim and localized restore shortcuts ---
+    const verbatimOutput = path.join(directory, 'verbatim.docx');
+    const verbatimResult = await executeCli([
+        'apply', inputPath,
+        '--restore',
+        '--target-id', matchPara.paragraphId,
+        '--profile', 'agent',
+        '--output', verbatimOutput
+    ]);
+    assert.equal(verbatimResult.status, 'ok', JSON.stringify(verbatimResult));
+    assert.equal(verbatimResult.completion, true);
+    assert.equal((await executeCli(['extract', verbatimOutput, '--search', '3.2'])).selection.totalMatches, 1);
+
+    const localizedRestoreOutput = path.join(directory, 'localized-restore.docx');
+    const localizedRestore = await executeCli([
+        'apply', inputPath,
+        '--restore',
+        '--target-id', bodyPara.paragraphId,
+        '--find', 'HIPAA',
+        '--replace', 'applicable health-information law',
+        '--profile', 'agent',
+        '--output', localizedRestoreOutput
+    ]);
+    assert.equal(localizedRestore.status, 'ok', JSON.stringify(localizedRestore));
+    assert.equal(localizedRestore.completion, true);
+    assert.equal(localizedRestore.results[0].change.verification.acceptedViewMatchesCompiledText, true);
+    const restoredBody = await executeCli(['extract', localizedRestoreOutput, '--search', 'applicable health-information law']);
+    assert.equal(restoredBody.selection.totalMatches, 1);
+
+    const weakRestore = await executeCli(['apply', inputPath, '--restore', '--target-ref', '4']);
+    assert.equal(weakRestore.status, 'error');
+    assert.equal(weakRestore.error.code, 'INVALID_OPERATION');
+
+    // --- Scenario D: Restore the deleted clause with wordsmithing ---
     const operations = [
         {
             type: 'restore',
@@ -120,7 +153,7 @@ try {
     assert.equal(applyResult.results[1].status, 'applied');
     assert.equal(applyResult.validation.generatedIssues.errors, 0);
 
-    // --- Scenario D: Verify accepted view now contains the restored clause ---
+    // --- Scenario E: Verify accepted view now contains the restored clause ---
     const verifyAccepted = await executeCli(['extract', outputPath, '--search', '3.2', '--around', '1']);
     assert.equal(verifyAccepted.status, 'ok');
     assert.equal(verifyAccepted.selection.totalMatches, 1);
@@ -128,7 +161,7 @@ try {
     assert.ok(restoredPara);
     assert.equal(restoredPara.exactText, '3.2 Prohibited Data Types');
 
-    // --- Scenario E: Tweak 3 verification (Documentation links in CLI help) ---
+    // --- Scenario F: Tweak 3 verification (Documentation links in CLI help) ---
     const applyHelp = await executeCli(['apply', '--help']);
     assert.equal(applyHelp.status, 'ok');
     assert.ok(Array.isArray(applyHelp.documentation));

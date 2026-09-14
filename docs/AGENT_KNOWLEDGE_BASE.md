@@ -596,6 +596,10 @@ exist in the alternate view (such as searching for a deleted clause to restore),
 Compact `extract --revised` results retain `hasRevisions`, `revisionAuthors`,
 and `deleted`/`inserted` cues, so an empty `exactText` is identifiable as content
 hidden by the selected revision view rather than a failed filter.
+For one strongly identified rejected-view paragraph, `apply --restore
+--target-id ID` restores the rejected text verbatim. One exact
+`--find`/`--replace` pair may adjust it without restating the paragraph. The
+shortcut refuses ranges, captures, weak targets, and inferred adjacent content.
 Add `--around N` (`--context N` or `-C N`) to a search;
 context records are labeled separately and do not consume the direct-hit
 `--limit`. Continue a bounded result with `--after <paragraph-index>`. Ordinary

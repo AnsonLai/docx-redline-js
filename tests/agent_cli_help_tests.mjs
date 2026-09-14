@@ -37,12 +37,14 @@ assert.match(applyHelp.notes.join(' '), /generic or repeated search anchors/i);
 assert.match(applyHelp.notes.join(' '), /anchorMatchCount greater than 1/i);
 assert(applyHelp.options.some(item => item.name === '--compact'));
 assert(applyHelp.options.some(item => item.name.includes('--target-id')));
+assert(applyHelp.options.some(item => item.name === '--restore'));
 assert(applyHelp.options.some(item => item.name.includes('--find')));
 assert(applyHelp.options.some(item => item.name.includes('--replace')));
 assert(applyHelp.options.some(item => item.name.includes('--occurrence')));
 assert.match(applyHelp.options.find(item => item.name.includes('--search')).description, /longer, fairly unique phrase/i);
 assert.deepEqual(applyHelp.examples.map(item => item.operation.type), ['redline', 'redline', 'comment', 'restore']);
 assert.equal(applyHelp.examples[3].operation.target.revisionView, 'rejected');
+assert.equal(applyHelp.examples[3].operation.modified, undefined);
 assert.equal(applyHelp.examples[0].operation.modified, 'Revised clause.');
 assert.deepEqual(applyHelp.examples[1].operation.replacements, [
     { find: 'thirty (30) days', replace: 'sixty (60) days' }

@@ -170,6 +170,11 @@ matches in the active view, `selection.hint` provides guidance if matches exist
 in the alternate revision view (such as searching for deleted text to restore).
 Compact `extract --revised` output retains revision authors and marks paragraphs
 whose content is wholly hidden in the selected view as `deleted` or `inserted`.
+One such paragraph can be restored without restating it:
+`docx-redline apply input.docx --restore --target-id ID --output reviewed.docx`.
+Add one exact `--find`/`--replace` pair to make a localized correction while
+restoring. The shortcut requires a strong rejected-view paragraph ID and does
+not infer a range or adjacent content.
 `revisionView` accepts `accepted`, `rejected`, or `current`. Returned
 paragraphs identify matches versus context and include `humanReference` for
 user-facing summaries.
@@ -306,7 +311,8 @@ user-facing Word locations; use `humanReference`, `provision`, or
 `recovery-envelope-v1`, `require-complete-exit`, `operations-stdin`,
 `agent-safety-profile-v2`, `deduplicated-cli-receipts`, and
 `compact-cli-json-v1`, `localized-replacements-v1`,
-`speculative-search-apply-v1`, and `localized-change-summary-v1` capabilities.
+`speculative-search-apply-v1`, `localized-change-summary-v1`, and
+`restore-shortcuts-v1` capabilities.
 Wrappers should negotiate only the
 capabilities they use. Run `docx-redline <command> --help` for that command's
 machine-readable options, behavior, exit codes, canonical GitHub documentation links, and compact examples.

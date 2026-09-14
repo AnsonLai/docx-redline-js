@@ -160,7 +160,10 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
         };
     }
 
-    if (Array.isArray(operation.replacements)) {
+    if (
+        Array.isArray(operation.replacements)
+        || (operation.operationKind === 'restore' && op?.modified === undefined)
+    ) {
         const compilation = compileOperationBatch(session.document, [op], {
             strictTargets: options.strictTargets !== false,
             onInfo: options.onInfo,
@@ -415,7 +418,14 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
             }
             if (operation._localizedReplacementCompilation) {
                 let outputText = null;
-                if (operation._compiledSourceId && session.sourceTargetRegistry) {
+                if (operation.operationKind === 'restore') {
+                    const restoredParagraph = operationOptions._mutationLiveNodes.find(node => node?.localName === 'p');
+                    if (restoredParagraph) {
+                        outputText = extractCanonicalParagraphText(restoredParagraph, {
+                            revisionView: 'accepted'
+                        });
+                    }
+                } else if (operation._compiledSourceId && session.sourceTargetRegistry) {
                     const bound = session.sourceTargetRegistry.resolve(
                         operation._compiledSourceId,
                         session.document

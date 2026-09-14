@@ -31,7 +31,7 @@ It is a development sample, not a package API.
    docx-redline extract contract.docx --search "termination" --around 3
    ```
 
-   Search is case-insensitive; follow `selection.hint` and `selection.nextAfter`, and report `humanReference`. With `--revised`, use `hasRevisions`, `revisionAuthors`, and `deleted` or `inserted` to interpret paragraphs whose active-view `exactText` is empty. Apply once with a UTF-8 operations file or serializer-backed stdin:
+   Search is case-insensitive; follow `selection.hint` and `selection.nextAfter`, and report `humanReference`. With `--revised`, use `hasRevisions`, `revisionAuthors`, and `deleted` or `inserted` to interpret paragraphs whose active-view `exactText` is empty. Restore one rejected-view paragraph verbatim with `apply --restore --target-id ID`; add one `--find`/`--replace` pair for an exact correction. The shortcut never expands to adjacent paragraphs. Otherwise, apply once with a UTF-8 operations file or serializer-backed stdin:
 
    ```bash
    node emit-operations.mjs | docx-redline apply contract.docx --operations - --profile agent --compact --output reviewed.docx
