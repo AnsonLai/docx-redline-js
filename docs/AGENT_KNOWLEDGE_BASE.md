@@ -593,6 +593,9 @@ Paragraph indexes are 1-based. Inspection filters are `--index 12`,
 case-insensitive. When a search returns 0 matches in the active view but matches
 exist in the alternate view (such as searching for a deleted clause to restore),
 `selection.hint` provides immediate guidance to re-run with `--view rejected`.
+Compact `extract --revised` results retain `hasRevisions`, `revisionAuthors`,
+and `deleted`/`inserted` cues, so an empty `exactText` is identifiable as content
+hidden by the selected revision view rather than a failed filter.
 Add `--around N` (`--context N` or `-C N`) to a search;
 context records are labeled separately and do not consume the direct-hit
 `--limit`. Continue a bounded result with `--after <paragraph-index>`. Ordinary

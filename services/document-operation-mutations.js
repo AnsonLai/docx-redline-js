@@ -224,6 +224,36 @@ function describeTargetTextMatch(actualText, requestedText) {
     };
 }
 
+function resolvedTargetDiagnostics(xmlDoc, paragraph, metadata, targetText, options) {
+    const revisionView = options?.targetDescriptor?.revisionView === 'rejected'
+        ? 'rejected'
+        : 'accepted';
+    const viewMetadata = metadata?.revisionView === revisionView ? metadata : null;
+    const index = viewMetadata?.index ?? getDocumentParagraphNodes(xmlDoc).indexOf(paragraph) + 1;
+    const paragraphId = viewMetadata?.paragraphId ?? getParagraphId(paragraph);
+    const inTable = viewMetadata?.inTable ?? !!findContainingWordElement(paragraph, 'tbl');
+    const text = viewMetadata?.text ?? extractCanonicalParagraphText(paragraph, { revisionView });
+    const fingerprint = viewMetadata?.fingerprint ?? createParagraphFingerprint(paragraph, {
+        text,
+        index,
+        paragraphId,
+        inTable,
+        revisionView
+    });
+    return {
+        index,
+        paragraphId,
+        text,
+        fingerprint,
+        revisionView,
+        inTable,
+        targetTextMatch: describeTargetTextMatch(
+            text,
+            options?.targetDescriptor?.text ?? options?.targetDescriptor?.exactText ?? targetText
+        )
+    };
+}
+
 function resolveTargetParagraph(xmlDoc, targetText, targetRef, opType, runtimeContext = null, options = {}) {
     const onInfo = typeof options?.onInfo === 'function' ? options.onInfo : () => { };
     const onWarn = typeof options?.onWarn === 'function' ? options.onWarn : () => { };
@@ -239,17 +269,7 @@ function resolveTargetParagraph(xmlDoc, targetText, targetRef, opType, runtimeCo
             const metadata = paragraphMetadataIndex?.byParagraph?.get(paragraph) || null;
             Object.assign(options._resolutionCapture, {
                 resolvedBy: resolved.resolvedBy,
-                resolvedTarget: {
-                    index: metadata?.index ?? getDocumentParagraphNodes(xmlDoc).indexOf(paragraph) + 1,
-                    paragraphId: metadata?.paragraphId ?? getParagraphId(paragraph),
-                    text: metadata?.text ?? getParagraphText(paragraph),
-                    fingerprint: metadata?.fingerprint ?? createParagraphFingerprint(paragraph),
-                    inTable: metadata?.inTable ?? !!findContainingWordElement(paragraph, 'tbl'),
-                    targetTextMatch: describeTargetTextMatch(
-                        metadata?.text ?? getParagraphText(paragraph),
-                        options?.targetDescriptor?.exactText ?? targetText
-                    )
-                }
+                resolvedTarget: resolvedTargetDiagnostics(xmlDoc, paragraph, metadata, targetText, options)
             });
         }
         return resolved;
@@ -263,17 +283,7 @@ function resolveTargetParagraph(xmlDoc, targetText, targetRef, opType, runtimeCo
                 const metadata = paragraphMetadataIndex?.byParagraph?.get(paragraph) || null;
                 Object.assign(options._resolutionCapture, {
                     resolvedBy: resolved.resolvedBy,
-                    resolvedTarget: {
-                        index: metadata?.index ?? Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p')).indexOf(paragraph) + 1,
-                        paragraphId: metadata?.paragraphId ?? getParagraphId(paragraph),
-                        text: metadata?.text ?? getParagraphText(paragraph),
-                        fingerprint: metadata?.fingerprint ?? createParagraphFingerprint(paragraph),
-                        inTable: metadata?.inTable ?? !!findContainingWordElement(paragraph, 'tbl'),
-                        targetTextMatch: describeTargetTextMatch(
-                            metadata?.text ?? getParagraphText(paragraph),
-                            options?.targetDescriptor?.exactText ?? targetText
-                        )
-                    }
+                    resolvedTarget: resolvedTargetDiagnostics(xmlDoc, paragraph, metadata, targetText, options)
                 });
             }
             return resolved;
@@ -303,17 +313,7 @@ function resolveTargetParagraph(xmlDoc, targetText, targetRef, opType, runtimeCo
         const metadata = paragraphMetadataIndex?.byParagraph?.get(paragraph) || null;
         Object.assign(options._resolutionCapture, {
             resolvedBy: resolved.resolvedBy,
-            resolvedTarget: {
-                index: metadata?.index ?? Array.from(xmlDoc.getElementsByTagNameNS(NS_W, 'p')).indexOf(paragraph) + 1,
-                paragraphId: metadata?.paragraphId ?? getParagraphId(paragraph),
-                text: metadata?.text ?? getParagraphText(paragraph),
-                fingerprint: metadata?.fingerprint ?? createParagraphFingerprint(paragraph),
-                inTable: metadata?.inTable ?? !!findContainingWordElement(paragraph, 'tbl'),
-                targetTextMatch: describeTargetTextMatch(
-                    metadata?.text ?? getParagraphText(paragraph),
-                    options?.targetDescriptor?.exactText ?? targetText
-                )
-            }
+            resolvedTarget: resolvedTargetDiagnostics(xmlDoc, paragraph, metadata, targetText, options)
         });
     }
     return resolved;

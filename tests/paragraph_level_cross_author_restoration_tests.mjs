@@ -333,6 +333,28 @@ async function restore(input, modified = 'Restored clause.', overrides = {}) {
     assert.equal(rejectedView.status, 'ok', JSON.stringify(rejectedView.error));
     assert.deepEqual(paragraphTexts(rejectedView.documentXml), ['Before.', '', 'Restored clause.', 'After.']);
 
+    const rejectedFingerprint = createParagraphFingerprint(target, {
+        text: 'Restored clause.',
+        index: 2,
+        revisionView: 'rejected'
+    });
+    const rejectedDiagnostics = await applyOperationToDocumentXml(input, {
+        type: 'restore',
+        target: {
+            exactText: 'Restored clause.',
+            paragraphId: 'DEAD0001',
+            fingerprint: rejectedFingerprint,
+            revisionView: 'rejected'
+        },
+        modified: 'Restored clause.',
+        author: B
+    }, B, null, { strictTargets: true });
+    assert.equal(rejectedDiagnostics.status, 'ok', JSON.stringify(rejectedDiagnostics.error));
+    assert.equal(rejectedDiagnostics.resolvedTarget.revisionView, 'rejected');
+    assert.equal(rejectedDiagnostics.resolvedTarget.text, 'Restored clause.');
+    assert.equal(rejectedDiagnostics.resolvedTarget.fingerprint, rejectedFingerprint);
+    assert.deepEqual(rejectedDiagnostics.resolvedTarget.targetTextMatch, { mode: 'exact' });
+
     const rejectedInspection = preflightOperations(input, [{
         type: 'restore',
         target: { exactText: 'Restored clause.', revisionView: 'rejected' },

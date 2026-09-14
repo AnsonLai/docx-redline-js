@@ -430,8 +430,14 @@ function compactExtractParagraph(paragraph) {
     const {
         humanReference, provision, nearestHeading, index, ref, paragraphId,
         fingerprint, revisionView, exactText, inTable, list, selectionRole,
-        contextFor
+        contextFor, hasRevisions, revisionAuthors, segments
     } = paragraph;
+    const hiddenRevisionContent = exactText.length === 0 && Array.isArray(segments)
+        && segments.some(segment => segment.text.length > 0 && (
+            revisionView === 'rejected'
+                ? segment.acceptedStart !== null
+                : segment.rejectedStart !== null
+        ));
     return {
         humanReference,
         provision,
@@ -444,6 +450,12 @@ function compactExtractParagraph(paragraph) {
         exactText,
         inTable,
         list,
+        ...(hasRevisions ? {
+            hasRevisions: true,
+            revisionAuthors,
+            ...(hiddenRevisionContent && revisionView === 'accepted' ? { deleted: true } : {}),
+            ...(hiddenRevisionContent && revisionView === 'rejected' ? { inserted: true } : {})
+        } : {}),
         ...(selectionRole ? { selectionRole } : {}),
         ...(Array.isArray(contextFor) ? { contextFor } : {})
     };

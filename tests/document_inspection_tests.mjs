@@ -23,4 +23,20 @@ assert.equal(result.paragraphs[0].styleId, 'Heading1');
 assert.match(result.paragraphs[1].humanReference, /^F\)/);
 assert.equal(inspectDocumentParts({ documentXml, numberingXml }, { revisedOnly: true }).paragraphs.length, 1);
 assert.equal(inspectDocumentParts({ documentXml }, { range: { start: 2, end: 2 } }).paragraphs[0].index, 2);
+
+const filteredHintXml = `<w:document xmlns:w="${W}"><w:body>
+<w:p><w:del w:id="10" w:author="Body"><w:r><w:delText>hidden match</w:delText></w:r></w:del></w:p>
+<w:tbl><w:tr><w:tc><w:p><w:del w:id="11" w:author="Table"><w:r><w:delText>hidden match</w:delText></w:r></w:del></w:p></w:tc></w:tr></w:tbl>
+<w:p><w:del w:id="12"><w:r><w:delText>authorless match</w:delText></w:r></w:del></w:p>
+<w:sectPr/></w:body></w:document>`;
+const tableHint = inspectDocumentParts({ documentXml: filteredHintXml }, {
+    search: 'hidden match',
+    inTable: true
+});
+assert.match(tableHint.selection.hint, /1 match found in --view rejected/);
+const revisedHint = inspectDocumentParts({ documentXml: filteredHintXml }, {
+    search: 'authorless match',
+    revisedOnly: true
+});
+assert.equal(revisedHint.selection.hint, undefined);
 console.log('document inspection tests passed');

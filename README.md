@@ -168,6 +168,8 @@ limit output. Search is a case-insensitive substring match; `around` adds nearby
 context, while `limit` and `after` page direct hits. When a search yields 0
 matches in the active view, `selection.hint` provides guidance if matches exist
 in the alternate revision view (such as searching for deleted text to restore).
+Compact `extract --revised` output retains revision authors and marks paragraphs
+whose content is wholly hidden in the selected view as `deleted` or `inserted`.
 `revisionView` accepts `accepted`, `rejected`, or `current`. Returned
 paragraphs identify matches versus context and include `humanReference` for
 user-facing summaries.

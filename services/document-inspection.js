@@ -324,9 +324,8 @@ export function inspectDocumentParts(parts, options = {}) {
             if (options.range && (index < rangeStart || index > rangeEnd)) continue;
             if (Array.isArray(options.indexes) && !options.indexes.includes(index)) continue;
             const pNode = paragraphNodes[i];
-            if (options.table && !hasAncestor(pNode, 'tc')) continue;
-            if (options.body && hasAncestor(pNode, 'tc')) continue;
-            if (options.revised && revisionAuthors(pNode).length === 0) continue;
+            if (options.inTable != null && hasAncestor(pNode, 'tc') !== !!options.inTable) continue;
+            if (options.revisedOnly && revisionAuthors(pNode).length === 0) continue;
             const altText = extractCanonicalParagraphText(pNode, { revisionView: alternateView });
             if (options.skipEmpty && altText.length === 0) continue;
             if (altText.toLowerCase().includes(needle)) {

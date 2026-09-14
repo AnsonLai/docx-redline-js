@@ -12,7 +12,7 @@ const COMPACT = option('compact', '--compact', 'Emit one-line JSON to reduce pro
 const INSPECTION_OPTIONS = Object.freeze([
     HELP,
     option('search', '--search <text>', 'Case-insensitive substring search.'),
-    option('revised', '--revised', 'Select paragraphs containing tracked revisions.'),
+    option('revised', '--revised', 'Select paragraphs containing tracked revisions; extract identifies authors and fully hidden deleted/inserted paragraphs.'),
     option('table', '--table', 'Select paragraphs inside tables.'),
     option('body', '--body', 'Select paragraphs outside tables.'),
     option('nonEmpty', '--non-empty', 'Exclude empty paragraphs; this is not a narrow document scope.'),

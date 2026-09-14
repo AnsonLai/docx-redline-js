@@ -23,6 +23,30 @@ try {
     assert.equal(inspected.status, 'ok'); assert.equal(inspected.paragraphs.length, 1);
     const extracted = await executeCli(['extract', input]);
     assert.equal(extracted.paragraphs[0].exactText, '  Exact\ttext  ');
+
+    const revisionsInput = path.join(directory, 'revisions.docx');
+    const revisionsXml = `<w:document xmlns:w="${W}"><w:body>
+<w:p w:paraId="D1"><w:del w:id="1" w:author="Old Reviewer"><w:r><w:delText>Removed clause.</w:delText></w:r></w:del></w:p>
+<w:p w:paraId="I1"><w:ins w:id="2" w:author="New Reviewer"><w:r><w:t>Added clause.</w:t></w:r></w:ins></w:p>
+<w:sectPr/></w:body></w:document>`;
+    await writeFile(revisionsInput, buildZip([
+        {name:'[Content_Types].xml',data:contentTypes},
+        {name:'word/document.xml',data:revisionsXml},
+        {name:'word/_rels/document.xml.rels',data:rels}
+    ]));
+    const revisedExtract = await executeCli(['extract', revisionsInput, '--revised']);
+    assert.deepEqual(revisedExtract.paragraphs.map(item => ({
+        exactText: item.exactText,
+        hasRevisions: item.hasRevisions,
+        revisionAuthors: item.revisionAuthors,
+        deleted: item.deleted
+    })), [
+        { exactText: '', hasRevisions: true, revisionAuthors: ['Old Reviewer'], deleted: true },
+        { exactText: 'Added clause.', hasRevisions: true, revisionAuthors: ['New Reviewer'], deleted: undefined }
+    ]);
+    const rejectedRevisedExtract = await executeCli(['extract', revisionsInput, '--revised', '--view', 'rejected']);
+    assert.equal(rejectedRevisedExtract.paragraphs[1].exactText, '');
+    assert.equal(rejectedRevisedExtract.paragraphs[1].inserted, true);
     const preflight = await executeCli(['preflight', input, '--operations', operationsFile, '--author', 'CLI Editor']);
     assert.equal(preflight.valid, true);
     const missingAuthor = await executeCli(['apply', input, '--operations', authorlessFile]);

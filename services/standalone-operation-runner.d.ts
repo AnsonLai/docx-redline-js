@@ -155,6 +155,7 @@ export interface ResolvedDocumentTarget {
   paragraphId: string | null;
   text: string;
   fingerprint?: string;
+  revisionView?: 'accepted' | 'rejected';
   inTable?: boolean;
   targetTextMatch?: {
     mode: 'exact' | 'space_equivalent' | 'normalized';

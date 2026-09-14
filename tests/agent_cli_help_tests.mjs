@@ -50,6 +50,7 @@ assert.deepEqual(applyHelp.examples[1].operation.replacements, [
 
 const extractHelp = await executeCli(['extract', '--help']);
 assert.match(extractHelp.notes.join(' '), /case-insensitive/i);
+assert.match(extractHelp.options.find(item => item.name.includes('--revised')).description, /deleted\/inserted paragraphs/i);
 assert(extractHelp.options.some(item => item.name.includes('--around') && item.name.includes('-C')));
 assert(extractHelp.options.some(item => item.name.includes('--limit')));
 assert(extractHelp.options.some(item => item.name.includes('--all')));

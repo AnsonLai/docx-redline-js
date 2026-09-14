@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Fixed rejected-view restore receipts so `resolvedTarget` text, fingerprint,
+  revision view, and match diagnostics describe the view actually used to
+  resolve the target.
+- Fixed alternate-view search hints to honor `--revised`, `--table`, and
+  `--body`, and retained compact revision authors plus `deleted`/`inserted` cues
+  in `extract` output so empty revision-view paragraphs are self-explanatory.
+
 ## 0.7.0
 
 ### Agent Performance and Localized Editing
