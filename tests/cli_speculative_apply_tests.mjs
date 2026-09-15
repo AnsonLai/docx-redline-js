@@ -62,6 +62,66 @@ try {
     assert.equal(global.results[0].change.verification.acceptedViewMatchesCompiledText, true);
     assert.equal((await executeCli(['extract', globalOutput, '--search', 'sixty (60) days'])).paragraphs.length, 1);
 
+    const nbspInput = await writeFixture(directory, 'nbsp.docx', [
+        { id: 'NB1', text: '3.2 Reference Materials', heading: true },
+        {
+            id: 'NB2',
+            text: 'The toolkit includes an assembly chart stored at docs.example/assembly. In addition, operators should consult the Calibration Manual located at\u00a0docs.example/calibration/\u00a0(the “Manual”).'
+        },
+        { id: 'NB3', text: 'The assembly chart remains available at docs.example/assembly.' }
+    ]);
+    const nbspOutput = path.join(directory, 'nbsp-output.docx');
+    const nbspResult = await executeCli([
+        'apply', nbspInput,
+        '--search', 'In addition, operators',
+        '--context-range', '0:0',
+        '--find', 'Calibration Manual located at docs.example/calibration/ (the “Manual”).',
+        '--replace', 'Calibration Manual located at docs.example/calibration/, as published when the device was activated (the “Manual”).',
+        '--profile', 'agent',
+        '--output', nbspOutput
+    ]);
+    assert.equal(nbspResult.status, 'ok', JSON.stringify(nbspResult));
+    assert.equal(nbspResult.completion, true);
+    assert.equal(nbspResult.results[0].change.target.paragraphId, 'NB2');
+    assert.equal(nbspResult.results[0].change.context.anchorMatchCount, 1);
+    assert.equal(nbspResult.results[0].change.replacements[0].matchMode, 'space_equivalent');
+    const nbspExtract = await executeCli(['extract', nbspOutput, '--index', '2']);
+    assert.equal(
+        nbspExtract.paragraphs[0].exactText,
+        'The toolkit includes an assembly chart stored at docs.example/assembly. In addition, operators should consult the Calibration Manual located at\u00a0docs.example/calibration/, as published when the device was activated\u00a0(the “Manual”).'
+    );
+    assert.match(nbspExtract.paragraphs[0].exactText, /assembly chart stored at docs\.example\/assembly/);
+    assert.equal((await executeCli(['extract', nbspOutput, '--search', 'calendar date'])).paragraphs.length, 0);
+
+    const exactPriorityInput = await writeFixture(directory, 'exact-priority.docx', [
+        { id: 'EP1', text: 'The handbook is at docs.example/handbook/ today.' },
+        { id: 'EP2', text: 'The handbook is at\u00a0docs.example/handbook/\u00a0today.' }
+    ]);
+    const exactPriority = await executeCli([
+        'apply', exactPriorityInput,
+        '--find', 'handbook is at docs.example/handbook/ today',
+        '--replace', 'handbook is at docs.example/handbook/ at launch'
+    ]);
+    assert.equal(exactPriority.status, 'ok', JSON.stringify(exactPriority));
+    assert.equal(exactPriority.results[0].change.target.paragraphId, 'EP1');
+    assert.equal(exactPriority.results[0].change.replacements[0].matchMode, undefined);
+
+    const ambiguousNbspInput = await writeFixture(directory, 'ambiguous-nbsp.docx', [
+        { id: 'AN1', text: 'The handbook is at\u00a0docs.example/handbook/.' },
+        { id: 'AN2', text: 'A second handbook is at\u00a0docs.example/handbook/.' }
+    ]);
+    const ambiguousNbspOutput = path.join(directory, 'ambiguous-nbsp-output.docx');
+    const ambiguousNbsp = await executeCli([
+        'apply', ambiguousNbspInput,
+        '--find', 'handbook is at docs.example/handbook/.',
+        '--replace', 'handbook is at docs.example/handbook/ at launch.',
+        '--output', ambiguousNbspOutput
+    ]);
+    assert.equal(ambiguousNbsp.status, 'error');
+    assert.equal(ambiguousNbsp.error.code, 'AMBIGUOUS_TARGET');
+    assert.equal(ambiguousNbsp.error.candidates.length, 2);
+    await assert.rejects(readFile(ambiguousNbspOutput), error => error.code === 'ENOENT');
+
     // Repeated visible section references are valid anchors when their union still
     // leaves one eligible patch paragraph. The directional range excludes text
     // before the heading and the heading itself.

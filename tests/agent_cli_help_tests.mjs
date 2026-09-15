@@ -39,6 +39,7 @@ assert(applyHelp.options.some(item => item.name === '--compact'));
 assert(applyHelp.options.some(item => item.name.includes('--target-id')));
 assert(applyHelp.options.some(item => item.name === '--restore'));
 assert(applyHelp.options.some(item => item.name.includes('--find')));
+assert.match(applyHelp.options.find(item => item.name.includes('--find')).description, /ASCII-space\/NBSP equivalence/i);
 assert(applyHelp.options.some(item => item.name.includes('--replace')));
 assert(applyHelp.options.some(item => item.name.includes('--occurrence')));
 assert.match(applyHelp.options.find(item => item.name.includes('--search')).description, /longer, fairly unique phrase/i);

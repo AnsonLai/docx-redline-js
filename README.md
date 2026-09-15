@@ -291,6 +291,7 @@ All commands emit JSON on stdout. `apply` defaults:
 - **Tracked changes**: Defaults to `generateRedlines: true`. Pass `--no-redlines` when clean direct text edits are desired.
 - **Inline edits**: Use `--target <text>` with `--modified <text>` or `--comment <text>` for quick one-liners without creating a JSON file.
 - **Localized edits**: Use `--find`/`--replace` with a known strong target, or omit the target for fail-closed global resolution. Add a longer, fairly unique `--search` phrase with `--context-range 1:3` for directional scope; `--around 3` is symmetric. Generic or repeated anchors can widen the unioned scope until multiple paragraphs contain `find`, producing a safe `AMBIGUOUS_TARGET` failure and an extra recovery turn. On success, `results[i].change.context.anchorMatchCount > 1` signals a non-unique anchor; confirm the returned location and bounded before/after evidence.
+- **Invisible spaces**: Localized matching is case-sensitive and tries exact text first. If no exact span exists, ordinary spaces may match DOCX non-breaking spaces; ambiguous equivalent matches still fail closed, and `change.replacements[i].matchMode` reports `space_equivalent` when used.
 - **Compact mutation results**: `apply`, `accept`, `reject`, and `delete-comments` omit full OOXML/package payloads and inspection text from stdout. CLI operation results omit duplicate nested receipt bodies; the ordered top-level `receipts` array is authoritative. Successful exact target-match diagnostics are omitted and equivalent-whitespace matches retain only mode/count. Node and standalone-runner results remain unchanged. Use `validate` when full issue arrays are needed.
 
 Inspection commands default to 20 direct matches and a 48 KiB soft response
@@ -312,7 +313,7 @@ user-facing Word locations; use `humanReference`, `provision`, or
 `agent-safety-profile-v2`, `deduplicated-cli-receipts`, and
 `compact-cli-json-v1`, `localized-replacements-v1`,
 `speculative-search-apply-v1`, `localized-change-summary-v1`, and
-`restore-shortcuts-v1` capabilities.
+`restore-shortcuts-v1`, plus `localized-space-equivalence-v1` capabilities.
 Wrappers should negotiate only the
 capabilities they use. Run `docx-redline <command> --help` for that command's
 machine-readable options, behavior, exit codes, canonical GitHub documentation links, and compact examples.

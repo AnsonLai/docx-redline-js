@@ -919,7 +919,7 @@ async function testNumberedHeadingConversionKeepsBatchRevisionIdsUnique() {
         'Opening recital',
         'Second recital',
         'Service description',
-        '2.3 Customer Responsibilities'
+        '2.3 Operator Responsibilities'
     ];
     const inputXml = buildParagraphDocumentXml(paragraphs);
     const operations = [
@@ -927,7 +927,7 @@ async function testNumberedHeadingConversionKeepsBatchRevisionIdsUnique() {
         { type: 'redline', targetRef: 2, target: paragraphs[1], modified: 'Revised opening recital' },
         { type: 'redline', targetRef: 3, target: paragraphs[2], modified: 'Revised second recital' },
         { type: 'redline', targetRef: 4, target: paragraphs[3], modified: 'Revised service description' },
-        { type: 'redline', targetRef: 5, target: paragraphs[4], modified: '2.2 Customer Responsibilities' }
+        { type: 'redline', targetRef: 5, target: paragraphs[4], modified: '2.2 Operator Responsibilities' }
     ];
 
     const result = await applyOperationsToDocumentXml(
@@ -1038,25 +1038,25 @@ async function testMixedListRoutesSeedRevisionIdsAboveExistingDocumentMaximum() 
 
 async function testParagraphSplitBeforeNumberedHeadingKeepsRevisionIdsUnique() {
     const paragraphs = [
-        'SALARY.AI Amendment',
-        'Opening agreement recital',
-        'Second agreement recital',
-        'Salary provides the service. 2. USE OF SERVICE',
-        '2.3 Customer Responsibilities'
+        'NORTHSTAR DEVICE ADDENDUM',
+        'Opening product description',
+        'Second product description',
+        'Northstar provides the platform. 2. OPERATING CONDITIONS',
+        '2.3 Operator Responsibilities'
     ];
     const result = await applyOperationsToDocumentXml(
         buildParagraphDocumentXml(paragraphs),
         [
-            { type: 'redline', targetRef: 1, target: paragraphs[0], modified: 'SALARY.AI AGREEMENT' },
-            { type: 'redline', targetRef: 2, target: paragraphs[1], modified: 'Rewritten opening agreement recital' },
-            { type: 'redline', targetRef: 3, target: paragraphs[2], modified: 'Rewritten second agreement recital' },
+            { type: 'redline', targetRef: 1, target: paragraphs[0], modified: 'NORTHSTAR DEVICE GUIDE' },
+            { type: 'redline', targetRef: 2, target: paragraphs[1], modified: 'Rewritten opening product description' },
+            { type: 'redline', targetRef: 3, target: paragraphs[2], modified: 'Rewritten second product description' },
             {
                 type: 'redline',
                 targetRef: 4,
                 target: paragraphs[3],
-                modified: 'Salary provides the service.\n2. USE OF SERVICE'
+                modified: 'Northstar provides the platform.\n2. OPERATING CONDITIONS'
             },
-            { type: 'redline', targetRef: 5, target: paragraphs[4], modified: '2.2 Customer Responsibilities' }
+            { type: 'redline', targetRef: 5, target: paragraphs[4], modified: '2.2 Operator Responsibilities' }
         ],
         'SplitThenHeadingAllocatorTest',
         { numberingIdState: createDynamicNumberingIdState() },
@@ -1074,7 +1074,7 @@ async function testParagraphSplitBeforeNumberedHeadingKeepsRevisionIdsUnique() {
         resultDoc.getElementsByTagNameNS(NS_W, 'p').length > paragraphs.length,
         'the multiline replacement should create additional tracked paragraph structure'
     );
-    assert.match(result.documentXml, /USE OF SERVICE/, 'the split heading text should remain in generated OOXML');
+    assert.match(result.documentXml, /OPERATING CONDITIONS/, 'the split heading text should remain in generated OOXML');
 }
 
 async function run() {

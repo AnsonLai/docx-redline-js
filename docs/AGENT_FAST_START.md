@@ -1,58 +1,55 @@
 # Agent Fast Start
 
-Use this page for ordinary `.docx` edits. For source changes or unusual Word structures, follow the links at the end.
+Use this page for ordinary `.docx` edits. For unusual Word structures or optional shortcuts, follow the links at the end.
 
 ## Structured agent tool
 
-If your host provides a document-session wrapper:
+If the host provides a document-session wrapper:
 
-1. Inspect/search once with enough surrounding context to draft the change.
-2. Apply with the revision-bound handle and complete desired text or exact replacements.
-3. Treat only `ok: true` as complete; refresh failed handles before reuse.
+1. Inspect once with enough surrounding context to draft the change.
+2. Apply once with the returned revision-bound handle.
+3. Accept only the wrapper's complete-success result; refresh failed handles.
 
-The repository's `examples/agent-session-wrapper.mjs` demonstrates this pattern.
-It is a development sample, not a package API.
+The repository's `examples/agent-session-wrapper.mjs` is a development sample, not a package API.
 
-## CLI fallback
+## CLI workflow
 
-1. For a literal mechanical edit with known old and new text, try one-turn apply:
-
-   ```bash
-   docx-redline apply contract.docx --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
-   ```
-
-   The source must occur in one eligible paragraph. To narrow it, use a longer, fairly unique phrase: `--search "distinctive nearby heading or phrase" --context-range 1:3`.
-   Generic/repeated anchors can cause `AMBIGUOUS_TARGET` and waste a recovery turn. If `anchorMatchCount > 1`, confirm the returned location and excerpts. `--around 3` is symmetric.
-
-2. For semantic drafting such as “make this provision mutual,” extract enough
-   context, then copy `exactText` with `paragraphId` or `fingerprint`:
+1. Extract the relevant clause or range:
 
    ```bash
    docx-redline extract contract.docx --search "termination" --around 3
    ```
 
-   Search is case-insensitive; follow `selection.hint` and `selection.nextAfter`, and report `humanReference`. With `--revised`, use `hasRevisions`, `revisionAuthors`, and `deleted` or `inserted` to interpret paragraphs whose active-view `exactText` is empty. Restore one rejected-view paragraph verbatim with `apply --restore --target-id ID`; add one `--find`/`--replace` pair for an exact correction. The shortcut never expands to adjacent paragraphs. Otherwise, apply once with a UTF-8 operations file or serializer-backed stdin:
+   Search is case-insensitive. Follow `selection.nextAfter` when truncated. Preserve `selection`, `humanReference`, target descriptors, and revision cues when reshaping output. Report `humanReference`, not a machine paragraph number.
+
+2. Copy inspected `exactText` and its `paragraphId` or `fingerprint`, then apply once with a UTF-8 operations file or serializer-backed stdin:
 
    ```bash
    node emit-operations.mjs | docx-redline apply contract.docx --operations - --profile agent --compact --output reviewed.docx
    ```
 
-   Use `JSON.stringify`, not shell interpolation. `modified` is the complete desired accepted-view paragraph.
+   Use complete `modified` text for a broad semantic revision. For a small literal change in that inspected target, use
+   `replacements: [{ "find": "old text", "replace": "new text" }]` instead.
+   Use `JSON.stringify`; never interpolate document text through shell quoting. Preserve intentionally relative wording unless the user asks for a concrete value.
 
-The `agent` profile preserves progressive execution and the ordinary revision policy while making incomplete work exit nonzero. Add `--atomic` deliberately; check `effectiveOptions`. Run `docx-redline apply --help` for redline, comment, and rejected-view restore shapes.
+## Restore branch
 
-## Batch and result rules
+If the user requests deleted text, search with `--view rejected` first. Otherwise follow `selection.hint` only when it identifies an alternate revision view. Restore the inspected strong target; do not infer adjacent content. Run `docx-redline apply --help` for canonical restore shapes.
 
-- Strong inspected targets bind to the batch start; independent edits need no bottom-up sorting.
-- Consolidate writes to one source; use captures for created-content dependencies.
-- Require `completion: true`, `written: true`, a non-null `outputPath`, and no
-  per-operation error. For localized edits also require
-  `results[i].change.committed: true`, `finalDisposition: "applied"`, and
-  `verification.acceptedViewMatchesCompiledText: true`. The source is
-  not overwritten unless `--in-place` is explicit.
-- On failure, follow `error.recovery.action`. Never retry unchanged arguments.
-- `retryPlan.base: "original"` means replay the batch; `"output"` means retain committed work and retry reported indexes.
-- Never accept/reject revisions or remove comments without user authorization. `slice-cross-author` preserves history for edits inside foreign insertions.
+## Completion and recovery
 
-Advanced operations and recovery: [Agent Knowledge Base](AGENT_KNOWLEDGE_BASE.md); canonical contract: [document-operations.schema.json](schemas/document-operations.schema.json)  
+- Require `completion: true` and a non-null `outputPath`; the CLI computes this from write, operation, commit, and localized-verification results.
+- On failure, follow `error.recovery.action`; never retry unchanged arguments.
+- Use `retryPlan.base: "original"` to replay a batch and `"output"` to retain
+  committed progressive work and retry the reported indexes.
+- The source is not overwritten unless `--in-place` is explicit.
+- Never accept/reject revisions or remove comments without authorization.
+- Add `--atomic` or a non-default revision policy only when deliberately needed;
+  confirm `effectiveOptions`.
+- Strong inspected targets bind to batch start. Consolidate writes to one source
+  and use captures only for intentional created-content dependencies.
+
+Advanced speculative apply, directional scoping, operation constraints, and
+recovery: [Agent Knowledge Base](AGENT_KNOWLEDGE_BASE.md). Canonical schema:
+[document-operations.schema.json](schemas/document-operations.schema.json).
 Wrapper design: [README](../README.md#example-agent-session-wrapper-development-only)

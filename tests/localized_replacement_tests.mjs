@@ -42,6 +42,39 @@ assert.equal(compiled.ok, true);
 assert.equal(compiled.desiredText, desiredText);
 assert.deepEqual(compiled.replacements.map(item => item.find), ['five dollars', 'Alpha']);
 
+const nbspSource = 'Calibration Manual located at\u00a0docs.example/calibration/\u00a0(the “Manual”).';
+const nbspCompiled = compileExactReplacements(nbspSource, [{
+    find: 'Calibration Manual located at docs.example/calibration/ (the “Manual”).',
+    replace: 'Calibration Manual located at docs.example/calibration/, current at launch (the “Manual”).'
+}]);
+assert.equal(nbspCompiled.ok, true);
+assert.equal(nbspCompiled.replacements[0].matchMode, 'space_equivalent');
+assert.equal(
+    nbspCompiled.desiredText,
+    'Calibration Manual located at\u00a0docs.example/calibration/, current at launch\u00a0(the “Manual”).'
+);
+
+const exactBeforeEquivalent = compileExactReplacements('A B and A\u00a0B', [
+    { find: 'A B', replace: 'C D' }
+]);
+assert.equal(exactBeforeEquivalent.ok, true);
+assert.equal(exactBeforeEquivalent.replacements[0].start, 0);
+assert.equal(exactBeforeEquivalent.replacements[0].matchMode, 'exact');
+
+const ambiguousEquivalent = compileExactReplacements('A\u00a0B and A\u00a0B', [
+    { find: 'A B', replace: 'C D' }
+]);
+assert.equal(ambiguousEquivalent.ok, false);
+assert.equal(ambiguousEquivalent.error.code, 'AMBIGUOUS_PATCH_SOURCE');
+
+for (const nonEquivalentSource of ['Calibration\tManual', 'calibration\u00a0Manual', 'Calibration\u2009Manual']) {
+    const nonEquivalent = compileExactReplacements(nonEquivalentSource, [
+        { find: 'Calibration Manual', replace: 'Current Manual' }
+    ]);
+    assert.equal(nonEquivalent.ok, false, nonEquivalentSource);
+    assert.equal(nonEquivalent.error.code, 'PATCH_SOURCE_NOT_FOUND');
+}
+
 const duplicate = compileExactReplacements('pay promptly', [
     { find: 'promptly', replace: 'within five days' },
     { find: 'promptly', replace: 'within five days' }

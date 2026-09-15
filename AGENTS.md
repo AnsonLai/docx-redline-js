@@ -21,53 +21,39 @@ specific advanced operation, API, or recovery topic you need.
 
 ## Ordinary document edits
 
-For a literal mechanical edit with known old and new text, try one fail-closed
-apply call. When global matching is too broad, use a longer, fairly unique
-nearby phrase plus a directional range:
-
-```bash
-docx-redline apply contract.docx --search "distinctive nearby heading or phrase" --context-range 1:3 --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
-```
-
-Generic or repeated anchors widen the unioned scope and may return
-`AMBIGUOUS_TARGET`, costing a recovery turn. On success, treat
-`results[i].change.context.anchorMatchCount > 1` as a signal to confirm the
-returned location and excerpts.
-
-For semantic drafting, inspect once and apply once. With a structured wrapper,
-use revision-bound handles. For shell-only work, use serializer-backed stdin:
+Use one focused extraction and one apply call. With a structured wrapper, use
+its revision-bound target handles. For shell-only work, use serializer-backed
+stdin and the explicit agent profile:
 
 ```bash
 docx-redline extract contract.docx --search "termination" --around 3
 node emit-operations.mjs | docx-redline apply contract.docx --operations - --profile agent --compact --output reviewed.docx
 ```
 
-A single deleted paragraph found in rejected view can be restored verbatim with
-`apply --restore --target-id ID`; add one `--find`/`--replace` pair for a small
-exact correction. This shortcut does not infer ranges or companion paragraphs.
+Copy inspected `exactText` and include its `paragraphId` or `fingerprint`. Use
+complete `modified` text for a broad semantic revision; for a small literal
+change, use `replacements` against that inspected target to avoid reproducing
+the whole paragraph. Independent strong targets bind to the batch start, so do
+not manually sort around structural edits. Consolidate incompatible writes to
+one source; use captures only for intentional created-content dependencies.
 
-For every ordinary text operation, `modified` is the complete desired
-accepted-view content. Copy inspected `exactText` verbatim and include
-`paragraphId` or `fingerprint`. Independent strong targets are bound against the
-batch-start document, so do not manually sort around structural edits.
-Consolidate incompatible writes to the same source; use captures for intentional
-created-content dependencies.
+If the user requests restoration, search `--view rejected` directly. Otherwise
+follow `selection.hint` if extraction identifies an alternate revision view.
+Restore only the inspected strong target; do not infer adjacent content.
 
-Require `completion: true`, `written: true`, a non-null output path, and no
-per-operation errors. Localized edits also require
-`results[i].change.committed: true`, `finalDisposition: "applied"`, and
-`verification.acceptedViewMatchesCompiledText: true`. Follow
+Require `completion: true` and a non-null output path. Follow
 `error.recovery.action` and `retryPlan`; never retry unchanged failed arguments.
-Follow `selection.hint` for restorable text. Do not accept/reject another
-reviewer's work or remove comments without explicit user authorization. The
-source is never overwritten unless `--in-place` is explicit.
+Do not accept/reject another reviewer's work or remove comments without explicit
+user authorization. The source is never overwritten unless `--in-place` is
+explicit.
 
 The agent profile preserves progressive execution and the ordinary revision
 policy. Add `--atomic` or `--existing-revisions slice-cross-author` only when
 that policy is intended, and confirm the resolved `effectiveOptions`.
 
-Advanced restore, rejected-view insertion, list, table, formatting, comments,
-revision policies, and failure examples live in the
+Speculative apply, directional search ranges, advanced restore, rejected-view
+insertion, list, table, formatting, comments, revision policies, and failure
+examples live in the
 [knowledge base](docs/AGENT_KNOWLEDGE_BASE.md#agent-document-workflow-cli) and
 [operation schema](docs/schemas/document-operations.schema.json).
 
@@ -82,10 +68,8 @@ targeting, revision allocation, comments, numbering, validation, or rollback.
 The stateful wrapper in `examples/agent-session-wrapper.mjs` is a testable
 development demonstration only. It is excluded from package files and exports.
 Production harnesses own their transport and negotiate the minimum CLI
-`contractVersion`/capabilities they use. The 0.7.0 localized fast path requires
-contract 8 and its localized replacement, speculative apply, and change-summary
-capabilities; the narrow restore shortcut additionally requires
-`restore-shortcuts-v1`.
+`contractVersion` and capabilities they actually use. Optional capabilities do
+not belong in an ordinary editing prompt merely because the CLI supports them.
 
 ## Code map
 

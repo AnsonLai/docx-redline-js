@@ -31,18 +31,18 @@ for (const contract of [
     '--operations -',
     '--profile agent',
     '--around 3',
-    '--context-range 1:3',
     'selection.nextAfter',
+    'selection.hint',
     'humanReference',
+    'exactText',
+    'paragraphId',
+    'replacements',
     'docx-redline apply --help',
     'completion: true',
-    'results[i].change.committed: true',
-    'finalDisposition: "applied"',
-    'acceptedViewMatchesCompiledText: true',
-    'anchorMatchCount > 1',
+    'outputPath',
     'error.recovery.action',
     'retryPlan.base: "original"',
-    'slice-cross-author'
+    'effectiveOptions'
 ]) {
     assert(fastStart.includes(contract), `fast start omitted ${contract}`);
 }
@@ -74,11 +74,8 @@ for (const heading of [
 for (const capability of [
     'contract version 8',
     'agent-safety-profile-v2',
-    'deduplicated-cli-receipts',
     'recovery-envelope-v1',
-    'localized-replacements-v1',
-    'speculative-search-apply-v1',
-    'localized-change-summary-v1'
+    'localized-replacements-v1'
 ]) {
     assert(skillAuthoring.includes(capability), `skill authoring omitted ${capability}`);
 }
@@ -93,20 +90,38 @@ for (const recoveryField of [
 assert.equal(skillAuthoring.includes('TARGET_NOT_FOUND'), false, 'skill guidance must not duplicate an error-code matrix');
 assert.match(skillAuthoring, /operations file and serializer-backed stdin are peer transports/i);
 assert.match(skillAuthoring, /AI Redliner.*valid visible fallback/);
-for (const guidance of [launchCard, fastStart, readme, knowledgeBase, skillAuthoring]) {
+for (const guidance of [readme, knowledgeBase]) {
     assert.match(guidance, /longer, fairly unique/i);
     assert(guidance.includes('anchorMatchCount'), 'anchor guidance omitted anchorMatchCount');
 }
+assert.match(fastStart, /user requests deleted text, search with `--view rejected` first/i);
+assert.match(fastStart, /relative wording unless the user asks for a concrete/i);
+assert.match(skillAuthoring, /output projections must retain\s+`selection`/i);
+assert.match(skillAuthoring, /relative wording relative unless the user asks/i);
+assert(skillAuthoring.includes('restore-shortcuts-v1'));
+assert.match(skillAuthoring, /Do not make speculative apply part of an ordinary generated workflow/i);
+const compatibilityDeclaration = JSON.parse(skillAuthoring.match(/```json\r?\n([\s\S]*?)```/)[1]);
+assert.deepEqual(compatibilityDeclaration.requiredCapabilities, [
+    'operations-stdin',
+    'agent-safety-profile-v2',
+    'recovery-envelope-v1',
+    'localized-replacements-v1'
+]);
 assert(releaseNotes.includes('"results": ['));
 assert(releaseNotes.includes('"change": {'));
 assert.match(releaseNotes, /excerpts come from the resolved batch-start source and compiled desired\s+text/i);
 
 for (const [text, heading] of [
     [launchCard, '## Ordinary document edits'],
-    [fastStart, '## CLI fallback'],
-    [readme, '### Agent CLI'],
-    [knowledgeBase, '#### Standard Workflow (Fast & Direct)'],
+    [fastStart, '## CLI workflow'],
     [skillAuthoring, '## Ordinary generated workflow']
+]) {
+    const firstCommand = firstBashCommandAfter(text, heading);
+    assert.match(firstCommand, /^docx-redline extract .*--search/, `${heading}: ${firstCommand}`);
+}
+for (const [text, heading] of [
+    [readme, '### Agent CLI'],
+    [knowledgeBase, '#### Standard Workflow (Fast & Direct)']
 ]) {
     const firstCommand = firstBashCommandAfter(text, heading);
     assert.match(firstCommand, /^docx-redline apply .*--find .*--replace/, `${heading}: ${firstCommand}`);

@@ -252,6 +252,7 @@ export interface LocalizedReplacementChange {
     find: string;
     replace: string;
     occurrence?: number;
+    matchMode?: 'space_equivalent';
     beforeExcerpt: string;
     afterExcerpt: string;
   }>;

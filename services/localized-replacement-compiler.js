@@ -41,6 +41,65 @@ function occurrenceOffsets(sourceText, find) {
     return offsets;
 }
 
+function equivalentSpace(left, right) {
+    return (left === ' ' || left === '\u00a0')
+        && (right === ' ' || right === '\u00a0');
+}
+
+function spaceEquivalentOffsets(sourceText, find) {
+    const offsets = [];
+    for (let start = 0; start <= sourceText.length - find.length; start += 1) {
+        let matches = true;
+        for (let offset = 0; offset < find.length; offset += 1) {
+            const sourceCharacter = sourceText[start + offset];
+            const findCharacter = find[offset];
+            if (sourceCharacter !== findCharacter && !equivalentSpace(sourceCharacter, findCharacter)) {
+                matches = false;
+                break;
+            }
+        }
+        if (matches) offsets.push(start);
+    }
+    return offsets;
+}
+
+/** Resolve exact offsets first, then the narrow ASCII-space/NBSP equivalent fallback. */
+export function localizedReplacementOffsets(sourceText, find) {
+    const exact = occurrenceOffsets(sourceText, find);
+    if (exact.length > 0) return { offsets: exact, matchMode: 'exact' };
+    return { offsets: spaceEquivalentOffsets(sourceText, find), matchMode: 'space_equivalent' };
+}
+
+function preserveEquivalentBoundarySpaces(sourceSlice, find, replace) {
+    const effective = replace.split('');
+    let prefix = 0;
+    while (
+        prefix < find.length
+        && prefix < replace.length
+        && (find[prefix] === replace[prefix] || equivalentSpace(find[prefix], replace[prefix]))
+    ) {
+        if (equivalentSpace(sourceSlice[prefix], replace[prefix])) effective[prefix] = sourceSlice[prefix];
+        prefix += 1;
+    }
+    let sourceOffset = find.length - 1;
+    let replacementOffset = replace.length - 1;
+    while (
+        sourceOffset >= prefix
+        && replacementOffset >= prefix
+        && (
+            find[sourceOffset] === replace[replacementOffset]
+            || equivalentSpace(find[sourceOffset], replace[replacementOffset])
+        )
+    ) {
+        if (equivalentSpace(sourceSlice[sourceOffset], replace[replacementOffset])) {
+            effective[replacementOffset] = sourceSlice[sourceOffset];
+        }
+        sourceOffset -= 1;
+        replacementOffset -= 1;
+    }
+    return effective.join('');
+}
+
 function offsetCandidate(sourceText, start, length) {
     const excerptStart = Math.max(0, start - 40);
     const excerptEnd = Math.min(sourceText.length, start + length + 40);
@@ -168,15 +227,15 @@ export function compileExactReplacements(
         const replacement = validation.replacements[index];
         const itemField = `${field}[${index}]`;
         const occurrence = replacement.occurrence ?? null;
-        const offsets = occurrenceOffsets(sourceText, replacement.find);
+        const { offsets, matchMode } = localizedReplacementOffsets(sourceText, replacement.find);
         if (offsets.length === 0 || (occurrence != null && occurrence > offsets.length)) {
             return {
                 ok: false,
                 error: patchError(
                     'PATCH_SOURCE_NOT_FOUND',
                     occurrence == null
-                        ? `Exact patch source was not found: "${replacement.find}".`
-                        : `Occurrence ${occurrence} of exact patch source was not found: "${replacement.find}".`,
+                        ? `Patch source was not found: "${replacement.find}".`
+                        : `Occurrence ${occurrence} of patch source was not found: "${replacement.find}".`,
                     itemField,
                     'change_patch',
                     { matchCount: offsets.length }
@@ -188,7 +247,7 @@ export function compileExactReplacements(
                 ok: false,
                 error: patchError(
                     'AMBIGUOUS_PATCH_SOURCE',
-                    `Exact patch source matched ${offsets.length} locations; provide occurrence.`,
+                    `Patch source matched ${offsets.length} locations; provide occurrence.`,
                     itemField,
                     'choose_occurrence',
                     { candidates: offsets.map(start => offsetCandidate(sourceText, start, replacement.find.length)) }
@@ -197,12 +256,17 @@ export function compileExactReplacements(
         }
 
         const start = offsets[(occurrence || 1) - 1];
+        const sourceSlice = sourceText.slice(start, start + replacement.find.length);
         resolved.push({
             requestIndex: index,
             start,
             end: start + replacement.find.length,
             find: replacement.find,
             replace: replacement.replace,
+            effectiveReplace: matchMode === 'space_equivalent'
+                ? preserveEquivalentBoundarySpaces(sourceSlice, replacement.find, replacement.replace)
+                : replacement.replace,
+            matchMode,
             occurrence: occurrence || 1
         });
     }
@@ -212,7 +276,7 @@ export function compileExactReplacements(
     for (const replacement of resolved) {
         const previous = unique.at(-1);
         if (previous && replacement.start === previous.start && replacement.end === previous.end) {
-            if (replacement.replace !== previous.replace) {
+            if (replacement.effectiveReplace !== previous.effectiveReplace) {
                 return {
                     ok: false,
                     error: patchError(
@@ -245,7 +309,7 @@ export function compileExactReplacements(
     let desiredText = '';
     for (const replacement of unique) {
         desiredText += sourceText.slice(cursor, replacement.start);
-        desiredText += replacement.replace;
+        desiredText += replacement.effectiveReplace;
         cursor = replacement.end;
     }
     desiredText += sourceText.slice(cursor);
@@ -259,9 +323,10 @@ export function compileExactReplacements(
             end: replacement.end,
             find: replacement.find,
             replace: replacement.replace,
+            matchMode: replacement.matchMode,
             occurrence: replacement.occurrence,
             removedLength: replacement.end - replacement.start,
-            insertedLength: replacement.replace.length
+            insertedLength: replacement.effectiveReplace.length
         }))
     };
 }
@@ -280,6 +345,7 @@ export function buildLocalizedReplacementChange(compilation, outputText, target 
         return {
             find: replacement.find,
             replace: replacement.replace,
+            ...(replacement.matchMode === 'space_equivalent' ? { matchMode: replacement.matchMode } : {}),
             occurrence: replacement.occurrence,
             beforeExcerpt: boundedExcerpt(sourceText, replacement.start, replacement.end),
             afterExcerpt: boundedExcerpt(desiredText, afterStart, afterEnd)

@@ -1,86 +1,75 @@
 # Skill and Harness Authoring Contract
 
-Use this page when creating or updating an agent skill, MCP server, or custom
-harness for `@ansonlai/docx-redline-js`. Ordinary document-editing agents should
-load [Agent Fast Start](AGENT_FAST_START.md), not this design contract.
+Use this page to create or update an agent skill, MCP server, or custom harness
+for `@ansonlai/docx-redline-js`. Ordinary editing agents should load
+[Agent Fast Start](AGENT_FAST_START.md), not this design contract.
 
 > [!WARNING]
-> Before 1.0, every skill or harness must identify and pin its exact tested
-> library release and required CLI contract/capabilities. Treat any different
-> release or contract as unverified until compatibility tests pass.
+> Before 1.0, every integration must identify and pin its exact tested library
+> release and required CLI contract/capabilities. Treat any different release or
+> contract as unverified until compatibility tests pass.
 
-For example, an integration authored for the current contract-8 release should
-record a compatibility declaration equivalent to:
+Example declaration for a contract-8 shell integration that uses localized
+operations over stdin:
 
 ```json
 {
-  "testedLibraryRelease": "0.7.0",
+  "testedLibraryRelease": "0.7.1",
   "requiredCliContractVersion": 8,
   "requiredCapabilities": [
-    "command-help-v1",
+    "operations-stdin",
+    "agent-safety-profile-v2",
     "recovery-envelope-v1",
-    "localized-replacements-v1",
-    "speculative-search-apply-v1",
-    "localized-change-summary-v1"
+    "localized-replacements-v1"
   ]
 }
 ```
 
-The package pin anchors the release; runtime negotiation proves the executable
-exposes the required contract. A new release cannot inherit an old claim.
-
 ## Runtime negotiation
 
-Run this before the first document operation when the skill vendors or invokes
-the CLI:
+Run `docx-redline version` before the first document operation. Require CLI
+contract version 8 and only the capabilities the integration actually uses. Check once per stable
+runtime, fail closed when a requirement is absent, and never inspect bundles or
+ZIP parts as a fallback.
 
-```bash
-docx-redline version
-```
-
-Require contract version 8 (the currently declared contract) and only the
-capabilities the integration uses. A typical shell skill should require
-`agent-safety-profile-v2`, `deduplicated-cli-receipts`, and
-`recovery-envelope-v1`. Require other capabilities only when used. Fail closed
-when one is absent; never inspect bundles or ZIP parts as a fallback.
+Do not expose negotiated but unused capabilities as choices in the editing
+prompt. `command-help-v1`, restore shortcuts, speculative apply, and localized
+change summaries are optional requirements only for integrations that use them.
 
 ## Safety invariants
 
-Every generated integration must preserve these rules:
+Every generated integration must:
 
-- Inspect narrowly and copy `exactText` plus `paragraphId` or `fingerprint`.
-- Treat `modified` as the complete desired accepted-view target content.
-- Use strict targeting, package validation, and a derived output path; never
-  overwrite the source unless the caller explicitly requests `--in-place`.
-- Require `completion: true`, `written: true`, a non-null `outputPath`, and no
-  per-operation error before reporting completion.
-- Never accept or reject another reviewer's work or delete comments without
-  explicit user authorization.
-- Never retry unchanged failed arguments.
+- inspect narrowly and retain `exactText` plus `paragraphId` or `fingerprint`;
+- use strict targeting, package validation, and a derived output path;
+- never overwrite the source unless `--in-place` is explicitly requested;
+- require `completion: true` and a non-null `outputPath` before reporting
+  success;
+- follow `error.recovery.action` and never retry unchanged failed arguments; and
+- require explicit authorization before accepting/rejecting another reviewer's
+  work or deleting comments.
 
-The `agent` profile enables complete-success exit behavior and retains the
-ordinary progressive default. It does not select atomic execution or a special
-existing-revision policy. A skill must state those choices explicitly when its
-workflow needs them.
+The CLI computes `completion` from write status, operation outcomes, commit
+disposition, and localized accepted-view verification. Preserve the detailed
+results for audit and recovery, but do not make the editing agent re-evaluate
+those fields during ordinary success handling.
 
 ## Workflow policy choices
 
-Choose and document these separately from safety invariants:
+Keep these exceptions separate from the default workflow:
 
-| Choice | Options | Guidance |
+| Choice | Default | Override only when |
 |---|---|---|
-| Transaction | progressive default or `--atomic` | Use progressive for independent edits; use atomic when partial output is unacceptable. |
-| Existing revisions | `merge-same-author` default or explicit policy | Use `slice-cross-author` only when editing inside another reviewer's pending insertion is intended. |
-| Reviewer identity | flag, operation author, environment, or fallback | `AI Redliner` is a valid visible fallback. `DOCX_REDLINE_AUTHOR` is an optional harness preference, not a guard. |
-| Output naming | derived sibling or explicit destination | Keep source immutability unless in-place mutation is deliberately authorized. |
+| Transaction | progressive | Partial output is unacceptable (`--atomic`). |
+| Existing revisions | `merge-same-author` | Editing inside another reviewer's pending insertion is intended (`slice-cross-author`). |
+| Reviewer identity | `AI Redliner` is a valid visible fallback | The host supplies a preferred flag, operation author, or environment value. |
+| Output | derived sibling | The caller deliberately selects another destination. |
 
-Check `effectiveOptions` rather than assuming the resolved transaction,
-revision, author, or redline policy.
+Check `effectiveOptions` when an integration deliberately sets a policy.
 
 ## Transport choices
 
-A UTF-8 operations file and serializer-backed stdin are peer transports. Choose
-the form the host can construct safely:
+A UTF-8 operations file and serializer-backed stdin are peer transports:
 
 ```bash
 docx-redline apply input.docx --operations operations.json --profile agent --output reviewed.docx
@@ -88,46 +77,46 @@ node emit-operations.mjs | docx-redline apply input.docx --operations - --profil
 ```
 
 Use `JSON.stringify` or a structured tool API. Never demonstrate `echo`, a
-heredoc, or shell-interpolated legal text. `--compact` changes stdout formatting,
-not result semantics. A Node byte-oriented wrapper should call `openDocx` and
-return the full structured result rather than recreating the CLI serializer.
+heredoc, or shell-interpolated document text. A Node byte-oriented wrapper should
+call `openDocx` and return the structured result instead of recreating CLI
+serialization, ZIP handling, targeting, validation, or rollback.
 
 ## Ordinary generated workflow
 
-For an exact mechanical edit whose existing and replacement literals are known,
-the first executable example should use the one-turn fast path:
+The first executable editing example in a generated skill must be focused
+extraction:
 
 ```bash
-docx-redline apply input.docx --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
+docx-redline extract input.docx --search "renewal notice" --around 3
 ```
 
-If the literal is not globally unique, use a longer, fairly unique nearby phrase
-as `--search` context. Generic or repeated anchors widen the unioned scope and
-may cause `AMBIGUOUS_TARGET`, wasting a recovery turn. Use a directional window
-such as `1:3`; use symmetric `--around 3` only when either side is eligible. On
-success, `anchorMatchCount > 1` signals a repeated anchor: confirm the returned
-location and excerpts. Require `results[i].change` with `committed: true`,
-`finalDisposition: "applied"`, and positive accepted-view verification.
+Then apply once using the inspected strong target. Use complete `modified` text
+for a broad semantic revision or `replacements` for a small literal change in
+that target. Keep requested relative wording relative unless the user asks for
+a concrete value.
 
-Semantic requests such as “make this provision mutual” still begin with focused
-contextual extraction because the agent must identify and draft the complete
-legal change:
+Follow `selection.nextAfter` when extraction is truncated. Output projections must retain
+`selection`, target descriptors, `humanReference`, and revision
+cues.
 
-```bash
-docx-redline extract input.docx --search "termination" --around 3
-```
+### Observed restore branch
 
-Use `selection.nextAfter` with `--after` when truncated. When a search for
-deleted or restorable content yields 0 matches in accepted view, follow
-`selection.hint` and re-run with `--view rejected`. Apply once per stable batch.
-Run `docx-redline apply --help` for canonical redline, whole-paragraph comment,
-and rejected-view restore shapes; CLI help documentation fields return canonical
-GitHub URLs. The operation schema remains
-[document-operations.schema.json](schemas/document-operations.schema.json).
+If the user requests restoration, search `--view rejected` first. Otherwise
+follow an alternate-view `selection.hint` when returned. Restore only the
+inspected strong target. Require `restore-shortcuts-v1` only if the integration
+uses inline `--restore`; canonical operations remain available.
+
+### Optional speculative execution
+
+Do not make speculative apply part of an ordinary generated workflow. A harness
+may opt into `speculative-search-apply-v1` only when it owns a measured confidence
+policy and accepts the recovery cost of a miss. Keep anchor selection,
+directional windows, occurrence handling, and exact matching semantics out of
+the ordinary editing prompt; link to the knowledge base or CLI help instead.
 
 ## Recovery contract
 
-Lead error handling with exactly these runtime fields:
+Lead failure handling with these runtime fields:
 
 1. `error.recovery.action`
 2. `error.recovery.requiresReinspection`
@@ -135,32 +124,23 @@ Lead error handling with exactly these runtime fields:
 4. `error.recovery.sameArgumentsSafe`
 
 Use `retryPlan.base` and its operation indexes to select the original or partial
-output package. Do not generate a second prose decision tree for every error
-code; error messages and bounded diagnostics explain the cause, while the four
-fields above determine the next action.
+output package. Do not reproduce an error-code decision tree in the skill.
 
 ## Presentation rules
 
-Use `humanReference`, `provision`, or `nearestHeading` in user-facing completion
-reports. `P55`, `index: 55`, and phrases such as “the 55th paragraph” are machine
-targeting and pagination coordinates, not locations a Word user can follow.
-When no formal heading exists, use the returned short text lead. Never replace
-an exact machine target with a human-facing reference.
+Use `humanReference`, `provision`, or `nearestHeading` in completion reports.
+Paragraph indexes and `P55`-style references are machine coordinates, not
+locations a document user can follow. Keep the exact machine target internally.
 
 ## Generation checklist
 
-- The exact tested library release is recorded and pinned; floating installs
-  are rejected while the library remains before 1.0.
-- The required CLI contract version and minimum capability set are declared,
-  checked at runtime, and updated only after compatibility tests pass.
-- Runtime version and required capabilities are checked once.
-- Literal edits use localized replacements and one-turn speculative apply;
-  semantic drafting starts with focused extraction.
-- Successful localized edits require committed, post-mutation `change`
-  verification before completion is reported.
-- Safety invariants are not mixed with transaction or revision-policy choices.
-- Operations-file and stdin examples use structured serialization.
-- The four-field recovery contract precedes any diagnostic commentary.
-- Completion prose uses legal references rather than machine ordinals.
-- The wrapper delegates mutation, validation, rollback, comments, numbering,
-  receipts, and OOXML packaging to the library.
+- Exact tested release, contract 8, and the minimum capability set are pinned.
+- Runtime compatibility is checked once.
+- The first ordinary command is focused extraction.
+- Apply uses the inspected target with `modified` or localized `replacements`.
+- Restore appears only as a user-requested or observed-view branch.
+- Speculative execution is absent unless the harness owns a measured policy.
+- Ordinary success requires `completion: true` and a non-null `outputPath`.
+- Recovery, authorization, source immutability, and structured serialization
+  invariants are preserved.
+- Wrappers delegate mutation and OOXML packaging to the library.

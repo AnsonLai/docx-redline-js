@@ -7,6 +7,7 @@ import { validateRedlineOoxml } from '../core/redline-validation.js';
 import { configureLogger } from '../adapters/logger.js';
 import { isExistingRevisionsPolicy } from '../services/document-operation-contract.js';
 import { normalizeErrorWithRecovery } from '../services/error-recovery.js';
+import { localizedReplacementOffsets } from '../services/localized-replacement-compiler.js';
 import { buildCliHelp, CLI_COMMANDS, commandOptionKeys } from './cli-help.js';
 
 const suffixes = { apply: 'redlined', accept: 'accepted', reject: 'rejected', 'delete-comments': 'comments-removed' };
@@ -31,6 +32,7 @@ const CLI_CAPABILITIES = [
     'localized-replacements-v1',
     'speculative-search-apply-v1',
     'localized-change-summary-v1',
+    'localized-space-equivalence-v1',
     'restore-shortcuts-v1',
     'deduplicated-cli-receipts',
     'compact-cli-json-v1'
@@ -242,21 +244,27 @@ function resolveSpeculativePatchTarget(document, flags) {
     }
 
     const find = String(flags.find);
-    const matches = eligible.filter(paragraph => paragraph.exactText.includes(find));
+    const patchCandidates = eligible.map(paragraph => ({
+        paragraph,
+        match: localizedReplacementOffsets(paragraph.exactText, find)
+    })).filter(candidate => candidate.match.offsets.length > 0);
+    const exactCandidates = patchCandidates.filter(candidate => candidate.match.matchMode === 'exact');
+    const matches = (exactCandidates.length > 0 ? exactCandidates : patchCandidates)
+        .map(candidate => candidate.paragraph);
     const context = {
         ...(search ? { search, range: range.text, anchorMatchCount: anchors.length } : {})
     };
     if (matches.length === 0) {
         throw speculativeError('PATCH_SOURCE_NOT_FOUND', search
-            ? `No paragraph in the contextual range contains the exact patch source: "${find}".`
-            : `No paragraph contains the exact patch source: "${find}".`, {
+            ? `No paragraph in the contextual range contains the patch source: "${find}".`
+            : `No paragraph contains the patch source: "${find}".`, {
             context,
             ...(anchors.length ? { candidates: anchors.map(speculativeCandidate) } : {}),
             recovery: { action: 'reinspect', requiresReinspection: true, sameArgumentsSafe: false }
         });
     }
     if (matches.length > 1) {
-        throw speculativeError('AMBIGUOUS_TARGET', `The exact patch source matched ${matches.length} eligible paragraphs.`, {
+        throw speculativeError('AMBIGUOUS_TARGET', `The patch source matched ${matches.length} eligible paragraphs.`, {
             context,
             candidates: matches.map(speculativeCandidate),
             recovery: { action: 'choose_candidate', requiresReinspection: false, sameArgumentsSafe: false }

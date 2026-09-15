@@ -36,6 +36,7 @@ try {
     assert(version.capabilities.includes('localized-replacements-v1'));
     assert(version.capabilities.includes('speculative-search-apply-v1'));
     assert(version.capabilities.includes('localized-change-summary-v1'));
+    assert(version.capabilities.includes('localized-space-equivalence-v1'));
     assert(version.capabilities.includes('restore-shortcuts-v1'));
 
     const inspected = await executeCli(['extract', input, '--index', '53']);

@@ -77,18 +77,18 @@ const cases = [
         modified: 'Prefix revised—suffix'
     },
     {
-        name: 'privacy-qualifier-after-hyperlink',
+        name: 'manual-qualifier-after-hyperlink',
         source: paragraph(
-            run('Privacy Policy located at')
+            run('Calibration Manual located at')
             + run(nbsp)
-            + hyperlink('rIdPrivacy', 'example.com/privacy')
+            + hyperlink('rIdManual', 'docs.example/calibration')
             + run(`${nbsp}(the “`)
-            + run('Privacy Policy', '<w:rPr><w:b/><w:u w:val="single"/></w:rPr>')
+            + run('Calibration Manual', '<w:rPr><w:b/><w:u w:val="single"/></w:rPr>')
             + run('”).')
         ),
-        original: `Privacy Policy located at${nbsp}example.com/privacy${nbsp}(the “Privacy Policy”).`,
-        modified: `Privacy Policy located at${nbsp}example.com/privacy, as in effect on execution${nbsp}(the “Privacy Policy”).`,
-        links: ['rIdPrivacy'],
+        original: `Calibration Manual located at${nbsp}docs.example/calibration${nbsp}(the “Calibration Manual”).`,
+        modified: `Calibration Manual located at${nbsp}docs.example/calibration, current at activation${nbsp}(the “Calibration Manual”).`,
+        links: ['rIdManual'],
         runner: true
     },
     {

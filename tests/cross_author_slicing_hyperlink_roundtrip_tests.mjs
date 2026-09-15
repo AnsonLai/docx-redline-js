@@ -34,17 +34,17 @@ function acceptedParagraphText(xml) {
     return extractCanonicalParagraphText(paragraph);
 }
 
-const original = `Example Co. will take reasonable measures to safeguard records. This agreement incorporates the Processing Schedule located at${nbsp}example.invalid/schedule, which states the parties' obligations. Example Co. will also use records under the agreement and the Service Policy located at${nbsp}example.invalid/policy/${nbsp}(the "Service Policy").`;
-const modified = `Example Co. will take reasonable measures to safeguard records. This agreement incorporates the Processing Schedule located at example.invalid/schedule, which states the parties' obligations. Example Co. will also use records under the agreement and the Service Policy, as in effect on execution, located at example.invalid/policy/ (the "Service Policy").`;
+const original = `The Atlas device records sensor readings. Its setup checklist is located at${nbsp}docs.example/setup, which describes the initial configuration. Operators also use the Maintenance Manual located at${nbsp}docs.example/maintenance/${nbsp}(the "Maintenance Manual").`;
+const modified = `The Atlas device records sensor readings. Its setup checklist is located at docs.example/setup, which describes the initial configuration. Operators also use the Maintenance Manual, current at activation, located at docs.example/maintenance/ (the "Maintenance Manual").`;
 
 const source = `<w:p xmlns:w="${W}" xmlns:r="${R}">`
-    + insertion(1, 'Example Co. will take reasonable measures to safeguard records. This agreement incorporates the Processing Schedule located at')
+    + insertion(1, 'The Atlas device records sensor readings. Its setup checklist is located at')
     + insertion(2, nbsp)
-    + hyperlink('rIdSchedule', 'example.invalid/schedule')
-    + insertion(3, ", which states the parties' obligations. Example Co. will also use records under the agreement and the Service Policy located at")
+    + hyperlink('rIdSchedule', 'docs.example/setup')
+    + insertion(3, ', which describes the initial configuration. Operators also use the Maintenance Manual located at')
     + insertion(4, nbsp)
-    + hyperlink('rIdPolicy', 'example.invalid/policy/')
-    + insertion(5, `${nbsp}(the "Service Policy").`)
+    + hyperlink('rIdManual', 'docs.example/maintenance/')
+    + insertion(5, `${nbsp}(the "Maintenance Manual").`)
     + '</w:p>';
 
 const result = await applyRedlineToOxml(source, original, modified, {
@@ -69,53 +69,53 @@ assert.equal(parsedResult.doc.getElementsByTagNameNS(W, 'hyperlink').length, 2,
 // Replacing the space immediately after a hyperlink must keep the paired
 // insertion at that boundary rather than appending it after the following run.
 {
-    const policyOriginal = `Example Co.’s Service Policy located at${nbsp}example.invalid/policy/${nbsp}(the “Service Policy”).`;
-    const policyCallerTarget = 'Example Co.’s Service Policy located at example.invalid/policy/ (the “Service Policy”).';
-    const policyModified = 'Example Co.’s Service Policy, as in effect on execution, located at example.invalid/policy/ (the “Service Policy”).';
-    const policySource = `<w:p xmlns:w="${W}" xmlns:r="${R}">`
-        + run('Example Co.’s Service Policy located at')
+    const manualOriginal = `Atlas’s Maintenance Manual located at${nbsp}docs.example/maintenance/${nbsp}(the “Maintenance Manual”).`;
+    const manualCallerTarget = 'Atlas’s Maintenance Manual located at docs.example/maintenance/ (the “Maintenance Manual”).';
+    const manualModified = 'Atlas’s Maintenance Manual, current at activation, located at docs.example/maintenance/ (the “Maintenance Manual”).';
+    const manualSource = `<w:p xmlns:w="${W}" xmlns:r="${R}">`
+        + run('Atlas’s Maintenance Manual located at')
         + run(nbsp)
-        + hyperlink('rIdPolicy', 'example.invalid/policy/')
+        + hyperlink('rIdManual', 'docs.example/maintenance/')
         + run(`${nbsp}(the “`)
-        + '<w:r><w:rPr><w:b/><w:bCs/><w:u w:val="single"/></w:rPr><w:t>Service Policy</w:t></w:r>'
+        + '<w:r><w:rPr><w:b/><w:bCs/><w:u w:val="single"/></w:rPr><w:t>Maintenance Manual</w:t></w:r>'
         + run('”).')
         + '</w:p>';
-    const policyResult = await applyRedlineToOxml(policySource, policyOriginal, policyModified, {
+    const manualResult = await applyRedlineToOxml(manualSource, manualOriginal, manualModified, {
         author: 'Reviewer',
         existingRevisions: 'slice-cross-author',
         pairReplacements: true,
         structuredContent: false
     });
-    assert.equal(policyResult.status, 'ok', JSON.stringify(policyResult.error));
-    assert.equal(acceptedParagraphText(policyResult.oxml), policyModified);
-    const policyParsed = parseOoxmlSafe(policyResult.oxml, 'application/xml');
-    const policyLinks = policyParsed.doc.getElementsByTagNameNS(W, 'hyperlink');
-    assert.equal(policyLinks.length, 1);
-    assert.equal(policyLinks[0].getAttribute('r:id'), 'rIdPolicy');
-    assert.equal(policyLinks[0].getAttribute('w:history'), '1');
+    assert.equal(manualResult.status, 'ok', JSON.stringify(manualResult.error));
+    assert.equal(acceptedParagraphText(manualResult.oxml), manualModified);
+    const manualParsed = parseOoxmlSafe(manualResult.oxml, 'application/xml');
+    const manualLinks = manualParsed.doc.getElementsByTagNameNS(W, 'hyperlink');
+    assert.equal(manualLinks.length, 1);
+    assert.equal(manualLinks[0].getAttribute('r:id'), 'rIdManual');
+    assert.equal(manualLinks[0].getAttribute('w:history'), '1');
 
-    const policyAccepted = acceptTrackedChangesInOoxml(policyResult.oxml, { allAuthors: true });
-    assert.equal(acceptedParagraphText(policyAccepted.oxml), policyModified);
+    const manualAccepted = acceptTrackedChangesInOoxml(manualResult.oxml, { allAuthors: true });
+    assert.equal(acceptedParagraphText(manualAccepted.oxml), manualModified);
 
-    const policyDocument = `<w:document xmlns:w="${W}" xmlns:r="${R}"><w:body>${policySource}<w:sectPr/></w:body></w:document>`;
-    const policyBatch = await applyOperationsToDocumentXml(policyDocument, [{
+    const manualDocument = `<w:document xmlns:w="${W}" xmlns:r="${R}"><w:body>${manualSource}<w:sectPr/></w:body></w:document>`;
+    const manualBatch = await applyOperationsToDocumentXml(manualDocument, [{
         type: 'redline',
-        target: { exactText: policyCallerTarget },
-        modified: policyModified,
+        target: { exactText: manualCallerTarget },
+        modified: manualModified,
         author: 'Reviewer',
         existingRevisions: 'slice-cross-author'
     }], 'Reviewer', null, { atomic: true, strictTargets: true });
-    assert.equal(policyBatch.status, 'ok', JSON.stringify(policyBatch.error));
-    assert.equal(policyBatch.results[0]?.status, 'applied');
-    assert.equal(policyBatch.results[0]?.resolvedTarget?.targetTextMatch?.mode, 'space_equivalent');
+    assert.equal(manualBatch.status, 'ok', JSON.stringify(manualBatch.error));
+    assert.equal(manualBatch.results[0]?.status, 'applied');
+    assert.equal(manualBatch.results[0]?.resolvedTarget?.targetTextMatch?.mode, 'space_equivalent');
     assert.deepEqual(
-        policyBatch.results[0]?.resolvedTarget?.targetTextMatch?.differences.map(item => [item.sourceCodePoint, item.requestedCodePoint]),
+        manualBatch.results[0]?.resolvedTarget?.targetTextMatch?.differences.map(item => [item.sourceCodePoint, item.requestedCodePoint]),
         [['U+00A0', 'U+0020'], ['U+00A0', 'U+0020']]
     );
-    const policyBatchAccepted = acceptTrackedChangesInOoxml(policyBatch.documentXml, { allAuthors: true });
-    assert.equal(acceptedParagraphText(policyBatchAccepted.oxml), policyModified);
-    const policyBatchRejected = rejectTrackedChangesInOoxml(policyBatch.documentXml, { author: 'Reviewer' });
-    assert.equal(acceptedParagraphText(policyBatchRejected.oxml), policyOriginal,
+    const manualBatchAccepted = acceptTrackedChangesInOoxml(manualBatch.documentXml, { allAuthors: true });
+    assert.equal(acceptedParagraphText(manualBatchAccepted.oxml), manualModified);
+    const manualBatchRejected = rejectTrackedChangesInOoxml(manualBatch.documentXml, { author: 'Reviewer' });
+    assert.equal(acceptedParagraphText(manualBatchRejected.oxml), manualOriginal,
         'Rejecting the current reviewer must restore the exact NBSP-bearing source text');
 }
 

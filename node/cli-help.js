@@ -134,7 +134,7 @@ export const CLI_COMMAND_HELP = Object.freeze({
             option('targetId', '--target-id <paragraphId>', 'Strong inline target using a paragraphId from fresh inspection.'),
             option('restore', '--restore', 'Restore one rejected-view paragraph identified by --target-id; omit --modified for verbatim restoration.'),
             option('modified', '--modified <text>', 'Complete desired accepted-view target content.'),
-            option('find', '--find <exact text>', 'Exact case-sensitive source span for one localized replacement.'),
+            option('find', '--find <exact text>', 'Case-sensitive source span; exact match first, then ASCII-space/NBSP equivalence.'),
             option('replace', '--replace <text>', 'Replacement text for --find; an empty string deletes the span.'),
             option('occurrence', '--occurrence <N>', 'Positive 1-based --find occurrence within the uniquely resolved target paragraph.'),
             option('search', '--search <text>', 'Case-insensitive context anchor for speculative find/replace; prefer a longer, fairly unique phrase because all matches contribute scope.'),

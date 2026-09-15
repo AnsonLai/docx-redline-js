@@ -127,9 +127,9 @@ try {
     const whitespaceInput = path.join(directory, 'whitespace-source.docx');
     const whitespaceOutput = path.join(directory, 'whitespace-output.docx');
     const whitespaceOps = path.join(directory, 'whitespace-operations.json');
-    const sourceText = `Service terms are available at${nbsp}example.invalid/policy/${nbsp}(the “Service Policy”).`;
-    const callerTarget = 'Service terms are available at example.invalid/policy/ (the “Service Policy”).';
-    const requestedText = 'Service terms, as in effect on execution, are available at example.invalid/policy/ (the “Service Policy”).';
+    const sourceText = `The operator handbook is available at${nbsp}docs.example/handbook/${nbsp}(the “Handbook”).`;
+    const callerTarget = 'The operator handbook is available at docs.example/handbook/ (the “Handbook”).';
+    const requestedText = 'The operator handbook, current at activation, is available at docs.example/handbook/ (the “Handbook”).';
     const whitespaceXml = `<w:document xmlns:w="${W}"><w:body><w:p w:paraId="W9"><w:r><w:t>${sourceText}</w:t></w:r></w:p><w:sectPr/></w:body></w:document>`;
     await writeFile(whitespaceInput, buildZip([
         {name:'[Content_Types].xml',data:contentTypes},

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Localized replacement matching now tries exact case-sensitive text first,
+  then a narrow ASCII-space/non-breaking-space equivalent match. Ambiguous
+  equivalent matches still fail closed, and unchanged boundary NBSPs are
+  retained to avoid incidental whitespace redlines.
+
 - Added a narrow single-paragraph restore shortcut. A restore with a strong
   rejected-view target may omit `modified` for verbatim restoration or provide
   exact `replacements`; the CLI exposes the same path through `apply --restore
