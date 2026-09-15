@@ -114,18 +114,44 @@ assert.match(releaseNotes, /excerpts come from the resolved batch-start source a
 for (const [text, heading] of [
     [launchCard, '## Ordinary document edits'],
     [fastStart, '## CLI workflow'],
+    [readme, '### Agent CLI'],
+    [knowledgeBase, '#### Standard Workflow (Extract Then Apply)'],
     [skillAuthoring, '## Ordinary generated workflow']
 ]) {
     const firstCommand = firstBashCommandAfter(text, heading);
     assert.match(firstCommand, /^docx-redline extract .*--search/, `${heading}: ${firstCommand}`);
 }
-for (const [text, heading] of [
-    [readme, '### Agent CLI'],
-    [knowledgeBase, '#### Standard Workflow (Fast & Direct)']
+
+const ordinaryLaunch = launchCard.slice(
+    launchCard.indexOf('## Ordinary document edits'),
+    launchCard.indexOf('## Thin wrappers')
+);
+const ordinaryFastStart = fastStart.slice(
+    fastStart.indexOf('## CLI workflow'),
+    fastStart.indexOf('## Restore branch')
+);
+const ordinarySkill = skillAuthoring.slice(
+    skillAuthoring.indexOf('## Ordinary generated workflow'),
+    skillAuthoring.indexOf('### Observed restore branch')
+);
+const ordinaryKnowledge = knowledgeBase.slice(
+    knowledgeBase.indexOf('#### Standard Workflow (Extract Then Apply)'),
+    knowledgeBase.indexOf('#### Optional Speculative Localized Apply')
+);
+for (const [label, section] of [
+    ['launch card', ordinaryLaunch],
+    ['fast start', ordinaryFastStart],
+    ['skill authoring', ordinarySkill],
+    ['knowledge base', ordinaryKnowledge]
 ]) {
-    const firstCommand = firstBashCommandAfter(text, heading);
-    assert.match(firstCommand, /^docx-redline apply .*--find .*--replace/, `${heading}: ${firstCommand}`);
+    assert.equal(section.includes('--context-range'), false, `${label} ordinary workflow exposes directional scoping`);
+    assert.equal(section.includes('anchorMatchCount'), false, `${label} ordinary workflow exposes anchor diagnostics`);
+    assert.equal(section.includes('speculative-search-apply-v1'), false, `${label} ordinary workflow exposes speculative capability`);
 }
+assert(readme.includes('#### Optional speculative CLI path'));
+assert(knowledgeBase.includes('#### Optional Speculative Localized Apply'));
+assert(readme.includes('--context-range 1:3'));
+assert(knowledgeBase.includes('--context-range 1:3'));
 
 for (const publishedDoc of [
     'docs/AGENT_FAST_START.md',
@@ -137,7 +163,8 @@ for (const publishedDoc of [
     'docs/validation-reports/2026-09-12-agent-protocol-rollout.md',
     'docs/validation-reports/2026-09-12-agent-cli-discovery-baseline.md',
     'docs/validation-reports/2026-09-13-agent-cli-efficiency-rollout.md',
-    'docs/validation-reports/2026-09-14-localized-patching-rollout.md'
+    'docs/validation-reports/2026-09-14-localized-patching-rollout.md',
+    'docs/validation-reports/2026-09-14-agent-surface-simplification.md'
 ]) {
     assert(packageJson.files.includes(publishedDoc), `package omitted ${publishedDoc}`);
 }
@@ -145,5 +172,6 @@ assert.equal(packageJson.files.includes('docs/'), false);
 assert.equal(packageJson.files.some(entry => entry === 'examples/' || entry.startsWith('examples/')), false);
 assert(packageJson.files.includes('!scripts/benchmark-agent-workflow.mjs'));
 assert(packageJson.files.includes('!scripts/benchmark-localized-turn-reduction.mjs'));
+assert(packageJson.files.includes('!scripts/benchmark-agent-surface-simplification.mjs'));
 
 console.log('agent documentation contract tests passed');

@@ -30,10 +30,10 @@ docx-redline extract contract.docx --search "termination" --around 3
 node emit-operations.mjs | docx-redline apply contract.docx --operations - --profile agent --compact --output reviewed.docx
 ```
 
-Copy inspected `exactText` and include its `paragraphId` or `fingerprint`. Use
-complete `modified` text for a broad semantic revision; for a small literal
-change, use `replacements` against that inspected target to avoid reproducing
-the whole paragraph. Independent strong targets bind to the batch start, so do
+Retain inspected `exactText` for drafting and target with its compact
+`paragraphId` plus `fingerprint`. Use complete `modified` text for a broad
+semantic revision; for a small literal change, use `replacements` so the apply
+payload need not repeat the whole paragraph. Independent strong targets bind to the batch start, so do
 not manually sort around structural edits. Consolidate incompatible writes to
 one source; use captures only for intentional created-content dependencies.
 

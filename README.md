@@ -16,18 +16,16 @@ Converts AI-generated or programmatic text/markdown edits into valid Office Open
 - Highlights: apply highlight colors to runs
 - Markdown and OOXML conversion in both directions
 - Status/error result fields for parse, targeting, and existing-revision failures
-- Localized exact replacements and fail-closed one-turn CLI edits with verified before/after evidence
+- Localized exact replacements against inspected targets, plus optional fail-closed speculative CLI edits
 - Package plumbing helpers for numbering.xml, comments.xml, content types, and relationships
 - Zero host dependencies: works in Node.js, browsers, Deno, and similar JS runtimes with DOM parsing support
 
 ## What's New in 0.7.0
 
-Version 0.7.0 adds a contract-8 fast path for exact mechanical edits. Agents can
-send a small `find`/`replace` request instead of reproducing a complete legal
-paragraph, and may omit a strong target when the source literal resolves to one
-accepted-view paragraph. A longer, fairly unique nearby phrase can narrow the
-attempt with a signed directional window. Generic or repeated anchors widen the
-unioned scope and may cause a safe ambiguity failure and another tool turn.
+Version 0.7.0 adds contract-8 localized edits. Agents can send a small
+`find`/`replace` request against an inspected target instead of reproducing a
+complete paragraph. An optional speculative form may omit the strong target
+when the source literal resolves uniquely; advanced scoping is described below.
 
 Speculative edits fail without writing when the anchor, paragraph, or source
 span is missing or ambiguous. Successful localized results include a committed
@@ -249,17 +247,9 @@ latency. Checked comparative results are in the
 ### Agent CLI
 
 ```bash
-# One-turn exact mechanical edit; fails closed unless one paragraph matches
-docx-redline apply contract.docx --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
-
-# Directional context using a longer phrase with a higher chance of uniqueness
-docx-redline apply contract.docx --search "distinctive nearby heading or phrase" --context-range 1:3 --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
-
-# Semantic drafting still starts with focused context
+# Default agent workflow: inspect once, then apply once
 docx-redline extract contract.docx --search "termination" --around 3
-docx-redline preflight contract.docx --operations operations.json --author "Editor"
-docx-redline apply contract.docx --operations operations.json --author "Editor" --output reviewed.docx
-docx-redline validate reviewed.docx
+node emit-operations.mjs | docx-redline apply contract.docx --operations - --profile agent --compact --output reviewed.docx
 ```
 
 ```bash
@@ -275,8 +265,8 @@ docx-redline apply contract.docx --target "Another author's clause" --modified "
 # High-assurance atomic batch with nonzero exit on any incomplete result
 docx-redline apply contract.docx --operations operations.json --atomic --require-complete --output reviewed.docx
 
-# Agent shell path: JSON is emitted by a serializer, not interpolated by the shell
-node emit-operations.mjs | docx-redline apply contract.docx --operations - --profile agent --compact --output reviewed.docx
+# Optional read-only audit before a deliberately staged batch
+docx-redline preflight contract.docx --operations operations.json --author "Editor"
 ```
 
 All commands emit JSON on stdout. `apply` defaults:
@@ -290,7 +280,7 @@ All commands emit JSON on stdout. `apply` defaults:
 - **Compact stdout**: `--compact` emits one-line mutation JSON. It changes serialization only, not operation semantics.
 - **Tracked changes**: Defaults to `generateRedlines: true`. Pass `--no-redlines` when clean direct text edits are desired.
 - **Inline edits**: Use `--target <text>` with `--modified <text>` or `--comment <text>` for quick one-liners without creating a JSON file.
-- **Localized edits**: Use `--find`/`--replace` with a known strong target, or omit the target for fail-closed global resolution. Add a longer, fairly unique `--search` phrase with `--context-range 1:3` for directional scope; `--around 3` is symmetric. Generic or repeated anchors can widen the unioned scope until multiple paragraphs contain `find`, producing a safe `AMBIGUOUS_TARGET` failure and an extra recovery turn. On success, `results[i].change.context.anchorMatchCount > 1` signals a non-unique anchor; confirm the returned location and bounded before/after evidence.
+- **Localized edits**: After extraction, use `replacements` with the inspected `paragraphId` plus `fingerprint` to avoid restating a long paragraph. Retain `exactText` locally for drafting. Targetless `--find`/`--replace` is an optional speculative path described below.
 - **Invisible spaces**: Localized matching is case-sensitive and tries exact text first. If no exact span exists, ordinary spaces may match DOCX non-breaking spaces; ambiguous equivalent matches still fail closed, and `change.replacements[i].matchMode` reports `space_equivalent` when used.
 - **Compact mutation results**: `apply`, `accept`, `reject`, and `delete-comments` omit full OOXML/package payloads and inspection text from stdout. CLI operation results omit duplicate nested receipt bodies; the ordered top-level `receipts` array is authoritative. Successful exact target-match diagnostics are omitted and equivalent-whitespace matches retain only mode/count. Node and standalone-runner results remain unchanged. Use `validate` when full issue arrays are needed.
 
@@ -317,6 +307,27 @@ user-facing Word locations; use `humanReference`, `provision`, or
 Wrappers should negotiate only the
 capabilities they use. Run `docx-redline <command> --help` for that command's
 machine-readable options, behavior, exit codes, canonical GitHub documentation links, and compact examples.
+
+#### Optional speculative CLI path
+
+Harnesses with a measured confidence policy may attempt a targetless localized
+edit. This is not the default agent workflow:
+
+```bash
+# Globally unique literal
+docx-redline apply contract.docx --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
+
+# Optional directional scope using a longer, fairly unique nearby phrase
+docx-redline apply contract.docx --search "distinctive nearby heading or phrase" --context-range 1:3 --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
+```
+
+Generic or repeated anchors can widen the unioned scope until multiple
+paragraphs contain `find`, causing a safe `AMBIGUOUS_TARGET` failure and a
+recovery turn. `--around 3` is symmetric. On success,
+`change.context.anchorMatchCount > 1` signals a repeated anchor; confirm the
+returned location and bounded evidence. Matching remains case-sensitive and
+exact-first, with a narrow ordinary-space/NBSP fallback that still refuses
+ambiguity.
 
 See the [compact agent fast start](./docs/AGENT_FAST_START.md), the
 [skill/harness authoring contract](./docs/SKILL_AUTHORING.md), and the

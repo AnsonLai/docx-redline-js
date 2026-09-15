@@ -476,65 +476,40 @@ The canonical machine-readable contract is
 `docs/schemas/document-operations.schema.json`. Read that schema or the examples
 here instead of grepping bundled implementation code.
 
-#### Standard Workflow (Fast & Direct)
+#### Standard Workflow (Extract Then Apply)
 
-Use this for everything by default. `apply` is fast, progressive, and self-validating by default—it validates the resulting package and revision markup internally before writing. **Do not insert a `preflight` or baseline `validate` step on top of it "to be safe"**; `apply` already covers that internally. It supports inline one-liners as well as batch operations files:
+Use this for ordinary edits. `apply` validates the resulting package and
+revision markup internally before writing, so do not add `preflight` or baseline
+`validate` merely for reassurance.
 
-The short route for a document-editing request is:
+1. Run one focused `extract`. Add `--around 3` when surrounding context is
+   needed. Retain `exactText` for drafting and target with `paragraphId` plus
+   `fingerprint`.
+2. Build one final operation per target. Use complete `modified` text for broad
+   semantic revisions or localized `replacements` for small literal changes in
+   an inspected target. Consolidate multiple changes to one paragraph.
+3. Run `apply` once per stable batch. Independent strong targets bind against
+   the batch-start document and do not need bottom-up sorting. Use captures only
+   for intentional created-content dependencies.
+4. Require `completion: true` and a non-null `outputPath`. The CLI derives
+   completion from write status, operation outcomes, commit disposition, and
+   localized accepted-view verification.
+5. Run a focused post-apply extraction only when placement or structural output
+   needs confirmation.
 
-1. For an exact mechanical change with known old and new literals, use localized
-   `--find`/`--replace`. Omit the target for global fail-closed resolution, or
-   scope it with a longer, fairly unique nearby `--search` phrase and a
-   directional range such as `--context-range 1:3`. Generic or repeated anchors
-   widen the unioned scope and may fail with `AMBIGUOUS_TARGET`, costing another
-   turn. `--occurrence` selects only within one uniquely resolved paragraph.
-2. For semantic drafting, run one focused `extract`. Add `--around 3` when
-   surrounding context on either side is needed, then copy `exactText` plus
-   `paragraphId` or `fingerprint`.
-3. Build the final operations from the operation table above. Use one operation
-   per target paragraph, and consolidate multiple changes to that paragraph.
-4. Run `apply` once per stable batch. Strong inspected targets are bound against
-   the batch-start document, so independent operations do not need manual
-   bottom-up sorting around structural edits. Consolidate multiple complete
-   desired states for the same source. A unique exact reference to paragraph
-   text created elsewhere in the batch is scheduled automatically; use explicit
-   captures/selectors for non-unique or advanced created-content dependencies.
-5. Walk every result and require `completion: true`, `written: true`, and no
-   per-operation error. For localized patches also require
-   `results[i].change.committed: true`, `finalDisposition: "applied"`, and
-   positive accepted-view verification. If `anchorMatchCount > 1`, confirm the
-   returned location and excerpts because the anchor was repeated.
-6. Run a focused `extract` on changed clauses only when placement or list/table
-   structure needs confirmation.
-
-Do not probe operation behavior with disposable apply commands or read a vendor
-bundle before this route. If `apply` returns an error, use the recovery matrix
-below and make one cause-specific correction.
+If `apply` returns an error, follow the recovery envelope below and make one
+cause-specific correction. Do not probe behavior with disposable mutations or
+read a vendor bundle.
 
 ```bash
-# 1. Globally unique mechanical edit in one call
-docx-redline apply contract.docx --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
-
-# 2. Directional edit using a longer phrase with a higher chance of uniqueness
-docx-redline apply contract.docx --search "distinctive nearby heading or phrase" --context-range 1:3 --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
-
-# 3. Focused contextual discovery for semantic drafting
+# 1. Focused contextual discovery
 docx-redline extract contract.docx --search "termination" --around 3
 
-# 4. Inline complete-paragraph edit
-docx-redline apply contract.docx --target "Original clause" --modified "New clause" --output reviewed.docx
-
-# 5. Direct edit without tracked changes (clean text, no revision clutter)
-docx-redline apply contract.docx --target "Typo fix" --modified "Fixed typo" --no-redlines --output clean.docx
-
-# 6. Cross-author edit inside another reviewer's pending insertion
-docx-redline apply contract.docx --target "Pending clause text" --modified "Updated clause text" --existing-revisions slice-cross-author --output reviewed.docx
-
-# 7. Batch operations with ops.json
-docx-redline apply contract.docx --operations operations.json --output reviewed.docx
-
-# 8. Serializer-backed stdin with compact stdout
+# 2. Serializer-backed apply against the inspected target
 node emit-operations.mjs | docx-redline apply contract.docx --operations - --profile agent --compact --output reviewed.docx
+
+# Optional clean edit without tracked changes
+docx-redline apply contract.docx --target "Typo fix" --modified "Fixed typo" --no-redlines --output clean.docx
 ```
 
 Key CLI defaults and behaviors:
@@ -547,9 +522,36 @@ Key CLI defaults and behaviors:
 - **Agent profile**: `--profile agent` enables complete-success exit behavior but preserves progressive execution and the ordinary revision policy. Compose it with `--atomic` or an explicit `--existing-revisions` choice when intended; resolved values appear in `effectiveOptions`.
 - **Operation transport**: A UTF-8 operations file and serializer-backed `--operations -` are peers. Use whichever the host can construct without interpolating legal text in the shell.
 - **Compact mutation JSON**: `apply`, `accept`, `reject`, and `delete-comments` omit document/package XML, full validation arrays, and duplicate nested receipts. Top-level `receipts` is authoritative. Pass `--compact` for one-line JSON; run `validate` for full issue records.
-- Check `completion: true`, `written: true`, and a non-null `outputPath` on stdout. `completion` is derived from the write result, top-level status, and every operation status, so failed, partial, and unwritten work cannot appear complete. If an error occurs, inspect `error.code` or `results[i].error.code` (e.g. `TARGET_NOT_FOUND`, `ANCHOR_NOT_FOUND`) before correcting the cause and re-applying.
+- Check `completion: true` and a non-null `outputPath` on stdout. Failed,
+  partial, rolled-back, unverified, and unwritten work cannot appear complete.
+  If an error occurs, follow `error.recovery.action` before correcting the cause.
 
-For multi-clause or multi-page reviews, apply edits **section-by-section** or clause-by-clause (e.g., using `--in-place` on a working copy) rather than bundling dozens of edits into one massive batch. This keeps context compact, simplifies error diagnosis, and prevents cascading anchor drift.
+For multi-clause or multi-page reviews, use focused batches rather than one
+massive batch. This keeps context compact and simplifies error diagnosis.
+
+#### Optional Speculative Localized Apply
+
+Targetless localized apply remains available to expert users and harnesses with
+a measured confidence policy. It is not the ordinary agent workflow:
+
+```bash
+# Globally unique literal
+docx-redline apply contract.docx --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
+
+# Optional directional scope using a longer, fairly unique phrase
+docx-redline apply contract.docx --search "distinctive nearby heading or phrase" --context-range 1:3 --find "thirty (30) days" --replace "sixty (60) days" --profile agent --output reviewed.docx
+```
+
+Omitting a target asks the CLI to resolve one eligible paragraph. Generic or
+repeated anchors union their windows and may produce `AMBIGUOUS_TARGET`, costing
+a recovery turn. `--around 3` is symmetric; `--occurrence` disambiguates only
+inside an already selected paragraph. `anchorMatchCount > 1` signals a repeated
+anchor even after a successful edit. Matching is exact and case-sensitive first,
+then permits only ASCII-space/NBSP equivalence; ambiguity still fails closed.
+
+Localized `change` evidence retains bounded before/after excerpts, commit
+disposition, and accepted-view verification for audit consumers. Ordinary
+agents rely on the computed top-level `completion` signal.
 
 #### High-Assurance / Staged Verification Workflow (Optional)
 

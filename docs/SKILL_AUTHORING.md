@@ -40,7 +40,8 @@ change summaries are optional requirements only for integrations that use them.
 
 Every generated integration must:
 
-- inspect narrowly and retain `exactText` plus `paragraphId` or `fingerprint`;
+- inspect narrowly, retain `exactText`, and target with `paragraphId` plus
+  `fingerprint`;
 - use strict targeting, package validation, and a derived output path;
 - never overwrite the source unless `--in-place` is explicitly requested;
 - require `completion: true` and a non-null `outputPath` before reporting

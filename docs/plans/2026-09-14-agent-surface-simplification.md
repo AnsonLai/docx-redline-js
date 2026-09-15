@@ -1,6 +1,6 @@
 # Agent Surface Simplification Plan
 
-**Status:** In progress — WP-00 through WP-03 complete
+**Status:** In progress — WP-00 through WP-06 complete; WP-07 pending
 
 **Date:** 2026-09-14
 
@@ -237,7 +237,7 @@ the agent profile, recovery envelopes, and localized replacements. Speculative
 execution is documented as an opt-in harness policy with measured confidence,
 not an ordinary generated workflow.
 
-### WP-04: Relocate Advanced Features Without Removing Them
+### WP-04: Relocate Advanced Features Without Removing Them — Complete (2026-09-14)
 
 Ensure the complete behavior remains discoverable outside the fast path.
 
@@ -256,7 +256,12 @@ Acceptance:
 - Advanced users can still find every supported flag and refusal condition.
 - Ordinary agents do not encounter those options before the default workflow.
 
-### WP-05: Align Documentation Contract Tests
+Implementation note: README and Knowledge Base introductory workflows now lead
+with extract-then-apply. Speculative global and directionally scoped apply are
+retained in clearly labeled advanced sections, including ambiguity refusal,
+anchor uniqueness, occurrence semantics, NBSP matching, and change evidence.
+
+### WP-05: Align Documentation Contract Tests — Complete (2026-09-14)
 
 Update documentation tests to enforce the simplified hierarchy.
 
@@ -270,7 +275,11 @@ Update documentation tests to enforce the simplified hierarchy.
 Use synthetic language unrelated to user or client documents in every example
 and fixture.
 
-### WP-06: Controlled Agent Evaluation
+Implementation note: documentation contract tests now enforce extraction as
+the first ordinary command, keep speculative concepts out of ordinary sections,
+verify their advanced placement, and retain package-publication assertions.
+
+### WP-06: Controlled Repository Evaluation — Complete (2026-09-14)
 
 Compare instruction surfaces while holding the 0.7.1+ engine constant:
 
@@ -309,6 +318,19 @@ Success criteria:
 - Simplified guidance performs at least as well as v0.6.2 guidance on median
   tool calls, with fewer classification/recovery turns than current 0.7.1
   guidance.
+
+Implementation note: `npm run benchmark:agent-surface` now replays six wholly
+synthetic scenarios under three policy surfaces against the same current
+engine, with seven measured iterations after warmup. All 126 measured tasks
+produced the asserted document. The simplified policy used two calls with no
+failed speculative calls and reduced generated edit-request bytes by 60.6%
+against the full-text baseline. The speculation-led policy saved calls on
+unique literals but incurred seven expected failed calls on repeated text.
+Local engine-and-I/O medians were effectively unchanged. The deterministic
+repository benchmark cannot measure model reasoning, provider latency, or
+model token usage; those remain external release evidence rather than an
+unsubstantiated repository claim. Results and limitations are recorded in
+`docs/validation-reports/2026-09-14-agent-surface-simplification.md`.
 
 ### WP-07: Release Decision
 
@@ -364,3 +386,12 @@ After WP-06:
   used capabilities and treats speculation as opt-in. Documentation contract
   assertions were updated only as required to validate WP-01 through WP-03;
   broader WP-05 alignment remains pending.
+- **2026-09-14:** WP-04 completed. Advanced speculative and directional
+  capabilities remain documented and supported without competing with the
+  introductory extract-then-apply workflow.
+- **2026-09-14:** WP-05 completed. Documentation tests enforce the new hierarchy
+  and published-document boundary.
+- **2026-09-14:** WP-06 completed as a deterministic repository evaluation. All
+  policy/scenario runs were correct; the simplified surface retained localized
+  payload savings without speculative recovery calls. External model timing
+  and reasoning measurements remain an input to WP-07.

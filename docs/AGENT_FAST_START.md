@@ -22,7 +22,7 @@ The repository's `examples/agent-session-wrapper.mjs` is a development sample, n
 
    Search is case-insensitive. Follow `selection.nextAfter` when truncated. Preserve `selection`, `humanReference`, target descriptors, and revision cues when reshaping output. Report `humanReference`, not a machine paragraph number.
 
-2. Copy inspected `exactText` and its `paragraphId` or `fingerprint`, then apply once with a UTF-8 operations file or serializer-backed stdin:
+2. Retain inspected `exactText` for drafting and target with its `paragraphId` plus `fingerprint`, then apply once with a UTF-8 operations file or serializer-backed stdin:
 
    ```bash
    node emit-operations.mjs | docx-redline apply contract.docx --operations - --profile agent --compact --output reviewed.docx
