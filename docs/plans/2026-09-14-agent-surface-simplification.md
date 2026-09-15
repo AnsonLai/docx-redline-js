@@ -1,6 +1,6 @@
 # Agent Surface Simplification Plan
 
-**Status:** In progress — WP-00 through WP-06 complete; WP-07 pending
+**Status:** Complete — WP-00 through WP-07 complete
 
 **Date:** 2026-09-14
 
@@ -332,7 +332,7 @@ model token usage; those remain external release evidence rather than an
 unsubstantiated repository claim. Results and limitations are recorded in
 `docs/validation-reports/2026-09-14-agent-surface-simplification.md`.
 
-### WP-07: Release Decision
+### WP-07: Release Decision — Complete (2026-09-14)
 
 After WP-06:
 
@@ -344,6 +344,10 @@ After WP-06:
 - Consider future deprecation only if maintenance evidence shows an unused
   capability imposes material core cost. Documentation complexity alone is not
   sufficient reason to remove a working feature.
+
+Implementation note: Release notes created in `docs/releases/0.7.2.md`.
+CLI contract remains at version 8. Package version bumped to v0.7.2. All 114
+test suites and isolation checks pass.
 
 ---
 
@@ -395,3 +399,5 @@ After WP-06:
   policy/scenario runs were correct; the simplified surface retained localized
   payload savings without speculative recovery calls. External model timing
   and reasoning measurements remain an input to WP-07.
+- **2026-09-14:** WP-07 completed. `docs/releases/0.7.2.md` created, changelog
+  updated, package bumped to v0.7.2, and all validation suites confirmed.

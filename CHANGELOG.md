@@ -1,18 +1,43 @@
 # Changelog
 
-## Unreleased
+## 0.7.2
+
+### Agent Surface Simplification
+
+- **Extraction-first golden path:** Re-established the single deterministic two-turn
+  "extract-then-apply" sequence as the default agent workflow across `AGENTS.md`,
+  `docs/AGENT_FAST_START.md`, and `docs/SKILL_AUTHORING.md`. Eliminates the
+  upfront "choice tax" and model deliberation overhead.
+- **Localized replacements after inspection:** Decoupled localized patching from
+  speculation. Agents inspect the target paragraph first, then supply compact
+  `replacements` instructions, achieving 60.6%–90.8% payload reductions without
+  speculative ambiguity risk.
+- **Computed success gate:** Consolidated standard success verification onto
+  `completion: true` and non-null `outputPath`, removing multi-field verification
+  checklists from primary prompts while retaining full `change` audit evidence.
+- **Advanced features relocated:** Speculative 1-turn apply, directional context
+  windows (`--context-range`), and anchor diagnostics are relocated to
+  `docs/AGENT_KNOWLEDGE_BASE.md` and CLI help as opt-in harness policies.
+- **Observed-state restoration:** Restructured restoration as a clean request-
+  or hint-driven branch (`--view rejected` or `selection.hint`) rather than an
+  upfront classification decision.
+- **Empirical surface evaluation:** Added synthetic replay benchmark
+  (`npm run benchmark:agent-surface`) and validation report documenting 100%
+  first-attempt task correctness and payload savings across three workflow policies.
+
+## 0.7.1
+
+### Reliability and Discovery Refinements
 
 - Localized replacement matching now tries exact case-sensitive text first,
   then a narrow ASCII-space/non-breaking-space equivalent match. Ambiguous
   equivalent matches still fail closed, and unchanged boundary NBSPs are
   retained to avoid incidental whitespace redlines.
-
 - Added a narrow single-paragraph restore shortcut. A restore with a strong
   rejected-view target may omit `modified` for verbatim restoration or provide
   exact `replacements`; the CLI exposes the same path through `apply --restore
   --target-id ID`. Ranges, captures, weak targets, and inferred companion
   content remain excluded.
-
 - Fixed rejected-view restore receipts so `resolvedTarget` text, fingerprint,
   revision view, and match diagnostics describe the view actually used to
   resolve the target.
