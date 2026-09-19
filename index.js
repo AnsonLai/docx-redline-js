@@ -338,3 +338,11 @@ export {
     createEmptyReceipt,
     reconcileReceiptsAgainstOutput
 } from './services/receipt-collector.js';
+
+// Universal Document Facade
+export {
+    DocxDocument,
+    openDocx,
+    computePackageRevisionToken
+} from './document/docx-document.js';
+

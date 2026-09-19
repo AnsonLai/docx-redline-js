@@ -148,11 +148,12 @@ dist/
   * Re-exported `DocxDocument`, `openDocx`, and `computePackageRevisionToken` in `node/docx-document.js` for existing `@ansonlai/docx-redline-js/node` consumers.
   * Added `tests/universal_docx_document_tests.mjs` verifying document opening from pure `Uint8Array`, inspection, operation application, revision token calculation, and serialization.
 
-### WP-05: Main Entry Point & Node Compatibility Layer
-* **Files:** `index.js`, `node/index.js`
+### WP-05: Main Entry Point & Node Compatibility Layer [COMPLETED 2026-09-19]
+* **Files:** `index.js`, `index.d.ts`, `document/docx-document.d.ts`, `node/index.js`
 * **Changes:**
-  * Re-export `openDocx`, `DocxDocument`, and `computePackageRevisionToken` from `index.js`.
-  * Keep `node/index.js` as an aliased re-export to prevent breaking downstream callers.
+  * Re-exported `openDocx`, `DocxDocument`, and `computePackageRevisionToken` directly from the root package entrypoint (`index.js`).
+  * Maintained `node/index.js` and `node/docx-document.js` as compatibility re-exports to preserve non-breaking behavior for `@ansonlai/docx-redline-js/node`.
+  * Updated TypeScript declarations in `index.d.ts` and `document/docx-document.d.ts`, fully passing `tsc` and `check:types` (126 exports verified).
 
 ### WP-06: Zero-Dependency Sandbox Bundle
 * **Files:** `scripts/build.mjs`, `package.json`
