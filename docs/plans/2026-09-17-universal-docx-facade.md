@@ -140,13 +140,13 @@ dist/
   * Refactored `node/zip-archive.js` to delegate to `document/zip-archive.js` while maintaining backward-compatible `Buffer` returns for existing Node callers.
   * Verified full round-trip ZIP creation and extraction, corrupt archive error handling, CRC32 calculations, and `MemoryZip` interface across Node and universal suites (`115 passed out of 115 tests`).
 
-### WP-04: Universal `DocxDocument` & `openDocx`
-* **Files:** `document/docx-document.js`
+### WP-04: Universal `DocxDocument` & `openDocx` [COMPLETED 2026-09-19]
+* **Files:** `document/docx-document.js`, `node/docx-document.js`, `tests/universal_docx_document_tests.mjs`
 * **Changes:**
-  * Port `node/docx-document.js` to `document/docx-document.js`.
-  * Replace `Buffer` methods with `Uint8Array`, `TextEncoder`, and `TextDecoder`.
-  * Remove `import 'node:crypto'`.
-  * Expose `.toUint8Array()` as the primary serialization output; maintain `.toBuffer()` as a compatibility helper (`Buffer.from(this.toUint8Array())`).
+  * Ported complete document facade to `document/docx-document.js`, standardizing binary operations on `Uint8Array`, `TextEncoder`, and `TextDecoder`.
+  * Added `.toUint8Array()` as canonical serialization method alongside `.toBuffer()` backwards compatibility helper.
+  * Re-exported `DocxDocument`, `openDocx`, and `computePackageRevisionToken` in `node/docx-document.js` for existing `@ansonlai/docx-redline-js/node` consumers.
+  * Added `tests/universal_docx_document_tests.mjs` verifying document opening from pure `Uint8Array`, inspection, operation application, revision token calculation, and serialization.
 
 ### WP-05: Main Entry Point & Node Compatibility Layer
 * **Files:** `index.js`, `node/index.js`
