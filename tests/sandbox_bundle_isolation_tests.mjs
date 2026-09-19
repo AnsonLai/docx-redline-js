@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import vm from 'node:vm';
 import { zipDocx } from '../document/zip-archive.js';
@@ -11,6 +12,10 @@ const distDir = resolve(repoRoot, 'dist');
 
 const cjsBundlePath = resolve(distDir, 'docx-redline.bundle.cjs');
 const esmBundlePath = resolve(distDir, 'docx-redline.bundle.js');
+
+if (!existsSync(cjsBundlePath) || !existsSync(esmBundlePath)) {
+    execFileSync(process.execPath, [resolve(repoRoot, 'scripts/build.mjs')], { stdio: 'inherit' });
+}
 
 const textEncoder = new TextEncoder();
 

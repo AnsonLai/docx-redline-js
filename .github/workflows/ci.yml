@@ -38,14 +38,14 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Build bundle
+        run: npm run build
+
       - name: Test suite
         run: npm test
 
       - name: Export validation fixtures
         run: node scripts/export-validation-fixtures.mjs
-
-      - name: Build bundle
-        run: npm run build
 
       - name: Pack dry-run (Node 22 only)
         if: matrix.node-version == 22

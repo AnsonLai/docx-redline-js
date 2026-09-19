@@ -57,13 +57,13 @@ jobs:
         if: steps.npm_version.outputs.already_published == 'false'
         run: npm run test:isolation
 
-      - name: Test suite
-        if: steps.npm_version.outputs.already_published == 'false'
-        run: npm test
-
       - name: Build bundle
         if: steps.npm_version.outputs.already_published == 'false'
         run: npm run build
+
+      - name: Test suite
+        if: steps.npm_version.outputs.already_published == 'false'
+        run: npm test
 
       - name: Publish to npm
         if: steps.npm_version.outputs.already_published == 'false'
