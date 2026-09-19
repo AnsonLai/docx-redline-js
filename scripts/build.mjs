@@ -8,20 +8,21 @@ const entryPoint = resolve(repoRoot, 'index.js');
 const distDir = resolve(repoRoot, 'dist');
 const pkg = JSON.parse(readFileSync(resolve(repoRoot, 'package.json'), 'utf8'));
 
-// ESM bundle with diff-match-patch inlined (for CDN/browser <script type="module">)
+// ESM bundle with diff-match-patch and fflate inlined (for bundlers / browser)
 await build({
   entryPoints: [entryPoint],
   bundle: true,
   format: 'esm',
   outfile: resolve(distDir, 'docx-redline-js.esm.js'),
-  platform: 'neutral',         // no Node builtins assumed
+  platform: 'neutral',
+  mainFields: ['module', 'main'],
   target: 'es2020',
-  minify: false,                // keep readable for debugging
+  minify: false,
   sourcemap: true,
   banner: {
     js: `// @ansonlai/docx-redline-js v${pkg.version} — https://github.com/AnsonLai/docx-redline-js`
   },
-  external: ['@xmldom/xmldom']  // never bundle the Node-only XML parser
+  external: ['@xmldom/xmldom']
 });
 
 // Minified version for production CDN use
@@ -31,10 +32,44 @@ await build({
   format: 'esm',
   outfile: resolve(distDir, 'docx-redline-js.esm.min.js'),
   platform: 'neutral',
+  mainFields: ['module', 'main'],
   target: 'es2020',
   minify: true,
   sourcemap: true,
   external: ['@xmldom/xmldom']
 });
 
-console.log('Build complete: dist/docx-redline-js.esm.js, dist/docx-redline-js.esm.min.js');
+// Standalone zero-dependency ESM bundle (includes @xmldom/xmldom, fflate, diff-match-patch)
+await build({
+  entryPoints: [entryPoint],
+  bundle: true,
+  format: 'esm',
+  outfile: resolve(distDir, 'docx-redline.bundle.js'),
+  platform: 'neutral',
+  mainFields: ['module', 'main'],
+  target: 'es2020',
+  minify: false,
+  sourcemap: true,
+  banner: {
+    js: `// @ansonlai/docx-redline-js standalone bundle v${pkg.version} — https://github.com/AnsonLai/docx-redline-js`
+  }
+});
+
+// Standalone zero-dependency CommonJS bundle (for n8n, isolated-vm, CJS sandboxes)
+await build({
+  entryPoints: [entryPoint],
+  bundle: true,
+  format: 'cjs',
+  outfile: resolve(distDir, 'docx-redline.bundle.cjs'),
+  platform: 'neutral',
+  mainFields: ['module', 'main'],
+  target: 'es2020',
+  minify: false,
+  sourcemap: true,
+  banner: {
+    js: `// @ansonlai/docx-redline-js standalone CommonJS bundle v${pkg.version} — https://github.com/AnsonLai/docx-redline-js`
+  }
+});
+
+console.log('Build complete: dist/docx-redline-js.esm.js, dist/docx-redline-js.esm.min.js, dist/docx-redline.bundle.js, dist/docx-redline.bundle.cjs');
+

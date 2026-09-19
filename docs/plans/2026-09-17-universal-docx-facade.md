@@ -155,12 +155,13 @@ dist/
   * Maintained `node/index.js` and `node/docx-document.js` as compatibility re-exports to preserve non-breaking behavior for `@ansonlai/docx-redline-js/node`.
   * Updated TypeScript declarations in `index.d.ts` and `document/docx-document.d.ts`, fully passing `tsc` and `check:types` (126 exports verified).
 
-### WP-06: Zero-Dependency Sandbox Bundle
+### WP-06: Zero-Dependency Sandbox Bundle [COMPLETED 2026-09-19]
 * **Files:** `scripts/build.mjs`, `package.json`
 * **Changes:**
-  * Configure `esbuild` to produce a fully self-contained bundle (`dist/docx-redline.sandbox.js` or `dist/docx-redline.bundle.cjs`).
-  * Bundle `fflate`, `diff-match-patch`, and `@xmldom/xmldom` with zero external dependencies and zero Node built-ins.
-  * Verify that `grep -E "node:zlib|node:crypto|require\('fs'\)"` returns zero matches in the sandbox bundle.
+  * Updated `scripts/build.mjs` to configure `esbuild` with `platform: 'neutral'` and `mainFields: ['module', 'main']` to generate standalone zero-dependency bundles in both ESM (`dist/docx-redline.bundle.js`) and CommonJS (`dist/docx-redline.bundle.cjs`) formats.
+  * Inlined `fflate`, `diff-match-patch`, and `@xmldom/xmldom` with zero external dependencies and zero Node built-ins.
+  * Added `./bundle` conditional export to `package.json` pointing to the standalone bundles.
+  * Verified that grep/ripgrep for `node:zlib`, `node:crypto`, and `require('fs')` returns zero matches across the sandbox bundles.
 
 ### WP-07: Test Suite & Verification
 * **Files:** `tests/*.mjs`, `scripts/check-types.mjs`

@@ -26,6 +26,12 @@
       "import": "./node/index.js",
       "default": "./node/index.js"
     },
+    "./bundle": {
+      "types": "./index.d.ts",
+      "import": "./dist/docx-redline.bundle.js",
+      "require": "./dist/docx-redline.bundle.cjs",
+      "default": "./dist/docx-redline.bundle.js"
+    },
     "./redline-operation-converter": "./orchestration/redline-operation-converter.js",
     "./adapters/*": "./adapters/*",
     "./core/*": "./core/*",
