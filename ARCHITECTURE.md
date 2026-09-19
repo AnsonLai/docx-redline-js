@@ -8,11 +8,12 @@ This repository contains only the publishable package surface:
 
 - `adapters/`
 - `core/`
+- `document/` (universal complete-DOCX facade & ZIP archive layer)
 - `engine/`
 - `pipeline/`
 - `services/`
 - `orchestration/`
-- `node/` (separate Node-only package facade)
+- `node/` (Node CLI & backward-compatibility facade)
 - `index.js`
 - `index.d.ts`
 - `dist/`
@@ -22,8 +23,9 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 ## Goals
 
 - Preserve Word-compatible redlines by editing OOXML directly.
-- Keep core logic host-independent (no Office.js globals, no Word API calls).
-- Reuse the same engine in browser, Node.js, and other JavaScript runtimes.
+- Keep core logic and document-level operations host-independent (no Office.js globals, no Word API calls, no runtime Node built-ins like `node:zlib` or `node:crypto`).
+- Standardize complete-document packages on `Uint8Array` binary payloads, pure-JS SHA-256 revision tokens, and `fflate` ZIP container manipulation.
+- Reuse the same engine across Node.js, browsers, Cloudflare Workers, Deno, Bun, and sandboxed runtimes (e.g. n8n Code nodes).
 - Keep generated OOXML schema-safe through shared Word element creation and
   centralized revision metadata helpers.
 
@@ -37,7 +39,12 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 │   └── xml-adapter.js
 ├── core/
 │   ├── paragraph-text.js
+│   ├── sha256.js
 │   └── word-xml.js
+├── document/
+│   ├── docx-document.js
+│   ├── docx-document.d.ts
+│   └── zip-archive.js
 ├── engine/
 │   ├── oxml-engine.js
 │   ├── surgical-mode.js
@@ -63,16 +70,22 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 │   ├── cli.js
 │   ├── zip-archive.js
 │   └── index.js
+├── dist/
+│   ├── docx-redline-js.esm.js
+│   ├── docx-redline.bundle.js
+│   └── docx-redline.bundle.cjs
 ├── index.js
 └── index.d.ts
 ```
 
 ## Entry Points
 
-- `index.js`: primary host-independent exports for OOXML reconciliation.
+- `index.js`: primary host-independent exports for OOXML reconciliation and universal complete-document operations (`openDocx`, `DocxDocument`, `computePackageRevisionToken`).
+- `document/docx-document.js`: universal `Uint8Array`-based document facade and package-level operation runner.
+- `dist/docx-redline.bundle.js` / `dist/docx-redline.bundle.cjs`: zero-dependency standalone sandbox bundles, exported via `@ansonlai/docx-redline-js/bundle`.
 - `services/standalone-operation-runner.js`: stable complete-document XML
   operations, exported as `@ansonlai/docx-redline-js/standalone-runner`.
-- `node/index.js`: Node-only complete-DOCX buffer facade, exported as
+- `node/index.js`: Node-compatible complete-DOCX facade re-exports, exported as
   `@ansonlai/docx-redline-js/node`.
 - `bin/docx-redline.js`: CLI launcher; command implementation lives in
   `node/cli.js` and shared operation behavior lives in `services/`.
@@ -181,11 +194,18 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 - `services/document-inspection.js`
   - Read-only paragraphs/comments inventory with target identity, headings,
     revision authors, table context, and advisory visible numbering.
-- `node/docx-document.js`
-  - Transactional whole-DOCX editing, artifact wiring, validation, and rollback.
-    OOXML and package issues are classified as baseline/generated multisets, so
-    unchanged source defects remain diagnostics while new defects block writes.
-    This surface is excluded from the browser/root dependency graph.
+- `document/docx-document.js`
+  - Universal transactional whole-DOCX editing, artifact wiring, validation, and rollback.
+    Standardized on `Uint8Array` binary payloads and pure-JS SHA-256 revision tokens.
+    Exposes `openDocx`, `DocxDocument`, and `computePackageRevisionToken` directly across all runtimes.
+- `document/zip-archive.js`
+  - Universal, pure-JS ZIP archive reader and writer based on `fflate`. Operates on
+    `Uint8Array` byte arrays with zero Node built-ins (`node:zlib`, `Buffer`).
+- `core/sha256.js`
+  - Pure-JS synchronous implementation of FIPS 180-4 SHA-256 with zero dependencies,
+    enabling deterministic revision tokens in sandboxed runtimes without `node:crypto`.
+- `node/docx-document.js` and `node/zip-archive.js`
+  - Node-compatible re-exports maintaining `Buffer` compatibility for `@ansonlai/docx-redline-js/node`.
 - `node/cli.js` and `bin/docx-redline.js`
   - Cross-platform, JSON-only agent command boundary. Read commands never
     mutate; write commands require attribution, use package transactions, and

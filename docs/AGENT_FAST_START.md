@@ -4,12 +4,13 @@ Use this page for ordinary `.docx` edits. For unusual Word structures or optiona
 
 ## Structured agent tool
 
-If the host provides a document-session wrapper:
+If the host provides a document-session wrapper (or directly calls `openDocx` from `@ansonlai/docx-redline-js` with `Uint8Array` binary payloads):
 
 1. Inspect once with enough surrounding context to draft the change.
 2. Apply once with the returned revision-bound handle.
 3. Accept only the wrapper's complete-success result; refresh failed handles.
 
+The universal `DocxDocument` and `openDocx` facade operates natively on `Uint8Array` across Node, browsers, edge workers, and sandboxes without requiring Node built-ins.
 The repository's `examples/agent-session-wrapper.mjs` is a development sample, not a package API.
 
 ## CLI workflow

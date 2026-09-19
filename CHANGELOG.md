@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.8.0
+
+### Universal Document Facade & Zero-Node Architecture
+
+- **Universal `DocxDocument` & `openDocx`:** Implemented complete-DOCX lifecycle operations
+  (`openDocx`, `doc.inspect()`, `doc.applyOperations()`, `doc.resolveRevisions()`, `doc.deleteComments()`,
+  `doc.toUint8Array()`, `doc.getRevisionToken()`) on standard `Uint8Array` in `document/docx-document.js`,
+  re-exported directly from `index.js`. Enables complete-document redline workflows in any JavaScript
+  runtime without Node.js dependencies.
+- **Pure-JS ZIP container (`fflate`):** Replaced `node:zlib` with lightweight, zero-dependency `fflate`
+  in `document/zip-archive.js`, providing cross-runtime raw DEFLATE / INFLATE compression and decompression
+  with full OOXML archive compatibility.
+- **Pure-JS FIPS 180-4 SHA-256:** Created zero-dependency, synchronous SHA-256 implementation in
+  `core/sha256.js`, removing `node:crypto` from package revision token calculations while retaining
+  exact deterministic hash parity with standard NIST vectors.
+- **Transparent XML DOM fallback:** Added `resolveDomParserConstructor()` and
+  `resolveXmlSerializerConstructor()` in `adapters/xml-adapter.js`, automatically utilizing native
+  `globalThis.DOMParser`/`globalThis.XMLSerializer` when present and falling back transparently to
+  `@xmldom/xmldom` in headless, server, edge, and sandbox environments without requiring manual provider setup.
+- **Zero-dependency sandbox bundles:** Configured `scripts/build.mjs` with `esbuild` (`platform: 'neutral'`)
+  to produce single-file, zero-dependency standalone bundles in both ESM (`dist/docx-redline.bundle.js`)
+  and CommonJS (`dist/docx-redline.bundle.cjs`), exported as `@ansonlai/docx-redline-js/bundle` for direct
+  use in workflow engines (e.g., n8n Code nodes), Cloudflare Workers, AWS Lambda, Deno, and QuickJS sandboxes.
+- **Strict runtime boundary enforcement:** Removed `node:zlib` and `node:crypto` from allowed external
+  imports in `tests/no_word_api_index_check.mjs`. Automated sandbox isolation tests
+  (`tests/sandbox_bundle_isolation_tests.mjs`) verify zero Node built-in imports and full document
+  reconciliation in restricted VM contexts without `process`, `Buffer`, or `require`.
+- **Backward compatibility:** Preserved full API and `Buffer` compatibility for `@ansonlai/docx-redline-js/node`
+  consumers and `doc.toBuffer()`.
+
 ## 0.7.2
 
 ### Agent Surface Simplification

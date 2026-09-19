@@ -11,8 +11,8 @@ or an installed plugin bundle to infer public behavior.
 | Edit or review a complete `.docx` | [Agent Fast Start](docs/AGENT_FAST_START.md) and the `docx-redline` CLI |
 | Build or update an agent skill/tool wrapper | [Skill Authoring Contract](docs/SKILL_AUTHORING.md), then [README wrapper example](README.md#example-agent-session-wrapper-development-only) |
 | Change paragraph/range reconciliation | `index.js` → `engine/oxml-engine.js` → selected `engine/*-mode.js` |
-| Change complete-document operations | `services/standalone-operation-runner.js` → `services/document-operation-*.js` |
-| Change DOCX ZIP or CLI behavior | `node/index.js`, `node/docx-document.js`, `node/cli.js` |
+| Change complete-document operations | `document/docx-document.js` → `services/standalone-operation-runner.js` → `services/document-operation-*.js` |
+| Change DOCX ZIP or CLI behavior | `document/zip-archive.js`, `node/index.js`, `node/docx-document.js`, `node/cli.js` |
 | Choose or add tests | Closest `tests/*.mjs`, then [Testing Guide](docs/TESTING.md) |
 | Understand ownership/dependencies | [Architecture](ARCHITECTURE.md) |
 
@@ -59,11 +59,13 @@ examples live in the
 
 ## Thin wrappers
 
-Wrap the CLI for shell hosts or `openDocx` from
-`@ansonlai/docx-redline-js/node` for byte-oriented Node hosts. A wrapper should
-inspect, translate narrow ergonomic inputs into canonical operations, call the
-facade once, and return its structured result. Do not reproduce ZIP handling,
-targeting, revision allocation, comments, numbering, validation, or rollback.
+Wrap the CLI for shell hosts or `openDocx` from `@ansonlai/docx-redline-js`
+(or `@ansonlai/docx-redline-js/bundle` for zero-dependency sandboxes, or
+`@ansonlai/docx-redline-js/node` for backward-compatible Node hosts) for
+byte-oriented hosts. A wrapper should inspect, translate narrow ergonomic inputs
+into canonical operations, call the facade once, and return its structured result.
+Do not reproduce ZIP handling, targeting, revision allocation, comments, numbering,
+validation, or rollback.
 
 The stateful wrapper in `examples/agent-session-wrapper.mjs` is a testable
 development demonstration only. It is excluded from package files and exports.
@@ -74,13 +76,16 @@ not belong in an ordinary editing prompt merely because the CLI supports them.
 ## Code map
 
 ```text
-index.js       host-independent public API
-core/          OOXML primitives, text views, targeting, validation
+index.js       host-independent public API & universal document facade
+adapters/      DOM/XML parser provider with automatic pure-JS fallback
+core/          OOXML primitives, text views, targeting, SHA-256, validation
+document/      universal Uint8Array DOCX facade & fflate ZIP container
 pipeline/      ingestion, diffing, Markdown, lists, serialization
 engine/        reconciliation modes and run-level mutation
 orchestration/ route planning and structural conversion
 services/      document operations, comments, receipts, artifacts
-node/          Node-only ZIP and whole-DOCX facade/CLI
+node/          Node CLI and backward-compatibility re-exports
+dist/          universal ESM and zero-dependency sandbox bundles
 tests/*.mjs    directly runnable suites
 ```
 

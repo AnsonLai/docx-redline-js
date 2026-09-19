@@ -78,8 +78,11 @@ node emit-operations.mjs | docx-redline apply input.docx --operations - --profil
 ```
 
 Use `JSON.stringify` or a structured tool API. Never demonstrate `echo`, a
-heredoc, or shell-interpolated document text. A Node byte-oriented wrapper should
-call `openDocx` and return the structured result instead of recreating CLI
+heredoc, or shell-interpolated document text. In JavaScript/TypeScript runtimes
+(Node.js, browsers, Cloudflare Workers, Deno, Bun, or sandboxed environments like
+n8n), an in-process wrapper should call `openDocx(uint8Array)` directly from
+`@ansonlai/docx-redline-js` (or `@ansonlai/docx-redline-js/bundle` for zero-dependency
+standalone sandboxes) and return the structured result instead of recreating CLI
 serialization, ZIP handling, targeting, validation, or rollback.
 
 ## Ordinary generated workflow

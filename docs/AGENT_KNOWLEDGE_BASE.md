@@ -14,26 +14,29 @@ surface before following imports:
 |---|---|---|
 | Paragraph, range, list, table, comment, and OOXML transforms in any DOM-capable runtime | `index.js` (`@ansonlai/docx-redline-js`) | `engine/`, `pipeline/`, `core/`, and focused `services/` |
 | Operations against complete `word/document.xml` strings | `services/standalone-operation-runner.js` (`@ansonlai/docx-redline-js/standalone-runner`) | `services/document-operation-*.js` and `services/batch-operation-orchestrator.js` |
-| Complete `.docx` buffers and the CLI in Node.js | `node/index.js` (`@ansonlai/docx-redline-js/node`) and `bin/docx-redline.js` | `node/docx-document.js`, `node/zip-archive.js`, and package-plumbing services |
+| Universal complete `.docx` packages (`Uint8Array`) across Node, browsers, edge, and sandboxes | `index.js` (`@ansonlai/docx-redline-js`) or `document/docx-document.js` | `document/docx-document.js`, `document/zip-archive.js`, `core/sha256.js` |
+| Zero-dependency standalone sandbox bundles (n8n, Cloudflare Workers, edge) | `dist/docx-redline.bundle.js` / `.cjs` (`@ansonlai/docx-redline-js/bundle`) | Standalone inlined bundle (no Node built-ins) |
+| Complete `.docx` buffers and the CLI in Node.js (backward compatibility) | `node/index.js` (`@ansonlai/docx-redline-js/node`) and `bin/docx-redline.js` | `node/docx-document.js`, `node/zip-archive.js`, and package-plumbing services |
 
 The source tree is layered as follows:
 
 ```text
-index.js                 root, host-independent public exports
-adapters/                injected XML, configuration, and logging adapters
-core/                    shared OOXML primitives, text views, targeting, validation
+index.js                 root, host-independent public exports & universal facade
+adapters/                XML (auto DOMParser fallback), config, and logging adapters
+core/                    shared OOXML primitives, text views, targeting, SHA-256, validation
+document/                universal Uint8Array DOCX facade & fflate ZIP container
 pipeline/                ingestion, diffing, markdown, lists, and serialization stages
 engine/                  paragraph/range reconciliation and surgical/reconstruction modes
 orchestration/           route planning and structural list operation conversion
 services/                document operations, comments, receipts, package artifacts
-node/                    Node-only ZIP and whole-DOCX facade; keep out of root imports
+node/                    Node CLI and backward-compatibility facade re-exports
 bin/                     CLI launcher; behavior belongs in node/ or services/
 tests/*.mjs              directly runnable suites discovered by scripts/run-tests.mjs
 tests/helpers/           shared test utilities; not standalone suites
 tests/fixtures/          checked-in synthetic/golden inputs and expected outputs
 scripts/                 build, fixture generation, benchmarks, and Word automation
 docs/                    schemas, testing guidance, plans, and generated reports
-dist/                    generated bundle; do not edit by hand
+dist/                    generated universal ESM and zero-dependency sandbox bundles
 ```
 
 `AGENTS.md` is the committed repository-wide agent guide. `.agent/` is ignored
@@ -97,21 +100,44 @@ back to `word/document.xml`.
 ## Entry Point
 
 ```js
-import { applyRedlineToOxml, configureXmlProvider } from '@ansonlai/docx-redline-js';
+import { applyRedlineToOxml, openDocx, configureXmlProvider } from '@ansonlai/docx-redline-js';
 ```
 
-`index.js` is the primary host-independent entry point. Complete document XML
-and `.docx` package workflows use the standalone runner and Node facade listed
-in the repository-layout table above.
+`index.js` is the primary host-independent entry point, exposing both paragraph-level
+reconciliation (`applyRedlineToOxml`) and universal complete-document operations
+(`openDocx`, `DocxDocument`, `computePackageRevisionToken`).
 
-## Required Setup (Node.js only)
+## XML Provider Setup (Zero Configuration)
+
+Zero configuration is required out of the box. The library automatically:
+1. Uses `globalThis.DOMParser` and `globalThis.XMLSerializer` when available in standard web runtimes.
+2. Transparently falls back to pure-JS `@xmldom/xmldom` in Node.js, edge workers, and sandboxes.
+
+Consumers can optionally override these providers if a custom DOM implementation is desired:
 
 ```js
-import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
-configureXmlProvider({ DOMParser, XMLSerializer });
+import { configureXmlProvider } from '@ansonlai/docx-redline-js';
+configureXmlProvider({ DOMParser: MyDOMParser, XMLSerializer: MyXMLSerializer });
 ```
 
-Browsers have native DOM APIs, so no provider injection is typically needed.
+## Universal Complete-DOCX Operations (`openDocx`)
+
+Complete `.docx` documents can be opened directly from a `Uint8Array` (or Node `Buffer`) across all environments without Node built-in dependencies:
+
+```js
+import { openDocx } from '@ansonlai/docx-redline-js';
+
+const doc = openDocx(docxUint8Array);
+const inspection = doc.inspect();
+const result = await doc.applyOperations([
+  { type: 'replace', target: { paragraphId: '00000001' }, modified: 'Updated clause text' }
+], { author: 'AI Editor' });
+
+if (result.written) {
+  const outputBytes = doc.toUint8Array(); // canonical Uint8Array
+  // In Node.js: const outputBuf = doc.toBuffer();
+}
+```
 
 ## Key APIs by Use Case
 
