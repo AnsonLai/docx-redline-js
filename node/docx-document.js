@@ -9,7 +9,7 @@ import { validateRedlineOoxml } from '../core/redline-validation.js';
 import { subtractValidationIssueMultiset, validationErrors } from '../core/validation-delta.js';
 import { acceptTrackedChangesInOoxml, rejectTrackedChangesInOoxml, deleteCommentsByAuthorInOoxml } from '../services/revision-comment-management.js';
 import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
-import { createHash } from 'node:crypto';
+import { sha256 } from '../core/sha256.js';
 import { MemoryZip, unzipDocx, zipDocx } from './zip-archive.js';
 import { computeRevisionTokenSync, validateRevisionToken, areRevisionTokensEqual } from '../services/revision-token.js';
 import { createRetryPlan, normalizeErrorWithRecovery } from '../services/error-recovery.js';
@@ -69,8 +69,7 @@ export function computePackageRevisionToken(input) {
     }
     return computeRevisionTokenSync({
         scope: 'package',
-        entries,
-        digestFn: bytes => createHash('sha256').update(bytes).digest('hex')
+        entries
     });
 }
 
@@ -102,7 +101,7 @@ function existingCommentDetails(entries) {
 export class DocxDocument {
     constructor(buffer) { this.originalBuffer = Buffer.from(buffer); this.entries = unzipDocx(this.originalBuffer); }
     inspect(options = {}) {
-        const digestFn = options.digestFn || (bytes => createHash('sha256').update(bytes).digest('hex'));
+        const digestFn = options.digestFn || (bytes => sha256(bytes));
         return inspectDocumentParts({
             documentXml: text(this.entries, 'word/document.xml'),
             commentsXml: text(this.entries, 'word/comments.xml'),

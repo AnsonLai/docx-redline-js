@@ -5,6 +5,8 @@
  * revision tokens over package entries or document parts.
  */
 
+import { sha256 } from '../core/sha256.js';
+
 const textEncoder = new TextEncoder();
 
 /**
@@ -145,6 +147,8 @@ export function buildRevisionTokenFraming({ scope, entries = [] }) {
 /**
  * Calculates a SHA-256 revision token asynchronously using Web Crypto or a custom digest function.
  *
+ * Defaults to the built-in pure-JS SHA-256 implementation when Web Crypto is unavailable.
+ *
  * @param {{ scope: string, entries: Array<any>, digestFn?: (bytes: Uint8Array) => Promise<string> }} options
  * @returns {Promise<{ algorithm: 'sha256', version: number, scope: string, value: string, coveredParts: string[] }>}
  */
@@ -159,7 +163,7 @@ export async function computeRevisionToken({ scope, entries = [], digestFn = nul
         const hashBytes = new Uint8Array(hashBuf);
         hashHex = Array.from(hashBytes).map(b => b.toString(16).padStart(2, '0')).join('');
     } else {
-        throw new Error('No crypto provider available for SHA-256 revision token computation.');
+        hashHex = sha256(framing);
     }
 
     return {
@@ -172,17 +176,17 @@ export async function computeRevisionToken({ scope, entries = [], digestFn = nul
 }
 
 /**
- * Calculates a SHA-256 revision token synchronously using a provided digest function.
+ * Calculates a SHA-256 revision token synchronously using pure-JS SHA-256 or a custom digest function.
  *
- * @param {{ scope: string, entries: Array<any>, digestFn: (bytes: Uint8Array) => string }} options
+ * @param {{ scope: string, entries: Array<any>, digestFn?: (bytes: Uint8Array) => string }} options
  * @returns {{ algorithm: 'sha256', version: number, scope: string, value: string, coveredParts: string[] }}
  */
-export function computeRevisionTokenSync({ scope, entries = [], digestFn }) {
-    if (typeof digestFn !== 'function') {
-        throw new TypeError('computeRevisionTokenSync requires a synchronous digestFn.');
+export function computeRevisionTokenSync({ scope, entries = [], digestFn = null }) {
+    if (digestFn != null && typeof digestFn !== 'function') {
+        throw new TypeError('computeRevisionTokenSync requires a synchronous digestFn when specified.');
     }
     const { framing, coveredParts, version } = buildRevisionTokenFraming({ scope, entries });
-    const hashHex = digestFn(framing);
+    const hashHex = typeof digestFn === 'function' ? digestFn(framing) : sha256(framing);
     return {
         algorithm: 'sha256',
         version,

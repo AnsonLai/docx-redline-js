@@ -29,6 +29,7 @@
     "./redline-operation-converter": "./orchestration/redline-operation-converter.js",
     "./adapters/*": "./adapters/*",
     "./core/*": "./core/*",
+    "./document/*": "./document/*",
     "./engine/*": "./engine/*",
     "./pipeline/*": "./pipeline/*",
     "./services/*": "./services/*",
@@ -37,6 +38,7 @@
   "files": [
     "adapters/",
     "core/",
+    "document/",
     "engine/",
     "pipeline/",
     "services/",
@@ -70,15 +72,9 @@
     "LICENSE"
   ],
   "dependencies": {
-    "diff-match-patch": "^1.0.5"
-  },
-  "peerDependencies": {
-    "@xmldom/xmldom": ">=0.8.0"
-  },
-  "peerDependenciesMeta": {
-    "@xmldom/xmldom": {
-      "optional": true
-    }
+    "@xmldom/xmldom": "^0.9.0",
+    "diff-match-patch": "^1.0.5",
+    "fflate": "^0.8.3"
   },
   "devDependencies": {
     "@xmldom/xmldom": "^0.9.0",
@@ -92,7 +88,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "check:types": "tsc -p tsconfig.types.json && node scripts/check-types.mjs",
-    "lint": "eslint index.js adapters core engine pipeline services orchestration scripts examples tests",
+    "lint": "eslint index.js adapters core document engine pipeline services orchestration scripts examples tests",
     "test:coverage": "c8 --reporter=text --reporter=json --reporter=json-summary --reports-dir=coverage node scripts/run-tests.mjs",
     "coverage:gaps": "node scripts/report-coverage-gaps.mjs",
     "benchmark:session": "node scripts/benchmark-operation-session.mjs",

@@ -1,14 +1,17 @@
 /**
  * XML adapter for parser/serializer portability.
  *
- * Default behavior uses browser-provided DOMParser/XMLSerializer.
- * Consumers can override these constructors for non-browser runtimes.
+ * Transparently uses browser-provided DOMParser/XMLSerializer when available in
+ * standard web runtimes, automatically falling back to pure-JS @xmldom/xmldom in
+ * Node.js and sandbox environments. Consumers can also explicitly override these
+ * constructors via configureXmlProvider.
  */
 
+import { DOMParser as XmlDomParser, XMLSerializer as XmlDomSerializer } from '@xmldom/xmldom';
 import { warn as logWarning, error as logError } from './logger.js';
 
-let _DOMParser = globalThis.DOMParser;
-let _XMLSerializer = globalThis.XMLSerializer;
+let _DOMParser = null;
+let _XMLSerializer = null;
 
 /**
  * Configures XML provider constructors.
@@ -18,23 +21,50 @@ let _XMLSerializer = globalThis.XMLSerializer;
  * @param {typeof XMLSerializer} [options.XMLSerializer] - XMLSerializer constructor
  */
 export function configureXmlProvider(options = {}) {
-    if (options.DOMParser) _DOMParser = options.DOMParser;
-    if (options.XMLSerializer) _XMLSerializer = options.XMLSerializer;
+    if ('DOMParser' in options) _DOMParser = options.DOMParser;
+    if ('XMLSerializer' in options) _XMLSerializer = options.XMLSerializer;
+}
+
+/**
+ * Resolves the active DOMParser constructor.
+ *
+ * Priority order:
+ * 1. Explicitly configured constructor (via configureXmlProvider)
+ * 2. Host environment native DOMParser (globalThis.DOMParser)
+ * 3. Pure-JS @xmldom/xmldom fallback
+ *
+ * @returns {typeof DOMParser}
+ */
+export function resolveDomParserConstructor() {
+    return _DOMParser || globalThis.DOMParser || XmlDomParser;
+}
+
+/**
+ * Resolves the active XMLSerializer constructor.
+ *
+ * Priority order:
+ * 1. Explicitly configured constructor (via configureXmlProvider)
+ * 2. Host environment native XMLSerializer (globalThis.XMLSerializer)
+ * 3. Pure-JS @xmldom/xmldom fallback
+ *
+ * @returns {typeof XMLSerializer}
+ */
+export function resolveXmlSerializerConstructor() {
+    return _XMLSerializer || globalThis.XMLSerializer || XmlDomSerializer;
 }
 
 /**
  * Creates a parser instance.
  *
+ * @param {Object} [options={}] - Parser options (e.g. { onError } for xmldom)
  * @returns {DOMParser}
  */
 export function createParser(options = {}) {
-    if (!_DOMParser && globalThis.DOMParser) {
-        _DOMParser = globalThis.DOMParser;
+    const ParserCtor = resolveDomParserConstructor();
+    if (!ParserCtor) {
+        throw new Error('DOMParser is not configured and no fallback XML parser is available.');
     }
-    if (!_DOMParser) {
-        throw new Error('DOMParser is not configured. Call configureXmlProvider({ DOMParser, XMLSerializer }) first.');
-    }
-    return new _DOMParser(options);
+    return new ParserCtor(options);
 }
 
 /**
@@ -43,13 +73,11 @@ export function createParser(options = {}) {
  * @returns {XMLSerializer}
  */
 export function createSerializer() {
-    if (!_XMLSerializer && globalThis.XMLSerializer) {
-        _XMLSerializer = globalThis.XMLSerializer;
+    const SerializerCtor = resolveXmlSerializerConstructor();
+    if (!SerializerCtor) {
+        throw new Error('XMLSerializer is not configured and no fallback XML serializer is available.');
     }
-    if (!_XMLSerializer) {
-        throw new Error('XMLSerializer is not configured. Call configureXmlProvider({ DOMParser, XMLSerializer }) first.');
-    }
-    return new _XMLSerializer();
+    return new SerializerCtor();
 }
 
 /**

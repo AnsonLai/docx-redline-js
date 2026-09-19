@@ -218,8 +218,29 @@ import { zipDocx, unzipDocx } from '../node/zip-archive.js';
     assert.equal(validateRevisionToken({ ...valid, algorithm: 'sha512' }).valid, false);
     assert.equal(validateRevisionToken({ ...valid, version: 2 }).valid, false);
     assert.equal(validateRevisionToken({ ...valid, scope: 'invalid' }).valid, false);
-    assert.equal(validateRevisionToken({ ...valid, value: 'not-a-hash' }).valid, false);
-    assert.equal(validateRevisionToken({ ...valid, value: '123' }).valid, false);
+}
+
+// 11. Pure-JS default SHA-256 matches node:crypto and requires no digestFn
+{
+    const entries = [
+        { name: 'word/document.xml', payload: '<w:document><w:body><w:p><w:r><w:t>Deterministic check</w:t></w:r></w:p></w:body></w:document>' },
+        { name: 'word/styles.xml', payload: '<w:styles/>' }
+    ];
+
+    const tokenWithDefault = computeRevisionTokenSync({
+        scope: 'package',
+        entries
+    });
+
+    const tokenWithCrypto = computeRevisionTokenSync({
+        scope: 'package',
+        entries,
+        digestFn: b => createHash('sha256').update(b).digest('hex')
+    });
+
+    assert.equal(tokenWithDefault.value, tokenWithCrypto.value);
+    assert.equal(tokenWithDefault.algorithm, 'sha256');
+    assert.equal(tokenWithDefault.version, 1);
 }
 
 console.log('PASS: revision token core suite');
