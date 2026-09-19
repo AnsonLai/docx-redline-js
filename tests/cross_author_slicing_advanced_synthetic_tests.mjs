@@ -13,9 +13,9 @@ import { parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { extractCanonicalParagraphText } from '../core/paragraph-text.js';
 import { applyOperationsToDocumentXml } from '../services/standalone-operation-runner.js';
 
-const NS_W16DU = 'http://schemas.microsoft.com/office/word/2023/wordml/word16du';
+const _NS_W16DU = 'http://schemas.microsoft.com/office/word/2023/wordml/word16du';
 const ALICE_DATE = '2026-09-08T09:00:00Z';
-const ALICE_DATE_UTC = '2026-09-08T16:00:00Z';
+const _ALICE_DATE_UTC = '2026-09-08T16:00:00Z';
 
 function parse(xml) {
     const parsed = parseOoxmlSafe(xml, 'application/xml');
