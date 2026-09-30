@@ -90,6 +90,19 @@ await run('18-legacy-no-threading-parts-resolve', stripThreadingParts(fixture), 
 await run('19-edit-commented-text-multi-paragraph', load('multi-paragraph-thread.docx'), doc => apply(doc, [{ type: 'replace', target: { exactText: 'Alpha paragraph.' }, modified: 'Alpha paragraph, revised.' }]), {ancestors: [0, 1], commentsDone: [false, false]});
 await run('20-delete-reply-only', fixture, doc => doc.deleteComments({ author: 'Internal' }), {ancestors: [0, 0], commentsDone: [false, true]});
 
+// Comment shapes Word wrote (comment-edge-cases.docx): every edit must leave Word seeing the same comments.
+const edgeCases = load('comment-edge-cases.docx');
+const edgeText = doc => doc.inspect().paragraphs.map(p => p.text);
+const edgeReplace = (index, to) => doc => apply(doc, [{ type: 'replace', target: { exactText: edgeText(doc)[index - 1] }, modified: to }]);
+const five = { ancestors: [0, 0, 0, 0, 0], commentsDone: [false, false, false, false, false] };
+await run('21-edge-edit-middle-words', edgeCases, edgeReplace(1, 'Alpha BETA GAMMA delta epsilon.'), five);
+await run('22-edge-edit-over-tracked-insertion', edgeCases, doc => doc.applyOperations([{ type: 'replace', target: { exactText: edgeText(doc)[1] }, modified: 'The counterparty proposed short-term tenure.' }], { author: 'Agent', atomic: true, existingRevisions: 'slice-cross-author' }), five);
+await run('23-edge-edit-spanning-comment-paragraph', edgeCases, edgeReplace(4, 'Spanning SECOND paragraph.'), five);
+await run('24-edge-edit-hyperlink-paragraph', edgeCases, edgeReplace(5, 'Link here: example.org now.'), five);
+await run('25-edge-edit-table-cell', edgeCases, edgeReplace(8, 'Cell TWO'), five);
+await run('26-edge-reply-to-spanning-comment', edgeCases, doc => apply(doc, [replyTo(3, 'Reply on a two-paragraph range')]), { ancestors: [0, 0, 0, 3, 0, 0], commentsDone: [false, false, false, false, false, false] });
+await run('27-edge-reply-in-table-cell', edgeCases, doc => apply(doc, [replyTo(5, 'Reply in a cell')]), { ancestors: [0, 0, 0, 0, 0, 5], commentsDone: [false, false, false, false, false, false] });
+
 // Files damaged by earlier versions of this package: the next save must repair them.
 const damaged = withContentType(fixture, WORD_TYPE, BAD_TYPE);
 await run('06-repair-damaged-on-edit', damaged, edit);
