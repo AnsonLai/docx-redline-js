@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Word "unreadable content" prompt on commented documents:** `word/commentsExtended.xml` was relabeled
+  `application/vnd.ms-word.commentsExtended+xml` on every save of any document that already had comments.
+  Word expects `application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml` and
+  offered to repair the file. The constant is corrected, an edit that does not change comment threading no
+  longer rewrites the extended part or its content type/relationship, and files already damaged by earlier
+  versions are repaired on the next save (`repairKnownContentTypes`, also exported). `validateDocxPackage`
+  now rejects the wrong type instead of accepting it.
+- Added `tests/package_content_type_contract_tests.mjs`, a platform-independent check against a
+  Word-authored content-type table, so this class of bug no longer depends on the Windows-only Word tests.
+- Added `services/package-parts.js`, a registry of package part paths, content types and relationship types checked
+  against Word-saved fixtures (`tests/fixtures/word-authored/`), and `npm run test:word:package`, which opens
+  generated outputs in real Word with repair disabled.
+
 ## 0.8.0
 
 ### Universal Document Facade & Zero-Node Architecture

@@ -4,21 +4,26 @@
 
 import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { warn as logWarning } from '../adapters/logger.js';
+import { correctedContentTypeFor, getPartSpec } from './package-parts.js';
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const NS_CT = 'http://schemas.openxmlformats.org/package/2006/content-types';
 const NS_RELS = 'http://schemas.openxmlformats.org/package/2006/relationships';
-const NUMBERING_REL_TYPE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering';
-const NUMBERING_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml';
-const COMMENTS_REL_TYPE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments';
-const COMMENTS_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml';
-const COMMENTS_EXTENDED_REL_TYPE = 'http://schemas.microsoft.com/office/2011/relationships/commentsExtended';
-const COMMENTS_EXTENDED_CONTENT_TYPE = 'application/vnd.ms-word.commentsExtended+xml';
+const NUMBERING = getPartSpec('numbering');
+const COMMENTS = getPartSpec('comments');
+const COMMENTS_EXTENDED = getPartSpec('commentsExtended');
+const NUMBERING_REL_TYPE = NUMBERING.relType;
+const NUMBERING_CONTENT_TYPE = NUMBERING.contentType;
+const COMMENTS_REL_TYPE = COMMENTS.relType;
+const COMMENTS_CONTENT_TYPE = COMMENTS.contentType;
+const COMMENTS_EXTENDED_REL_TYPE = COMMENTS_EXTENDED.relType;
+// Word's own value. The old 'application/vnd.ms-word.commentsExtended+xml' label is a registered legacy value.
+const COMMENTS_EXTENDED_CONTENT_TYPE = COMMENTS_EXTENDED.contentType;
 
-const DOCUMENT_PATH = 'word/document.xml';
-const NUMBERING_PATH = 'word/numbering.xml';
-const COMMENTS_PATH = 'word/comments.xml';
-const COMMENTS_EXTENDED_PATH = 'word/commentsExtended.xml';
+const DOCUMENT_PATH = getPartSpec('document').path;
+const NUMBERING_PATH = NUMBERING.path;
+const COMMENTS_PATH = COMMENTS.path;
+const COMMENTS_EXTENDED_PATH = COMMENTS_EXTENDED.path;
 const CONTENT_TYPES_PATH = '[Content_Types].xml';
 const DOCUMENT_RELS_PATH = 'word/_rels/document.xml.rels';
 
@@ -383,6 +388,31 @@ export async function ensureCommentsExtendedArtifactsInZip(zip, commentsExtended
 }
 
 /**
+ * Rewrites content-type overrides for known parts whose type is wrong (for example the
+ * `application/vnd.ms-word.commentsExtended+xml` value written by earlier versions of
+ * this package). Does not rewrite [Content_Types].xml when there is nothing to repair.
+ *
+ * @param {any} zip
+ * @returns {Promise<Array<{ partName: string, from: string, to: string }>>}
+ */
+export async function repairKnownContentTypes(zip) {
+    const ctText = await readZipText(zip, CONTENT_TYPES_PATH);
+    if (!ctText) return [];
+    const ctDoc = parseXmlStrictStandalone(ctText, CONTENT_TYPES_PATH);
+    const repairs = [];
+    for (const override of Array.from(ctDoc.getElementsByTagNameNS('*', 'Override'))) {
+        const partName = override.getAttribute('PartName') || '';
+        const actual = override.getAttribute('ContentType') || '';
+        const expected = correctedContentTypeFor(partName, actual);
+        if (!expected) continue;
+        override.setAttribute('ContentType', expected);
+        repairs.push({ partName, from: actual, to: expected });
+    }
+    if (repairs.length > 0) zip.file(CONTENT_TYPES_PATH, createSerializer().serializeToString(ctDoc));
+    return repairs;
+}
+
+/**
  * Validates core package integrity for document/comments/numbering artifacts.
  *
  * @param {any} zip
@@ -556,10 +586,13 @@ export async function validateDocxPackage(zip) {
     }
 
     if (commentsExtendedXml) {
-        const hasContentType = Array.from(ctDoc.getElementsByTagNameNS('*', 'Override')).some(override =>
+        const extendedOverride = Array.from(ctDoc.getElementsByTagNameNS('*', 'Override')).find(override =>
             (override.getAttribute('PartName') || '').toLowerCase() === '/word/commentsextended.xml'
-            && (override.getAttribute('ContentType') || '') === COMMENTS_EXTENDED_CONTENT_TYPE
         );
+        if (extendedOverride && extendedOverride.getAttribute('ContentType') !== COMMENTS_EXTENDED_CONTENT_TYPE) {
+            throw new Error(`Validation failed: commentsExtended CT override has wrong content type '${extendedOverride.getAttribute('ContentType')}' (Word expects '${COMMENTS_EXTENDED_CONTENT_TYPE}')`);
+        }
+        const hasContentType = !!extendedOverride;
         const hasRelationship = Array.from(relsDoc.getElementsByTagNameNS('*', 'Relationship')).some(rel =>
             (rel.getAttribute('Type') || '') === COMMENTS_EXTENDED_REL_TYPE
         );

@@ -287,6 +287,7 @@ export {
     ensureNumberingArtifactsInZip,
     ensureCommentsArtifactsInZip,
     ensureCommentsExtendedArtifactsInZip,
+    repairKnownContentTypes,
     validateDocxPackage
 } from './services/standalone-docx-plumbing.js';
 export { buildReconciliationPlan, RoutePlanKind, normalizeContentEscapesForRouting } from './orchestration/route-plan.js';

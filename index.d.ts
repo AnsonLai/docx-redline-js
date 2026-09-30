@@ -373,6 +373,7 @@ export function extractReplacementNodesFromOoxml(oxml: string): unknown;
 export function validateDocxPackage(zip: unknown): Promise<unknown> | unknown;
 export function ensureNumberingArtifactsInZip(zip: unknown, numberingXml: string): Promise<unknown> | unknown;
 export function ensureCommentsArtifactsInZip(zip: unknown, commentsXml: string): Promise<unknown> | unknown;
+export function repairKnownContentTypes(zip: unknown): Promise<Array<{ partName: string; from: string; to: string }>>;
 export function ensureCommentsExtendedArtifactsInZip(zip: unknown, commentsExtendedXml: string): Promise<unknown> | unknown;
 export function createDynamicNumberingIdState(numberingXml?: string): unknown;
 

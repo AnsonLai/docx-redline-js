@@ -10,7 +10,7 @@ import { getDefaultAuthor } from '../adapters/config.js';
 import { inspectDocumentParts } from '../services/document-inspection.js';
 import { applyOperationsToDocumentXml, preflightOperations } from '../services/standalone-operation-runner.js';
 import { createDynamicNumberingIdState, mergeNumberingXmlBySchemaOrder } from '../services/numbering-helpers.js';
-import { ensureCommentsArtifactsInZip, ensureCommentsExtendedArtifactsInZip, ensureNumberingArtifactsInZip, validateDocxPackage } from '../services/standalone-docx-plumbing.js';
+import { ensureCommentsArtifactsInZip, ensureCommentsExtendedArtifactsInZip, ensureNumberingArtifactsInZip, repairKnownContentTypes, validateDocxPackage } from '../services/standalone-docx-plumbing.js';
 import { validateRedlineOoxml } from '../core/redline-validation.js';
 import { subtractValidationIssueMultiset, validationErrors } from '../core/validation-delta.js';
 import { acceptTrackedChangesInOoxml, rejectTrackedChangesInOoxml, deleteCommentsByAuthorInOoxml } from '../services/revision-comment-management.js';
@@ -326,11 +326,15 @@ export class DocxDocument {
                 replaceExisting: result.commentsXmlMode === 'replace' || (!result.commentsXml && !!existingCommentsXml)
             });
 
-            const existingCommentsExtendedXml = text(working, 'word/commentsExtended.xml');
-            const commentsExtendedXmlForPackaging = result.commentsExtendedXml || existingCommentsExtendedXml;
-            await ensureCommentsExtendedArtifactsInZip(zip, commentsExtendedXmlForPackaging, {
-                replaceExisting: result.commentsExtendedXmlMode === 'replace' || (!result.commentsExtendedXml && !!existingCommentsExtendedXml)
-            });
+            // Only touch the extended part (and its content type/rel) when an operation changed it.
+            // Rewriting it on every save is what stamped a bad content type onto every
+            // already-commented document.
+            if (result.commentsExtendedXml) {
+                await ensureCommentsExtendedArtifactsInZip(zip, result.commentsExtendedXml, {
+                    replaceExisting: result.commentsExtendedXmlMode === 'replace'
+                });
+            }
+            await repairKnownContentTypes(zip);
 
             if (options.validate !== false) {
                 const generated = validateRedlineOoxml(result.documentXml);
@@ -431,6 +435,7 @@ export class DocxDocument {
 
         working.set('word/document.xml', textEncoder.encode(result.oxml));
         try {
+            await repairKnownContentTypes(zip);
             if (options.validate !== false) await validateDocxPackage(zip);
         } catch (error) {
             return packageFailure(sourceBytes, 'PACKAGE_VALIDATION', error.message);
@@ -580,7 +585,9 @@ export class DocxDocument {
         working.set('word/document.xml', textEncoder.encode(serializer.serializeToString(documentParsed.doc)));
 
         try {
-            if (options.validate !== false) await validateDocxPackage(new MemoryZip(working));
+            const finalZip = new MemoryZip(working);
+            await repairKnownContentTypes(finalZip);
+            if (options.validate !== false) await validateDocxPackage(finalZip);
         } catch (error) {
             return packageFailure(sourceBytes, 'PACKAGE_VALIDATION', error.message);
         }
