@@ -312,8 +312,27 @@ export interface DocumentInspectionSelection {
   limit?: number; after?: number; around?: number; softByteLimit?: number;
   oversizeItem?: boolean; contextTruncated?: boolean;
 }
+/** A header or footer part, as listed by `DocxDocument.inspect().headersFooters`. */
+export interface InspectedHeaderFooter {
+  path: string;
+  kind: 'header' | 'footer';
+  type: 'default' | 'first' | 'even';
+  /** Sections that reference the part explicitly. */
+  sections: number[];
+  /** Sections where the part is in force, including sections that inherit it (Word omits the reference to mean "same as previous"). */
+  appliesToSections: number[];
+  sharedBySections: boolean;
+  /** first-page parts need titlePg; even parts need evenAndOddHeaders. */
+  active: boolean;
+  /** Contains PAGE/NUMPAGES-style fields: edit the text around them, not inside. */
+  hasFields: boolean;
+  paragraphs: Array<{ index: number; text: string }>;
+}
+
 export interface DocumentInspectionResult {
   status: 'ok' | 'error'; paragraphs: InspectedParagraph[]; comments: InspectedComment[];
+  /** Present on DocxDocument.inspect(); not produced by inspectDocumentParts. */
+  headersFooters?: InspectedHeaderFooter[];
   revisionAuthors?: string[]; commentAuthors?: string[]; counts?: { paragraphs: number; comments: number; revisedParagraphs: number };
   selection?: DocumentInspectionSelection;
   revisionToken?: RevisionToken | null;

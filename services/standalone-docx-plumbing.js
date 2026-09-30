@@ -585,6 +585,35 @@ export async function validateDocxPackage(zip) {
         }
     }
 
+    // Header/footer wiring: every w:headerReference / w:footerReference must resolve through the document
+    // relationships to a part that exists, is well-formed, and is labeled with Word's content type.
+    {
+        const relationshipById = new Map();
+        for (const rel of Array.from(relsDoc.getElementsByTagNameNS('*', 'Relationship'))) {
+            relationshipById.set(rel.getAttribute('Id') || '', { type: rel.getAttribute('Type') || '', target: rel.getAttribute('Target') || '' });
+        }
+        const headerSpec = getPartSpec('header');
+        const footerSpec = getPartSpec('footer');
+        const overrideTypeByPart = new Map(Array.from(ctDoc.getElementsByTagNameNS('*', 'Override'))
+            .map(override => [(override.getAttribute('PartName') || '').toLowerCase(), override.getAttribute('ContentType') || '']));
+        for (const reference of [
+            ...Array.from(documentDoc.getElementsByTagNameNS(NS_W, 'headerReference')),
+            ...Array.from(documentDoc.getElementsByTagNameNS(NS_W, 'footerReference'))
+        ]) {
+            const relId = reference.getAttributeNS?.('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id') || reference.getAttribute('r:id') || '';
+            const spec = reference.localName === 'headerReference' ? headerSpec : footerSpec;
+            const relationship = relationshipById.get(relId);
+            if (!relationship) throw new Error(`Validation failed: ${reference.localName} ${relId || '(no r:id)'} has no document relationship`);
+            if (relationship.type !== spec.relType) throw new Error(`Validation failed: ${reference.localName} ${relId} points at a relationship of the wrong type (${relationship.type})`);
+            const partName = relationship.target.startsWith('/') ? relationship.target : `/word/${relationship.target}`;
+            const partXml = await readZipText(zip, partName.slice(1));
+            if (!partXml) throw new Error(`Validation failed: ${reference.localName} ${relId} targets a missing part: ${partName}`);
+            parseXmlStrictStandalone(partXml, partName.slice(1));
+            const contentType = overrideTypeByPart.get(partName.toLowerCase());
+            if (contentType !== spec.contentType) throw new Error(`Validation failed: ${partName} content type is ${contentType ? `'${contentType}'` : 'missing'}; Word expects '${spec.contentType}'`);
+        }
+    }
+
     if (commentsExtendedXml) {
         const extendedOverride = Array.from(ctDoc.getElementsByTagNameNS('*', 'Override')).find(override =>
             (override.getAttribute('PartName') || '').toLowerCase() === '/word/commentsextended.xml'

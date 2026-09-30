@@ -103,6 +103,25 @@ await run('25-edge-edit-table-cell', edgeCases, edgeReplace(8, 'Cell TWO'), five
 await run('26-edge-reply-to-spanning-comment', edgeCases, doc => apply(doc, [replyTo(3, 'Reply on a two-paragraph range')]), { ancestors: [0, 0, 0, 3, 0, 0], commentsDone: [false, false, false, false, false, false] });
 await run('27-edge-reply-in-table-cell', edgeCases, doc => apply(doc, [replyTo(5, 'Reply in a cell')]), { ancestors: [0, 0, 0, 0, 0, 5], commentsDone: [false, false, false, false, false, false] });
 
+// --- Headers and footers (header-footer.docx was saved by Word; see scripts/generate-word-header-footer-fixture.ps1) ---
+const headerFooter = load('header-footer.docx');
+const HDR = { kind: 'header', type: 'default' };
+const HDR_TEXT = 'CONFIDENTIAL - Acme Master Agreement';
+const hdrEdit = { type: 'replace', part: HDR, target: { exactText: HDR_TEXT }, modified: 'STRICTLY CONFIDENTIAL - Acme Master Agreement' };
+await run('30-header-edit', headerFooter, doc => apply(doc, [hdrEdit]), { headersFooters: [{ section: 1, kind: 'header', slot: 'primary', revisions: 1 }], bodyRevisions: 0 });
+await run('31-footer-edit-around-page-field', headerFooter, doc => apply(doc, [{ type: 'replace', part: { kind: 'footer' }, target: { exactText: 'Page 1' }, modified: 'Sheet 1' }]), { headersFooters: [{ section: 1, kind: 'footer', slot: 'primary', revisions: 2, fields: 1 }] });
+await run('32-body-header-and-first-page-in-one-batch', headerFooter, doc => apply(doc, [
+    { type: 'replace', target: { exactText: 'Body paragraph one.' }, modified: 'Body paragraph ONE.' },
+    hdrEdit,
+    { type: 'replace', part: 'word/header3.xml', target: { exactText: 'First page header' }, modified: 'First page header (rev)' }
+]), { headersFooters: [{ section: 1, kind: 'header', slot: 'primary', revisions: 1 }, { section: 1, kind: 'header', slot: 'first', revisions: 1 }], bodyRevisions: 2 });
+await run('33-header-edit-then-accept', headerFooter, async doc => { await apply(doc, [hdrEdit]); return doc.resolveRevisions('accept', { allAuthors: true }); }, { headersFooters: [{ section: 1, kind: 'header', slot: 'primary', revisions: 0, text: 'STRICTLY CONFIDENTIAL - Acme Master Agreement' }, { section: 1, kind: 'footer', slot: 'primary', fields: 1 }] });
+await run('34-header-edit-then-reject', headerFooter, async doc => { await apply(doc, [hdrEdit]); return doc.resolveRevisions('reject', { allAuthors: true }); }, { headersFooters: [{ section: 1, kind: 'header', slot: 'primary', revisions: 0, text: HDR_TEXT }] });
+
+const multiSection = load('multi-section-headers.docx');
+await run('35-multi-section-second-header', multiSection, doc => apply(doc, [{ type: 'replace', part: { kind: 'header', section: 1 }, target: { exactText: 'Section two header' }, modified: 'Section two header (rev)' }]), { headersFooters: [{ section: 1, kind: 'header', slot: 'primary', revisions: 0 }, { section: 2, kind: 'header', slot: 'primary', revisions: 1 }] });
+await run('36-multi-section-inherited-footer', multiSection, doc => apply(doc, [{ type: 'replace', part: { kind: 'footer', section: 1 }, target: { exactText: 'Shared footer' }, modified: 'Shared footer (rev)' }]), { headersFooters: [{ section: 1, kind: 'footer', slot: 'primary', revisions: 1 }, { section: 2, kind: 'footer', slot: 'primary', revisions: 1 }] });
+
 // Files damaged by earlier versions of this package: the next save must repair them.
 const damaged = withContentType(fixture, WORD_TYPE, BAD_TYPE);
 await run('06-repair-damaged-on-edit', damaged, edit);

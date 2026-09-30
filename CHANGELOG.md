@@ -17,6 +17,13 @@
   `commentsIds.xml` through the `w14:paraId` of a comment's LAST paragraph. Inspection, package validation,
   replies and delete-cascade used the first, so Word's own multi-paragraph threaded documents failed
   validation and replies to them attached to the wrong key.
+- **Header and footer editing:** add `part` to an operation (a selector `{ kind, type?, section? }` or a part path) to edit a
+  header or footer; `inspect().headersFooters` lists the parts with their text, the sections they apply to (including
+  inherited ones) and whether they contain fields. Body edits are unchanged and headers/footers are opt-in. Fields such as
+  PAGE are atomic (`FIELD_EDIT_REFUSED`), comments are refused (`COMMENT_IN_HEADER_FOOTER`), bad selectors fail closed
+  (`PART_NOT_FOUND`, `PART_AMBIGUOUS`), atomic batches roll back across body and parts, revision ids stay unique across the
+  package, receipts name the part, `accept`/`reject` also resolve revisions inside headers and footers, and
+  `validateDocxPackage` checks header/footer references, relationships and content types.
 - **Edits no longer drop comment anchors:** a mid-paragraph edit of a commented paragraph dropped the trailing
   `commentRangeEnd` and `commentReference` (markers at the very end of the paragraph text were only emitted when the
   last diff part was an insert), leaving the comment unanchored and failing package validation. Found by

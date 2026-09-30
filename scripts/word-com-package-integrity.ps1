@@ -60,6 +60,27 @@ try {
                     }
                     $detail += " PROBE " + ($rows -join ' ; ')
                 }
+                # headersFooters: [{ section, kind: header|footer, slot: primary|first|even, revisions?, fields?, text? }]
+                # read from Word's own Headers/Footers objects; text is compared only when given.
+                if ($null -ne $expect.headersFooters) {
+                    $slots = @{ primary = 1; first = 2; even = 3 }
+                    $actualParts = @(); $expectedParts = @()
+                    foreach ($want in @($expect.headersFooters)) {
+                        $section = $doc.Sections.Item([int]$want.section)
+                        $hf = if ($want.kind -eq 'header') { $section.Headers.Item($slots[[string]$want.slot]) } else { $section.Footers.Item($slots[[string]$want.slot]) }
+                        $range = $hf.Range
+                        $label = "$($want.kind)/$($want.slot)"
+                        $got = @(); $exp = @()
+                        if ($null -ne $want.revisions) { $got += "rev=$($range.Revisions.Count)"; $exp += "rev=$($want.revisions)" }
+                        if ($null -ne $want.fields) { $got += "fields=$($range.Fields.Count)"; $exp += "fields=$($want.fields)" }
+                        if ($null -ne $want.text) { $got += "text=$(($range.Text -replace '[\r\a]+$', ''))"; $exp += "text=$($want.text)" }
+                        $actualParts += "$label{$($got -join ',')}"; $expectedParts += "$label{$($exp -join ',')}"
+                    }
+                    $checks['headersFooters'] = @(($actualParts -join ' '), ($expectedParts -join ' '))
+                }
+                if ($null -ne $expect.bodyRevisions) {
+                    $checks['bodyRevisions'] = @([string]$doc.Revisions.Count, [string]$expect.bodyRevisions)
+                }
                 foreach ($key in $checks.Keys) {
                     $detail += " $key=[$($checks[$key][0])]"
                     if ($checks[$key][0] -ne $checks[$key][1]) { $opened = $false; $detail += " EXPECTED $key=[$($checks[$key][1])]" }

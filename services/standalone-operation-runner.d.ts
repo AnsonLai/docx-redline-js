@@ -37,8 +37,15 @@ export interface LocalizedReplacement {
   occurrence?: number;
 }
 
+/** A header/footer part path from `inspect().headersFooters`, or a selector. */
+export type HeaderFooterPartSelector =
+  | string
+  | { kind: 'header' | 'footer'; type?: 'default' | 'first' | 'even'; section?: number };
+
 export interface DocumentOperationBase {
   operationId?: string;
+  /** Target a header or footer instead of the body. Comments are not supported there. */
+  part?: HeaderFooterPartSelector;
   captureKey?: string;
   target?: string | ParagraphTargetDescriptor;
   targetRef?: number | string | null;

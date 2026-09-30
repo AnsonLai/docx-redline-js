@@ -663,6 +663,32 @@ range as its thread, so the operation adds those markers next to the thread's ex
 reply joins the root thread. If the parent has no anchor in the body the operation fails with
 `PARENT_ANCHOR_NOT_FOUND`.
 
+#### Headers and footers
+
+`inspect().headersFooters` lists every header/footer part the document uses, with its paragraph text:
+`path`, `kind`, `type` (`default`/`first`/`even`), `appliesToSections`, `active`, `hasFields`. Add `part` to an
+operation to edit one instead of the body; everything else in the operation is unchanged:
+
+```json
+{ "type": "replace", "part": { "kind": "footer", "type": "default", "section": 0 },
+  "target": { "exactText": "Draft v1" }, "modified": "Draft v2" }
+```
+
+`part` is a selector (`kind`, optional `type` defaulting to `default`, optional zero-based `section`) or a part path such as
+`word/footer2.xml`. Omitting `part` always targets the body; headers and footers are opt-in. Rules:
+
+- A footer or header shared by several sections is one part; the result lists `partSections`. A section with no reference of its
+  own inherits the previous section's part (Word's "link to previous"), and `section` finds it.
+- Several distinct parts matching a selector fail with `PART_AMBIGUOUS` (add `section` or use the path); none fail with
+  `PART_NOT_FOUND`. A bad selector rejects the whole request before anything is written.
+- Fields are atomic. An edit that would change a `PAGE`/`NUMPAGES`/`DATE` field's text fails with `FIELD_EDIT_REFUSED`; edit the
+  text around the field instead.
+- `comment` and `comment_reply` with `part` fail with `COMMENT_IN_HEADER_FOOTER` (Word has no comments in headers or footers).
+- Body and part operations can share a batch; results keep the original operation indexes and carry `part`. Atomic batches roll
+  back across body and parts. Revision ids stay unique across the whole package.
+- `accept` / `reject` (API and CLI) also resolve tracked changes inside headers and footers.
+- Creating a header/footer that does not exist is not supported.
+
 To resolve or reopen a thread, use `await doc.resolveComment(commentId, { resolved })`. Word resolves whole
 threads: any comment id in the thread resolves the root and every reply together.
 
@@ -731,6 +757,9 @@ When the CLI or runner returns an error code, follow these specific recovery act
 | `REJECTED_INSERTION_STATE_REQUIRED` / `UNSAFE_REVISION_BOUNDARY` | An explicit rejected-view insertion did not resolve to supported plain run text inside a wholly foreign-deleted paragraph. | Do not fall back to a generic edit. Narrow the exact anchor/offset, or handle comments, bookmarks, fields, hyperlinks, moves, or other structural boundaries manually. |
 | `GENERATED_OOXML_INVALID` | The operation introduced a new validation error relative to its baseline. | Treat the operation as unapplied and inspect `generatedIssues`; correct the generating operation or builder rather than repairing or accepting the source document's unrelated baseline defects. |
 | `UNSAFE_DELETED_TABLE_ROW` / `UNSUPPORTED_MOVE_REVISION` / `SECTION_BREAK_PARAGRAPH` / `UNSAFE_PARAGRAPH_PLACEMENT` | Paragraph restoration cannot preserve the source structural boundary safely. | Do not retry as an ordinary redline. Resolve the row/move/section/placement condition manually or narrow the restoration to a safe paragraph. |
+| `PART_NOT_FOUND` / `PART_AMBIGUOUS` | The `part` selector matched no header/footer, or several. | Re-run `inspect` and use `headersFooters[].path`, or add `section`. |
+| `FIELD_EDIT_REFUSED` | The edit would change a field (PAGE, NUMPAGES, DATE) in a header or footer. | Edit the text around the field. |
+| `COMMENT_IN_HEADER_FOOTER` | A comment operation carried `part`. | Comment on body text instead. |
 | `COMMENTED_CONTENT_MERGE` / `COMMENTED_CONTENT_DELETE` | Operation would overwrite, revert, or delete content with comments. | Fails closed to prevent orphaned comment threads. Report the comment author and text to the user; resolve the comment before re-editing. |
 | `INVALID_OPERATION` | Operation object violates schema or has incompatible fields. | Validate the JSON structure against [`document-operations.schema.json`](schemas/document-operations.schema.json) before targeting is attempted. |
 | `STRUCTURED_CONTENT_INVALID` | Malformed Markdown table or structure in replacement text. | Ensure tables include a separator row (`\| --- \| --- \|`) and consistent column counts; do not downgrade to raw text. |

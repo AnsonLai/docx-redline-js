@@ -557,6 +557,11 @@ relationship and content type, adds the reply's own range/reference markers to t
 resolves (default) or reopens the whole thread containing a comment. Inspection reports `paraId` and
 `parentCommentId` so callers can discover and verify the thread hierarchy.
 
+Headers and footers are edited by adding `part` to an operation: `{ type: 'replace', part: { kind: 'footer' }, target: { exactText: 'Draft v1' }, modified: 'Draft v2' }`.
+`openDocx(...).inspect().headersFooters` lists the parts (path, kind, type, sections, text, whether they contain
+fields). Fields such as `PAGE` are treated as atomic, comments are not allowed in headers or footers, and `accept`/`reject`
+also resolve revisions inside them.
+
 A whole-paragraph `delete` that targets existing comment markup fails with
 `COMMENTED_CONTENT_DELETE`. In the Node facade and CLI, the error also includes
 the affected comment author and text. Resolve the feedback or explicitly remove

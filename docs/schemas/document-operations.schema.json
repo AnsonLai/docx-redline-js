@@ -71,6 +71,22 @@
         }
       ]
     },
+    "headerFooterPart": {
+      "description": "Targets a header or footer instead of the body. Use a part path from inspect().headersFooters, or a selector. Comments are not supported in headers or footers.",
+      "oneOf": [
+        { "type": "string", "minLength": 1, "examples": ["word/footer2.xml"] },
+        {
+          "type": "object",
+          "required": ["kind"],
+          "properties": {
+            "kind": { "enum": ["header", "footer"] },
+            "type": { "enum": ["default", "first", "even"], "description": "Defaults to default." },
+            "section": { "type": "integer", "minimum": 0, "description": "Zero-based section; required when several sections have their own part." }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
     "base": {
       "type": "object",
       "required": ["type", "target"],
@@ -78,6 +94,7 @@
         "operationId": { "type": "string", "minLength": 1, "maxLength": 256 },
         "captureKey": { "type": "string", "minLength": 1, "maxLength": 256 },
         "target": { "$ref": "#/$defs/target" }, "targetRef": { "type": ["integer", "string", "null"] },
+        "part": { "$ref": "#/$defs/headerFooterPart" },
         "author": { "type": "string", "minLength": 1 }, "generateRedlines": { "type": "boolean" },
         "existingRevisions": { "enum": ["merge-same-author", "slice-cross-author", "reject-input", "accept-all-first", "accept-all-first-keep-normalized"] },
         "pairReplacements": { "type": "boolean" },

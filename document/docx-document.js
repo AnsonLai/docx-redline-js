@@ -8,6 +8,7 @@
 
 import { getDefaultAuthor } from '../adapters/config.js';
 import { applyThreadResolutionToParts, commentParaId, reconcileCommentSiblingParts } from '../services/comment-thread-parts.js';
+import { collectRevisionIds, countRevisionsInsideFields, discoverHeaderFooterParts, isHeaderFooterPath, renumberCollidingRevisionIds, resolvePartSelector } from '../services/headers-footers.js';
 import { inspectDocumentParts } from '../services/document-inspection.js';
 import { applyOperationsToDocumentXml, preflightOperations } from '../services/standalone-operation-runner.js';
 import { createDynamicNumberingIdState, mergeNumberingXmlBySchemaOrder } from '../services/numbering-helpers.js';
@@ -177,13 +178,35 @@ export class DocxDocument {
 
     inspect(options = {}) {
         const digestFn = options.digestFn || (bytes => sha256(bytes));
-        return inspectDocumentParts({
+        const inspection = inspectDocumentParts({
             documentXml: text(this.entries, 'word/document.xml'),
             commentsXml: text(this.entries, 'word/comments.xml'),
             commentsExtendedXml: text(this.entries, 'word/commentsExtended.xml'),
             numberingXml: text(this.entries, 'word/numbering.xml'),
             stylesXml: text(this.entries, 'word/styles.xml')
         }, { ...options, digestFn });
+        if (inspection.status === 'error') return inspection;
+        return { ...inspection, headersFooters: this.inspectHeadersFooters() };
+    }
+
+    /**
+     * Header and footer parts the document uses, with their paragraph text, so operations can target them with
+     * `part`. `hasFields` marks parts containing PAGE/NUMPAGES-style fields (edit around them, not inside).
+     */
+    inspectHeadersFooters() {
+        return discoverHeaderFooterParts({
+            documentXml: text(this.entries, 'word/document.xml'),
+            relsXml: text(this.entries, 'word/_rels/document.xml.rels'),
+            settingsXml: text(this.entries, 'word/settings.xml')
+        }).map(part => {
+            const xml = text(this.entries, part.path) || '';
+            const partInspection = xml ? inspectDocumentParts({ documentXml: xml }) : { paragraphs: [] };
+            return {
+                ...part,
+                hasFields: /<w:fldChar\b|<w:fldSimple\b/.test(xml),
+                paragraphs: (partInspection.paragraphs || []).map(paragraph => ({ index: paragraph.index, text: paragraph.text }))
+            };
+        });
     }
 
     getRevisionToken() {
@@ -195,12 +218,54 @@ export class DocxDocument {
     }
 
     preflight(operations, author = getDefaultAuthor(), options = {}) {
-        return preflightOperations(
+        const list = Array.isArray(operations) ? operations : [];
+        const runBody = ops => preflightOperations(
             text(this.entries, 'word/document.xml'),
-            operations,
+            ops,
             author || getDefaultAuthor(),
             { ...options, _existingCommentDetails: existingCommentDetails(this.entries) }
         );
+        if (!list.some(operation => operation && typeof operation === 'object' && operation.part != null)) return runBody(operations);
+
+        const parts = this.inspectHeadersFooters();
+        const bodyOps = [];
+        const results = [];
+        const conflicts = [];
+        const authorsUsed = new Set();
+        let valid = true;
+        list.forEach((operation, i) => {
+            if (!operation || typeof operation !== 'object' || operation.part == null) {
+                bodyOps.push({ operation, origIndex: i });
+                return;
+            }
+            const resolved = resolvePartSelector(parts, operation.part);
+            const refusal = operation.type === 'comment' || operation.type === 'comment_reply'
+                ? { code: 'COMMENT_IN_HEADER_FOOTER', message: 'Word does not support comments in headers or footers.' }
+                : resolved.error;
+            if (refusal) {
+                valid = false;
+                results.push({ index: i + 1, type: operation.type || 'redline', status: 'error', error: normalizeErrorWithRecovery({ ...refusal, operationIndex: i + 1 }) });
+                return;
+            }
+            const { part: _selector, ...rest } = operation;
+            const partResult = preflightOperations(text(this.entries, resolved.part.path), [rest], author || getDefaultAuthor(), { ...options, _existingCommentDetails: {} });
+            valid = valid && partResult.valid;
+            for (const result of partResult.results || []) results.push({ ...result, index: i + 1, part: resolved.part.path });
+            conflicts.push(...(partResult.conflicts || []));
+            for (const name of partResult.authorsUsed || []) authorsUsed.add(name);
+        });
+        let requiredArtifacts = { comments: false, numbering: false };
+        if (bodyOps.length) {
+            const body = runBody(bodyOps.map(item => item.operation));
+            valid = valid && body.valid;
+            for (const result of body.results || []) results.push({ ...result, index: bodyOps[result.index - 1].origIndex + 1 });
+            conflicts.push(...(body.conflicts || []));
+            for (const name of body.authorsUsed || []) authorsUsed.add(name);
+            requiredArtifacts = body.requiredArtifacts || requiredArtifacts;
+        }
+        results.sort((a, b) => a.index - b.index);
+        const ok = valid && conflicts.length === 0;
+        return { valid: ok, status: ok ? 'ok' : 'error', results, conflicts, authorsUsed: [...authorsUsed], requiredArtifacts };
     }
 
     toUint8Array() {
@@ -211,7 +276,230 @@ export class DocxDocument {
         return toBufferCompatible(this.toUint8Array());
     }
 
+    /**
+     * Applies operations to the document. Operations without `part` target the body (word/document.xml).
+     * An operation with `part` targets one header or footer part:
+     * `{ part: { kind: 'footer', type: 'default', section: 0 } | 'word/footer2.xml', target: { exactText }, ... }`.
+     * Discover parts with `inspect().headersFooters`.
+     */
     async applyOperations(operations, options = {}) {
+        const list = Array.isArray(operations) ? operations : [];
+        if (!list.some(operation => operation && typeof operation === 'object' && operation.part != null)) {
+            return this.applyBodyOperations(operations, options);
+        }
+        return this.applyOperationsWithParts(list, options);
+    }
+
+    async applyOperationsWithParts(operations, options = {}) {
+        const author = options.author || getDefaultAuthor();
+        const atomic = options.atomic === true;
+        const snapshotEntries = this.entries;
+        const snapshotBytes = this.originalBytes;
+        const total = operations.length;
+        const restore = () => { this.entries = snapshotEntries; this.originalBytes = snapshotBytes; };
+        const original = () => ({
+            uint8Array: snapshotBytes,
+            toUint8Array: () => new Uint8Array(snapshotBytes),
+            buffer: toBufferCompatible(snapshotBytes),
+            toBuffer: () => toBufferCompatible(snapshotBytes)
+        });
+        const refuse = (error, results = [], receipts = [], extra = {}) => ({
+            status: 'error', hasChanges: false, written: false, rolledBack: true, results, receipts, executionOrder: [], authorsUsed: [],
+            artifactsChanged: [],
+            error: normalizeErrorWithRecovery(error),
+            retryPlan: createRetryPlan({ atomic: true, rolledBack: true, results, receipts, operationCount: total }),
+            validation: { originalIssues: [], generatedIssues: [] },
+            ...extra,
+            ...original()
+        });
+
+        if (options.expectedRevision) {
+            const precondition = await this.applyBodyOperations([], { expectedRevision: options.expectedRevision });
+            if (precondition.status === 'error') return precondition;
+        }
+
+        // Resolve every selector before touching anything, so a bad selector fails the whole request.
+        const parts = discoverHeaderFooterParts({
+            documentXml: text(this.entries, 'word/document.xml'),
+            relsXml: text(this.entries, 'word/_rels/document.xml.rels'),
+            settingsXml: text(this.entries, 'word/settings.xml')
+        });
+        const bodyOps = [];
+        const partOps = [];
+        for (let i = 0; i < operations.length; i++) {
+            const operation = operations[i];
+            if (!operation || typeof operation !== 'object' || operation.part == null) {
+                bodyOps.push({ operation, origIndex: i });
+                continue;
+            }
+            if (operation.type === 'comment' || operation.type === 'comment_reply') {
+                return refuse({ code: 'COMMENT_IN_HEADER_FOOTER', message: `Operation ${i + 1}: Word does not support comments in headers or footers.`, operationIndex: i + 1 });
+            }
+            const resolved = resolvePartSelector(parts, operation.part);
+            if (resolved.error) return refuse({ ...resolved.error, message: `Operation ${i + 1}: ${resolved.error.message}`, operationIndex: i + 1 });
+            const { part: _selector, ...rest } = operation;
+            partOps.push({ operation: rest, origIndex: i, part: resolved.part });
+        }
+
+        const results = [];
+        const receipts = [];
+        const executionOrder = [];
+        const authorsUsed = new Set();
+        const originalIssues = [];
+        let anyChange = false;
+        let anyFailure = false;
+        let bodyResult = null;
+
+        if (bodyOps.length) {
+            bodyResult = await this.applyBodyOperations(bodyOps.map(item => item.operation), { ...options, expectedRevision: undefined });
+            const toOriginal = index => bodyOps[index - 1]?.origIndex + 1;
+            for (const result of bodyResult.results || []) {
+                results.push({
+                    ...result,
+                    index: toOriginal(result.index),
+                    ...(result.receipt ? { receipt: { ...result.receipt, operationIndex: toOriginal(result.receipt.operationIndex) } } : {})
+                });
+            }
+            for (const receipt of bodyResult.receipts || []) receipts.push({ ...receipt, operationIndex: toOriginal(receipt.operationIndex) });
+            for (const index of bodyResult.executionOrder || []) executionOrder.push(toOriginal(index));
+            for (const name of bodyResult.authorsUsed || []) authorsUsed.add(name);
+            originalIssues.push(...(bodyResult.validation?.originalIssues || []));
+            if (bodyResult.status === 'error' || bodyResult.rolledBack) {
+                anyFailure = true;
+                if (atomic) {
+                    restore();
+                    return { ...bodyResult, results, receipts, executionOrder, written: false, artifactsChanged: [], rolledBack: true, ...original() };
+                }
+            }
+            anyChange = bodyResult.hasChanges === true;
+        }
+
+        const working = cloneEntries(this.entries);
+        const zip = new MemoryZip(working);
+        const changedParts = new Set();
+        const { expectedRevision: _ignored, ...runnerOptions } = options;
+        const failPart = (item, error) => {
+            anyFailure = true;
+            const failure = normalizeErrorWithRecovery({ ...error, operationIndex: item.origIndex + 1 });
+            results.push({ index: item.origIndex + 1, type: item.operation.type || 'redline', status: 'error', authorUsed: author, part: item.part.path, error: failure });
+        };
+
+        for (const item of partOps) {
+            const path = item.part.path;
+            const xml = text(working, path);
+            if (!xml) {
+                failPart(item, { code: 'PART_NOT_FOUND', message: `Part '${path}' is referenced but missing from the package.` });
+                if (atomic) break;
+                continue;
+            }
+            const numberingText = text(working, 'word/numbering.xml');
+            const outcome = await applyOperationsToDocumentXml(xml, [item.operation], author, { numberingIdState: createDynamicNumberingIdState(numberingText || undefined) }, {
+                ...runnerOptions, atomic: true, strictTargets: options.strictTargets !== false, _existingCommentDetails: {}
+            });
+            const single = outcome.results?.[0];
+            if (outcome.rolledBack || outcome.status === 'error') {
+                failPart(item, single?.error || outcome.error || { code: 'OPERATION_FAILED', message: 'Operation failed.' });
+                if (atomic) break;
+                continue;
+            }
+            if (!outcome.hasChanges) {
+                results.push({ ...single, index: item.origIndex + 1, part: path });
+                continue;
+            }
+            if (countRevisionsInsideFields(outcome.documentXml) > countRevisionsInsideFields(xml)) {
+                failPart(item, { code: 'FIELD_EDIT_REFUSED', message: `The edit would change a field (for example PAGE or NUMPAGES) in ${path}. Word recomputes fields; edit the text around them instead.` });
+                if (atomic) break;
+                continue;
+            }
+            const taken = new Set();
+            for (const [name, data] of working) {
+                if (name === path || !(name === 'word/document.xml' || isHeaderFooterPath(name))) continue;
+                for (const id of collectRevisionIds(textDecoder.decode(data))) taken.add(id);
+            }
+            const renumbered = renumberCollidingRevisionIds(outcome.documentXml, taken);
+            working.set(path, textEncoder.encode(renumbered.xml));
+            // Receipts must describe what is in the file: the part it lives in and its final revision ids.
+            const describeReceipt = receipt => (receipt?.revisionItems
+                ? { ...receipt, revisionItems: receipt.revisionItems.map(revision => ({ ...revision, id: renumbered.idMap.get(String(revision.id)) ?? revision.id, partName: path })) }
+                : receipt);
+            if (outcome.numberingXmlParts?.length) {
+                await ensureNumberingArtifactsInZip(zip, outcome.numberingXmlParts, { mergeNumberingXml: mergeNumberingXmlBySchemaOrder });
+            }
+            changedParts.add(path);
+            anyChange = true;
+            results.push({
+                ...single,
+                index: item.origIndex + 1,
+                part: path,
+                partSections: item.part.appliesToSections,
+                ...(single?.receipt ? { receipt: { ...describeReceipt(single.receipt), operationIndex: item.origIndex + 1 } } : {})
+            });
+            if (outcome.receipts?.[0]) receipts.push({ ...describeReceipt(outcome.receipts[0]), operationIndex: item.origIndex + 1 });
+            executionOrder.push(item.origIndex + 1);
+            for (const name of outcome.authorsUsed || []) authorsUsed.add(name);
+        }
+
+        // Each changed part must not introduce revision-markup problems, and the package must still validate.
+        const generatedIssues = [];
+        if (!(atomic && anyFailure)) {
+            for (const path of changedParts) {
+                const before = validateRedlineOoxml(text(this.entries, path)).issues.map(issue => ({ source: path, ...issue }));
+                const after = validateRedlineOoxml(text(working, path)).issues.map(issue => ({ source: path, ...issue }));
+                generatedIssues.push(...validationErrors(subtractValidationIssueMultiset(after, before)));
+            }
+            if (options.validate !== false && changedParts.size) {
+                try {
+                    await validateDocxPackage(zip);
+                } catch (error) {
+                    generatedIssues.push({ source: 'package', code: 'PACKAGE_VALIDATION', severity: 'error', message: error.message });
+                }
+            }
+        }
+        if ((atomic && anyFailure) || generatedIssues.length) {
+            restore();
+            const error = generatedIssues.length
+                ? { code: 'PACKAGE_OPERATION_FAILED', message: `Applied operations introduced invalid markup (${[...new Set(generatedIssues.map(issue => issue.code))].join(', ')}).`, issues: generatedIssues }
+                : { code: 'BATCH_OPERATION_FAILED', message: 'Atomic batch rolled back because one or more operations failed.' };
+            const rolledBackResults = results
+                .map(result => (result.receipt ? { ...result, receipt: { ...result.receipt, committed: false, finalDisposition: 'rolled_back' } } : result))
+                .sort((a, b) => a.index - b.index);
+            const rolledBackReceipts = receipts.map(receipt => ({ ...receipt, committed: false, finalDisposition: 'rolled_back' }));
+            return refuse(error, rolledBackResults, rolledBackReceipts, { validation: { originalIssues, generatedIssues }, issues: generatedIssues });
+        }
+
+        results.sort((a, b) => a.index - b.index);
+        receipts.sort((a, b) => a.operationIndex - b.operationIndex);
+        const status = !anyFailure ? 'ok' : (anyChange ? 'partial' : 'error');
+        const failureError = anyFailure
+            ? { error: normalizeErrorWithRecovery({ code: 'BATCH_OPERATION_FAILED', message: 'One or more operations failed; the others were applied.' }) }
+            : {};
+        if (!changedParts.size) {
+            // No part changed; the body call (if any) already committed its own result.
+            const buf = toBufferCompatible(this.originalBytes);
+            return {
+                ...(bodyResult || {}), results, receipts, executionOrder, authorsUsed: [...authorsUsed], status, hasChanges: anyChange,
+                written: bodyResult?.written === true, artifactsChanged: bodyResult?.artifactsChanged || [],
+                validation: { originalIssues, generatedIssues: [] }, ...failureError,
+                uint8Array: this.originalBytes, toUint8Array: () => new Uint8Array(this.originalBytes), buffer: buf, toBuffer: () => toBufferCompatible(this.originalBytes)
+            };
+        }
+
+        this.entries = working;
+        const outputBytes = this.toUint8Array();
+        this.originalBytes = outputBytes;
+        const artifactsChanged = [...working]
+            .filter(([name, data]) => !snapshotEntries.has(name) || !areByteArraysEqual(data, snapshotEntries.get(name)))
+            .map(([name]) => name);
+        return {
+            ...(bodyResult || {}),
+            status, hasChanges: true, written: true, results, receipts, executionOrder, authorsUsed: [...authorsUsed], artifactsChanged,
+            validation: { originalIssues, generatedIssues: [] }, ...failureError,
+            uint8Array: outputBytes, toUint8Array: () => new Uint8Array(outputBytes), buffer: toBufferCompatible(outputBytes),
+            inspection: this.inspect(), toBuffer: () => toBufferCompatible(outputBytes)
+        };
+    }
+
+    async applyBodyOperations(operations, options = {}) {
         const failedApply = error => {
             const results = [];
             const receipts = [];
@@ -424,6 +712,7 @@ export class DocxDocument {
         if (!transform) return packageFailure(this.originalBytes, 'INVALID_ACTION', `Unknown revision action: ${action}`);
 
         const sourceBytes = this.originalBytes;
+        const originalEntries = this.entries;
         const working = cloneEntries(this.entries);
         const zip = new MemoryZip(working);
         const result = transform(text(working, 'word/document.xml'), { author: options.author, allAuthors: options.allAuthors === true });
@@ -432,7 +721,20 @@ export class DocxDocument {
             return packageFailure(sourceBytes, result.error?.code || 'REVISION_OPERATION_FAILED', result.error?.message || 'Revision operation failed.');
         }
 
-        if (!result.hasChanges) {
+        // Headers and footers carry their own tracked changes; resolve them with the same filter.
+        const partUpdates = new Map();
+        for (const part of this.inspectHeadersFooters()) {
+            const partXml = text(working, part.path);
+            if (!partXml) continue;
+            const partResult = transform(partXml, { author: options.author, allAuthors: options.allAuthors === true });
+            if (partResult.status === 'error' || partResult.error) {
+                return packageFailure(sourceBytes, partResult.error?.code || 'REVISION_OPERATION_FAILED', `${part.path}: ${partResult.error?.message || 'Revision operation failed.'}`);
+            }
+            if (partResult.hasChanges) partUpdates.set(part.path, partResult.oxml);
+        }
+        const hasChanges = result.hasChanges || partUpdates.size > 0;
+
+        if (!hasChanges) {
             const buf = toBufferCompatible(sourceBytes);
             return {
                 ...result,
@@ -446,7 +748,8 @@ export class DocxDocument {
             };
         }
 
-        working.set('word/document.xml', textEncoder.encode(result.oxml));
+        if (result.hasChanges) working.set('word/document.xml', textEncoder.encode(result.oxml));
+        for (const [path, xml] of partUpdates) working.set(path, textEncoder.encode(xml));
         try {
             await repairKnownContentTypes(zip);
             if (options.validate !== false) await validateDocxPackage(zip);
@@ -463,7 +766,10 @@ export class DocxDocument {
             ...result,
             status: 'ok',
             written: true,
-            artifactsChanged: ['word/document.xml'],
+            hasChanges: true,
+            artifactsChanged: [...working]
+                .filter(([name, data]) => !originalEntries.has(name) || !areByteArraysEqual(data, originalEntries.get(name)))
+                .map(([name]) => name),
             uint8Array: outputBytes,
             toUint8Array: () => new Uint8Array(outputBytes),
             buffer: outputBuf,
