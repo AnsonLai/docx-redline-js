@@ -399,7 +399,7 @@ algorithms:
 - Shell/file wrappers invoke the `docx-redline` CLI and preserve its JSON stdout
   and exit code.
 - Node byte-oriented wrappers use `openDocx`, `inspect`, `applyOperations`,
-  `resolveRevisions`, `deleteComments`, and `toBuffer`.
+  `resolveRevisions`, `deleteComments`, `resolveComment`, and `toBuffer`.
 - XML-only hosts use the standalone runner and remain responsible for package
   artifacts returned beside `documentXml`.
 - Paragraph/range hosts use root exports and remain responsible for deciding how
@@ -656,8 +656,15 @@ To reply inside an existing Word comment thread, use the comment ID returned by
 { "type": "comment_reply", "parentCommentId": "8", "commentContent": "Agreed; updated.", "author": "Editor" }
 ```
 
-Replies are represented in `word/commentsExtended.xml` and deliberately add no
-new `commentRangeStart`, `commentRangeEnd`, or `commentReference` to the body.
+A reply is defined in `word/comments.xml` and linked to its thread in `word/commentsExtended.xml`
+(`w15:paraIdParent`, keyed on the last paragraph of each comment, as Word does). Word only displays a
+reply that also has its own `commentRangeStart`, `commentRangeEnd` and `commentReference` around the same
+range as its thread, so the operation adds those markers next to the thread's existing ones. A reply to a
+reply joins the root thread. If the parent has no anchor in the body the operation fails with
+`PARENT_ANCHOR_NOT_FOUND`.
+
+To resolve or reopen a thread, use `await doc.resolveComment(commentId, { resolved })`. Word resolves whole
+threads: any comment id in the thread resolves the root and every reply together.
 
 #### Legacy skill wrapper migration
 

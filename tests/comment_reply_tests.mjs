@@ -36,8 +36,11 @@ const entries = unzipDocx(result.toBuffer());
 const outputDocument = entries.get('word/document.xml').toString('utf8');
 const outputComments = entries.get('word/comments.xml').toString('utf8');
 const outputExtended = entries.get('word/commentsExtended.xml').toString('utf8');
-assert.equal(outputDocument, documentXml, 'reply-only operation must leave document.xml byte text unchanged');
-assert.equal((outputDocument.match(/commentReference/g) || []).length, 1, 'reply must not add a body anchor');
+// Word only shows a reply that has its own range/reference markers, laid out like Word writes them:
+// start(parent) start(reply) ...text... end(parent) ref(parent) end(reply) ref(reply)
+assert.ok(outputDocument.includes('<w:commentRangeStart w:id="8"/><w:commentRangeStart w:id="9"/>'), 'reply start follows parent start');
+assert.ok(outputDocument.includes('<w:commentRangeEnd w:id="8"/><w:r><w:commentReference w:id="8"/></w:r><w:commentRangeEnd w:id="9"/><w:r><w:rPr/><w:commentReference w:id="9"/></w:r>'), 'reply end and reference follow parent reference');
+assert.equal((outputDocument.match(/commentReference/g) || []).length, 2, 'parent and reply each have a reference');
 assert.match(outputComments, /w:id="9"/);
 assert.match(outputComments, /It means the inputs are retained\./);
 assert.match(outputComments, /w14:paraId="[0-9A-F]{8}"/, 'legacy parent should be upgraded with a paraId');

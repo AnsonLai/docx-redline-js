@@ -21,6 +21,7 @@ import {
     applyToParagraphByExactText
 } from './document-operation-mutations.js';
 import { applyCommentReplyToParts } from './comment-replies.js';
+import { anchorReplyInDocument } from './comment-thread-parts.js';
 import {
     deriveCapturedEntity,
     invalidateAffectedCaptures
@@ -261,7 +262,14 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                     date: operation.date || new Date().toISOString()
                 });
                 result.documentXml = documentXml;
-                if (result.hasChanges && session.receiptCollector) session.receiptCollector.recordComment(commentId);
+                if (result.status !== 'error' && result.hasChanges) {
+                    // Word only shows a reply that has its own range/reference markers in the body.
+                    if (!session.document || !anchorReplyInDocument(session.document, result.threadCommentIds, commentId)) {
+                        result = { documentXml, hasChanges: false, status: 'error', error: { code: 'PARENT_ANCHOR_NOT_FOUND', message: `Comment '${operation.parentCommentId}' has no anchor in the document body, so a reply cannot be placed.` } };
+                    } else if (session.receiptCollector) {
+                        session.receiptCollector.recordComment(commentId);
+                    }
+                }
             }
         } else if (operation.operationKind === 'highlight') {
             result = await applyHighlightToParagraphByExactText(
@@ -408,7 +416,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                     ...resolutionCapture
                 };
             }
-            session.markMutationCommitted(operation.operationKind !== 'comment_reply');
+            session.markMutationCommitted(true);
             if (operation._compiledSourceId && session.sourceTargetRegistry) {
                 session.sourceTargetRegistry.commitMutation(
                     operation._compiledSourceId,

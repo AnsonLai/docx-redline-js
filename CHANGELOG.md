@@ -13,6 +13,17 @@
   now rejects the wrong type instead of accepting it.
 - Added `tests/package_content_type_contract_tests.mjs`, a platform-independent check against a
   Word-authored content-type table, so this class of bug no longer depends on the Windows-only Word tests.
+- **Comment threads keyed on the last paragraph:** Word joins `comments.xml` to `commentsExtended.xml` and
+  `commentsIds.xml` through the `w14:paraId` of a comment's LAST paragraph. Inspection, package validation,
+  replies and delete-cascade used the first, so Word's own multi-paragraph threaded documents failed
+  validation and replies to them attached to the wrong key.
+- **Replies are now visible in Word:** `comment_reply` only wrote `comments.xml`/`commentsExtended.xml`, and Word
+  does not show a reply that has no body markers. Replies now get their own `commentRangeStart`/`commentRangeEnd`/
+  `commentReference` next to the thread's, laid out like Word writes them. A reply to a reply joins the root thread.
+  A parent with no body anchor fails with `PARENT_ANCHOR_NOT_FOUND`.
+- **`doc.resolveComment(id, { resolved })`:** resolve or reopen a thread. Word resolves whole threads, so the root
+  and every reply are updated together. Only `word/commentsExtended.xml` changes.
+- `commentsIds.xml` and `commentsExtensible.xml` are kept consistent with `comments.xml` on add/delete when present.
 - Added `services/package-parts.js`, a registry of package part paths, content types and relationship types checked
   against Word-saved fixtures (`tests/fixtures/word-authored/`), and `npm run test:word:package`, which opens
   generated outputs in real Word with repair disabled.

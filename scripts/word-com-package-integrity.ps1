@@ -28,6 +28,13 @@ try {
             $doc = $word.Documents.Open([string]$file.FullName, $false, $true, $false, $missing, $missing, $false, $missing, $missing, $missing, $missing, $false, $false)
             $opened = $true
             $detail = "comments=$($doc.Comments.Count)"
+            $expectFile = [System.IO.Path]::ChangeExtension($file.FullName, '.expect.json')
+            if (Test-Path -LiteralPath $expectFile) {
+                $expected = @((Get-Content -LiteralPath $expectFile -Raw | ConvertFrom-Json).commentsDone)
+                $actual = @(); for ($i = 1; $i -le $doc.Comments.Count; $i++) { $actual += [bool]$doc.Comments.Item($i).Done }
+                $detail += " done=[$($actual -join ',')]"
+                if (($actual -join ',') -ne ($expected -join ',')) { $opened = $false; $detail += " EXPECTED done=[$($expected -join ',')]" }
+            }
         } catch { $detail = $_.Exception.Message.Trim() }
         finally { if ($doc) { $doc.Close($false) | Out-Null } }
 

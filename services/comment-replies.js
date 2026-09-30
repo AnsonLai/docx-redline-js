@@ -1,6 +1,6 @@
 import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
-import { commentParaId, commentThreadParagraph } from './comment-thread-parts.js';
-import { buildCommentElement, buildCommentsExtendedPartXml, createCommentParaId, NS_W14, NS_W15 } from './comment-builders.js';
+import { allocateParaId, commentParaId, commentThreadParagraph, usedParaIds } from './comment-thread-parts.js';
+import { buildCommentElement, buildCommentsExtendedPartXml, NS_W14, NS_W15 } from './comment-builders.js';
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
@@ -14,30 +14,6 @@ function parseRequired(xml, partName) {
         return { error: { code: 'PARSE_ERROR', message: `Could not parse ${partName}: ${parsed.error?.message || 'invalid XML'}` } };
     }
     return { doc: parsed.doc };
-}
-
-function usedParaIds(commentsDoc, extendedDoc) {
-    const ids = new Set();
-    for (const p of Array.from(commentsDoc?.getElementsByTagNameNS('*', 'p') || [])) {
-        const id = attr(p, 'w14:paraId', 'paraId');
-        if (id) ids.add(id.toUpperCase());
-    }
-    for (const ex of Array.from(extendedDoc?.getElementsByTagNameNS('*', 'commentEx') || [])) {
-        const id = attr(ex, 'w15:paraId', 'paraId');
-        if (id) ids.add(id.toUpperCase());
-    }
-    return ids;
-}
-
-function allocateParaId(commentId, occupied) {
-    let candidate = createCommentParaId(commentId);
-    let value = Number.parseInt(candidate, 16) >>> 0;
-    while (occupied.has(candidate)) {
-        value = (value + 1) >>> 0;
-        candidate = value.toString(16).toUpperCase().padStart(8, '0');
-    }
-    occupied.add(candidate);
-    return candidate;
 }
 
 export function applyCommentReplyToParts({ commentsXml, commentsExtendedXml = null, documentXml = null, parentCommentId, commentId, commentContent, author, date = new Date().toISOString() }) {
@@ -74,6 +50,16 @@ export function applyCommentReplyToParts({ commentsXml, commentsExtendedXml = nu
             break;
         }
     }
+    // Comments already in this thread (root first), needed to anchor the reply in the body.
+    const threadCommentIds = [];
+    const commentNodes = Array.from(commentsDoc.getElementsByTagNameNS('*', 'comment'));
+    const parentOf = new Map(Array.from(extendedDoc?.getElementsByTagNameNS('*', 'commentEx') || [])
+        .map(node => [attr(node, 'w15:paraId', 'paraId').toUpperCase(), attr(node, 'w15:paraIdParent', 'paraIdParent').toUpperCase()]));
+    for (const node of commentNodes) {
+        const key = commentParaId(node);
+        if (key === parentParaId || parentOf.get(key) === parentParaId) threadCommentIds.push(attr(node, 'w:id', 'id'));
+    }
+    const threadRootCommentId = attr(commentNodes.find(node => commentParaId(node) === parentParaId), 'w:id', 'id') || String(parentCommentId);
     const replyParaId = allocateParaId(commentId, occupied);
     const replyParsed = parseRequired(`<w:comments xmlns:w="${NS_W}" xmlns:w14="${NS_W14}">${buildCommentElement(commentId, author, commentContent, date, replyParaId)}</w:comments>`, 'reply comment');
     commentsDoc.documentElement.appendChild(commentsDoc.importNode(replyParsed.doc.documentElement.firstChild, true));
@@ -101,6 +87,7 @@ export function applyCommentReplyToParts({ commentsXml, commentsExtendedXml = nu
         commentsXml: serializer.serializeToString(commentsDoc),
         commentsExtendedXml: serializer.serializeToString(extendedDoc),
         commentsXmlMode: 'replace', commentsExtendedXmlMode: 'replace',
-        commentId, parentCommentId: String(parentCommentId), paraId: replyParaId, parentParaId
+        commentId, parentCommentId: String(parentCommentId), paraId: replyParaId, parentParaId,
+        threadRootCommentId, threadCommentIds: threadCommentIds.length ? threadCommentIds : [threadRootCommentId]
     };
 }

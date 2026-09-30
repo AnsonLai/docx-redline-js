@@ -566,6 +566,8 @@ export class DocxDocument {
   applyOperations(operations: DocumentOperation[], options?: DocxApplyOptions): Promise<DocxApplyResult>;
   resolveRevisions(action: 'accept' | 'reject', options?: { author?: string; allAuthors?: boolean; validate?: boolean }): Promise<DocxApplyResult>;
   deleteComments(options?: { author?: string; allAuthors?: boolean; validate?: boolean }): Promise<DocxApplyResult>;
+  /** Resolve (default) or reopen the comment thread containing `commentId`. Word resolves whole threads, so root and replies change together. */
+  resolveComment(commentId: string | number, options?: { resolved?: boolean; validate?: boolean }): Promise<DocxApplyResult & { resolved: boolean; threadRootId?: string; commentIds?: string[] }>;
   toUint8Array(): Uint8Array;
   toBuffer(): Uint8Array;
 }

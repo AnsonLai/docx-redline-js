@@ -7,7 +7,7 @@
  */
 
 import { getDefaultAuthor } from '../adapters/config.js';
-import { commentParaId } from '../services/comment-thread-parts.js';
+import { applyThreadResolutionToParts, commentParaId, reconcileCommentSiblingParts } from '../services/comment-thread-parts.js';
 import { inspectDocumentParts } from '../services/document-inspection.js';
 import { applyOperationsToDocumentXml, preflightOperations } from '../services/standalone-operation-runner.js';
 import { createDynamicNumberingIdState, mergeNumberingXmlBySchemaOrder } from '../services/numbering-helpers.js';
@@ -30,6 +30,17 @@ const text = (entries, path) => {
     if (typeof entry === 'string') return entry;
     return textDecoder.decode(entry);
 };
+
+/** Keeps commentsIds/commentsExtensible in step with comments.xml after comments were added or removed. */
+function reconcileCommentSiblings(working) {
+    const updated = reconcileCommentSiblingParts({
+        commentsXml: text(working, 'word/comments.xml'),
+        commentsIdsXml: text(working, 'word/commentsIds.xml'),
+        commentsExtensibleXml: text(working, 'word/commentsExtensible.xml')
+    });
+    if (updated.commentsIdsXml) working.set('word/commentsIds.xml', textEncoder.encode(updated.commentsIdsXml));
+    if (updated.commentsExtensibleXml) working.set('word/commentsExtensible.xml', textEncoder.encode(updated.commentsExtensibleXml));
+}
 
 const cloneEntries = entries => new Map([...entries].map(([name, data]) => [name, new Uint8Array(data)]));
 
@@ -336,6 +347,7 @@ export class DocxDocument {
                 });
             }
             await repairKnownContentTypes(zip);
+            reconcileCommentSiblings(working);
 
             if (options.validate !== false) {
                 const generated = validateRedlineOoxml(result.documentXml);
@@ -456,6 +468,55 @@ export class DocxDocument {
             toUint8Array: () => new Uint8Array(outputBytes),
             buffer: outputBuf,
             toBuffer: () => toBufferCompatible(outputBytes)
+        };
+    }
+
+    /**
+     * Resolves (or reopens) the comment thread containing `commentId`.
+     * Resolved is a thread-level state in Word, so the root and every reply are updated together.
+     */
+    async resolveComment(commentId, options = {}) {
+        const sourceBytes = this.originalBytes;
+        const working = cloneEntries(this.entries);
+        const resolved = options.resolved !== false;
+        const noChange = extra => {
+            const buf = toBufferCompatible(sourceBytes);
+            return {
+                status: 'ok', hasChanges: false, written: false, artifactsChanged: [], ...extra,
+                uint8Array: sourceBytes, toUint8Array: () => new Uint8Array(sourceBytes), buffer: buf, toBuffer: () => toBufferCompatible(sourceBytes)
+            };
+        };
+
+        const result = applyThreadResolutionToParts({
+            commentsXml: text(working, 'word/comments.xml'),
+            commentsExtendedXml: text(working, 'word/commentsExtended.xml'),
+            commentId,
+            resolved
+        });
+        if (result.status === 'error') return packageFailure(sourceBytes, result.error.code, result.error.message);
+        if (!result.hasChanges) return noChange({ resolved, threadRootId: result.threadRootId, commentIds: result.commentIds });
+
+        const zip = new MemoryZip(working);
+        try {
+            if (result.commentsXml) working.set('word/comments.xml', textEncoder.encode(result.commentsXml));
+            await ensureCommentsExtendedArtifactsInZip(zip, result.commentsExtendedXml, { replaceExisting: true });
+            await repairKnownContentTypes(zip);
+            if (options.validate !== false) await validateDocxPackage(zip);
+        } catch (error) {
+            return packageFailure(sourceBytes, 'PACKAGE_VALIDATION', error.message);
+        }
+
+        const artifactsChanged = [...working]
+            .filter(([name, data]) => !this.entries.has(name) || !areByteArraysEqual(data, this.entries.get(name)))
+            .map(([name]) => name);
+        this.entries = working;
+        const outputBytes = this.toUint8Array();
+        this.originalBytes = outputBytes;
+        return {
+            status: 'ok', hasChanges: true, written: true, resolved,
+            threadRootId: result.threadRootId, commentIds: result.commentIds, artifactsChanged,
+            uint8Array: outputBytes, toUint8Array: () => new Uint8Array(outputBytes),
+            buffer: toBufferCompatible(outputBytes), toBuffer: () => toBufferCompatible(outputBytes)
         };
     }
 
@@ -585,6 +646,7 @@ export class DocxDocument {
         working.set('word/document.xml', textEncoder.encode(serializer.serializeToString(documentParsed.doc)));
 
         try {
+            reconcileCommentSiblings(working);
             const finalZip = new MemoryZip(working);
             await repairKnownContentTypes(finalZip);
             if (options.validate !== false) await validateDocxPackage(finalZip);

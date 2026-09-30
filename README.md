@@ -550,8 +550,11 @@ Threaded replies use a comment operation with no body target:
 ```
 
 For complete `.docx` files, use `openDocx(...).applyOperations(...)`; it reads
-the existing comments parts and writes the required `commentsExtended.xml`
-relationship and content type. Inspection reports `paraId` and
+the existing comments parts, writes the required `commentsExtended.xml`
+relationship and content type, adds the reply's own range/reference markers to the body
+(Word does not display a reply without them), and keeps `commentsIds.xml` and
+`commentsExtensible.xml` in step when they exist. `await doc.resolveComment(id, { resolved: false })`
+resolves (default) or reopens the whole thread containing a comment. Inspection reports `paraId` and
 `parentCommentId` so callers can discover and verify the thread hierarchy.
 
 A whole-paragraph `delete` that targets existing comment markup fails with
