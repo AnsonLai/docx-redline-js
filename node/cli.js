@@ -35,7 +35,10 @@ const CLI_CAPABILITIES = [
     'localized-space-equivalence-v1',
     'restore-shortcuts-v1',
     'deduplicated-cli-receipts',
-    'compact-cli-json-v1'
+    'compact-cli-json-v1',
+    'comment-resolve-operation-v1',
+    'delete-comments-by-id-v1',
+    'header-footer-parts-v1'
 ];
 const commandOptions = Object.fromEntries(CLI_COMMANDS.map(command => [command, new Set(commandOptionKeys(command))]));
 
@@ -950,8 +953,11 @@ export async function executeCli(argv, io = process) {
                         : {}))
             });
         }
-        const filter = flags.allAuthors ? { allAuthors: true } : flags.author ? { author: String(flags.author) } : null;
-        if (!filter) return cliError('AUTHOR_REQUIRED', 'Use --author <name> or --all-authors.');
+        const commentIds = command === 'delete-comments' && flags.commentId != null && flags.commentId !== true
+            ? String(flags.commentId).split(',').map(id => id.trim()).filter(Boolean)
+            : null;
+        const filter = commentIds?.length ? { ids: commentIds } : flags.allAuthors ? { allAuthors: true } : flags.author ? { author: String(flags.author) } : null;
+        if (!filter) return cliError('AUTHOR_REQUIRED', command === 'delete-comments' ? 'Use --author <name>, --all-authors, or --comment-id <id[,id]>.' : 'Use --author <name> or --all-authors.');
         const result = command === 'delete-comments' ? await document.deleteComments(filter) : await document.resolveRevisions(command, filter);
         return compactMutationResult({ command, input, ...serializable(await writeMutation(command, input, flags, result)) });
     } catch (error) { return cliError(error.code || 'CLI_FAILED', error.message, 2, error); }

@@ -22,7 +22,7 @@ export class DocxDocument {
   preflight(operations: DocumentOperation[], author?: string, options?: StandaloneRunnerOptions): OperationPreflightResult;
   applyOperations(operations: DocumentOperation[], options?: DocxApplyOptions): Promise<DocxApplyResult>;
   resolveRevisions(action: 'accept' | 'reject', options: { author?: string; allAuthors?: boolean; validate?: boolean }): Promise<DocxApplyResult>;
-  deleteComments(options: { author?: string; allAuthors?: boolean; validate?: boolean }): Promise<DocxApplyResult>;
+  deleteComments(options: { author?: string; allAuthors?: boolean; ids?: Array<string | number>; validate?: boolean }): Promise<DocxApplyResult>;
   toBuffer(): Uint8Array;
 }
 export function computePackageRevisionToken(input: unknown): RevisionToken;

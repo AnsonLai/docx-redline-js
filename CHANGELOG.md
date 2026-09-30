@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Added
+
+- **Header and footer editing:** add `part` to an operation (a selector `{ kind, type?, section? }` or a part path) to edit a
+  header or footer; `inspect().headersFooters` lists the parts with their text, the sections they apply to (including
+  inherited ones) and whether they contain fields. Body edits are unchanged and headers/footers are opt-in. Fields such as
+  PAGE are atomic (`FIELD_EDIT_REFUSED`), comments are refused (`COMMENT_IN_HEADER_FOOTER`), bad selectors fail closed
+  (`PART_NOT_FOUND`, `PART_AMBIGUOUS`), atomic batches roll back across body and parts, revision ids stay unique across the
+  package, receipts name the part, `accept`/`reject` also resolve revisions inside headers and footers, and
+  `validateDocxPackage` checks header/footer references, relationships and content types.
+- **Resolve and reopen comment threads:** `doc.resolveComment(id, { resolved })` and the batch operation
+  `{ "type": "comment_resolve", "commentId": "0", "resolved": true }`, so the CLI can resolve through `apply --operations`.
+  Word resolves whole threads, so the root and every reply change together, whichever id is given. Only
+  `word/commentsExtended.xml` changes; `document.xml` stays byte-identical. Unknown ids fail with `COMMENT_NOT_FOUND`
+  (also in `preflight`).
+- **Delete comments by id:** `doc.deleteComments({ ids })` and `docx-redline delete-comments --comment-id 3,4`. Deleting a
+  thread root also deletes its replies; unknown ids fail closed with `COMMENT_NOT_FOUND`.
+- CLI capabilities `comment-resolve-operation-v1`, `delete-comments-by-id-v1` and `header-footer-parts-v1` (additive; the
+  contract version is unchanged).
+- `services/package-parts.js`, a registry of package part paths, content types and relationship types checked against
+  Word-saved fixtures (`tests/fixtures/word-authored/`), and `npm run test:word:package`, which opens generated outputs in
+  real Word with repair disabled and checks comment counts, thread parents, resolved state and header/footer revisions
+  through Word's object model.
+
 ### Fixed
 
 - **Word "unreadable content" prompt on commented documents:** `word/commentsExtended.xml` was relabeled
@@ -10,20 +33,12 @@
   offered to repair the file. The constant is corrected, an edit that does not change comment threading no
   longer rewrites the extended part or its content type/relationship, and files already damaged by earlier
   versions are repaired on the next save (`repairKnownContentTypes`, also exported). `validateDocxPackage`
-  now rejects the wrong type instead of accepting it.
-- Added `tests/package_content_type_contract_tests.mjs`, a platform-independent check against a
-  Word-authored content-type table, so this class of bug no longer depends on the Windows-only Word tests.
+  now rejects the wrong type instead of accepting it. `tests/package_content_type_contract_tests.mjs` checks this
+  against a Word-authored content-type table on every OS.
 - **Comment threads keyed on the last paragraph:** Word joins `comments.xml` to `commentsExtended.xml` and
   `commentsIds.xml` through the `w14:paraId` of a comment's LAST paragraph. Inspection, package validation,
   replies and delete-cascade used the first, so Word's own multi-paragraph threaded documents failed
   validation and replies to them attached to the wrong key.
-- **Header and footer editing:** add `part` to an operation (a selector `{ kind, type?, section? }` or a part path) to edit a
-  header or footer; `inspect().headersFooters` lists the parts with their text, the sections they apply to (including
-  inherited ones) and whether they contain fields. Body edits are unchanged and headers/footers are opt-in. Fields such as
-  PAGE are atomic (`FIELD_EDIT_REFUSED`), comments are refused (`COMMENT_IN_HEADER_FOOTER`), bad selectors fail closed
-  (`PART_NOT_FOUND`, `PART_AMBIGUOUS`), atomic batches roll back across body and parts, revision ids stay unique across the
-  package, receipts name the part, `accept`/`reject` also resolve revisions inside headers and footers, and
-  `validateDocxPackage` checks header/footer references, relationships and content types.
 - **Edits no longer drop comment anchors:** a mid-paragraph edit of a commented paragraph dropped the trailing
   `commentRangeEnd` and `commentReference` (markers at the very end of the paragraph text were only emitted when the
   last diff part was an insert), leaving the comment unanchored and failing package validation. Found by
@@ -32,12 +47,11 @@
   does not show a reply that has no body markers. Replies now get their own `commentRangeStart`/`commentRangeEnd`/
   `commentReference` next to the thread's, laid out like Word writes them. A reply to a reply joins the root thread.
   A parent with no body anchor fails with `PARENT_ANCHOR_NOT_FOUND`.
-- **`doc.resolveComment(id, { resolved })`:** resolve or reopen a thread. Word resolves whole threads, so the root
-  and every reply are updated together. Only `word/commentsExtended.xml` changes.
+- **Replies to a resolved thread are resolved too**, as Word writes them (`reply-to-resolved.docx` fixture). They were
+  written open, leaving a thread that was half resolved.
 - `commentsIds.xml` and `commentsExtensible.xml` are kept consistent with `comments.xml` on add/delete when present.
-- Added `services/package-parts.js`, a registry of package part paths, content types and relationship types checked
-  against Word-saved fixtures (`tests/fixtures/word-authored/`), and `npm run test:word:package`, which opens
-  generated outputs in real Word with repair disabled.
+- `deleteComments` and `resolveRevisions` report `artifactsChanged` from a real diff of the package (they listed a fixed
+  set of parts and missed `commentsIds.xml`, `commentsExtensible.xml` and `[Content_Types].xml`).
 
 ## 0.8.0
 

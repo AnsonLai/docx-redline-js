@@ -27,7 +27,7 @@ When text is inside a pending tracked deletion (`<w:del><w:r><w:delText>deleted 
    If the deletion is rejected, the text is restored to the baseline document, but positioning and attribution of comments attached to historically rejected runs exhibit unstable or undefined behavior across different versions of Microsoft Word Desktop.
 
 ### Engine Behavior & Error Codes
-- **Comment on pending deletion:** Guarded in [`services/comment-locator.js`](file:///C:/Users/Phara/Desktop/Projects/Docx%20Redline%20JS/services/comment-locator.js). The locator inspects run ancestor tags; if an ancestor is `del`, it refuses with:
+- **Comment on pending deletion:** Guarded in [`services/comment-locator.js`](../../services/comment-locator.js). The locator inspects run ancestor tags; if an ancestor is `del`, it refuses with:
   ```json
   {
     "status": "error",
@@ -37,7 +37,7 @@ When text is inside a pending tracked deletion (`<w:del><w:r><w:delText>deleted 
     }
   }
   ```
-- **Whole-paragraph deletion with comments:** Guarded in [`services/document-operation-mutations.js`](file:///C:/Users/Phara/Desktop/Projects/Docx%20Redline%20JS/services/document-operation-mutations.js). Refuses with:
+- **Whole-paragraph deletion with comments:** Guarded in [`services/document-operation-mutations.js`](../../services/document-operation-mutations.js). Refuses with:
   ```json
   {
     "status": "error",
@@ -87,11 +87,11 @@ The origin and destination share matching move names (`w:name`) and correlated t
 
 ### Engine Behavior & Error Codes
 - **Accepting / Rejecting Existing Moves (Fully Supported):**  
-  The engine fully supports resolving existing moves via [`services/revision-comment-management.js`](file:///C:/Users/Phara/Desktop/Projects/Docx%20Redline%20JS/services/revision-comment-management.js):
+  The engine fully supports resolving existing moves via [`services/revision-comment-management.js`](../../services/revision-comment-management.js):
   - **Accept:** Removes `<w:moveFrom>` origin and unwraps `<w:moveTo>` destination into clean baseline text.
   - **Reject:** Unwraps `<w:moveFrom>` origin back into baseline text and removes `<w:moveTo>` destination.
 - **Mutating Inside Pending Moves (Guarded & Refused):**  
-  Attempting to edit or comment inside an active move fails closed in [`services/document-operation-mutations.js`](file:///C:/Users/Phara/Desktop/Projects/Docx%20Redline%20JS/services/document-operation-mutations.js) and [`services/comment-locator.js`](file:///C:/Users/Phara/Desktop/Projects/Docx%20Redline%20JS/services/comment-locator.js) with:
+  Attempting to edit or comment inside an active move fails closed in [`services/document-operation-mutations.js`](../../services/document-operation-mutations.js) and [`services/comment-locator.js`](../../services/comment-locator.js) with:
   ```json
   {
     "status": "error",
@@ -116,7 +116,7 @@ Targeting paragraphs by plain text (e.g., `"target": "Notices"`) can be ambiguou
 Currently, resolution behavior differs by API tier:
 1. **High-Level Tier (CLI `docx-redline apply` & Node `openDocx` Facade):**  
    Defaults to **strict targeting** (`strictTargets: true`). Any duplicate target text immediately fails closed with `AMBIGUOUS_TARGET` and returns candidate diagnostics.
-2. **Lower-Level Tier ([`applyOperationsToDocumentXml`](file:///C:/Users/Phara/Desktop/Projects/Docx%20Redline%20JS/services/standalone-operation-runner.js)):**  
+2. **Lower-Level Tier ([`applyOperationsToDocumentXml`](../../services/standalone-operation-runner.js)):**  
    For backwards-compatibility with earlier scripts, defaults to **permissive targeting** (`strictTargets: false`). When duplicate paragraphs match, it heuristically selects candidate #1 and emits a deprecation warning:
    ```text
    AMBIGUOUS_TARGET_HEURISTIC_USED: Target text matched <N> paragraphs; permissive resolution chose candidate 1.
@@ -139,3 +139,64 @@ At an eventual major version boundary (prospective `v1.0.0`, without committing 
     "modified": "Updated Notices Clause"
   }
   ```
+
+---
+
+## 4. Headers and Footers
+
+Operations edit a header or footer only when they carry `part` (see the
+[knowledge base](../AGENT_KNOWLEDGE_BASE.md#headers-and-footers)). Everything below fails closed: the whole request is
+refused before anything is written.
+
+| Scenario | Why it is refused | Error code |
+|---|---|---|
+| A `comment`, `comment_reply` or `comment_resolve` with `part` | Word has no comments in headers or footers; an anchor there would be dropped or break the file. | `COMMENT_IN_HEADER_FOOTER` |
+| An edit that would add a revision inside a field's instruction or cached result (`PAGE`, `NUMPAGES`, `DATE`, `w:fldSimple`) | Word recomputes fields. A tracked deletion inside the result leaves a stray literal after the field. | `FIELD_EDIT_REFUSED` |
+| A selector that matches no part | Nothing to edit. | `PART_NOT_FOUND` |
+| A selector that matches several distinct parts | Guessing would edit the wrong page. Add `section` or use the part path. | `PART_AMBIGUOUS` |
+
+Behavior worth knowing:
+
+- A part shared by several sections (Word's "link to previous") is one part. Editing it changes every section that uses
+  it, and the result lists them in `partSections`.
+- `exactText` is the whole paragraph text including field results, for example `Page 1`. Text around a field can be edited;
+  the field runs are kept intact.
+- Tables in headers and footers are edited like body tables.
+
+Not supported yet:
+
+- Creating a header or footer part that does not exist (it needs a new part, relationship, `sectPr` reference and content
+  type), removing one, or changing `titlePg` / `evenAndOddHeaders`.
+- Text boxes, images and drawings inside headers and footers are not inspected or edited; only their paragraph text is.
+- The field guard applies only to header and footer operations. Body edits that touch a field's cached result are not
+  refused the same way, so avoid targeting field text (cross-references, dates, page references) in the body.
+
+## 5. Comment Threads
+
+| Scenario | Behavior | Error code |
+|---|---|---|
+| Reply to a comment whose parent has no anchor in the body | Word does not display a reply without its own markers next to the thread's, so it is refused. | `PARENT_ANCHOR_NOT_FOUND` |
+| Resolve, or delete by id, a comment that does not exist | Refused; nothing is written. | `COMMENT_NOT_FOUND` |
+
+- Resolved is thread-level (verified in Word): resolving any comment in a thread resolves the root and every reply, and a
+  reply added to a resolved thread is written resolved.
+- Word threads are flat. A reply to a reply joins the root thread.
+- `commentsIds.xml` and `commentsExtensible.xml` are updated only when the document already has them; they are never
+  created, because Word does not require them.
+- A `commentsExtensible.xml` entry we add copies the comment's `w:date` as `dateUtc`. That is exact for comments written by
+  this package (real UTC), but Word writes `w:date` as local time, so an entry added for a Word-authored comment that lacked
+  one would carry local time labeled as UTC.
+- When the last comment is deleted, `commentsExtended.xml`, `commentsIds.xml` and `commentsExtensible.xml` stay in the
+  package as empty parts, with their content types and relationships. Word opens this without complaint, but the parts are
+  not removed.
+
+## 6. Package Repair
+
+Files saved by versions before 0.8.1 can carry the wrong `commentsExtended.xml` content type
+(`application/vnd.ms-word.commentsExtended+xml`), which makes Word offer to repair them.
+
+- Every write (`apply`, `accept`, `reject`, `delete-comments`, resolving a thread) repairs it with
+  `repairKnownContentTypes`. A request that changes nothing returns the original bytes, so it does not repair; there is no
+  repair-only save.
+- `docx-redline validate` reports the wrong type as an error and does not repair it.
+- Files that were already sent on to others are unaffected until someone re-saves them with this package or with Word.

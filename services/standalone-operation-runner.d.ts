@@ -128,6 +128,14 @@ export interface CommentReplyDocumentOperation {
   date?: string;
 }
 
+/** Resolves (or with `resolved: false`, reopens) the whole thread containing `commentId`. Body-only. */
+export interface CommentResolveDocumentOperation {
+  type: 'comment_resolve';
+  operationId?: string;
+  commentId: number | string;
+  resolved?: boolean;
+}
+
 export interface CharacterFormatProperties {
   bold?: boolean;
   italic?: boolean;
@@ -172,6 +180,7 @@ export type DocumentOperation =
   | DeleteDocumentOperation
   | CommentDocumentOperation
   | CommentReplyDocumentOperation
+  | CommentResolveDocumentOperation
   | HighlightDocumentOperation
   | CharacterFormatDocumentOperation
   | ParagraphFormatDocumentOperation;
@@ -279,7 +288,7 @@ export interface DocumentOperationResult {
   warnings?: string[];
   status?: RedlineStatus;
   error?: RedlineError;
-  operationType: 'redline' | 'comment' | 'comment_reply' | 'highlight' | 'format' | 'paragraph-format';
+  operationType: 'redline' | 'comment' | 'comment_reply' | 'comment_resolve' | 'highlight' | 'format' | 'paragraph-format';
   authorUsed: string;
   resolvedBy?: string;
   resolvedTarget?: ResolvedDocumentTarget;
@@ -291,7 +300,7 @@ export interface DocumentOperationResult {
 export interface BatchOperationItemResult {
   index: number;
   type: string;
-  operationType: 'redline' | 'comment' | 'comment_reply' | 'highlight' | 'format' | 'paragraph-format';
+  operationType: 'redline' | 'comment' | 'comment_reply' | 'comment_resolve' | 'highlight' | 'format' | 'paragraph-format';
   status: 'applied' | 'no_change' | 'error';
   authorUsed: string;
   resolvedBy?: string;
@@ -336,7 +345,7 @@ export interface MutationRetryPlan {
 export interface OperationPreflightItemResult {
   index: number;
   type: string;
-  operationType: 'redline' | 'comment' | 'comment_reply' | 'highlight' | 'format' | 'paragraph-format';
+  operationType: 'redline' | 'comment' | 'comment_reply' | 'comment_resolve' | 'highlight' | 'format' | 'paragraph-format';
   status: 'ready' | 'deferred' | 'error';
   authorUsed: string;
   resolvedBy?: string;

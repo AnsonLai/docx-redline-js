@@ -4,6 +4,7 @@
 #   resolved-threads.docx        thread 1: root + two replies, resolved by setting Done on the ROOT.
 #                                thread 2: root + reply, resolved by setting Done on the REPLY.
 #                                Word marks the WHOLE thread done in both cases.
+#   reply-to-resolved.docx       a reply added to an already-resolved thread. Word writes the reply done too.
 $ErrorActionPreference = 'Stop'
 $outDir = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\tests\fixtures\word-authored'))
 New-Item -ItemType Directory -Path $outDir -Force | Out-Null
@@ -39,4 +40,11 @@ try {
     $rr = $c2.Replies.Add($c2.Scope, "reply to two"); $rr.Author = "B"
     $rr.Done = $true
     Save-Doc $doc 'resolved-threads.docx'
+
+    $doc = $word.Documents.Add()
+    $doc.Range(0, 0).Text = "Alpha paragraph."
+    $c = $doc.Comments.Add($doc.Paragraphs.Item(1).Range, "root"); $c.Author = "A"
+    $c.Done = $true
+    $r = $c.Replies.Add($c.Scope, "late reply"); $r.Author = "B"
+    Save-Doc $doc 'reply-to-resolved.docx'
 } finally { $word.Quit() }

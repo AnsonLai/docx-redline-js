@@ -90,6 +90,15 @@ await run('18-legacy-no-threading-parts-resolve', stripThreadingParts(fixture), 
 await run('19-edit-commented-text-multi-paragraph', load('multi-paragraph-thread.docx'), doc => apply(doc, [{ type: 'replace', target: { exactText: 'Alpha paragraph.' }, modified: 'Alpha paragraph, revised.' }]), {ancestors: [0, 1], commentsDone: [false, false]});
 await run('20-delete-reply-only', fixture, doc => doc.deleteComments({ author: 'Internal' }), {ancestors: [0, 0], commentsDone: [false, true]});
 
+// Batch comment_resolve and delete-by-id (fixture: 0 root + 1 reply open, 2 resolved).
+const resolveOp = (commentId, resolved = true) => ({ type: 'comment_resolve', commentId, resolved });
+await run('40-batch-resolve-thread', fixture, doc => apply(doc, [resolveOp(0)]), { ancestors: [0, 1, 0], commentsDone: [true, true, true] });
+await run('41-batch-reply-then-resolve', fixture, doc => apply(doc, [replyTo(0, 'Closing this out'), resolveOp(0)]), { ancestors: [0, 1, 1, 0], commentsDone: [true, true, true, true] });
+await run('42-reply-to-resolved-thread', fixture, doc => apply(doc, [replyTo(2, 'Late reply')]), { ancestors: [0, 1, 0, 3], commentsDone: [false, false, true, true] });
+await run('43-batch-reopen', fixture, doc => apply(doc, [resolveOp(2, false)]), { ancestors: [0, 1, 0], commentsDone: [false, false, false] });
+await run('44-delete-root-by-id', fixture, doc => doc.deleteComments({ ids: [0] }), { ancestors: [0], commentsDone: [true] });
+await run('45-delete-reply-by-id', fixture, doc => doc.deleteComments({ ids: [1] }), { ancestors: [0, 0], commentsDone: [false, true] });
+
 // Comment shapes Word wrote (comment-edge-cases.docx): every edit must leave Word seeing the same comments.
 const edgeCases = load('comment-edge-cases.docx');
 const edgeText = doc => doc.inspect().paragraphs.map(p => p.text);

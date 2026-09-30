@@ -121,6 +121,9 @@ export function computePackageRevisionToken(input) {
     });
 }
 
+// Word does not support comments in headers or footers, so these are refused when `part` is set.
+const COMMENT_OPERATION_TYPES = new Set(['comment', 'comment_reply', 'comment_resolve']);
+
 function nextCommentId(entries) {
     const ids = `${text(entries, 'word/document.xml') || ''} ${text(entries, 'word/comments.xml') || ''}`.match(/(?:w:)?id=["'](\d+)["']/g) || [];
     let next = ids.reduce((max, token) => Math.max(max, Number(token.match(/\d+/)?.[0] || 0)), 0) + 1;
@@ -239,7 +242,7 @@ export class DocxDocument {
                 return;
             }
             const resolved = resolvePartSelector(parts, operation.part);
-            const refusal = operation.type === 'comment' || operation.type === 'comment_reply'
+            const refusal = COMMENT_OPERATION_TYPES.has(operation.type)
                 ? { code: 'COMMENT_IN_HEADER_FOOTER', message: 'Word does not support comments in headers or footers.' }
                 : resolved.error;
             if (refusal) {
@@ -332,7 +335,7 @@ export class DocxDocument {
                 bodyOps.push({ operation, origIndex: i });
                 continue;
             }
-            if (operation.type === 'comment' || operation.type === 'comment_reply') {
+            if (COMMENT_OPERATION_TYPES.has(operation.type)) {
                 return refuse({ code: 'COMMENT_IN_HEADER_FOOTER', message: `Operation ${i + 1}: Word does not support comments in headers or footers.`, operationIndex: i + 1 });
             }
             const resolved = resolvePartSelector(parts, operation.part);
@@ -617,7 +620,9 @@ export class DocxDocument {
                 };
             }
 
-            working.set('word/document.xml', textEncoder.encode(result.documentXml));
+            // Resolving a thread only changes the comment parts; keep document.xml byte-identical.
+            const bodyChanged = (result.results || []).some(item => item?.status !== 'error' && item?.operationType !== 'comment_resolve');
+            if (bodyChanged) working.set('word/document.xml', textEncoder.encode(result.documentXml));
             await ensureNumberingArtifactsInZip(zip, result.numberingXmlParts, { mergeNumberingXml: mergeNumberingXmlBySchemaOrder });
 
             const existingCommentsXml = text(working, 'word/comments.xml');
@@ -852,7 +857,16 @@ export class DocxDocument {
             return packageFailure(sourceBytes, 'PARSE_ERROR', parsed.error?.message || 'Could not parse comments.xml.');
         }
 
-        const matches = comment => options.allAuthors === true || (comment.getAttribute('w:author') || comment.getAttribute('author')) === options.author;
+        // `ids` deletes specific comments (a thread root also takes its replies); otherwise filter by author.
+        const requestedIds = Array.isArray(options.ids) ? new Set(options.ids.map(String)) : null;
+        if (requestedIds) {
+            const known = new Set(Array.from(parsed.doc.getElementsByTagNameNS('*', 'comment')).map(node => node.getAttribute('w:id') || node.getAttribute('id')));
+            const missing = [...requestedIds].filter(id => !known.has(id));
+            if (missing.length) return packageFailure(sourceBytes, 'COMMENT_NOT_FOUND', `Comment id(s) not found: ${missing.join(', ')}.`);
+        }
+        const matches = comment => (requestedIds
+            ? requestedIds.has(comment.getAttribute('w:id') || comment.getAttribute('id'))
+            : options.allAuthors === true || (comment.getAttribute('w:author') || comment.getAttribute('author')) === options.author);
         const ids = new Set(
             Array.from(parsed.doc.getElementsByTagNameNS('*', 'comment'))
                 .filter(matches)
@@ -908,8 +922,10 @@ export class DocxDocument {
             }
         }
 
-        const commentsResult = deleteCommentsByAuthorInOoxml(commentsXml, { author: options.author, allAuthors: options.allAuthors === true });
-        const remainingParsed = parseOoxmlSafe(commentsResult.oxml, 'application/xml');
+        const remainingXml = requestedIds
+            ? commentsXml
+            : deleteCommentsByAuthorInOoxml(commentsXml, { author: options.author, allAuthors: options.allAuthors === true }).oxml;
+        const remainingParsed = parseOoxmlSafe(remainingXml, 'application/xml');
         if (!remainingParsed.doc || remainingParsed.error) {
             return packageFailure(sourceBytes, 'PARSE_ERROR', remainingParsed.error?.message || 'Could not parse updated comments.xml.');
         }
@@ -960,6 +976,9 @@ export class DocxDocument {
             return packageFailure(sourceBytes, 'PACKAGE_VALIDATION', error.message);
         }
 
+        const artifactsChanged = [...working]
+            .filter(([name, data]) => !this.entries.has(name) || !areByteArraysEqual(data, this.entries.get(name)))
+            .map(([name]) => name);
         this.entries = working;
         const outputBytes = this.toUint8Array();
         this.originalBytes = outputBytes;
@@ -971,7 +990,7 @@ export class DocxDocument {
             written: true,
             commentsRemoved: ids.size,
             referencesRemoved,
-            artifactsChanged: ['word/document.xml', 'word/comments.xml', ...(extendedParsed?.doc ? ['word/commentsExtended.xml'] : [])],
+            artifactsChanged,
             uint8Array: outputBytes,
             toUint8Array: () => new Uint8Array(outputBytes),
             buffer: outputBuf,

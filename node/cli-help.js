@@ -182,11 +182,11 @@ export const CLI_COMMAND_HELP = Object.freeze({
         examples: [{ command: 'docx-redline reject reviewed.docx --author "Editor"' }]
     },
     'delete-comments': {
-        summary: 'Delete comments by one author or all authors.',
-        usage: 'docx-redline delete-comments <file.docx> (--author <name>|--all-authors) [options]',
-        options: [HELP, ...MUTATION_DESTINATION_OPTIONS, option('allAuthors', '--all-authors', ALL_AUTHORS.description), option('noClobber', '--no-clobber', 'Alias of --no-overwrite.'), COMPACT],
-        notes: ['Removing reviewer comments requires explicit user authorization.'],
-        examples: [{ command: 'docx-redline delete-comments reviewed.docx --author "Reviewer"' }]
+        summary: 'Delete comments by id, by one author, or by all authors.',
+        usage: 'docx-redline delete-comments <file.docx> (--comment-id <id[,id]>|--author <name>|--all-authors) [options]',
+        options: [HELP, ...MUTATION_DESTINATION_OPTIONS, option('commentId', '--comment-id <id[,id]>', 'Delete these comment ids (from extract/inspect). Deleting a thread root also deletes its replies.'), option('allAuthors', '--all-authors', ALL_AUTHORS.description), option('noClobber', '--no-clobber', 'Alias of --no-overwrite.'), COMPACT],
+        notes: ['Removing reviewer comments requires explicit user authorization.', 'Unknown comment ids fail with COMMENT_NOT_FOUND and nothing is written.'],
+        examples: [{ command: 'docx-redline delete-comments reviewed.docx --author "Reviewer"' }, { command: 'docx-redline delete-comments reviewed.docx --comment-id 4' }]
     },
     validate: {
         summary: 'Validate revision markup and DOCX package wiring.',

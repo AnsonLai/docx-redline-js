@@ -303,7 +303,9 @@ user-facing Word locations; use `humanReference`, `provision`, or
 `agent-safety-profile-v2`, `deduplicated-cli-receipts`, and
 `compact-cli-json-v1`, `localized-replacements-v1`,
 `speculative-search-apply-v1`, `localized-change-summary-v1`, and
-`restore-shortcuts-v1`, plus `localized-space-equivalence-v1` capabilities.
+`restore-shortcuts-v1`, plus `localized-space-equivalence-v1` capabilities. Header/footer
+`part` targeting, the `comment_resolve` operation and `delete-comments --comment-id` are advertised as
+`header-footer-parts-v1`, `comment-resolve-operation-v1` and `delete-comments-by-id-v1`.
 Wrappers should negotiate only the
 capabilities they use. Run `docx-redline <command> --help` for that command's
 machine-readable options, behavior, exit codes, canonical GitHub documentation links, and compact examples.
@@ -553,14 +555,26 @@ For complete `.docx` files, use `openDocx(...).applyOperations(...)`; it reads
 the existing comments parts, writes the required `commentsExtended.xml`
 relationship and content type, adds the reply's own range/reference markers to the body
 (Word does not display a reply without them), and keeps `commentsIds.xml` and
-`commentsExtensible.xml` in step when they exist. `await doc.resolveComment(id, { resolved: false })`
-resolves (default) or reopens the whole thread containing a comment. Inspection reports `paraId` and
-`parentCommentId` so callers can discover and verify the thread hierarchy.
+`commentsExtensible.xml` in step when they exist. Inspection reports `paraId`, `parentCommentId` and `done`
+so callers can discover and verify the thread hierarchy.
+
+Resolve or reopen a thread with an operation (usable from the CLI through `apply --operations`) or the API:
+
+```js
+{ type: 'comment_resolve', commentId: 8 }                  // resolve
+{ type: 'comment_resolve', commentId: 8, resolved: false } // reopen
+await doc.resolveComment(8, { resolved: true });
+```
+
+Resolved is a thread-level state in Word, so any id in the thread updates the root and all replies. Delete
+specific comments with `doc.deleteComments({ ids: [8] })` or `docx-redline delete-comments file.docx --comment-id 8`;
+deleting a thread root also deletes its replies.
 
 Headers and footers are edited by adding `part` to an operation: `{ type: 'replace', part: { kind: 'footer' }, target: { exactText: 'Draft v1' }, modified: 'Draft v2' }`.
 `openDocx(...).inspect().headersFooters` lists the parts (path, kind, type, sections, text, whether they contain
 fields). Fields such as `PAGE` are treated as atomic, comments are not allowed in headers or footers, and `accept`/`reject`
-also resolve revisions inside them.
+also resolve revisions inside them. Creating a header or footer that does not exist is not supported; see
+[Known limitations](docs/plans/KNOWN_BUGS.md#4-headers-and-footers).
 
 A whole-paragraph `delete` that targets existing comment markup fails with
 `COMMENTED_CONTENT_DELETE`. In the Node facade and CLI, the error also includes

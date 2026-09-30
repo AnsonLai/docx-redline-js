@@ -251,6 +251,7 @@ export function compileOperationBatch(xmlDoc, operations = [], options = {}) {
         if (
             validation.valid
             && operation.operationKind !== 'comment_reply'
+            && operation.operationKind !== 'comment_resolve'
             && !operation.targetDescriptor?.captureRef
             && !binding.dynamic
         ) {

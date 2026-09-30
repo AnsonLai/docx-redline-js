@@ -29,7 +29,7 @@ import { createRetryPlan } from './error-recovery.js';
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 
 function operationTargetPriority(op) {
-    return op?.type === 'comment' || op?.type === 'comment_reply' ? 0 : 1;
+    return op?.type === 'comment' || op?.type === 'comment_reply' || op?.type === 'comment_resolve' ? 0 : 1;
 }
 
 /**
@@ -116,7 +116,7 @@ export function buildOperationDependencyPlan(operations = []) {
                 inDegrees[i]++;
             }
             const kind = normalizeDocumentOperation(op).operationKind;
-            if (kind !== 'comment' && kind !== 'comment_reply') {
+            if (kind !== 'comment' && kind !== 'comment_reply' && kind !== 'comment_resolve') {
                 if (!mutatingCaptureConsumers.has(ref)) mutatingCaptureConsumers.set(ref, []);
                 mutatingCaptureConsumers.get(ref).push({
                     index: i,
@@ -373,7 +373,7 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
         context.targetRefSnapshot = session.initialTargetReferenceSnapshot;
     }
     session.runtimeContext = context;
-    if (sourceOperations.some(op => op?.type === 'comment_reply')) {
+    if (sourceOperations.some(op => op?.type === 'comment_reply' || op?.type === 'comment_resolve')) {
         session.commentsXml = context.commentsXml || options.commentsXml || null;
         session.commentsExtendedXml = context.commentsExtendedXml || options.commentsExtendedXml || null;
         session.commentsXmlMode = 'replace';
@@ -452,6 +452,9 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
                 ...(result.resolvedTarget ? { resolvedTarget: result.resolvedTarget } : {}),
                 ...(result.resolvedAnchor ? { resolvedAnchor: result.resolvedAnchor } : {}),
                 ...(result.change ? { change: result.change } : {}),
+                ...(result.operationType === 'comment_resolve' && !isError
+                    ? { resolved: result.resolved, threadRootId: result.threadRootId, commentIds: result.commentIds }
+                    : {}),
                 ...(Array.isArray(result.warnings) && result.warnings.length > 0 ? { warnings: result.warnings } : {}),
                 ...(result.error ? { error: result.error } : {}),
                 ...(result.receipt ? { receipt: result.receipt } : {})

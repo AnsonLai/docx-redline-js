@@ -69,16 +69,19 @@ export function applyCommentReplyToParts({ commentsXml, commentsExtendedXml = nu
     }
     const root = extendedDoc.documentElement;
     const entries = Array.from(root.getElementsByTagNameNS('*', 'commentEx'));
-    if (!entries.some(node => attr(node, 'w15:paraId', 'paraId').toUpperCase() === parentParaId)) {
+    const rootEntry = entries.find(node => attr(node, 'w15:paraId', 'paraId').toUpperCase() === parentParaId);
+    if (!rootEntry) {
         const parentEx = extendedDoc.createElementNS(NS_W15, 'w15:commentEx');
         parentEx.setAttributeNS(NS_W15, 'w15:paraId', parentParaId);
         parentEx.setAttributeNS(NS_W15, 'w15:done', '0');
         root.appendChild(parentEx);
     }
+    // Resolved is thread-level: Word gives a reply added to a resolved thread done="1" too.
+    const threadDone = attr(rootEntry, 'w15:done', 'done') === '1' ? '1' : '0';
     const replyEx = extendedDoc.createElementNS(NS_W15, 'w15:commentEx');
     replyEx.setAttributeNS(NS_W15, 'w15:paraId', replyParaId);
     replyEx.setAttributeNS(NS_W15, 'w15:paraIdParent', parentParaId);
-    replyEx.setAttributeNS(NS_W15, 'w15:done', '0');
+    replyEx.setAttributeNS(NS_W15, 'w15:done', threadDone);
     root.appendChild(replyEx);
 
     const serializer = createSerializer();

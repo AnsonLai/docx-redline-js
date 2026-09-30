@@ -127,6 +127,18 @@
           "additionalProperties": false
         },
         {
+          "type": "object",
+          "description": "Resolve or reopen the comment thread containing commentId. Resolved is thread-level in Word, so the root and every reply change together. Body-only; not allowed with part.",
+          "required": ["type", "commentId"],
+          "properties": {
+            "type": { "const": "comment_resolve" },
+            "operationId": { "type": "string", "minLength": 1, "maxLength": 256 },
+            "commentId": { "type": ["integer", "string"] },
+            "resolved": { "type": "boolean", "default": true }
+          },
+          "additionalProperties": false
+        },
+        {
           "allOf": [ { "$ref": "#/$defs/base" }, { "type": "object", "required": ["replacements"], "properties": { "type": { "enum": ["redline", "replace"] }, "replacements": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/localizedReplacement" } } } } ]
         },
         {

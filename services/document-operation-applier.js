@@ -21,7 +21,7 @@ import {
     applyToParagraphByExactText
 } from './document-operation-mutations.js';
 import { applyCommentReplyToParts } from './comment-replies.js';
-import { anchorReplyInDocument } from './comment-thread-parts.js';
+import { anchorReplyInDocument, applyThreadResolutionToParts } from './comment-thread-parts.js';
 import {
     deriveCapturedEntity,
     invalidateAffectedCaptures
@@ -69,6 +69,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
 
     if (
         operation.operationKind !== 'comment_reply'
+        && operation.operationKind !== 'comment_resolve'
         && operation.operationKind !== 'rejected-insert'
         && operation.operationKind !== 'restore'
         && (
@@ -271,6 +272,24 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                     }
                 }
             }
+        } else if (operation.operationKind === 'comment_resolve') {
+            const resolution = applyThreadResolutionToParts({
+                commentsXml: session.commentsXml || runtimeContext?.commentsXml || options.commentsXml,
+                commentsExtendedXml: session.commentsExtendedXml || runtimeContext?.commentsExtendedXml || options.commentsExtendedXml,
+                commentId: operation.commentId,
+                resolved: operation.resolved !== false
+            });
+            result = resolution.status === 'error'
+                ? { documentXml, hasChanges: false, status: 'error', error: resolution.error }
+                : {
+                    documentXml,
+                    hasChanges: resolution.hasChanges,
+                    ...(resolution.commentsXml ? { commentsXml: resolution.commentsXml, commentsXmlMode: 'replace' } : {}),
+                    ...(resolution.commentsExtendedXml ? { commentsExtendedXml: resolution.commentsExtendedXml, commentsExtendedXmlMode: 'replace' } : {}),
+                    resolved: resolution.resolved,
+                    threadRootId: resolution.threadRootId,
+                    commentIds: resolution.commentIds
+                };
         } else if (operation.operationKind === 'highlight') {
             result = await applyHighlightToParagraphByExactText(
                 documentXml,

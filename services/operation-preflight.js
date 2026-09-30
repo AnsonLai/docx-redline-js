@@ -164,6 +164,19 @@ export function preflightOperations(documentXml, operations, author, options = {
         commentsRequired = commentsRequired || operation.operationKind === 'comment' || operation.operationKind === 'comment_reply';
         numberingRequired = numberingRequired || operationNeedsNumbering(operation);
 
+        if (operation.operationKind === 'comment_resolve') {
+            const commentId = String(operation.commentId);
+            results.push(options._existingCommentDetails?.[commentId] ? {
+                index: index + 1, type: sourceOperation.type, operationType: operation.operationKind,
+                status: 'ready', authorUsed, resolvedBy: 'comment_id', commentId
+            } : {
+                index: index + 1, type: sourceOperation.type, operationType: operation.operationKind,
+                status: 'error', authorUsed,
+                error: { code: 'COMMENT_NOT_FOUND', message: `Comment '${commentId}' was not found.` }
+            });
+            continue;
+        }
+
         if (operation.operationKind === 'comment_reply') {
             const parentId = String(operation.parentCommentId);
             const parent = options._existingCommentDetails?.[parentId];

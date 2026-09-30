@@ -20,6 +20,7 @@ const SUPPORTED_OPERATION_TYPES = new Set([
     'delete',
     'comment',
     'comment_reply',
+    'comment_resolve',
     'highlight'
 ]);
 
@@ -43,11 +44,16 @@ function nonEmptyString(value) {
     return typeof value === 'string' && value.trim().length > 0;
 }
 
+/** Operations that address an existing comment thread by id instead of targeting a paragraph. */
+export function isCommentThreadOperationKind(kind) {
+    return kind === 'comment_reply' || kind === 'comment_resolve';
+}
+
 export function getCanonicalOperationType(operation) {
     const type = operation?.type;
     if (type === 'insert' && operation?.target?.revisionView === 'rejected') return 'rejected-insert';
     if (type === 'restore') return 'restore';
-    if (type === 'comment' || type === 'comment_reply' || type === 'highlight') return type;
+    if (type === 'comment' || type === 'comment_reply' || type === 'comment_resolve' || type === 'highlight') return type;
     if (type === 'paragraph-format') return 'paragraph-format';
     if (type === 'character-format' || (type === 'format' && (operation?.textToFormat != null || operation?.properties != null))) return 'format';
     return 'redline';
@@ -191,7 +197,7 @@ export function validateDocumentOperation(operation) {
 
     const target = normalized.targetDescriptor;
     if (
-        normalized.operationKind !== 'comment_reply'
+        !isCommentThreadOperationKind(normalized.operationKind)
         && !nonEmptyString(target.text)
         && target.index == null
         && !target.paragraphId
@@ -457,6 +463,15 @@ export function validateDocumentOperation(operation) {
         }
         if (!nonEmptyString(normalized.commentContent)) {
             return { valid: false, error: { code: 'INVALID_OPERATION', message: 'Comment reply operations require a non-empty "commentContent" field.' } };
+        }
+    }
+
+    if (normalized.operationKind === 'comment_resolve') {
+        if (!nonEmptyString(String(normalized.commentId ?? ''))) {
+            return { valid: false, error: { code: 'INVALID_OPERATION', message: 'Comment resolve operations require a "commentId".' } };
+        }
+        if (normalized.resolved != null && typeof normalized.resolved !== 'boolean') {
+            return { valid: false, error: { code: 'INVALID_OPERATION', message: 'Comment resolve "resolved" must be a boolean when provided.' } };
         }
     }
 

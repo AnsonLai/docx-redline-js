@@ -609,7 +609,9 @@ normalize or reconstruct `exactText`. Operation files follow
 - `preflight` checks targets, anchors, revisions, conflicts, authors, and needed artifacts without mutation (read-only).
 - `apply` applies an operation file transactionally with automatic rollback and internal markup validation.
 - `accept` and `reject` resolve revisions selected by `--author` or `--all-authors`.
-- `delete-comments` removes matching definitions and document anchors together.
+- `delete-comments` removes matching definitions and document anchors together, selected by `--author`,
+  `--all-authors`, or `--comment-id <id[,id]>` (ids from `inspect`). Deleting a thread root also deletes its
+  replies; unknown ids fail with `COMMENT_NOT_FOUND`.
 - A whole-paragraph delete stops with `COMMENTED_CONTENT_DELETE` when the
   paragraph has an existing comment. Surface the returned reviewer and comment
   text for human follow-up; do not silently convert this into comment removal.
@@ -683,14 +685,30 @@ operation to edit one instead of the body; everything else in the operation is u
   `PART_NOT_FOUND`. A bad selector rejects the whole request before anything is written.
 - Fields are atomic. An edit that would change a `PAGE`/`NUMPAGES`/`DATE` field's text fails with `FIELD_EDIT_REFUSED`; edit the
   text around the field instead.
-- `comment` and `comment_reply` with `part` fail with `COMMENT_IN_HEADER_FOOTER` (Word has no comments in headers or footers).
+- `comment`, `comment_reply` and `comment_resolve` with `part` fail with `COMMENT_IN_HEADER_FOOTER` (Word has no comments in headers or footers).
 - Body and part operations can share a batch; results keep the original operation indexes and carry `part`. Atomic batches roll
   back across body and parts. Revision ids stay unique across the whole package.
 - `accept` / `reject` (API and CLI) also resolve tracked changes inside headers and footers.
 - Creating a header/footer that does not exist is not supported.
+- `exactText` in a header or footer is the whole paragraph text as `headersFooters[].paragraphs` shows it, including the
+  current result of any field (for example `Page 1`).
 
-To resolve or reopen a thread, use `await doc.resolveComment(commentId, { resolved })`. Word resolves whole
-threads: any comment id in the thread resolves the root and every reply together.
+#### Resolving comment threads
+
+Resolve (or reopen with `"resolved": false`) the thread containing a comment id from `inspect`:
+
+```json
+{ "type": "comment_resolve", "commentId": "8" }
+```
+
+The API form is `await doc.resolveComment(commentId, { resolved })`. Word resolves whole threads, so any id in
+the thread updates the root and every reply together; a reply added to a resolved thread is written resolved,
+as Word does. Only `word/commentsExtended.xml` changes. Resolving an already-resolved thread is `no_change`.
+Unknown ids fail with `COMMENT_NOT_FOUND`, in `preflight` as well as `apply`. Operations run in batch order, so
+`comment_reply` followed by `comment_resolve` closes the thread including the new reply. Like any comment
+operation it is refused with `part`.
+
+Resolving and deleting other reviewers' comments are review decisions: do them only when the user asked.
 
 #### Legacy skill wrapper migration
 
@@ -760,6 +778,8 @@ When the CLI or runner returns an error code, follow these specific recovery act
 | `PART_NOT_FOUND` / `PART_AMBIGUOUS` | The `part` selector matched no header/footer, or several. | Re-run `inspect` and use `headersFooters[].path`, or add `section`. |
 | `FIELD_EDIT_REFUSED` | The edit would change a field (PAGE, NUMPAGES, DATE) in a header or footer. | Edit the text around the field. |
 | `COMMENT_IN_HEADER_FOOTER` | A comment operation carried `part`. | Comment on body text instead. |
+| `COMMENT_NOT_FOUND` | `comment_resolve` or `delete-comments --comment-id` named an id that is not in the document. | Re-run `inspect` and use `comments[].id`. |
+| `PARENT_COMMENT_NOT_FOUND` / `PARENT_ANCHOR_NOT_FOUND` | A reply's parent id is unknown, or the parent has no anchor in the body. | Re-run `inspect`; reply to a comment that is anchored in the body. |
 | `COMMENTED_CONTENT_MERGE` / `COMMENTED_CONTENT_DELETE` | Operation would overwrite, revert, or delete content with comments. | Fails closed to prevent orphaned comment threads. Report the comment author and text to the user; resolve the comment before re-editing. |
 | `INVALID_OPERATION` | Operation object violates schema or has incompatible fields. | Validate the JSON structure against [`document-operations.schema.json`](schemas/document-operations.schema.json) before targeting is attempted. |
 | `STRUCTURED_CONTENT_INVALID` | Malformed Markdown table or structure in replacement text. | Ensure tables include a separator row (`\| --- \| --- \|`) and consistent column counts; do not downgrade to raw text. |
@@ -768,11 +788,16 @@ When the CLI or runner returns an error code, follow these specific recovery act
 
 #### Document Scope & Boundary Invariants
 
-The `docx-redline` engine and CLI operate specifically on the **main document body**:
+The `docx-redline` engine and CLI operate on the **main document body** and, when an operation sets `part`, on
+**existing header and footer parts**:
 
-- **Supported Content**: Body paragraphs, numbered/bulleted lists, tables and table cells, comments, and comment replies.
-- **Unsupported Content**: Headers, footers, footnotes, endnotes, floating text boxes, shape drawings, watermarks, and embedded macros.
-- Do not attempt to target, edit, or comment on header/footer text or footnote citations using `docx-redline`. Use specialized document manipulation tools or manual editing for layout frames outside the body text.
+- **Supported Content**: Body paragraphs, numbered/bulleted lists, tables and table cells, comments, comment replies,
+  resolving/reopening comment threads, and text in existing headers and footers (see *Headers and footers*).
+- **Unsupported Content**: Footnotes, endnotes, floating text boxes, shape drawings, images, watermarks, embedded macros,
+  creating a header or footer that does not exist, editing field codes or results (`PAGE`, `NUMPAGES`, `DATE`), and
+  comments in headers or footers (Word has none).
+- Do not attempt to target footnote citations or text boxes with `docx-redline`. Header/footer text is edited only with
+  an explicit `part`; body searches never match it.
 
 ### Convert paragraph text into a Word list
 
