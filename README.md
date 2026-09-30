@@ -20,19 +20,26 @@ Converts AI-generated or programmatic text/markdown edits into valid Office Open
 - Package plumbing helpers for numbering.xml, comments.xml, content types, and relationships
 - Zero host dependencies: works in Node.js, browsers, Deno, and similar JS runtimes with DOM parsing support
 
-## What's New in 0.7.0
+## What's New in 0.8.x
 
-Version 0.7.0 adds contract-8 localized edits. Agents can send a small
-`find`/`replace` request against an inspected target instead of reproducing a
-complete paragraph. An optional speculative form may omit the strong target
-when the source literal resolves uniquely; advanced scoping is described below.
+The current release is 0.8.2. The CLI contract remains version 8 throughout the 0.8 line.
 
-Speculative edits fail without writing when the anchor, paragraph, or source
-span is missing or ambiguous. Successful localized results include a committed
-`change` object with the selected legal location, bounded before/after excerpts,
-and actual accepted-view verification. Existing full-paragraph operations,
-tracked-change semantics, validation, rollback, and review policies remain
-available unchanged. See the [complete 0.7.0 release notes](./docs/releases/0.7.0.md).
+- **0.8.0, universal document facade:** `openDocx` and `DocxDocument` are exported from the primary entry point and work
+  on `Uint8Array` input in any JavaScript runtime. ZIP handling uses `fflate` and SHA-256 is pure JavaScript, so there are no
+  Node built-in dependencies. The XML provider falls back to `@xmldom/xmldom` automatically, and the
+  `@ansonlai/docx-redline-js/bundle` export provides zero-dependency single-file bundles for sandboxes such as n8n Code
+  nodes. The `/node` entry point keeps its existing API. See the [0.8.0 release notes](./docs/releases/0.8.0.md).
+- **0.8.1, headers, footers and comment threads:** an operation's `part` field edits headers and footers;
+  `inspect().headersFooters` lists them. Comment threads can be resolved or reopened with `doc.resolveComment` or the
+  `comment_resolve` operation, and comments can be deleted by id with `doc.deleteComments({ ids })` or
+  `docx-redline delete-comments --comment-id`. See the [0.8.1 release notes](./docs/releases/0.8.1.md).
+- **0.8.2, fixes:** a replacement beside a hyperlink no longer pulls adjacent plain text into the link, and Reject All no
+  longer reorders text around a manual line break. See the [0.8.2 release notes](./docs/releases/0.8.2.md).
+
+Version 0.7.0 introduced contract-8 localized edits: a small `find`/`replace` request against an inspected target instead
+of a complete paragraph, plus an optional speculative form that fails without writing when the anchor is missing or
+ambiguous. They remain available unchanged; see the [0.7.0 release notes](./docs/releases/0.7.0.md).
+
 ## Documentation Index
 
 | Document | Description |
