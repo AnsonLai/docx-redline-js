@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Fixed
+
+- **Replacement next to a hyperlink no longer pulls adjacent plain text into the link** ([#3](https://github.com/AnsonLai/docx-redline-js/issues/3)):
+  replacing `example.org` with `example.net` (localized `replacements` or full `modified`) in a hyperlink followed by a
+  plain `.` run produced a link showing `example.net.` after Accept All. The reconstruction-mode word diff treated
+  `example.org.` as one token spanning the hyperlink edge. Where a replacement's shared prefix or suffix reaches a wrapper
+  boundary inside the deleted text, it is now kept unchanged.
+- **Reject All no longer reorders text around a manual line break** ([#4](https://github.com/AnsonLai/docx-redline-js/issues/4)):
+  replacing `tabbed` with `aligned` in `<tab>tabbed<w:br/>Line with ` rejected to `<tab>tabbedLine<break> with `, moving
+  deleted text across the break. Break and note-reference placeholders are now standalone word-diff tokens (new internal
+  `atomicChars` option), and change groups are split at references present on both sides. Covered by `tests/reconstruction_boundary_fidelity_tests.mjs`.
+
+## 0.8.1
+
 ### Added
 
 - **Header and footer editing:** add `part` to an operation (a selector `{ kind, type?, section? }` or a part path) to edit a
