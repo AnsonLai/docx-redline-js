@@ -30,10 +30,40 @@ try {
             $detail = "comments=$($doc.Comments.Count)"
             $expectFile = [System.IO.Path]::ChangeExtension($file.FullName, '.expect.json')
             if (Test-Path -LiteralPath $expectFile) {
-                $expected = @((Get-Content -LiteralPath $expectFile -Raw | ConvertFrom-Json).commentsDone)
-                $actual = @(); for ($i = 1; $i -le $doc.Comments.Count; $i++) { $actual += [bool]$doc.Comments.Item($i).Done }
-                $detail += " done=[$($actual -join ',')]"
-                if (($actual -join ',') -ne ($expected -join ',')) { $opened = $false; $detail += " EXPECTED done=[$($expected -join ',')]" }
+                $expect = Get-Content -LiteralPath $expectFile -Raw | ConvertFrom-Json
+                $n = $doc.Comments.Count
+                $checks = @{}
+                if ($null -ne $expect.commentsDone) {
+                    $actual = @(); for ($i = 1; $i -le $n; $i++) { $actual += [bool]$doc.Comments.Item($i).Done }
+                    $checks['done'] = @(($actual -join ','), (@($expect.commentsDone) -join ','))
+                }
+                if ($null -ne $expect.ancestors) {
+                    $actual = @()
+                    for ($i = 1; $i -le $n; $i++) {
+                        $anc = $doc.Comments.Item($i).Ancestor
+                        $idx = 0
+                        if ($anc) { for ($j = 1; $j -le $n; $j++) { $c = $doc.Comments.Item($j); if ($c.Author -eq $anc.Author -and $c.Range.Text -eq $anc.Range.Text) { $idx = $j; break } } }
+                        $actual += $idx
+                    }
+                    $checks['ancestors'] = @(($actual -join ','), (@($expect.ancestors) -join ','))
+                }
+                if ($null -ne $expect.texts) {
+                    $actual = @(); for ($i = 1; $i -le $n; $i++) { $actual += $doc.Comments.Item($i).Range.Text }
+                    $checks['texts'] = @(($actual -join '|'), (@($expect.texts) -join '|'))
+                }
+                if ($expect.probe) {
+                    $rows = @()
+                    for ($i = 1; $i -le $n; $i++) {
+                        $c = $doc.Comments.Item($i); $anc = $c.Ancestor; $idx = 0
+                        if ($anc) { for ($j = 1; $j -le $n; $j++) { $o = $doc.Comments.Item($j); if ($o.Author -eq $anc.Author -and $o.Range.Text -eq $anc.Range.Text) { $idx = $j; break } } }
+                        $rows += "#$i[$($c.Author): $($c.Range.Text) | anc=$idx done=$([bool]$c.Done) scope='$($c.Scope.Text)']"
+                    }
+                    $detail += " PROBE " + ($rows -join ' ; ')
+                }
+                foreach ($key in $checks.Keys) {
+                    $detail += " $key=[$($checks[$key][0])]"
+                    if ($checks[$key][0] -ne $checks[$key][1]) { $opened = $false; $detail += " EXPECTED $key=[$($checks[$key][1])]" }
+                }
             }
         } catch { $detail = $_.Exception.Message.Trim() }
         finally { if ($doc) { $doc.Close($false) | Out-Null } }

@@ -33,12 +33,14 @@ function withContentType(bytes, from, to) {
 
 // `expectDone`: the resolved state Word must report for each comment (document order). Checked through Word's
 // own object model, so it proves Word reads our threading parts the way we wrote them.
-async function run(name, source, fn, expectDone) {
+// `expect` is either an array of Done states or { commentsDone?, ancestors?, texts? } where `ancestors[i]` is the
+// 1-based index of comment i's thread parent (0 = top level), read from Word's Comment.Ancestor.
+async function run(name, source, fn, expect) {
     const doc = openDocx(source);
     const result = await fn(doc);
     if (result.status !== 'ok' || !result.written) throw new Error(`${name}: ${result.error?.message || 'not written'}`);
     write(`expect-open-${name}.docx`, result.toBuffer());
-    if (expectDone) writeFileSync(join(outDir, `expect-open-${name}.expect.json`), JSON.stringify({ commentsDone: expectDone }));
+    if (expect) writeFileSync(join(outDir, `expect-open-${name}.expect.json`), JSON.stringify(Array.isArray(expect) ? { commentsDone: expect } : expect));
 }
 const load = name => readFileSync(join(root, 'tests', 'fixtures', 'word-authored', name));
 
@@ -56,6 +58,37 @@ await run('07-resolve-thread-via-reply', fixture, doc => doc.resolveComment(1), 
 await run('08-reopen-word-resolved-thread', load('resolved-threads.docx'), doc => doc.resolveComment(3, { resolved: false }), [true, true, true, false, false]);
 await run('09-reply-to-multi-paragraph-comment', load('multi-paragraph-thread.docx'), doc => doc.applyOperations([{ type: 'comment_reply', parentCommentId: 0, commentContent: 'Another reply', author: 'Agent' }], { author: 'Agent', atomic: true }), [false, false, false]);
 await run('10-resolve-multi-paragraph-thread', load('multi-paragraph-thread.docx'), doc => doc.resolveComment(0), [true, true]);
+
+// --- additional Word probes: scenarios likelier to expose bugs than the happy paths above ---
+const stripThreadingParts = bytes => {
+    const entries = unzipDocx(bytes);
+    for (const name of ['word/commentsExtended.xml', 'word/commentsIds.xml', 'word/commentsExtensible.xml']) entries.delete(name);
+    const dec = new TextDecoder(); const enc = new TextEncoder();
+    entries.set('[Content_Types].xml', enc.encode(dec.decode(entries.get('[Content_Types].xml')).replace(/<Override PartName="\/word\/comments(Extended|Ids|Extensible)\.xml"[^>]*\/>/g, '')));
+    entries.set('word/_rels/document.xml.rels', enc.encode(dec.decode(entries.get('word/_rels/document.xml.rels')).replace(/<Relationship [^>]*Target="comments(Extended|Ids|Extensible)\.xml"[^>]*\/>/g, '')));
+    return zipDocx(entries);
+};
+const replyTo = (parent, text) => ({ type: 'comment_reply', parentCommentId: parent, commentContent: text, author: 'Agent' });
+const apply = (doc, ops) => doc.applyOperations(ops, { author: 'Agent', atomic: true });
+
+await run('11-reply-to-a-reply', fixture, doc => apply(doc, [replyTo(1, 'Reply to the reply')]), {ancestors: [0, 1, 1, 0], commentsDone: [false, false, false, true]});
+await run('12-two-replies-same-root', fixture, doc => apply(doc, [replyTo(0, 'First new'), replyTo(0, 'Second new')]), {ancestors: [0, 1, 1, 1, 0], commentsDone: [false, false, false, false, true]});
+await run('13-comment-then-reply-to-own-comment', fixture, async doc => {
+    const added = await apply(doc, [{ type: 'comment', target: { exactText: 'This agreement is governed by local law.' }, commentContent: 'Governing law?', author: 'Agent' }]);
+    if (added.status !== 'ok') return added;
+    return apply(doc, [replyTo(3, 'Reply to my own comment')]);
+}, {ancestors: [0, 1, 0, 0, 4], commentsDone: [false, false, true, false, false]});
+await run('14-edit-inside-commented-paragraph', fixture, doc => apply(doc, [{ type: 'replace', target: { exactText: 'The Supplier shall deliver the goods within thirty days.' }, modified: 'The Supplier shall deliver the goods within twenty days.' }]), {ancestors: [0, 1, 0], commentsDone: [false, false, true]});
+await run('15-edit-and-reply-in-one-batch', fixture, doc => apply(doc, [replyTo(0, 'Batch reply'), { type: 'replace', target: { exactText: 'Payment is due upon receipt of invoice.' }, modified: 'Payment is due within thirty days of invoice.' }]), {ancestors: [0, 1, 1, 0], commentsDone: [false, false, false, true]});
+await run('16-reply-accept-resolve', fixture, async doc => {
+    await apply(doc, [replyTo(0, 'Then accept')]);
+    await doc.resolveRevisions('accept', { allAuthors: true });
+    return doc.resolveComment(0);
+}, {ancestors: [0, 1, 1, 0], commentsDone: [true, true, true, true]});
+await run('17-legacy-no-threading-parts-reply', stripThreadingParts(fixture), doc => apply(doc, [replyTo(0, 'Reply on legacy file')]), {ancestors: [0, 1, 0, 0], commentsDone: [false, false, false, false]});
+await run('18-legacy-no-threading-parts-resolve', stripThreadingParts(fixture), doc => doc.resolveComment(0), {ancestors: [0, 0, 0], commentsDone: [true, false, false]});
+await run('19-edit-commented-text-multi-paragraph', load('multi-paragraph-thread.docx'), doc => apply(doc, [{ type: 'replace', target: { exactText: 'Alpha paragraph.' }, modified: 'Alpha paragraph, revised.' }]), {ancestors: [0, 1], commentsDone: [false, false]});
+await run('20-delete-reply-only', fixture, doc => doc.deleteComments({ author: 'Internal' }), {ancestors: [0, 0], commentsDone: [false, true]});
 
 // Files damaged by earlier versions of this package: the next save must repair them.
 const damaged = withContentType(fixture, WORD_TYPE, BAD_TYPE);

@@ -164,6 +164,24 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
         }
     }
 
+    // Comment markers are emitted when a diff part starts at their offset. Markers at the very end of the
+    // paragraph text (commentRangeEnd and the reference run of a comment on the last words) are only reached
+    // when the final diff part is an insert; after an unchanged or deleted tail nothing starts there, so they
+    // were dropped and the comment lost its end anchor. Flush whatever is left, in original order.
+    for (const offset of Array.from(sentinelMapByStart.keys()).sort((a, b) => a - b)) {
+        for (const sentinel of sentinelMapByStart.get(offset)) {
+            if (!sentinel.isCommentMarker || emittedCommentMarkers.has(sentinel.node)) continue;
+            emittedCommentMarkers.add(sentinel.node);
+            if (isWordElement(sentinel.node, 'commentReference')) {
+                const run = createWordElement(xmlDoc, 'w:r');
+                run.appendChild(sentinel.node.cloneNode(true));
+                currentParagraph.appendChild(run);
+            } else {
+                currentParagraph.appendChild(sentinel.node.cloneNode(true));
+            }
+        }
+    }
+
     if (generateRedlines) {
         containerFragments.forEach(fragment => {
             Array.from(fragment.childNodes).forEach(node => {

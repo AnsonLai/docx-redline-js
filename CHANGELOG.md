@@ -17,6 +17,10 @@
   `commentsIds.xml` through the `w14:paraId` of a comment's LAST paragraph. Inspection, package validation,
   replies and delete-cascade used the first, so Word's own multi-paragraph threaded documents failed
   validation and replies to them attached to the wrong key.
+- **Edits no longer drop comment anchors:** a mid-paragraph edit of a commented paragraph dropped the trailing
+  `commentRangeEnd` and `commentReference` (markers at the very end of the paragraph text were only emitted when the
+  last diff part was an insert), leaving the comment unanchored and failing package validation. Found by
+  opening our output in real Word; covered by `tests/comment_marker_preservation_tests.mjs`.
 - **Replies are now visible in Word:** `comment_reply` only wrote `comments.xml`/`commentsExtended.xml`, and Word
   does not show a reply that has no body markers. Replies now get their own `commentRangeStart`/`commentRangeEnd`/
   `commentReference` next to the thread's, laid out like Word writes them. A reply to a reply joins the root thread.
