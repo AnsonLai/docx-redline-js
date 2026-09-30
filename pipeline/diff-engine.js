@@ -41,8 +41,24 @@ export function createDiffEngine(options = {}) {
     return engine;
 }
 
-function tokenize(text) {
+function tokenize(text, atomicChars = null) {
     const tokens = [];
+    const pushWord = word => {
+        if (!atomicChars || atomicChars.size === 0) {
+            tokens.push(word);
+            return;
+        }
+        // Structural placeholders (for example manual line breaks) stand
+        // alone so a change beside one never swallows text across it.
+        let start = 0;
+        for (let index = 0; index < word.length; index++) {
+            if (!atomicChars.has(word[index])) continue;
+            if (index > start) tokens.push(word.slice(start, index));
+            tokens.push(word[index]);
+            start = index + 1;
+        }
+        if (start < word.length) tokens.push(word.slice(start));
+    };
     const leading = text.match(/^\s+/);
     if (leading) tokens.push(leading[0]);
 
@@ -50,7 +66,7 @@ function tokenize(text) {
     regex.lastIndex = leading?.[0].length || 0;
     let match;
     while ((match = regex.exec(text)) !== null) {
-        if (match[1]) tokens.push(match[1]);
+        if (match[1]) pushWord(match[1]);
         if (match[2]) tokens.push(match[2]);
     }
     return tokens;
@@ -62,7 +78,7 @@ function tokenize(text) {
  * 
  * @param {string} text1 - First text to tokenize
  * @param {string} text2 - Second text to tokenize
- * @param {{ maxTokens?: number }} [options={}] - Internal/test capacity override
+ * @param {{ maxTokens?: number, atomicChars?: Set<string> }} [options={}] - Capacity override and single-character tokens
  * @returns {{ chars1: string, chars2: string, wordArray: string[], tokenIds1: number[], tokenIds2: number[] }}
  */
 export function wordsToChars(text1, text2, options = {}) {
@@ -90,8 +106,8 @@ export function wordsToChars(text1, text2, options = {}) {
         return { chars, tokenIds };
     }
 
-    const tokens1 = tokenize(text1);
-    const tokens2 = tokenize(text2);
+    const tokens1 = tokenize(text1, options.atomicChars);
+    const tokens2 = tokenize(text2, options.atomicChars);
     const encoded1 = mapTokensToChars(tokens1);
     const encoded2 = mapTokensToChars(tokens2);
 
@@ -200,7 +216,7 @@ function deterministicLargeTokenDiff(tokenIds1, tokenIds2, wordArray) {
  *
  * @param {string} originalText - Original text
  * @param {string} newText - New text
- * @param {{ cleanupSemantic?: boolean, diffTimeoutSeconds?: number, maxTokens?: number }} [options={}] - Diff options
+ * @param {{ cleanupSemantic?: boolean, diffTimeoutSeconds?: number, maxTokens?: number, atomicChars?: Set<string> }} [options={}] - Diff options
  * @returns {Array<[number, string]>}
  */
 export function computeWordDiffs(originalText, newText, options = {}) {
