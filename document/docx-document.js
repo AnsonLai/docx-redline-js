@@ -7,6 +7,7 @@
  */
 
 import { getDefaultAuthor } from '../adapters/config.js';
+import { commentParaId } from '../services/comment-thread-parts.js';
 import { inspectDocumentParts } from '../services/document-inspection.js';
 import { applyOperationsToDocumentXml, preflightOperations } from '../services/standalone-operation-runner.js';
 import { createDynamicNumberingIdState, mergeNumberingXmlBySchemaOrder } from '../services/numbering-helpers.js';
@@ -127,7 +128,7 @@ function existingCommentDetails(entries) {
             id,
             author: comment.getAttribute('w:author') || comment.getAttribute('author') || '',
             text: String(comment.textContent || '').trim(),
-            paraId: Array.from(comment.getElementsByTagNameNS('*', 'p'))[0]?.getAttribute('w14:paraId') || null
+            paraId: commentParaId(comment) || null
         };
     }
     return details;
@@ -519,9 +520,8 @@ export class DocxDocument {
             const idByParaId = new Map();
             for (const comment of Array.from(parsed.doc.getElementsByTagNameNS('*', 'comment'))) {
                 const id = comment.getAttribute('w:id') || comment.getAttribute('id');
-                const paragraph = Array.from(comment.getElementsByTagNameNS('*', 'p'))[0];
-                const paraId = paragraph?.getAttribute('w14:paraId') || paragraph?.getAttribute('paraId');
-                if (paraId) idByParaId.set(paraId.toUpperCase(), id);
+                const paraId = commentParaId(comment);
+                if (paraId) idByParaId.set(paraId, id);
             }
             for (const [paraId, id] of idByParaId) {
                 if (ids.has(id)) removedParaIds.add(paraId);

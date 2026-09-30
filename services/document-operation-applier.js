@@ -253,6 +253,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                 result = applyCommentReplyToParts({
                     commentsXml: existingCommentsXml,
                     commentsExtendedXml: existingExtendedXml,
+                    documentXml,
                     parentCommentId: operation.parentCommentId,
                     commentId,
                     commentContent: operation.commentContent,

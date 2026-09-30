@@ -2,6 +2,7 @@ import { parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { NS_W } from '../core/types.js';
 import { extractCanonicalParagraphText, readCanonicalRunText, extractParagraphRevisionSegments } from '../core/paragraph-text.js';
 import { createParagraphFingerprint, getDocumentParagraphNodes, getParagraphId } from '../core/paragraph-targeting.js';
+import { commentParaId } from './comment-thread-parts.js';
 import { extractDocumentPartsEntries, computeRevisionTokenSync } from './revision-token.js';
 
 const attr = (node, name) => node?.getAttribute?.(`w:${name}`) || node?.getAttribute?.(name) || '';
@@ -142,7 +143,7 @@ function readCommentDefinitions(commentsDoc) {
         result.set(attr(comment, 'id'), {
             id: attr(comment, 'id'), author: attr(comment, 'author') || null, date: attr(comment, 'date') || null,
             text: paragraphs.map(p => extractCanonicalParagraphText(p)).join('\n'),
-            paraId: paragraphs[0]?.getAttribute?.('w14:paraId') || paragraphs[0]?.getAttribute?.('paraId') || null
+            paraId: commentParaId(comment) || null
         });
     }
     return result;

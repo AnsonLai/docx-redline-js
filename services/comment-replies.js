@@ -1,4 +1,5 @@
 import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
+import { commentParaId, commentThreadParagraph } from './comment-thread-parts.js';
 import { buildCommentElement, buildCommentsExtendedPartXml, createCommentParaId, NS_W14, NS_W15 } from './comment-builders.js';
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
@@ -39,7 +40,7 @@ function allocateParaId(commentId, occupied) {
     return candidate;
 }
 
-export function applyCommentReplyToParts({ commentsXml, commentsExtendedXml = null, parentCommentId, commentId, commentContent, author, date = new Date().toISOString() }) {
+export function applyCommentReplyToParts({ commentsXml, commentsExtendedXml = null, documentXml = null, parentCommentId, commentId, commentContent, author, date = new Date().toISOString() }) {
     if (!commentsXml) return { status: 'error', error: { code: 'COMMENTS_PART_MISSING', message: 'A comment reply requires an existing word/comments.xml part.' } };
     const commentsParsed = parseRequired(commentsXml, 'word/comments.xml');
     if (commentsParsed.error) return { status: 'error', error: commentsParsed.error };
@@ -54,14 +55,24 @@ export function applyCommentReplyToParts({ commentsXml, commentsExtendedXml = nu
         extendedDoc = parsed.doc;
     }
     const occupied = usedParaIds(commentsDoc, extendedDoc);
-    const parentParagraph = Array.from(parent.getElementsByTagNameNS(NS_W, 'p'))[0] || Array.from(parent.getElementsByTagNameNS('*', 'p'))[0];
+    // paraIds are unique across the whole package; body paragraphs can carry them too.
+    if (documentXml) for (const match of String(documentXml).matchAll(/w14:paraId="([0-9A-Fa-f]{8})"/g)) occupied.add(match[1].toUpperCase());
+    const parentParagraph = commentThreadParagraph(parent);
     if (!parentParagraph) return { status: 'error', error: { code: 'PARENT_COMMENT_INVALID', message: `Parent comment '${parentCommentId}' has no paragraph.` } };
-    let parentParaId = attr(parentParagraph, 'w14:paraId', 'paraId');
+    let parentParaId = commentParaId(parent);
     if (!parentParaId) {
         parentParaId = allocateParaId(parentCommentId, occupied);
         parentParagraph.setAttributeNS(NS_W14, 'w14:paraId', parentParaId);
     } else {
         parentParaId = parentParaId.toUpperCase();
+    }
+    // Word threads are flat: a reply to a reply belongs to the same root thread.
+    for (const node of Array.from(extendedDoc?.getElementsByTagNameNS('*', 'commentEx') || [])) {
+        if (attr(node, 'w15:paraId', 'paraId').toUpperCase() === parentParaId) {
+            const root = attr(node, 'w15:paraIdParent', 'paraIdParent').toUpperCase();
+            if (root) parentParaId = root;
+            break;
+        }
     }
     const replyParaId = allocateParaId(commentId, occupied);
     const replyParsed = parseRequired(`<w:comments xmlns:w="${NS_W}" xmlns:w14="${NS_W14}">${buildCommentElement(commentId, author, commentContent, date, replyParaId)}</w:comments>`, 'reply comment');

@@ -4,6 +4,7 @@
 
 import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { warn as logWarning } from '../adapters/logger.js';
+import { commentParaId } from './comment-thread-parts.js';
 import { correctedContentTypeFor, getPartSpec } from './package-parts.js';
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
@@ -515,9 +516,8 @@ export async function validateDocxPackage(zip) {
             const paraIdToCommentId = new Map();
             for (const comment of Array.from(commentsDoc.getElementsByTagNameNS('*', 'comment'))) {
                 const id = comment.getAttribute('w:id') || comment.getAttribute('id');
-                const paragraph = Array.from(comment.getElementsByTagNameNS('*', 'p'))[0];
-                const paraId = paragraph?.getAttribute('w14:paraId') || paragraph?.getAttribute('paraId');
-                if (paraId) paraIdToCommentId.set(paraId.toUpperCase(), id);
+                const paraId = commentParaId(comment);
+                if (paraId) paraIdToCommentId.set(paraId, id);
             }
             const knownParaIds = new Set(paraIdToCommentId.keys());
             const extendedParaIds = new Set();
