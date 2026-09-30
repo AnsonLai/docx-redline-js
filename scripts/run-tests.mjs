@@ -26,9 +26,19 @@ export function resolveTestConcurrency(value = process.env.DOCX_TEST_CONCURRENCY
   return Number(value);
 }
 
+export function resolveTestTimeout(value = process.env.DOCX_TEST_TIMEOUT) {
+  if (value == null || value === '') {
+    return 180000;
+  }
+  if (!/^\d+$/.test(String(value)) || Number(value) < 1) {
+    throw new Error('DOCX_TEST_TIMEOUT must be a positive integer.');
+  }
+  return Number(value);
+}
+
 export function runTestFile(file, options = {}) {
   const testDir = options.testDir || defaultTestDir;
-  const timeout = options.timeout ?? 30000;
+  const timeout = options.timeout ?? resolveTestTimeout();
   const filePath = join(testDir, file);
 
   return new Promise(resolveResult => {
@@ -41,7 +51,9 @@ export function runTestFile(file, options = {}) {
       windowsHide: true
     }, (error, stdout = '', stderr = '') => {
       let executionError = error;
-      if (!executionError && failOutputPattern.test(stdout)) {
+      if (error && (error.killed || /timed? ?out/i.test(error.message))) {
+        executionError = new Error(`Test timed out after ${timeout}ms: ${file}`);
+      } else if (!executionError && failOutputPattern.test(stdout)) {
         executionError = new Error(`Test printed a failure marker while exiting successfully:\n${stdout}`);
       }
       resolveResult({

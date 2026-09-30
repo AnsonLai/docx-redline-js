@@ -26,7 +26,9 @@ async function collectJsFilesRecursively(dirPath) {
     for (const entry of entries) {
         const fullPath = path.join(dirPath, entry.name);
         if (entry.isDirectory()) {
-            if (entry.name === 'integration') continue;
+            if (['.cache', '.git', 'coverage', 'dist', 'integration', 'node_modules', 'tmp'].includes(entry.name)) {
+                continue;
+            }
             const nested = await collectJsFilesRecursively(fullPath);
             files.push(...nested);
             continue;

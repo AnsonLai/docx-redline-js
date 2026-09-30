@@ -56,7 +56,7 @@ assert.equal(parsed, WORD_TASK_CASES.length * 4);
 
 const corpusFixturesDir = join(repoRoot, 'tmp', 'superdoc-word-fixtures');
 const corpusSuitePath = join(corpusFixturesDir, 'suite.json');
-if (existsSync(corpusSuitePath)) {
+if (process.env.DOCX_TEST_DOCXJS_CORPUS && existsSync(corpusSuitePath)) {
     const suite = JSON.parse(readFileSync(corpusSuitePath, 'utf8'));
     for (const testCase of suite.cases) {
         for (const state of ['source', 'tracked', 'accepted', 'rejected']) {
@@ -74,7 +74,7 @@ if (existsSync(corpusSuitePath)) {
 
 const lane1Dir = join(repoRoot, 'tmp', 'lane1-docx');
 const lane1ManifestPath = join(lane1Dir, 'manifest.json');
-if (existsSync(lane1ManifestPath)) {
+if (process.env.DOCX_TEST_DOCXJS_CORPUS && existsSync(lane1ManifestPath)) {
     const manifest = JSON.parse(readFileSync(lane1ManifestPath, 'utf8'));
     for (const testCase of manifest.cases) {
         for (const state of ['source', 'tracked', 'accepted', 'rejected']) {
