@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.8.3
+
+### Fixed
+
+- **Reject All no longer leaves an empty paragraph after an inserted paragraph:** `modified: "<original>\n<new>"` on a plain
+  paragraph did not track the new paragraph's mark as inserted. It now does.
+- **Reject All no longer merges source paragraphs after a list range replacement:** replacing a multi-paragraph list range
+  (`target` + `targetEnd`) collapsed the sources into one deleted paragraph, so Reject All gave results such as
+  `Bullet Root ABullet Insertion Anchor`, `AlphaGamma` for an empty middle paragraph, and lost both paragraphs of an
+  all-empty range. Each source paragraph, empty ones included, now keeps its own tracked-deleted paragraph. Confirmed in Word.
+- **Inspection no longer reports historical paragraph properties as current:** `list`, `styleId` and `headingLevel` (and list
+  targeting) could read `numPr`, `pStyle` or `outlineLvl` stored under `w:pPrChange`. Only the paragraph's direct `w:pPr`
+  is read now.
+- **`openDocx` list range replacement no longer renumbers or re-points lists:** deleted source paragraphs were remapped to a
+  new generic `numId` (Reject All restored them with the wrong list type), new items started a separate list (untouched
+  following items restarted at 1), and unused numbering definitions were added. Deleted source paragraphs now keep their
+  `numPr`, and a same-kind replacement reuses the source `numId`, leaving `numbering.xml` unchanged. Reuse applies when the
+  range uses one `numId` and the generated level formats match; format-changing edits still allocate new definitions, and
+  definitions created earlier in the same batch are not reused. Confirmed in Word.
+- **Explicit list start values are applied:** generated list fragments without `xmlns:w` failed to parse in
+  `orchestration/list-structural-fallback.js`, so `7. Header` lost its `startOverride` and xmldom logged parse warnings.
+
+### Tests
+
+- New `tests/list_reject_fidelity_tests.mjs` and `tests/facade_list_numbering_tests.mjs`, with the Word-authored fixture
+  `tests/fixtures/agentic-lists/nested-lists-source.docx`; extended inspection and list structural fallback suites.
+
+### Known limitations
+
+- Plain paragraph to list conversion and list format changes are not yet supported canonically; see
+  `docs/plans/2026-09-30-canonical-list-operations.md`.
+- `1. Header` to `1. Header` on a bare `document.xml` (not a packaged `.docx`) can fail with `RECEIPT_RECONCILIATION_FAILED`.
+
 ## 0.8.2
 
 ### Fixed

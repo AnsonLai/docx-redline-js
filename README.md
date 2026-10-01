@@ -22,7 +22,7 @@ Converts AI-generated or programmatic text/markdown edits into valid Office Open
 
 ## What's New in 0.8.x
 
-The current release is 0.8.2. The CLI contract remains version 8 throughout the 0.8 line.
+The current release is 0.8.3. The CLI contract remains version 8 throughout the 0.8 line.
 
 - **0.8.0, universal document facade:** `openDocx` and `DocxDocument` are exported from the primary entry point and work
   on `Uint8Array` input in any JavaScript runtime. ZIP handling uses `fflate` and SHA-256 is pure JavaScript, so there are no
@@ -35,6 +35,10 @@ The current release is 0.8.2. The CLI contract remains version 8 throughout the 
   `docx-redline delete-comments --comment-id`. See the [0.8.1 release notes](./docs/releases/0.8.1.md).
 - **0.8.2, fixes:** a replacement beside a hyperlink no longer pulls adjacent plain text into the link, and Reject All no
   longer reorders text around a manual line break. See the [0.8.2 release notes](./docs/releases/0.8.2.md).
+- **0.8.3, list fixes:** Reject All now restores list edits exactly (no extra empty paragraph after an inserted
+  paragraph, no merged source paragraphs after a list-range replacement, original list numbering kept through `openDocx`),
+  and inspection no longer reports tracked historical list, style or heading properties as current. See the
+  [0.8.3 release notes](./docs/releases/0.8.3.md).
 
 Version 0.7.0 introduced contract-8 localized edits: a small `find`/`replace` request against an inspected target instead
 of a complete paragraph, plus an optional speculative form that fails without writing when the anchor is missing or
