@@ -128,4 +128,28 @@ const invalid = await executeSingleLineListStructuralFallback(decimalPlan, {
 assert.equal(invalid.hasChanges, false);
 assert.match(invalid.warnings[0], /no valid OOXML/);
 
+// Regression: generated list fragments are namespace-less; parsing them must not
+// raise parser diagnostics and must still resolve the generated numId so the
+// decimal marker start value (7.) is applied.
+{
+    const diagnostics = [];
+    const originalWarn = console.warn;
+    const originalError = console.error;
+    console.warn = (...args) => diagnostics.push(args.join(' '));
+    console.error = (...args) => diagnostics.push(args.join(' '));
+    let upperExecuted;
+    try {
+        const upperPlan = buildSingleLineListStructuralFallbackPlan({
+            oxml: plainParagraph('7. Header'), originalText: '7. Header', modifiedText: '7. Header'
+        });
+        upperExecuted = await executeSingleLineListStructuralFallback(upperPlan, { author: 'Phase 3' });
+    } finally {
+        console.warn = originalWarn;
+        console.error = originalError;
+    }
+    assert.deepEqual(diagnostics, []);
+    assert.equal(upperExecuted.hasChanges, true);
+    assert.match(upperExecuted.numberingXml, /w:startOverride w:val="7"/);
+}
+
 console.log('PASS: Phase 3 single-line list structural fallback behavior');

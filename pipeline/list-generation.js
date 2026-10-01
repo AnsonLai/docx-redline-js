@@ -69,7 +69,42 @@ export async function executeListGeneration(options) {
         }
     }
 
-    if (generateRedlines && deletionRuns.length > 0) {
+    const sourceParagraphCount = (originalRunModel || [])
+        .filter(run => run.kind === RunKind.PARAGRAPH_START).length;
+    if (generateRedlines && sourceParagraphCount > 0 && (sourceParagraphCount > 1 || deletionRuns.length === 0)) {
+        // Each source paragraph keeps its own deleted paragraph (content and tracked-deleted mark), so
+        // Reject All restores every original paragraph boundary instead of merging them into one.
+        // Serialize each source paragraph on its own so empty paragraphs are emitted too (an empty
+        // paragraph carrying only its tracked-deleted mark).
+        let segment = null;
+        const flushSegment = () => {
+            if (!segment) return;
+            results.push(serializeToOoxml(segment, null, [], {
+                author,
+                generateRedlines,
+                revisionIdAllocator
+            }));
+            segment = null;
+        };
+        for (const run of originalRunModel) {
+            if (run.kind === RunKind.PARAGRAPH_START) {
+                flushSegment();
+                segment = [{
+                    ...run,
+                    pPrElement: null,
+                    pPrXml: addParagraphMarkRevision(
+                        run.pPrElement || run.pPrXml || null,
+                        'del',
+                        author,
+                        revisionIdAllocator
+                    )
+                }];
+            } else if (segment && (run.kind === 'text' || run.kind === 'run')) {
+                segment.push({ ...run, kind: 'deletion', author });
+            }
+        }
+        flushSegment();
+    } else if (generateRedlines && deletionRuns.length > 0) {
         const deletedPPr = addParagraphMarkRevision(sourcePPr, 'del', author, revisionIdAllocator);
         const deletedParagraph = serializeToOoxml(deletionRuns, deletedPPr, [], {
             author,

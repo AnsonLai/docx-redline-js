@@ -70,6 +70,7 @@ import {
 import {
     reserveNextNumberingIdPair,
     remapNumberingPayloadForDocument,
+    reuseSourceListNumbering,
     overwriteParagraphNumIds,
     extractFirstParagraphNumId,
     buildExplicitDecimalMultilevelNumberingXml
@@ -1971,7 +1972,9 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
                 paragraphText,
                 generateRedlines ? createRevisionMetadata(author, xmlDoc) : null,
                 author,
-                { generateRedlines }
+                // A wholly inserted paragraph must track its own paragraph mark; otherwise Word's
+                // Reject All removes the text but leaves an empty paragraph behind.
+                { generateRedlines, trackParagraphMark: true }
             );
             const imported = xmlDoc.importNode(plainParagraph, true);
             ensureParagraphIdsOnImportedNode(imported, operationSession);
@@ -2135,6 +2138,14 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
     const extracted = extractReplacementNodes(result.oxml);
     let replacementNodes = removeListPackagingSentinel(extracted.replacementNodes, result.warnings);
     let numberingXml = extracted.numberingXml;
+    if (numberingXml && runtimeContext?.numberingIdState && !useTableScope) {
+        const sourceParagraphs = useListScope ? listScopeEdit.paragraphs : (explicitRangeParagraphs || [targetParagraph]);
+        const continued = reuseSourceListNumbering(numberingXml, replacementNodes, sourceParagraphs, runtimeContext.numberingIdState);
+        if (continued) {
+            replacementNodes = continued.replacementNodes;
+            numberingXml = null;
+        }
+    }
     if (numberingXml && runtimeContext?.numberingIdState) {
         const normalizedNumbering = remapNumberingPayloadForDocument(numberingXml, replacementNodes, runtimeContext.numberingIdState);
         replacementNodes = normalizedNumbering.replacementNodes;

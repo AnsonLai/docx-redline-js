@@ -17,6 +17,8 @@ docs/releases/*
 !docs/plans/2026-09-12-agent-performance-and-execution-protocol.md
 !docs/plans/2026-09-14-localized-patching-and-turn-reduction.md
 !docs/plans/2026-09-17-universal-docx-facade.md
+!docs/plans/2026-09-30-canonical-list-operations.md
+!docs/plans/2026-09-30-revision-fidelity-invariants.md
 !docs/plans/structural-revision-capability-matrix.md
 !docs/plans/completed/
 docs/plans/completed/*

@@ -9,12 +9,13 @@ import {
 } from './paragraph-targeting.js';
 import { parseListItem, stripListMarker } from '../pipeline/list-markers.js';
 
-function getFirstDescendantByLocalName(node, localName) {
-    if (!node || typeof node.getElementsByTagNameNS !== 'function') return null;
-    const namespaced = node.getElementsByTagNameNS(WORD_MAIN_NS, localName);
-    if (namespaced.length > 0) return namespaced[0];
-    const anyNs = node.getElementsByTagNameNS('*', localName);
-    return anyNs.length > 0 ? anyNs[0] : null;
+/** Direct element child by local name; never crosses w:pPrChange / w:rPrChange boundaries. */
+function getDirectChildByLocalName(node, localName) {
+    if (!node) return null;
+    for (const child of Array.from(node.childNodes || [])) {
+        if (child?.nodeType === 1 && child.localName === localName) return child;
+    }
+    return null;
 }
 
 function readValAttribute(element) {
@@ -178,17 +179,18 @@ function buildListEntriesForInsertion(parsedItems, normalizedTargetText, anchorL
 export function getParagraphListInfo(paragraph) {
     if (!paragraph) return null;
 
-    const pPr = getFirstDescendantByLocalName(paragraph, 'pPr');
+    // Current properties only: direct w:pPr/w:numPr, never historical w:pPrChange/w:pPr.
+    const pPr = getDirectChildByLocalName(paragraph, 'pPr');
     if (!pPr) return null;
-    const numPr = getFirstDescendantByLocalName(pPr, 'numPr');
+    const numPr = getDirectChildByLocalName(pPr, 'numPr');
     if (!numPr) return null;
-    const numIdEl = getFirstDescendantByLocalName(numPr, 'numId');
+    const numIdEl = getDirectChildByLocalName(numPr, 'numId');
     if (!numIdEl) return null;
 
     const numId = readValAttribute(numIdEl);
     if (!numId || numId === '0') return null;
 
-    const ilvlEl = getFirstDescendantByLocalName(numPr, 'ilvl');
+    const ilvlEl = getDirectChildByLocalName(numPr, 'ilvl');
     const ilvlRaw = readValAttribute(ilvlEl);
     const ilvl = Number.parseInt(ilvlRaw || '0', 10);
 

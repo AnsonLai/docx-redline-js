@@ -8,6 +8,9 @@ import { extractDocumentPartsEntries, computeRevisionTokenSync } from './revisio
 const attr = (node, name) => node?.getAttribute?.(`w:${name}`) || node?.getAttribute?.(name) || '';
 const descendants = (node, name) => Array.from(node?.getElementsByTagNameNS?.(NS_W, name) || []);
 const first = (node, name) => descendants(node, name)[0] || null;
+const directChild = (node, name) => Array.from(node?.childNodes || []).find(child => child?.nodeType === 1 && child.localName === name && (!child.namespaceURI || child.namespaceURI === NS_W)) || null;
+/** Current paragraph properties: the paragraph's direct w:pPr only (never the historical w:pPrChange/w:pPr). */
+const currentPPr = paragraph => directChild(paragraph, 'pPr');
 function hasAncestor(node, localName) { let cursor = node?.parentNode; while (cursor) { if (cursor.localName === localName && (!cursor.namespaceURI || cursor.namespaceURI === NS_W)) return true; cursor = cursor.parentNode; } return false; }
 
 function parseXml(xml, partName, required = false) {
@@ -18,11 +21,11 @@ function parseXml(xml, partName, required = false) {
 }
 
 function paragraphListProperties(paragraph) {
-    const numPr = first(first(paragraph, 'pPr'), 'numPr');
+    const numPr = directChild(currentPPr(paragraph), 'numPr');
     if (!numPr) return null;
-    const numId = attr(first(numPr, 'numId'), 'val');
+    const numId = attr(directChild(numPr, 'numId'), 'val');
     if (!numId || numId === '0') return null;
-    return { numId, level: Number.parseInt(attr(first(numPr, 'ilvl'), 'val') || '0', 10) || 0 };
+    return { numId, level: Number.parseInt(attr(directChild(numPr, 'ilvl'), 'val') || '0', 10) || 0 };
 }
 
 function parseNumbering(numberingDoc) {
@@ -100,11 +103,11 @@ function createNumberingResolver(numberingDoc) {
 }
 
 function headingLevel(paragraph) {
-    const pPr = first(paragraph, 'pPr');
-    const style = attr(first(pPr, 'pStyle'), 'val');
+    const pPr = currentPPr(paragraph);
+    const style = attr(directChild(pPr, 'pStyle'), 'val');
     const match = style.match(/^heading\s*([1-9])$/i);
     if (match) return Math.min(Number(match[1]), 6);
-    const outline = Number.parseInt(attr(first(pPr, 'outlineLvl'), 'val'), 10);
+    const outline = Number.parseInt(attr(directChild(pPr, 'outlineLvl'), 'val'), 10);
     return Number.isInteger(outline) ? Math.min(outline + 1, 6) : null;
 }
 
@@ -283,7 +286,7 @@ export function inspectDocumentParts(parts, options = {}) {
         const ids = [...new Set([...descendants(paragraph, 'commentRangeStart'), ...descendants(paragraph, 'commentReference')].map(node => attr(node, 'id')).filter(Boolean))];
         const authors = revisionAuthors(paragraph);
         const list = resolveNumbering(paragraphListProperties(paragraph));
-        const styleId = attr(first(first(paragraph, 'pPr'), 'pStyle'), 'val') || null;
+        const styleId = attr(directChild(currentPPr(paragraph), 'pStyle'), 'val') || null;
         const structure = structuralContext(paragraph, text);
         const index = zeroIndex + 1;
         const provision = list?.label && list.format !== 'bullet' ? list.label : null;

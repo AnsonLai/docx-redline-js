@@ -83,6 +83,8 @@ export function createDynamicNumberingIdState(numberingXml, options = {}) {
     const baseAbstractNumId = Math.max(minId, maxUsedAbstractNumId + 1);
 
     return {
+        // Kept so list edits can recognise which existing definition a source list uses and continue it.
+        sourceNumberingXml: String(numberingXml || ''),
         nextNumId: nextAvailableId(baseNumId, usedNumIds, maxPreferred),
         nextAbstractNumId: nextAvailableId(baseAbstractNumId, usedAbstractNumIds, maxPreferred),
         usedNumIds,
@@ -285,6 +287,109 @@ export function buildExplicitDecimalMultilevelNumberingXml(numId, abstractNumId,
 </w:numbering>`.trim();
 }
 
+function isTrackedDeletedParagraph(node) {
+    if (!node || node.nodeType !== 1 || node.localName !== 'p') return false;
+    const pPr = Array.from(node.childNodes || []).find(child => isDirectWordChild(child, 'pPr'));
+    const rPr = pPr && Array.from(pPr.childNodes || []).find(child => isDirectWordChild(child, 'rPr'));
+    return !!rPr && Array.from(rPr.childNodes || []).some(child => isDirectWordChild(child, 'del'));
+}
+
+function paragraphNumIdNodes(node) {
+    return Array.from(node?.getElementsByTagNameNS?.('*', 'numId') || [])
+        .filter(numIdNode => numIdNode.parentNode?.localName === 'numPr');
+}
+
+function levelFormats(abstractNum) {
+    const formats = new Map();
+    for (const lvl of Array.from(abstractNum?.getElementsByTagNameNS?.('*', 'lvl') || [])) {
+        const ilvl = getElementId(lvl, ['w:ilvl', 'ilvl']);
+        const fmt = Array.from(lvl.getElementsByTagNameNS('*', 'numFmt'))[0]?.getAttribute('w:val') || null;
+        if (ilvl != null && fmt) formats.set(ilvl, fmt);
+    }
+    return formats;
+}
+
+function normalizeListFormat(format) {
+    return format === 'bullet' || format === 'circle' || format === 'square' ? 'bullet' : format;
+}
+
+function abstractNumForNumId(numberingDoc, numId) {
+    const num = Array.from(numberingDoc.getElementsByTagNameNS('*', 'num'))
+        .find(candidate => getElementId(candidate, ['w:numId', 'numId']) === numId);
+    const abstractId = num && getElementId(Array.from(num.getElementsByTagNameNS('*', 'abstractNumId'))[0], ['w:val', 'val']);
+    if (abstractId == null) return null;
+    return Array.from(numberingDoc.getElementsByTagNameNS('*', 'abstractNum'))
+        .find(candidate => getElementId(candidate, ['w:abstractNumId', 'abstractNumId']) === abstractId) || null;
+}
+
+/**
+ * Lets a same-kind list replacement continue the list it replaces instead of allocating a new
+ * numbering definition. When every new list paragraph's generated definition has the same format
+ * as the single existing list used by the source paragraphs at each level in use, the new
+ * paragraphs are bound to that existing numId and the generated numbering payload is dropped.
+ * Format-changing replacements (and anything ambiguous) return null and take the allocation path.
+ *
+ * @param {string|null} numberingXml - Generated numbering payload
+ * @param {Node[]} replacementNodes - Generated paragraphs (tracked-deleted source copies are left alone)
+ * @param {Node[]} sourceParagraphs - Paragraphs being replaced
+ * @param {{ sourceNumberingXml?: string }|null} numberingIdState
+ * @returns {{ numId: number, replacementNodes: Node[] }|null}
+ */
+export function reuseSourceListNumbering(numberingXml, replacementNodes, sourceParagraphs, numberingIdState) {
+    const sourceXml = numberingIdState?.sourceNumberingXml;
+    if (!numberingXml || !String(sourceXml || '').trim() || !Array.isArray(replacementNodes)) return null;
+
+    const sourceNumIds = new Set();
+    for (const paragraph of sourceParagraphs || []) {
+        for (const numIdNode of paragraphNumIdNodes(paragraph)) {
+            const id = getElementId(numIdNode, ['w:val', 'val']);
+            if (id != null && id !== 0) sourceNumIds.add(id);
+        }
+    }
+    if (sourceNumIds.size !== 1) return null;
+    const [sourceNumId] = sourceNumIds;
+
+    const sourceDoc = parseOoxml(sourceXml);
+    const payloadDoc = parseOoxml(numberingXml);
+    if (hasXmlParseError(sourceDoc) || hasXmlParseError(payloadDoc)) return null;
+    const sourceAbstract = abstractNumForNumId(sourceDoc, sourceNumId);
+    if (!sourceAbstract) return null;
+    const sourceFormats = levelFormats(sourceAbstract);
+
+    const newParagraphNumIds = [];
+    for (const node of replacementNodes) {
+        if (isTrackedDeletedParagraph(node)) continue;
+        for (const numIdNode of paragraphNumIdNodes(node)) {
+            const ilvlNode = Array.from(numIdNode.parentNode.childNodes || []).find(child => child.localName === 'ilvl');
+            newParagraphNumIds.push({
+                numId: getElementId(numIdNode, ['w:val', 'val']),
+                ilvl: ilvlNode ? (getElementId(ilvlNode, ['w:val', 'val']) ?? 0) : 0
+            });
+        }
+    }
+    if (newParagraphNumIds.length === 0) return null;
+
+    const payloadFormats = new Map();
+    for (const { numId, ilvl } of newParagraphNumIds) {
+        if (numId == null) return null;
+        if (!payloadFormats.has(numId)) {
+            const abstract = abstractNumForNumId(payloadDoc, numId);
+            if (!abstract) return null;
+            payloadFormats.set(numId, levelFormats(abstract));
+        }
+        const generated = payloadFormats.get(numId).get(ilvl);
+        const existing = sourceFormats.get(ilvl);
+        if (!generated || !existing || normalizeListFormat(generated) !== normalizeListFormat(existing)) return null;
+    }
+
+    const clonedNodes = replacementNodes.map(node => (node?.cloneNode ? node.cloneNode(true) : node));
+    for (const node of clonedNodes) {
+        if (isTrackedDeletedParagraph(node)) continue;
+        for (const numIdNode of paragraphNumIdNodes(node)) setElementVal(numIdNode, sourceNumId);
+    }
+    return { numId: sourceNumId, replacementNodes: clonedNodes };
+}
+
 /**
  * Remaps incoming numbering payload IDs to document-safe IDs, and updates the
  * provided replacement nodes to reference the remapped `w:numId` values.
@@ -340,6 +445,9 @@ export function remapNumberingPayloadForDocument(numberingXml, replacementNodes,
         ? replacementNodes.map(node => node?.cloneNode ? node.cloneNode(true) : node)
         : [];
     for (const node of clonedNodes) {
+        // A paragraph whose mark is tracked-deleted is retained source content. Its numId refers to the
+        // document's own definitions, never to this payload, so it must keep pointing at them.
+        if (isTrackedDeletedParagraph(node)) continue;
         const numIdNodes = Array.from(node?.getElementsByTagNameNS?.('*', 'numId') || []);
         for (const numIdNode of numIdNodes) {
             const oldNumRef = getElementId(numIdNode, ['w:val', 'val']);

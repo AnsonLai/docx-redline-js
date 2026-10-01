@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import './setup-xml-provider.mjs';
-import { inspectDocumentParts } from '../index.js';
+import { inspectDocumentParts, getParagraphListInfo } from '../index.js';
+import { parseOoxmlSafe } from '../adapters/xml-adapter.js';
 
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const documentXml = `<w:document xmlns:w="${W}"><w:body>
@@ -39,3 +40,37 @@ assert.equal(missing.status, 'error'); assert.equal(missing.error.code, 'MISSING
 const optionalMalformed = inspectDocumentParts({ documentXml, commentsXml: '<bad' });
 assert.equal(optionalMalformed.status, 'ok'); assert.equal(optionalMalformed.warnings.length > 0, true);
 console.log('document inspection edge tests passed');
+
+// Historical (w:pPrChange) paragraph properties must never be reported as current.
+{
+    const hist = (inner) => `<w:pPrChange w:id="7" w:author="Prior Editor"><w:pPr>${inner}</w:pPr></w:pPrChange>`;
+    const num = (id) => `<w:numPr><w:ilvl w:val="0"/><w:numId w:val="${id}"/></w:numPr>`;
+    const histDoc = `<w:document xmlns:w="${W}"><w:body>
+      <w:p><w:pPr>${hist(num(1))}</w:pPr><w:r><w:t>Historical only</w:t></w:r></w:p>
+      <w:p><w:pPr>${num(1)}</w:pPr><w:r><w:t>Active control</w:t></w:r></w:p>
+      <w:p><w:pPr>${num(2)}${hist(num(1))}</w:pPr><w:r><w:t>Both</w:t></w:r></w:p>
+      <w:p><w:pPr><w:pStyle w:val="Heading2"/><w:outlineLvl w:val="2"/>${hist('<w:pStyle w:val="Heading1"/><w:outlineLvl w:val="0"/>')}</w:pPr><w:r><w:t>Style current</w:t></w:r></w:p>
+      <w:p><w:pPr>${hist('<w:pStyle w:val="Heading1"/><w:outlineLvl w:val="0"/>')}</w:pPr><w:r><w:t>Style historical only</w:t></w:r></w:p>
+      <w:sectPr/></w:body></w:document>`;
+    const out = inspectDocumentParts({ documentXml: histDoc }).paragraphs;
+    assert.equal(out[0].list, null, 'numPr only under pPrChange is not a current list');
+    assert.deepEqual([out[1].list.numId, out[1].list.level], ['1', 0]);
+    assert.equal(out[2].list.numId, '2', 'current numPr wins over historical');
+    assert.equal(out[3].styleId, 'Heading2');
+    assert.equal(out[3].headingLevel, 2);
+    assert.equal(out[4].styleId, null, 'historical pStyle is not current');
+    assert.equal(out[4].headingLevel, null, 'historical heading is not current');
+}
+
+// Shared list-targeting helper must also ignore historical numPr.
+{
+    const num = id => `<w:numPr><w:ilvl w:val="1"/><w:numId w:val="${id}"/></w:numPr>`;
+    const histOnly = `<w:pPrChange w:id="7" w:author="P"><w:pPr>${num(1)}</w:pPr></w:pPrChange>`;
+    const doc = parseOoxmlSafe(`<w:document xmlns:w="${W}"><w:body>
+      <w:p><w:pPr>${histOnly}</w:pPr></w:p>
+      <w:p><w:pPr>${num(2)}${histOnly}</w:pPr></w:p>
+      <w:sectPr/></w:body></w:document>`, 'application/xml').doc;
+    const [historicalOnly, both] = Array.from(doc.getElementsByTagNameNS(W, 'p'));
+    assert.equal(getParagraphListInfo(historicalOnly), null);
+    assert.deepEqual(getParagraphListInfo(both), { numId: '2', ilvl: 1 });
+}

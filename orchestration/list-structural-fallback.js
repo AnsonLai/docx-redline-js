@@ -5,6 +5,7 @@
 
 import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { getXmlParseError } from '../core/xml-query.js';
+import { NS_W } from '../core/types.js';
 import { createWordElement } from '../core/word-xml.js';
 import {
     getDocumentParagraphNodes,
@@ -258,8 +259,18 @@ export function enforceListBindingOnParagraphNodes(nodes, options = {}) {
     return updated;
 }
 
+/**
+ * Parses a possibly namespace-less OOXML fragment. Generated list paragraphs are
+ * bare `<w:p>` fragments with no `xmlns:w`, which strict parsers reject.
+ */
+function parseOxmlFragment(oxml) {
+    const text = String(oxml || '');
+    const declared = /xmlns:w\s*=/.test(text);
+    return parseOoxmlSafe(declared ? text : `<w:root xmlns:w="${NS_W}">${text}</w:root>`, 'application/xml').doc;
+}
+
 function getFirstParagraphFromOxml(oxml) {
-    const doc = parseOoxmlSafe(oxml, 'application/xml').doc;
+    const doc = parseOxmlFragment(oxml);
     if (!doc) return null;
     const parseError = getXmlParseError(doc);
     if (parseError) return null;
@@ -291,19 +302,20 @@ function setElementVal(element, value) {
 }
 
 function extractFirstParagraphNumIdFromOxml(oxml) {
-    const doc = parseOoxmlSafe(oxml, 'application/xml').doc;
+    const doc = parseOxmlFragment(oxml);
     if (!doc) return null;
     const parseError = getXmlParseError(doc);
     if (parseError) return null;
 
     const paragraphs = getDocumentParagraphNodes(doc);
-    const firstParagraph = paragraphs[0] || null;
-    if (!firstParagraph) return null;
-
-    const numIdNodes = Array.from(firstParagraph.getElementsByTagNameNS('*', 'numId'));
-    for (const numIdNode of numIdNodes) {
-        const numId = getElementId(numIdNode, ['w:val', 'val']);
-        if (numId != null) return String(numId);
+    // Tracked-change output leads with a deleted-original paragraph that carries
+    // no numPr, so the generated list binding is the first paragraph that has one.
+    for (const paragraph of paragraphs) {
+        const numIdNodes = Array.from(paragraph.getElementsByTagNameNS('*', 'numId'));
+        for (const numIdNode of numIdNodes) {
+            const numId = getElementId(numIdNode, ['w:val', 'val']);
+            if (numId != null) return String(numId);
+        }
     }
     return null;
 }
