@@ -105,6 +105,10 @@ export interface RedlineOptions {
   structuredContent?: boolean;
   pairReplacements?: boolean;
   insertionAffinity?: InsertionAffinity;
+  /** Source numbering part; generated list definitions are remapped to IDs that do not collide with it. */
+  numberingXml?: string | null;
+  /** Shared numbering ID state (from `createDynamicNumberingIdState`) for allocation across calls. */
+  numberingIdState?: unknown;
   [key: string]: unknown;
 }
 

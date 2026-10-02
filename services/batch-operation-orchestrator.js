@@ -24,6 +24,7 @@ import {
     reconcileReceiptsAgainstOutput
 } from './receipt-collector.js';
 import { compileOperationBatch } from './operation-batch-compiler.js';
+import { createDynamicNumberingIdState } from './numbering-helpers.js';
 import { createRetryPlan } from './error-recovery.js';
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
@@ -368,6 +369,11 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
 
     const atomic = options.atomic === true;
     const continueOnError = options.continueOnError !== false;
+    // Generated list definitions must not collide with the supplied source numbering part.
+    if (runtimeContext && typeof runtimeContext === 'object' && !runtimeContext.numberingIdState
+        && typeof runtimeContext.numberingXml === 'string' && runtimeContext.numberingXml.trim()) {
+        runtimeContext.numberingIdState = createDynamicNumberingIdState(runtimeContext.numberingXml);
+    }
     const context = cloneBatchRuntimeContext(runtimeContext);
     if (!(context.targetRefSnapshot instanceof Map)) {
         context.targetRefSnapshot = session.initialTargetReferenceSnapshot;

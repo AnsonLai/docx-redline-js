@@ -17,7 +17,7 @@ import {
 } from '../core/xml-query.js';
 import { createSerializer, parseOoxmlSafe, serializeXml } from '../adapters/xml-adapter.js';
 import { log, error } from '../adapters/logger.js';
-import { extractFormattingFromOoxml } from './format-extraction.js';
+import { buildTextSpansFromParagraphs, extractFormattingFromOoxml } from './format-extraction.js';
 import {
     applyFormatRemovalAsSurgicalReplacement,
     applyFormatOnlyChangesSurgical
@@ -375,7 +375,7 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
         operationWarnings.push('Input was sanitized; pass sanitizeInput: false to disable.');
     }
     let structuredAnalysis = null;
-    if (options.structuredContent !== false) {
+    if (options.structuredContent !== false && options.literalTextEdit !== true) {
         structuredAnalysis = analyzeStructuredContent(sanitizedText);
         if (!structuredAnalysis.valid) {
             if (options.explicitStructuredContent === true) {
@@ -395,21 +395,32 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
     }
     const { cleanText: cleanModifiedText, formatHints } = preprocessMarkdown(sanitizedText);
 
-    const hasTextChanges = existingRevisionsPolicy === 'slice-cross-author'
+    const { existingFormatHints, textSpans, paragraphs } = extractFormattingFromOoxml(xmlDoc);
+    const hasLiteralTextChanges = existingRevisionsPolicy === 'slice-cross-author'
         ? cleanModifiedText !== originalText
         : cleanModifiedText.trim() !== originalText.trim();
+    // Markdown list markers can equal manually typed ones ("A. ..." lines), so
+    // an explicit structured-content request that turns plain paragraphs or
+    // soft-break lines into a list is a change even when the text is identical.
+    const hasListStructureChange = !hasLiteralTextChanges
+        && options.explicitStructuredContent === true
+        && isListTargetLoose(cleanModifiedText)
+        && !sourceMatchesListShape(paragraphs, cleanModifiedText);
+    const hasTextChanges = hasLiteralTextChanges || hasListStructureChange;
     const hasFormatHints = formatHints.length > 0;
-
-    const { existingFormatHints, textSpans, paragraphs } = extractFormattingFromOoxml(xmlDoc);
     const hasExistingFormatting = existingFormatHints.length > 0;
-    const visibleText = textSpans.map(span => textSpanVisibleText(span)).join('');
+    // Formatting spans carry only w:t text. Target matching also needs w:br,
+    // w:cr and w:tab so host text with soft line breaks (Word's Paragraph.text
+    // reports them as "\v") still matches its source paragraph.
+    const { textSpans: targetSpans } = buildTextSpansFromParagraphs(paragraphs);
+    const visibleText = targetSpans.map(span => textSpanVisibleText(span)).join('');
     const targetFound = originalText.includes('\n') || originalText.includes('\r')
         ? originalText
             .split(/\r?\n/)
             .map(normalizeTargetText)
             .filter(Boolean)
             .every(line => paragraphs.some(paragraph => {
-                const paragraphText = textSpans
+                const paragraphText = targetSpans
                     .filter(span => span.paragraph === paragraph)
                     .map(textSpanVisibleText)
                     .join('');
@@ -555,7 +566,9 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
     const tables = getElementsByTagNSOrTag(xmlDoc, NS_W, 'tbl');
     const hasTables = tables.length > 0;
     const isMarkdownTable = /^\|.+\|/.test(cleanModifiedText.trim()) && cleanModifiedText.includes('\n');
-    const isTargetList = isListTargetLoose(cleanModifiedText);
+    // Localized replacements are literal text edits: marker-like lines ("A. ..." separated by
+    // soft breaks) must not be re-interpreted as a request to build a numbered list.
+    const isTargetList = options.literalTextEdit !== true && isListTargetLoose(cleanModifiedText);
     const isStructuredContent = options.structuredContent !== false && structuredAnalysis?.requiresStructuredContent === true;
     const tableCellContext = initialTableCellContext;
 
@@ -680,6 +693,13 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
         }
         throw caught;
     }
+}
+
+function sourceMatchesListShape(paragraphs, listText) {
+    const itemCount = String(listText).split(/\r?\n/).filter(line => line.trim()).length;
+    return paragraphs.length === itemCount && paragraphs.every(paragraph => (
+        getElementsByTagNSOrTag(paragraph, NS_W, 'numPr').length > 0
+    ));
 }
 
 function normalizeTargetText(text) {

@@ -42,6 +42,7 @@ import {
     getParagraphId,
     createParagraphFingerprint,
     isMarkdownTableText,
+    normalizeWhitespaceForTargeting,
     findContainingWordElement,
     resolveTargetParagraphWithSnapshot as resolveTargetParagraphWithSnapshotShared,
     resolveParagraphRangeByRefs,
@@ -82,9 +83,12 @@ import {
 import { prepareRevisionAllocator } from './document-operation-session.js';
 import {
     buildExplicitRangeInsertionEntries,
+    deriveParagraphThenTableAppend,
     deriveSingleParagraphListAdjacencyInsertion,
     deriveSingleParagraphPlainAdjacencyInsertion
 } from './operation-heuristics.js';
+import { generateTableOoxml } from './table-reconciliation.js';
+import { preprocessMarkdown } from '../pipeline/markdown-processor.js';
 import { resolveTargetFromCapture, ensureParagraphIdsOnImportedNode } from './capture-engine.js';
 import {
     acceptTrackedChangesInOoxml,
@@ -1945,6 +1949,102 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         };
     }
 
+    // Retained paragraph followed by a Markdown table: keep the source paragraph in place (so its own
+    // content, formatting and revisions are untouched), apply any requested inline formatting to it,
+    // and insert the table after it instead of rewriting the paragraph as a deletion plus a copy.
+    const tableAppendCandidate = (
+        !useTableScope
+        && !hasExplicitRangeScope
+        && !targetListInfo
+        && !containingTable
+        && !targetEndRef
+    )
+        ? deriveParagraphThenTableAppend(effectiveModifiedText)
+        : null;
+    const tableAppendParagraph = tableAppendCandidate
+        ? preprocessMarkdown(tableAppendCandidate.paragraphMarkdown)
+        : null;
+    if (
+        tableAppendCandidate
+        && normalizeWhitespaceForTargeting(tableAppendParagraph.cleanText) === normalizeWhitespaceForTargeting(currentParagraphText)
+    ) {
+        const tableData = parseMarkdownTable(tableAppendCandidate.tableText);
+        if (tableData.headers.length > 0 || tableData.rows.length > 0) {
+            onInfo('[Table] Applying retained-paragraph table append heuristic.');
+            const parent = targetParagraph.parentNode;
+            if (!parent) throw new Error('Target paragraph has no parent for table append');
+            const followingNode = targetParagraph.nextSibling;
+            if (tableAppendParagraph.formatHints.length > 0) {
+                const formatted = await applyRedlineToOxml(
+                    serializer.serializeToString(targetParagraph),
+                    currentParagraphText || targetText,
+                    tableAppendCandidate.paragraphMarkdown,
+                    {
+                        author,
+                        generateRedlines,
+                        existingRevisions: options.existingRevisions || 'merge-same-author',
+                        structuredContent: false,
+                        _revisionIdAllocator: revisionIdAllocator
+                    }
+                );
+                if (formatted?.status === 'error') {
+                    return {
+                        documentXml,
+                        hasChanges: false,
+                        numberingXml: null,
+                        status: 'error',
+                        error: formatted.error
+                    };
+                }
+                if (formatted?.hasChanges) {
+                    if (typeof formatted.oxml !== 'string') {
+                        throw new Error('Reconciliation engine did not return OOXML for a changed paragraph format');
+                    }
+                    for (const node of extractReplacementNodes(formatted.oxml).replacementNodes) {
+                        const imported = xmlDoc.importNode(node, true);
+                        ensureParagraphIdsOnImportedNode(imported, operationSession);
+                        options?._mutationLiveNodes?.push(parent.insertBefore(imported, targetParagraph));
+                    }
+                    options?._mutationRemovedNodes?.push(targetParagraph);
+                    parent.removeChild(targetParagraph);
+                }
+            }
+            const tableOoxml = generateTableOoxml(tableData, {
+                generateRedlines,
+                author,
+                revisionIdAllocator,
+                trackAsBlock: true
+            });
+            for (const node of extractReplacementNodes(tableOoxml).replacementNodes) {
+                options?._mutationLiveNodes?.push(parent.insertBefore(xmlDoc.importNode(node, true), followingNode));
+            }
+            // Word cannot end the body (or a container) with a table: it would add an untracked paragraph
+            // there that Reject All leaves behind. Supply the paragraph ourselves with a tracked-inserted
+            // mark so Reject All removes it and the source paragraph count is restored.
+            const endsContainer = !followingNode
+                || (followingNode.nodeType === 1 && followingNode.namespaceURI === NS_W && followingNode.localName === 'sectPr');
+            if (endsContainer) {
+                const trailing = createWordElement(xmlDoc, 'w:p');
+                const trailingPPr = clonePropertiesWithoutRevisionHistory(getDirectWordChild(targetParagraph, 'pPr'));
+                if (trailingPPr) {
+                    for (const child of Array.from(trailingPPr.childNodes)) {
+                        if (child.nodeType === 1 && ['sectPr', 'numPr'].includes(child.localName)) trailingPPr.removeChild(child);
+                    }
+                    trailing.appendChild(trailingPPr);
+                }
+                if (generateRedlines) markParagraphMarkInserted(xmlDoc, trailing, author);
+                ensureParagraphIdsOnImportedNode(trailing, operationSession);
+                options?._mutationLiveNodes?.push(parent.insertBefore(trailing, followingNode));
+            }
+            normalizeBodySectionOrder(xmlDoc);
+            return {
+                documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
+                hasChanges: true,
+                numberingXml: null
+            };
+        }
+    }
+
     const plainAdjacencyInsertionCandidate = (
         !bypassSingleParagraphHeuristics
         && !useTableScope
@@ -2115,6 +2215,7 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
             explicitStructuredContent: options.explicitStructuredContent === true,
             pairReplacements: options.pairReplacements === true,
             insertionAffinity: options.insertionAffinity || null,
+            literalTextEdit: options.literalTextEdit === true,
             _revisionIdAllocator: revisionIdAllocator,
             _isolatedTableCell: useTableScope
         });
@@ -2429,7 +2530,12 @@ export async function applyFormattingToParagraphByExactText(
     }
 
     const targetDescriptor = options.targetDescriptor;
-    const occurrence = targetDescriptor?.occurrence ?? null;
+    // `textOccurrence` is the dedicated in-paragraph selector. Legacy calls without it keep
+    // reading `target.occurrence` (which also selects the N-th matching paragraph).
+    const explicitTextOccurrence = Number.isInteger(options.textOccurrence) && options.textOccurrence > 0
+        ? options.textOccurrence
+        : null;
+    const occurrence = explicitTextOccurrence ?? targetDescriptor?.occurrence ?? null;
     let matchStart = -1;
     if (occurrence != null && occurrence > 0) {
         let count = 0;
@@ -2446,6 +2552,18 @@ export async function applyFormattingToParagraphByExactText(
         }
     } else {
         matchStart = fullParaText.indexOf(textToFormat);
+    }
+
+    if (matchStart === -1 && explicitTextOccurrence != null && fullParaText.includes(textToFormat)) {
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: {
+                code: 'PATCH_SOURCE_NOT_FOUND',
+                message: `Occurrence ${explicitTextOccurrence} of text to format was not found in target paragraph: "${textToFormat}".`
+            }
+        };
     }
 
     if (matchStart === -1) {

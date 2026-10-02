@@ -21,9 +21,43 @@ import {
     executeSingleLineListStructuralFallback
 } from './orchestration/list-structural-fallback.js';
 import { withOoxmlSourceType } from './core/word-xml.js';
+import { createDynamicNumberingIdState, remapNumberingPayloadForDocument } from './services/numbering-helpers.js';
 export { containsTrackedChanges, getTrackedChangeAuthors } from './core/word-xml.js';
 export { validateRedlineOoxml } from './core/redline-validation.js';
 export { analyzeStructuredContent, planStructuredReplacement } from './pipeline/structured-content.js';
+
+/**
+ * When the caller supplies the source `numberingXml` (or a numbering ID state), generated list
+ * definitions are remapped to IDs that cannot collide with any existing `w:num`/`w:abstractNum`.
+ */
+function remapGeneratedNumberingForSource(result, options) {
+    const sourceNumbering = typeof options?.numberingXml === 'string' && options.numberingXml.trim()
+        ? options.numberingXml
+        : null;
+    const state = options?.numberingIdState && typeof options.numberingIdState === 'object'
+        ? options.numberingIdState
+        : (sourceNumbering ? createDynamicNumberingIdState(sourceNumbering) : null);
+    if (!state || !result?.hasChanges || typeof result.oxml !== 'string' || !result.oxml.includes('/word/numbering.xml')) {
+        return result;
+    }
+    const pkgDoc = parseOoxml(result.oxml);
+    const parts = Array.from(pkgDoc.getElementsByTagNameNS('*', 'part'));
+    const payloadOf = name => {
+        const part = parts.find(candidate => (candidate.getAttribute('pkg:name') || candidate.getAttribute('name')) === name);
+        const xmlData = part?.getElementsByTagNameNS('*', 'xmlData')[0];
+        return xmlData ? Array.from(xmlData.childNodes).find(node => node.nodeType === 1) || null : null;
+    };
+    const numberingNode = payloadOf('/word/numbering.xml');
+    const body = payloadOf('/word/document.xml')?.getElementsByTagNameNS('*', 'body')[0];
+    if (!numberingNode || !body) return result;
+
+    const bodyNodes = Array.from(body.childNodes).filter(node => node.nodeType === 1 && node.localName !== 'sectPr');
+    const remapped = remapNumberingPayloadForDocument(serializeOoxml(numberingNode), bodyNodes, state);
+    const newNumbering = pkgDoc.importNode(parseOoxml(remapped.numberingXml).documentElement, true);
+    numberingNode.parentNode.replaceChild(newNumbering, numberingNode);
+    bodyNodes.forEach((node, index) => body.replaceChild(remapped.replacementNodes[index], node));
+    return { ...result, oxml: serializeOoxml(pkgDoc) };
+}
 
 /**
  * Standalone-safe redline wrapper.
@@ -33,7 +67,8 @@ export { analyzeStructuredContent, planStructuredReplacement } from './pipeline/
  * complete that native fallback path, so normalize to a no-op with warnings.
  */
 export async function applyRedlineToOxml(oxml, originalText, modifiedText, options = {}) {
-    const result = await applyRedlineToOxmlEngine(oxml, originalText, modifiedText, options);
+    const rawResult = await applyRedlineToOxmlEngine(oxml, originalText, modifiedText, options);
+    const result = remapGeneratedNumberingForSource(rawResult, options);
     if (result?.useNativeApi && typeof result?.oxml !== 'string') {
         const existingWarnings = Array.isArray(result?.warnings) ? result.warnings : [];
         return withOoxmlSourceType({

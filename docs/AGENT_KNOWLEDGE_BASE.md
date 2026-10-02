@@ -465,7 +465,7 @@ fragment to insert. Do not choose a type from its English name alone.
 | Change native list structure | `{ type: 'list-change', target, modified: '<complete Markdown list>' }` |
 | Reconcile a Word table | `{ type: 'table-reconciliation', target, modified: '<complete Markdown table>' }` |
 | Comment or highlight existing text | `comment` with `commentContent`, or `highlight` with `textToHighlight` |
-| Change character or paragraph formatting | `character-format`/`format` with `textToFormat` and `properties`, or `paragraph-format` with `properties` |
+| Change character or paragraph formatting | `character-format`/`format` with `textToFormat` and `properties`, or `paragraph-format` with `properties`; add `textOccurrence` (1-based, default 1) to format a later match of `textToFormat` inside the targeted paragraph (out of range fails `PATCH_SOURCE_NOT_FOUND`; independent of `target.occurrence`, which selects the paragraph; legacy calls without `textOccurrence` still read `target.occurrence`; capability `format-text-occurrence-v1`) |
 | Counterpropose a paragraph wholly deleted by another author | `restore` with a rejected-view target |
 | Insert text inside another author's rejected-view content | `insert` with `target.revisionView: 'rejected'`, an exact `anchor`, and `existingRevisions: 'slice-cross-author'` |
 
@@ -514,6 +514,9 @@ revision markup internally before writing, so do not add `preflight` or baseline
 2. Build one final operation per target. Use complete `modified` text for broad
    semantic revisions or localized `replacements` for small literal changes in
    an inspected target. Consolidate multiple changes to one paragraph.
+   Paragraphs with soft line breaks (`\n` in `exactText`) accept `replacements`
+   whose `find` lies within one line; the breaks are preserved. A `find` or
+   `replace` that spans or adds a line break is refused.
 3. Run `apply` once per stable batch. Independent strong targets bind against
    the batch-start document and do not need bottom-up sorting. Use captures only
    for intentional created-content dependencies.

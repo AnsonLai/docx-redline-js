@@ -171,3 +171,27 @@ export function deriveSingleParagraphPlainAdjacencyInsertion(currentParagraphTex
     }
     return null;
 }
+
+/**
+ * Detects "retained paragraph followed by one Markdown table": a single leading
+ * paragraph line (inline Markdown allowed) then a contiguous pipe table with a
+ * separator row. The caller verifies that the paragraph line's plain text equals
+ * the target paragraph.
+ *
+ * @param {string} modifiedText - Requested replacement text
+ * @returns {{ paragraphMarkdown: string, tableText: string }|null}
+ */
+export function deriveParagraphThenTableAppend(modifiedText) {
+    const lines = String(modifiedText || '')
+        .split(/\r?\n/g)
+        .map(line => line.trimEnd())
+        .filter(line => line.trim().length > 0);
+    if (lines.length < 3) return null;
+    const tableStart = lines.findIndex(line => line.trim().startsWith('|'));
+    if (tableStart !== 1) return null;
+    const tableLines = lines.slice(1);
+    if (!tableLines.every(line => line.trim().startsWith('|'))) return null;
+    const separator = tableLines[1].replace(/\s+/g, '');
+    if (!/^\|:?-{3,}:?(\|:?-{3,}:?)+\|?$/.test(separator)) return null;
+    return { paragraphMarkdown: lines[0].trim(), tableText: tableLines.join('\n') };
+}

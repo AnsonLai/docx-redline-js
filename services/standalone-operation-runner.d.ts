@@ -165,6 +165,8 @@ export interface HighlightDocumentOperation extends DocumentOperationBase {
 export interface CharacterFormatDocumentOperation extends DocumentOperationBase {
   type: 'format' | 'character-format';
   textToFormat: string;
+  /** 1-based match of `textToFormat` inside the resolved paragraph (default 1). Independent of `target.occurrence`. */
+  textOccurrence?: number;
   properties: CharacterFormatProperties;
   formattingRevisionPolicy?: 'always' | 'coalesce-own-insertion';
 }

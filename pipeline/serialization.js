@@ -219,7 +219,24 @@ function buildRunXmlWithHints(item, formatHints, options = {}) {
 function buildSimpleRun(text, rPrXml) {
     if (!text) return '';
     const rPr = rPrXml || '';
-    return `<w:r>${rPr}<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`;
+    return `<w:r>${rPr}${buildRunContent(text, 'w:t')}</w:r>`;
+}
+
+/**
+ * Builds run content, restoring in-run line breaks and tabs (ingested from
+ * w:br/w:cr/w:tab as "\n"/"\t") as elements; raw control characters inside
+ * w:t or w:delText render as spaces in Word.
+ *
+ * @param {string} text - Run text
+ * @param {'w:t'|'w:delText'} textTag - Text element name
+ * @returns {string}
+ */
+function buildRunContent(text, textTag) {
+    return String(text).split(/(\r\n|[\n\r\v\t])/).map(part => {
+        if (part === '\t') return '<w:tab/>';
+        if (part === '\n' || part === '\r' || part === '\r\n' || part === '\v') return '<w:br/>';
+        return part ? `<${textTag} xml:space="preserve">${escapeXml(part)}</${textTag}>` : '';
+    }).join('');
 }
 
 /**
@@ -243,7 +260,7 @@ function buildDeletionXml(item, options = {}) {
     }
 
     return `<w:del w:id="${metadata.id}" w:author="${escapeXml(metadata.author)}" w:date="${metadata.date}">` +
-        `<w:r>${rPr}<w:delText xml:space="preserve">${escapeXml(item.text)}</w:delText></w:r>` +
+        `<w:r>${rPr}${buildRunContent(item.text, 'w:delText')}</w:r>` +
         `</w:del>`;
 }
 

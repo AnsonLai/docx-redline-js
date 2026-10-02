@@ -38,7 +38,8 @@ const CLI_CAPABILITIES = [
     'compact-cli-json-v1',
     'comment-resolve-operation-v1',
     'delete-comments-by-id-v1',
-    'header-footer-parts-v1'
+    'header-footer-parts-v1',
+    'format-text-occurrence-v1'
 ];
 const commandOptions = Object.fromEntries(CLI_COMMANDS.map(command => [command, new Set(commandOptionKeys(command))]));
 

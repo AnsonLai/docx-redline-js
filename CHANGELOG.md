@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.8.4
+
+### Added
+
+- **`textOccurrence` on `format` / `character-format`:** a 1-based match of `textToFormat` inside the resolved paragraph,
+  independent of `target.occurrence` (which selects the paragraph). Out of range fails with `PATCH_SOURCE_NOT_FOUND`;
+  calls without it still read `target.occurrence`. CLI capability `format-text-occurrence-v1`; contract stays version 8.
+- **`applyRedlineToOxml` numbering options:** `numberingXml` and `numberingIdState` remap generated list definitions to
+  IDs that do not collide with the source numbering.
+
+### Fixed
+
+- **Soft-break text can be converted to a list:** a paragraph whose `A. …`, `B. …` items are separated by `<w:br/>` was
+  refused with `TARGET_NOT_FOUND`, and an explicit list request identical to typed markers was a no-op. In-run `\n`/`\t`
+  now serialize back to `<w:br/>`/`<w:tab/>`, including inside `w:delText`, so Reject All restores the breaks.
+- **Localized `replacements` work in paragraphs with soft line breaks:** they were refused with `INVALID_OPERATION`.
+  A `find` within one line now applies and keeps the breaks; a `find` or `replace` that spans or adds a break is refused.
+- **Generated bullets no longer reuse existing numbering IDs:** bullets generated into a document that already defined
+  `numId 1` continued an existing decimal list in Word. The bare runner and `applyRedlineToOxml` now allocate new IDs
+  from the supplied `numberingXml`, as `openDocx` already did.
+- **Appending a table after a paragraph keeps its underline:** the paragraph was tracked as deleted and re-inserted as
+  plain text, so a prior same-author underline, or a `++underline++` sent with the table, was lost on Accept All. The
+  source paragraph is now kept in place.
+- **Word's Reject All removes generated tables:** tracked tables were wrapped in one `w:ins` around `w:tbl`, which Word
+  does not recognize. Reject All left an empty table, and a table at the end of a document could hang Word. Tables now
+  use row-level `w:trPr/w:ins` with inserted cell content and marks, and `rejectTrackedChangesInOoxml` removes a table
+  once all of its rows are rejected. Confirmed in Word.
+
+### Tests
+
+- New `tests/soft_break_list_conversion_tests.mjs`, `tests/soft_break_localized_replacements_tests.mjs`,
+  `tests/generated_bullet_numbering_collision_tests.mjs`, `tests/format_text_occurrence_tests.mjs` and
+  `tests/table_append_fidelity_tests.mjs`.
+
+### Known limitations
+
+- Localized restore in the rejected view still refuses paragraphs with line breaks.
+- The table-append path covers one paragraph followed by one table.
+- Under `merge-same-author`, editing the text of a paragraph that carries your own pending formatting change still drops
+  that formatting on Accept All.
+
 ## 0.8.3
 
 ### Fixed

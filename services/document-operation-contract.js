@@ -252,7 +252,6 @@ export function validateDocumentOperation(operation) {
                 || normalized.captureKey
                 || normalized.targetEndDescriptor
                 || normalized.targetEndRef != null
-                || /\r|\n/.test(target.text || '')
             ) {
                 return {
                     valid: false,
@@ -272,6 +271,17 @@ export function validateDocumentOperation(operation) {
                     error: {
                         code: 'INVALID_OPERATION',
                         message: 'Localized replacements v1 cannot insert paragraph breaks.'
+                    }
+                };
+            }
+            // A soft line break (w:br reads as "\n") is not text the localized
+            // diff can delete, so a find spanning one would keep the break.
+            if (replacementValidation.replacements.some(replacement => /\r|\n/.test(replacement.find))) {
+                return {
+                    valid: false,
+                    error: {
+                        code: 'INVALID_OPERATION',
+                        message: 'Localized replacements v1 cannot span a line break; use one replacement per line or a full "modified" paragraph.'
                     }
                 };
             }
@@ -495,6 +505,12 @@ export function validateDocumentOperation(operation) {
             return {
                 valid: false,
                 error: { code: 'INVALID_OPERATION', message: 'Format operations require a non-empty "textToFormat" field.' }
+            };
+        }
+        if (normalized.textOccurrence != null && (!Number.isInteger(normalized.textOccurrence) || normalized.textOccurrence < 1)) {
+            return {
+                valid: false,
+                error: { code: 'INVALID_OPERATION', message: 'textOccurrence must be a positive integer when provided.' }
             };
         }
         if (!isRecord(normalized.properties)) {

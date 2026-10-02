@@ -22,7 +22,7 @@ Converts AI-generated or programmatic text/markdown edits into valid Office Open
 
 ## What's New in 0.8.x
 
-The current release is 0.8.3. The CLI contract remains version 8 throughout the 0.8 line.
+The current release is 0.8.4. The CLI contract remains version 8 throughout the 0.8 line.
 
 - **0.8.0, universal document facade:** `openDocx` and `DocxDocument` are exported from the primary entry point and work
   on `Uint8Array` input in any JavaScript runtime. ZIP handling uses `fflate` and SHA-256 is pure JavaScript, so there are no
@@ -39,6 +39,10 @@ The current release is 0.8.3. The CLI contract remains version 8 throughout the 
   paragraph, no merged source paragraphs after a list-range replacement, original list numbering kept through `openDocx`),
   and inspection no longer reports tracked historical list, style or heading properties as current. See the
   [0.8.3 release notes](./docs/releases/0.8.3.md).
+- **0.8.4, fixes:** localized replacements and list conversion work in paragraphs with soft line breaks, generated
+  bullets get their own numbering IDs, `format` accepts `textOccurrence` to format a later match, and tracked tables use
+  Word's row-level markup, so Word's Reject All removes them and an appended table keeps the paragraph's formatting. See
+  the [0.8.4 release notes](./docs/releases/0.8.4.md).
 
 Version 0.7.0 introduced contract-8 localized edits: a small `find`/`replace` request against an inspected target instead
 of a complete paragraph, plus an optional speculative form that fails without writing when the anchor is missing or

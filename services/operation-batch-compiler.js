@@ -245,7 +245,11 @@ export function compileOperationBatch(xmlDoc, operations = [], options = {}) {
             && !operation.targetDescriptor?.fingerprint;
         const compositeTextTarget = typeof operation.targetDescriptor?.text === 'string'
             && /\r|\n/.test(operation.targetDescriptor.text)
-            && !operation.targetEndDescriptor;
+            && !operation.targetEndDescriptor
+            // A strong paragraph target with localized replacements is one paragraph whose
+            // soft line breaks (w:br) appear as "\n" in text; it still binds at batch start.
+            && !(Array.isArray(operation.replacements)
+                && (operation.targetDescriptor.paragraphId || operation.targetDescriptor.fingerprint));
         if (dynamicOccurrence || compositeTextTarget) binding.dynamic = true;
 
         if (

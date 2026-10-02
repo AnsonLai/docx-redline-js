@@ -25,7 +25,9 @@ export function generateTableOoxml(tableData, options = {}) {
         revisionIdAllocator = null,
         trackAsBlock = false
     } = options;
-    const tableInsertMeta = generateRedlines && trackAsBlock ? createRevisionMetadata(author, revisionIdAllocator) : null;
+    // trackAsBlock: Word-native inserted table = tracked-inserted rows (trPr/ins), inserted cell runs and
+    // tracked-inserted cell paragraph marks. (w:ins around w:tbl is not a table insertion to Word.)
+    const trackRows = generateRedlines && trackAsBlock;
 
     // Determine number of columns
     const numCols = tableData.headers?.length || (tableData.rows?.[0]?.length || 1);
@@ -65,7 +67,7 @@ export function generateTableOoxml(tableData, options = {}) {
 
             // Build run model for the cell
             const runModel = [{
-                kind: generateRedlines && !trackAsBlock ? RunKind.INSERTION : RunKind.TEXT,
+                kind: generateRedlines ? RunKind.INSERTION : RunKind.TEXT,
                 text: cleanText,
                 rPrXml: isHeaderRow ? '<w:rPr><w:b/></w:rPr>' : '',
                 author,
@@ -73,7 +75,11 @@ export function generateTableOoxml(tableData, options = {}) {
                 endOffset: cleanText.length
             }];
 
-            const runsOoxml = serializeToOoxml(runModel, null, formatHints, {
+            const cellMarkMeta = trackRows ? createRevisionMetadata(author, revisionIdAllocator) : null;
+            const cellPPr = cellMarkMeta
+                ? `<w:pPr><w:rPr><w:ins w:id="${cellMarkMeta.id}" w:author="${escapeXml(cellMarkMeta.author)}" w:date="${cellMarkMeta.date}"/></w:rPr></w:pPr>`
+                : null;
+            const runsOoxml = serializeToOoxml(runModel, cellPPr, formatHints, {
                 author,
                 generateRedlines,
                 revisionIdAllocator
@@ -91,18 +97,14 @@ export function generateTableOoxml(tableData, options = {}) {
         const trPr = isHeaderRow
             ? '<w:trPr><w:tblHeader/><w:cantSplit/></w:trPr>'
             : '<w:trPr><w:cantSplit/></w:trPr>';
-        rowsXml += `<w:tr>${trPr}${cellsXml}</w:tr>`;
+        const rowMeta = trackRows ? createRevisionMetadata(author, revisionIdAllocator) : null;
+        const trackedTrPr = rowMeta
+            ? trPr.replace('</w:trPr>', `<w:ins w:id="${rowMeta.id}" w:author="${escapeXml(rowMeta.author)}" w:date="${rowMeta.date}"/></w:trPr>`)
+            : trPr;
+        rowsXml += `<w:tr>${trackedTrPr}${cellsXml}</w:tr>`;
     }
 
-    // Build the table
-    let tableXml = `<w:tbl>${tblPr}${tblGrid}${rowsXml}</w:tbl>`;
-
-    // Wrap entire table in w:ins if generating redlines
-    if (tableInsertMeta) {
-        tableXml = `<w:ins w:id="${tableInsertMeta.id}" w:author="${escapeXml(tableInsertMeta.author)}" w:date="${tableInsertMeta.date}">${tableXml}</w:ins>`;
-    }
-
-    return tableXml;
+    return `<w:tbl>${tblPr}${tblGrid}${rowsXml}</w:tbl>`;
 }
 
 /**

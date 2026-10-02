@@ -426,6 +426,13 @@ export function rejectTrackedChangesInOoxml(oxml, options = {}) {
         if (removeNode(insNode)) rejectedCount += 1;
     }
 
+    // A table whose every row was an inserted row is itself an inserted table: drop the empty shell.
+    for (const tableNode of getWordElementsByLocalName(xmlDoc, 'tbl')) {
+        if (!tableNode.parentNode) continue;
+        const hasRow = Array.from(tableNode.childNodes || []).some(child => isWordElement(child, 'tr'));
+        if (!hasRow && removeNode(tableNode)) rejectedCount += 1;
+    }
+
     for (const delNode of getWordElementsByLocalName(xmlDoc, 'del')) {
         if (!delNode.parentNode || !authorMatchesNode(delNode, filter)) continue;
         if (isParagraphMarkRevisionMarker(delNode)) {
