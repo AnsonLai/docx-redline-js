@@ -181,7 +181,8 @@ async function testCommentAndBookmarkMarkersSurviveEdit() {
 
 async function testWholeCommentedTextReplacementKeepsBothRevisionViewsAnchored() {
     const original = 'The Provider may use Customer inputs and outputs to improve its services.';
-    const modified = 'Provider will not use Customer Content to train artificial intelligence models.';
+    // Shares no words or punctuation with the original, so the whole span is replaced.
+    const modified = 'Vendor shall not train artificial intelligence models on Client data';
     const xml = `
         <w:document xmlns:w="${NS_W}">
             <w:body>
@@ -212,7 +213,7 @@ async function testWholeCommentedTextReplacementKeepsBothRevisionViewsAnchored()
 
     const accepted = acceptTrackedChangesInOoxml(result.oxml, { author: 'Tester' });
     const rejected = rejectTrackedChangesInOoxml(result.oxml, { author: 'Tester' });
-    assert.match(accepted.oxml, /commentRangeStart[\s\S]*Provider will not use[\s\S]*commentRangeEnd/);
+    assert.match(accepted.oxml, /commentRangeStart[\s\S]*Vendor shall not train[\s\S]*commentRangeEnd/);
     assert.match(rejected.oxml, /commentRangeStart[\s\S]*The Provider may use[\s\S]*commentRangeEnd/);
 }
 

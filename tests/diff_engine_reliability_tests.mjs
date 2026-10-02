@@ -95,7 +95,30 @@ async function testStructuredOverflowError() {
     assert.equal(result.oxml, oxml, 'overflow refusal must return caller bytes unchanged');
 }
 
+function testPunctuationAndAnchorWordsStaySurgical() {
+    // Punctuation attached to a word must not hide the unchanged word, and a
+    // substantive word between two edits must survive semantic cleanup.
+    const original = 'auditors, agents and attorneys (collectively';
+    const modified = 'auditors, agents, attorneys, accountants and other professional advisors (collectively';
+    const diffs = computeWordDiffs(original, modified);
+    assert.deepEqual(diffs, [
+        [0, 'auditors, agents'],
+        [-1, ' and'],
+        [1, ','],
+        [0, ' attorneys'],
+        [1, ', accountants and other professional advisors'],
+        [0, ' (collectively']
+    ]);
+    assert.equal(recoverOriginal(diffs), original);
+    assert.equal(recoverModified(diffs), modified);
+
+    // Function words alone do not anchor an otherwise unrelated rewrite.
+    const rewrite = computeWordDiffs('must promptly pay the annual fee', 'shall later cover the monthly cost');
+    assert.deepEqual(rewrite, [[-1, 'must promptly pay the annual fee'], [1, 'shall later cover the monthly cost']]);
+}
+
 testLeadingWhitespaceAndOffsets();
+testPunctuationAndAnchorWordsStaySurgical();
 testCodePointEncodingBoundaries();
 testUnmappedCodesThrow();
 testDeterministicDefault();

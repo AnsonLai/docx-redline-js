@@ -321,7 +321,7 @@ const sampleDocXml = `<w:document xmlns:w="${W}"><w:body><w:p><w:r><w:t>First pa
 
     assert.equal(result.rolledBack, undefined);
     assert.equal(result.hasChanges, true);
-    assert.ok(result.documentXml.includes('Modified') && result.documentXml.includes('Paragraph.'));
+    assert.ok(result.documentXml.replace(/<[^>]+>/g, '').includes('Modified First Paragraph.'));
     assert.equal(result.results[0].status, 'applied');
     assert.equal(result.results[1].status, 'error');
 }

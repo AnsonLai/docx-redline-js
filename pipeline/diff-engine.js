@@ -41,9 +41,15 @@ export function createDiffEngine(options = {}) {
     return engine;
 }
 
+// Opening and closing punctuation that hugs a word. Splitting it into its own
+// token lets "agents and attorneys" -> "agents, attorneys," keep both words
+// unchanged instead of replacing the whole phrase.
+const LEADING_PUNCTUATION = /^[("'\[{“‘]+/u;
+const TRAILING_PUNCTUATION = /[)"'\]}”’,.;:!?]+$/u;
+
 function tokenize(text, atomicChars = null) {
     const tokens = [];
-    const pushWord = word => {
+    const pushPiece = word => {
         if (!atomicChars || atomicChars.size === 0) {
             tokens.push(word);
             return;
@@ -58,6 +64,20 @@ function tokenize(text, atomicChars = null) {
             start = index + 1;
         }
         if (start < word.length) tokens.push(word.slice(start));
+    };
+    const pushWord = word => {
+        const leading = word.match(LEADING_PUNCTUATION)?.[0] || '';
+        const rest = word.slice(leading.length);
+        const trailing = rest.match(TRAILING_PUNCTUATION)?.[0] || '';
+        const core = rest.slice(0, rest.length - trailing.length);
+        // A token made only of punctuation stays whole.
+        if (!core) {
+            pushPiece(word);
+            return;
+        }
+        for (const char of leading) pushPiece(char);
+        pushPiece(core);
+        for (const char of trailing) pushPiece(char);
     };
     const leading = text.match(/^\s+/);
     if (leading) tokens.push(leading[0]);
@@ -243,9 +263,118 @@ export function computeWordDiffs(originalText, newText, options = {}) {
     const charDiffs = dmp.diff_main(encodeTokenIdsForDmp(tokenIds1), encodeTokenIdsForDmp(tokenIds2));
     if (cleanupSemantic) {
         dmp.diff_cleanupSemantic(charDiffs);
+        refineReplacementsAroundAnchors(dmp, charDiffs, wordArray);
     }
 
     return decodeBmpDiffs(charDiffs, wordArray);
+}
+
+// A token that is a substantive word: four or more letters or digits. Short
+// function words ("a", "the", "and") and punctuation never anchor on their own.
+const ANCHOR_TOKEN = /^[\p{L}\p{N}][\p{L}\p{N}'’-]{3,}$/u;
+
+function isAnchorEquality(chars, wordArray) {
+    for (let index = 0; index < chars.length; index++) {
+        if (ANCHOR_TOKEN.test(wordArray[bmpCharToTokenId(chars.charCodeAt(index))])) return true;
+    }
+    return false;
+}
+
+const MAX_ANCHOR_REFINEMENT_CELLS = 250000;
+
+/**
+ * Token LCS that weights substantive words far above whitespace, punctuation
+ * and function words. A plain LCS would rather keep " and " (three tokens)
+ * than "attorneys" (one token), which is the opposite of a useful redline.
+ * Returns null when the replacement is too large to refine cheaply.
+ *
+ * @param {string} deleted - BMP-encoded deleted tokens
+ * @param {string} inserted - BMP-encoded inserted tokens
+ * @param {string[]} wordArray
+ * @returns {Array<[number, string]>|null}
+ */
+function anchorWeightedDiff(deleted, inserted, wordArray) {
+    const rows = deleted.length;
+    const cols = inserted.length;
+    if (!rows || !cols || (rows + 1) * (cols + 1) > MAX_ANCHOR_REFINEMENT_CELLS) return null;
+
+    const weight = char => {
+        const token = wordArray[bmpCharToTokenId(char.charCodeAt(0))];
+        return ANCHOR_TOKEN.test(token) ? token.length * 100 : token.length;
+    };
+    const width = cols + 1;
+    const scores = new Float64Array((rows + 1) * width);
+    for (let row = rows - 1; row >= 0; row--) {
+        for (let col = cols - 1; col >= 0; col--) {
+            const skip = Math.max(scores[(row + 1) * width + col], scores[row * width + col + 1]);
+            scores[row * width + col] = deleted[row] === inserted[col]
+                ? Math.max(skip, weight(deleted[row]) + scores[(row + 1) * width + col + 1])
+                : skip;
+        }
+    }
+
+    const result = [];
+    const push = (op, char) => {
+        const last = result[result.length - 1];
+        if (last?.[0] === op) last[1] += char;
+        else result.push([op, char]);
+    };
+    let row = 0;
+    let col = 0;
+    while (row < rows && col < cols) {
+        const here = scores[row * width + col];
+        if (deleted[row] === inserted[col]
+            && here === weight(deleted[row]) + scores[(row + 1) * width + col + 1]) {
+            push(0, deleted[row]);
+            row++;
+            col++;
+        } else if (scores[(row + 1) * width + col] >= scores[row * width + col + 1]) {
+            push(-1, deleted[row++]);
+        } else {
+            push(1, inserted[col++]);
+        }
+    }
+    while (row < rows) push(-1, deleted[row++]);
+    while (col < cols) push(1, inserted[col++]);
+    return result;
+}
+
+/**
+ * Semantic cleanup measures equalities in tokens, so a single unchanged word
+ * between two edits ("agents[ and] attorneys[, accountants ...]") is folded
+ * into one whole-phrase replacement. Re-diff each replacement and keep any
+ * unchanged run that contains a substantive word, so the redline only marks
+ * the text that actually changed.
+ */
+function refineReplacementsAroundAnchors(dmp, diffs, wordArray) {
+    for (let index = 0; index < diffs.length; index++) {
+        let deleteIndex = -1;
+        let insertIndex = -1;
+        if (diffs[index][0] === -1 && diffs[index + 1]?.[0] === 1) {
+            deleteIndex = index;
+            insertIndex = index + 1;
+        } else if (diffs[index][0] === 1 && diffs[index + 1]?.[0] === -1) {
+            insertIndex = index;
+            deleteIndex = index + 1;
+        } else {
+            continue;
+        }
+
+        const inner = anchorWeightedDiff(diffs[deleteIndex][1], diffs[insertIndex][1], wordArray);
+        if (!inner?.some(([op, chars]) => op === 0 && isAnchorEquality(chars, wordArray))) continue;
+
+        const refined = [];
+        for (const [op, chars] of inner) {
+            if (op === 0 && !isAnchorEquality(chars, wordArray)) {
+                refined.push([-1, chars], [1, chars]);
+            } else {
+                refined.push([op, chars]);
+            }
+        }
+        dmp.diff_cleanupMerge(refined);
+        diffs.splice(index, 2, ...refined);
+        index += refined.length - 1;
+    }
 }
 
 /**
