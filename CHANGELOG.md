@@ -2,8 +2,17 @@
 
 ## Unreleased
 
+### Added
+
+- **Revision fidelity verifier (warn mode):** every tracked operation now checks, on the live DOM and without extra
+  serialization, that Word's Reject All of its output equals Word's Reject All of the source (paragraph count and order,
+  canonical text including breaks and tabs, paragraph properties, `numPr`, hyperlink/field/content-control membership).
+  A mismatch appends a `REVISION_FIDELITY_VIOLATION` warning and `revisionFidelityViolations`; `verifyRevisionFidelity:
+  'enforce'` refuses the operation instead. The Word-semantics simulator is `core/word-revision-semantics.js`.
+
 ### Fixed
 
+- **Property readers ignore `pPrChange`/`rPrChange` snapshots:** a new `core/current-properties.js` accessor reads only direct `w:pPr`/`w:rPr` children, so a tracked property change no longer makes its historical `numPr`, `pStyle`, `outlineLvl` or `b`/`i` look current. Markdown export, numbering-context detection, list-numbering reuse/overwrite, list-shape checks and captured-entity kind now use it; a usage test fails on new descendant property lookups.
 - **Explicit `1. Header` list conversion works on a bare `document.xml`:** with no numbering part the batch had no numbering id state, so the conversion aborted after recording tracked deletions in the receipt and failed with `RECEIPT_RECONCILIATION_FAILED`. The bare runner now always seeds numbering ids as `openDocx` does, and an aborted conversion no longer records receipt revisions.
 
 ## 0.8.4
