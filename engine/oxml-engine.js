@@ -28,7 +28,7 @@ import { applySurgicalMode } from './surgical-mode.js';
 import { applyReconstructionMode } from './reconstruction-mode.js';
 import { applyTableReconciliation, applyTextToTableTransformation } from './table-mode.js';
 import { getDefaultAuthor } from '../adapters/config.js';
-import { containsTrackedChanges, createWordElement, getTrackedChangeAuthors, withOoxmlSourceType } from '../core/word-xml.js';
+import { containsTrackedChanges, getTrackedChangeAuthors, withOoxmlSourceType } from '../core/word-xml.js';
 import { clonePropertiesWithoutRevisionHistory } from '../core/revision-cloning.js';
 import {
     NS_W,
@@ -42,6 +42,7 @@ import { getDocumentParagraphs } from './format-extraction.js';
 import { isDiffTokenLimitError } from '../pipeline/diff-engine.js';
 import { NumberingService } from '../services/numbering-service.js';
 import { recordRouteSelection } from './route-selection.js';
+import { restoreParagraphMarkInserted } from './paragraph-mark-revisions.js';
 import { inspectForeignDeletedParagraphTarget } from '../core/paragraph-revision-safety.js';
 
 function getCommentIdsInOoxml(node) {
@@ -91,23 +92,7 @@ function restoreInsertedParagraphMark(oxml, metadata) {
         : getDocumentParagraphs(parsed.doc)[0];
     if (!paragraph) return oxml;
 
-    let pPr = directWordChild(paragraph, 'pPr');
-    if (!pPr) {
-        pPr = createWordElement(parsed.doc, 'w:pPr');
-        paragraph.insertBefore(pPr, paragraph.firstChild);
-    }
-    let rPr = directWordChild(pPr, 'rPr');
-    if (!rPr) {
-        rPr = createWordElement(parsed.doc, 'w:rPr');
-        pPr.appendChild(rPr);
-    }
-    if (!directWordChild(rPr, 'ins')) {
-        const marker = createWordElement(parsed.doc, 'w:ins');
-        if (metadata.id) marker.setAttribute('w:id', metadata.id);
-        marker.setAttribute('w:author', metadata.author);
-        if (metadata.date) marker.setAttribute('w:date', metadata.date);
-        rPr.appendChild(marker);
-    }
+    restoreParagraphMarkInserted(paragraph, metadata);
     return serializeXml(parsed.doc);
 }
 
