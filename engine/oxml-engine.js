@@ -37,6 +37,7 @@ import {
 } from '../core/types.js';
 import { acceptTrackedChangesInOoxml, rejectTrackedChangesInOoxml } from '../services/revision-comment-management.js';
 import { extractCanonicalParagraphText } from '../core/paragraph-text.js';
+import { getCurrentParagraphProperties } from '../core/current-properties.js';
 import { getDocumentParagraphs } from './format-extraction.js';
 import { isDiffTokenLimitError } from '../pipeline/diff-engine.js';
 import { NumberingService } from '../services/numbering-service.js';
@@ -698,7 +699,8 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
 function sourceMatchesListShape(paragraphs, listText) {
     const itemCount = String(listText).split(/\r?\n/).filter(line => line.trim()).length;
     return paragraphs.length === itemCount && paragraphs.every(paragraph => (
-        getElementsByTagNSOrTag(paragraph, NS_W, 'numPr').length > 0
+        // Current numPr only; a pPrChange snapshot does not make the source a list.
+        getCurrentParagraphProperties(paragraph).numPr != null
     ));
 }
 

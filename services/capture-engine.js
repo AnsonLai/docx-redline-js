@@ -3,6 +3,7 @@
  */
 
 import { NS_W } from '../core/types.js';
+import { getCurrentParagraphProperties } from '../core/current-properties.js';
 import {
     createParagraphFingerprint,
     getDocumentParagraphNodes,
@@ -40,7 +41,8 @@ export function deriveCapturedEntity(session, operation, liveNodes) {
             hasTable = true;
             paragraphs.push(...Array.from(node.getElementsByTagNameNS(NS_W, 'p')));
         } else if (node.localName === 'p') {
-            if (node.getElementsByTagNameNS(NS_W, 'numPr').length > 0) {
+            // Current numPr only; a pPrChange snapshot does not make the captured paragraph a list.
+            if (getCurrentParagraphProperties(node).numPr) {
                 hasList = true;
             }
             paragraphs.push(node);

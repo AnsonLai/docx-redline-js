@@ -3,6 +3,7 @@
  */
 
 import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
+import { getAllReferencedNumIdElements } from '../core/current-properties.js';
 import { findReconstructionParagraphRange } from '../engine/reconstruction-mapper.js';
 import { createRevisionMetadata } from '../core/types.js';
 import { containsTrackedChanges, getTrackedChangeAuthors, createWordElement, withOoxmlSourceType } from '../core/word-xml.js';
@@ -624,8 +625,9 @@ async function buildInsertedPlainParagraph(xmlDoc, anchorParagraph, text, revisi
 function collectNumberingIdsFromNodes(nodes) {
     const ids = new Set();
     for (const node of nodes || []) {
-        const numIdNodes = Array.from(node?.getElementsByTagNameNS?.('*', 'numId') || []);
-        for (const numIdNode of numIdNodes) {
+        // Deliberately historical-inclusive: the numbering-part merge must define every id the content can
+        // reference, including ids held only by pPrChange snapshots (Reject restores them).
+        for (const numIdNode of getAllReferencedNumIdElements(node)) {
             const val = numIdNode.getAttribute('w:val') || numIdNode.getAttribute('val');
             if (val != null && val !== '') {
                 ids.add(String(val));
