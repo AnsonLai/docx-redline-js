@@ -10,6 +10,7 @@
 
 import { parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { NS_W } from '../core/types.js';
+import { getCurrentChild, getCurrentParagraphProperties, getCurrentRunProperties } from '../core/current-properties.js';
 import { getXmlParseError } from '../core/xml-query.js';
 import { isNodeVisibleInRevisionView, readCanonicalRunText } from '../core/paragraph-text.js';
 
@@ -32,19 +33,6 @@ function getWordParagraphs(doc) {
     return Array.from(doc.getElementsByTagNameNS('*', 'p')).filter(node => node?.localName === 'p');
 }
 
-function getDirectWordChild(node, localName) {
-    const children = Array.from(node?.childNodes || []);
-    for (const child of children) {
-        if (child?.nodeType !== 1) continue;
-        if (child.namespaceURI !== NS_W) continue;
-        if (child.localName === localName) return child;
-    }
-    return null;
-}
-
-function getWordDescendants(node, localName) {
-    return Array.from(node?.getElementsByTagNameNS?.(NS_W, localName) || []);
-}
 
 function getWordAttribute(element, names) {
     if (!element) return '';
@@ -56,15 +44,16 @@ function getWordAttribute(element, names) {
 }
 
 function getRunFormatting(run) {
-    const rPr = getDirectWordChild(run, 'rPr');
+    // Current run properties only: a w:rPrChange snapshot must not make historical b/i/rStyle look current.
+    const rPr = getCurrentRunProperties(run);
     if (!rPr) return { bold: false, italic: false };
-    const rStyle = getWordDescendants(rPr, 'rStyle')[0] || null;
+    const rStyle = getCurrentChild(rPr, 'rStyle');
     const rStyleValue = getWordAttribute(rStyle, ['w:val', 'val']).toLowerCase();
     const styleImpliesBold = rStyleValue.includes('strong') || rStyleValue.includes('bold');
     const styleImpliesItalic = rStyleValue.includes('italic') || rStyleValue.includes('emphasis');
     return {
-        bold: getWordDescendants(rPr, 'b').length > 0 || styleImpliesBold,
-        italic: getWordDescendants(rPr, 'i').length > 0 || styleImpliesItalic
+        bold: !!getCurrentChild(rPr, 'b') || styleImpliesBold,
+        italic: !!getCurrentChild(rPr, 'i') || styleImpliesItalic
     };
 }
 
@@ -111,11 +100,10 @@ function wrapRunMarkdown(text, format) {
 }
 
 function parseHeadingLevel(paragraph) {
-    const pPr = getDirectWordChild(paragraph, 'pPr');
+    const { pPr, pStyleElement, outlineLvlElement } = getCurrentParagraphProperties(paragraph);
     if (!pPr) return null;
 
-    const pStyle = getWordDescendants(pPr, 'pStyle')[0] || null;
-    const styleVal = getWordAttribute(pStyle, ['w:val', 'val']);
+    const styleVal = getWordAttribute(pStyleElement, ['w:val', 'val']);
     if (styleVal) {
         const match = styleVal.match(/^heading\s*([1-9])$/i);
         if (match) {
@@ -124,8 +112,7 @@ function parseHeadingLevel(paragraph) {
         }
     }
 
-    const outlineLvl = getWordDescendants(pPr, 'outlineLvl')[0] || null;
-    const outlineRaw = getWordAttribute(outlineLvl, ['w:val', 'val']);
+    const outlineRaw = getWordAttribute(outlineLvlElement, ['w:val', 'val']);
     const outline = Number.parseInt(outlineRaw, 10);
     if (Number.isInteger(outline) && outline >= 0) {
         return Math.min(outline + 1, 6);
@@ -135,14 +122,11 @@ function parseHeadingLevel(paragraph) {
 }
 
 function parseListInfo(paragraph) {
-    const pPr = getDirectWordChild(paragraph, 'pPr');
-    if (!pPr) return null;
-
-    const numPr = getWordDescendants(pPr, 'numPr')[0] || null;
+    const { numPr } = getCurrentParagraphProperties(paragraph);
     if (!numPr) return null;
 
-    const ilvlEl = getWordDescendants(numPr, 'ilvl')[0] || null;
-    const numIdEl = getWordDescendants(numPr, 'numId')[0] || null;
+    const ilvlEl = numPr.ilvlElement;
+    const numIdEl = numPr.numIdElement;
     const ilvl = Number.parseInt(getWordAttribute(ilvlEl, ['w:val', 'val']), 10);
     const numId = getWordAttribute(numIdEl, ['w:val', 'val']);
 

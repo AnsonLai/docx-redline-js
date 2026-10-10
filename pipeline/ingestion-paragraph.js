@@ -5,6 +5,7 @@
  */
 
 import { NS_W, RunKind, ContainerKind } from '../core/types.js';
+import { getCurrentParagraphProperties } from '../core/current-properties.js';
 import { appendParagraphBoundary, advanceOffsetForParagraphBoundary } from '../core/paragraph-offset-policy.js';
 import { parseOoxmlSafe, serializeXml } from '../adapters/xml-adapter.js';
 import { warn, error as logError } from '../adapters/logger.js';
@@ -81,17 +82,11 @@ export function ingestParagraphElement(paragraphElement) {
  * @returns {Object|null}
  */
 export function detectNumberingContext(pElement) {
-    const pPr = getFirstElementByTagNS(pElement, NS_W, 'pPr');
-    if (!pPr) return null;
+    // Current numPr only: a w:pPrChange snapshot must not make a historical list binding look current.
+    const { numPr } = getCurrentParagraphProperties(pElement);
+    if (!numPr || !numPr.numIdElement) return null;
 
-    const numPr = getFirstElementByTagNS(pPr, NS_W, 'numPr');
-    if (!numPr) return null;
-
-    const numIdEl = getFirstElementByTagNS(numPr, NS_W, 'numId');
-    const ilvlEl = getFirstElementByTagNS(numPr, NS_W, 'ilvl');
-    if (!numIdEl) return null;
-
-    const numId = numIdEl.getAttribute('w:val');
+    const numId = numPr.numId;
     // In WordprocessingML, numId="0" explicitly removes numbering inherited
     // from a paragraph style. It is not a reusable list definition.
     if (!/^\d+$/.test(numId) || Number.parseInt(numId, 10) === 0) return null;
@@ -99,7 +94,7 @@ export function detectNumberingContext(pElement) {
 
     return {
         numId,
-        ilvl: parseInt(ilvlEl?.getAttribute('w:val') || '0', 10),
+        ilvl: parseInt(numPr.ilvl || '0', 10),
         type
     };
 }
