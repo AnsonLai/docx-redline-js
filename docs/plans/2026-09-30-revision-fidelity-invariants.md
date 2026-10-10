@@ -9,7 +9,7 @@ Resume here. Each line says what landed, where, and what is next. Verify with `g
 
 | WP | State | Commits / files | Next step |
 |---|---|---|---|
-| WP-1 | Slice 1 landed, **warn** default; **`npm test` fully green under enforce** (`bbb23cb`) | `05dcf4c`, `c933dcd` (baseline cache), `bbb23cb` (accept-first baseline scoped to resolved target): `core/word-revision-semantics.js` (Word Reject/Accept projection over DOM), `services/revision-fidelity-verifier.js`, wiring in `services/document-operation-applier.js` (after the `GENERATED_OOXML_INVALID` check, before `markMutationCommitted`), `REVISION_FIDELITY_VIOLATION` in `services/error-recovery.js`, `verifyRevisionFidelity` in `services/standalone-operation-runner.d.ts`, KB failure row, `tests/revision_fidelity_verifier_tests.mjs` | **Release decision pending (owner):** ship warn in a patch, then flip the default/agent profile to `enforce` (Sequencing 1 and 4; `resolveRevisionFidelityMode` in the verifier, plus agent-profile rejection of `'off'` in `node/cli.js`). Then: `ACCEPT_INTENT`, `ACCEPT_NEIGHBORS`, numbering-part existence check, range-end scope for accept-first (`resolvedTargetEnd` is not captured today), re-benchmark on a quiet machine |
+| WP-1 | Reject-side invariants landed and **enforced by default** (`c07c37b`, owner decision 2026-10-10: refuse by default with clear, retry-oriented errors instead of a warn-only patch release) | `05dcf4c`, `c933dcd` (baseline cache), `bbb23cb` (accept-first baseline scoped to resolved target), `c07c37b` (enforce default, error payload, CLI `--revision-fidelity`, agent profile rejects `off`, capability `revision-fidelity-v1`): `core/word-revision-semantics.js` (Word Reject/Accept projection over DOM), `services/revision-fidelity-verifier.js`, wiring in `services/document-operation-applier.js` (after the `GENERATED_OOXML_INVALID` check, before `markMutationCommitted`), `REVISION_FIDELITY_VIOLATION` in `services/error-recovery.js`, `verifyRevisionFidelity` in `services/standalone-operation-runner.d.ts`, KB failure row, `tests/revision_fidelity_verifier_tests.mjs` | Next: `ACCEPT_INTENT`, `ACCEPT_NEIGHBORS`, numbering-part existence check, range-end scope for accept-first (`resolvedTargetEnd` is not captured today), re-benchmark on a quiet machine |
 | WP-2 | **Done** except the single-module refactor: simulator and library both match Word on all 27 cases (`KNOWN_DIVERGENCES` empty, `cedc68a`: cell last paragraph kept on reject, all-deleted single-cell table removed on accept, `pPrChange` reject keeps mark `rPr`/`sectPr`; regressions verified to fail pre-fix) | `1594add`: `scripts/generate-word-revision-semantics-matrix.mjs` (fixtures) + `scripts/word-revision-semantics-matrix.ps1` (run with `pwsh`, not Windows PowerShell 5.1, which hangs in `SaveAs2`) -> `tests/fixtures/word-revision-semantics/expectations.json` (Word 16.0.20430); `tests/word_revision_semantics_tests.mjs` with a `KNOWN_DIVERGENCES` map that fails when a divergence appears or disappears. `584c83a`: simulator end-of-container rule from COM evidence | Optional follow-ups: make `revision-comment-management.js` a thin author-filtering wrapper over one shared implementation (the plan's "one implementation" goal; the library mutates DOM while the simulator projects, so share the rules, not the code path); extend the matrix (non-empty trailing content with a removed mark, text boxes, footnotes, move revisions) |
 | WP-3 | Not started | | Needs WP-1 settled semantics |
 | WP-4 | **Done** (npm test 137/137, types, isolation green) | `1a3eeb6`, `3405bca`, `ff49729`, `cfc9419`, `1f89ae0`: `core/current-properties.js` (+ `getCurrentNumIdElements`, explicit `getAllReferencedNumIdElements`), migrated readers, `tests/current_properties_tests.mjs`, lint `tests/current_properties_usage_tests.mjs` (allowlist: accessor itself, `standalone-docx-plumbing.js` numbering-usage check) | Optional: converge the ~10 private `directChild` duplicates; plan asked for cases in `tests/document_inspection_edge_tests.mjs` (covered instead by `current_properties_tests.mjs`) |
@@ -37,8 +37,17 @@ Resume here. Each line says what landed, where, and what is next. Verify with `g
   verified `after` projection (`session._rejectedViewCache`, keyed by DOM identity, cleared on any unverified commit)
   so a batch projects once per operation. `scripts/benchmark-operation-session.mjs` medians: off 265/277 ms vs warn
   260 ms (within noise; a concurrent Word COM run made one sample 360 ms). Re-measure on a quiet machine before enforce.
-- **Mode resolution:** explicit `verifyRevisionFidelity` option, else env `DOCX_REDLINE_REVISION_FIDELITY`
-  (diagnostic/test lanes), else `'warn'`. The agent profile does not yet force `enforce` or reject `off`.
+- **Mode resolution:** explicit `verifyRevisionFidelity` option (CLI `--revision-fidelity`), else env
+  `DOCX_REDLINE_REVISION_FIDELITY` (diagnostic/test lanes), else `'enforce'`. The CLI agent profile rejects `off`;
+  `effectiveOptions.verifyRevisionFidelity` reports the resolved mode.
+- **Refusal payload (`c07c37b`), designed for an agent's retry loop:** `error.message` is one log-ready line
+  ("Refused, document unchanged: ... (INVARIANT at source paragraph N (\"excerpt\"): expected ..., got ...). <explanation>
+  Retry: <instruction>"); `violations[]` (max 5) each carry `invariant`, `expected`/`actual` excerpts, `explanation`,
+  `source`/`output` `{ sourceParagraphIndex, container, text }` where `sourceParagraphIndex` is the 1-based extraction
+  index; `invariants`, `verificationMode`, `recovery.action: narrow_or_change_operation`, `recovery.hint`,
+  `recovery.retryGuidance[]` per invariant and `recovery.reportIfNarrowRetryFails`. The same line goes to `onWarn`,
+  `warnings` and the refused receipt's warnings; compact CLI JSON keeps `violations`/`invariants`. Per-invariant text
+  lives in `REVISION_FIDELITY_INVARIANTS` in the verifier; extend it when adding an invariant.
 
 ### Enforce probe (2026-10-10): `DOCX_REDLINE_REVISION_FIDELITY=enforce npm test`
 
@@ -109,8 +118,14 @@ The review concluded that they were local gap-plugs, not structural fixes. This 
 structural fix: one post-apply invariant that every mutation path must satisfy, a Word-faithful
 library oracle, and the consolidation of the duplicated code that let the gaps open.
 
-Related plans: `2026-09-30-canonical-list-operations.md` (its WP-2 numbering allocator is the
-convergence target for WP-5 here; it is referenced, not duplicated),
+Related plans (keep in step; update them in the same change when an overlapping item moves):
+`2026-09-30-canonical-list-operations.md` (its WP-2 numbering allocator is the convergence target for WP-5a here, which
+adds R1-R3; its "Cross-plan dependencies" section makes this plan's verifier the acceptance gate for `list-format` /
+`change-format` / `paragraph-format.numbering` and requires `core/current-properties.js` for property reads; its section
+(a) observation 2 was fixed by WP-5b, `73c67e8`; its id-collision residual is the same open item as WP-5a R2),
+`2026-10-01-consumer-reported-library-issues.md` (local only: `docs/plans/*` is gitignored and this file was never
+force-added; its WP-3 id-collision residual is WP-5a R2), `KNOWN_BUGS.md` (section 7 mirrors verifier limits and the
+fixed gap bugs; update it when a limit is lifted),
 `completed/2026-09-05-structural-revisions-and-fidelity-oracles.md` (origin of the oracle helpers and
 the paragraph-mark model), `completed/2026-09-01-performance-and-complexity-reduction.md` (budget rules).
 
@@ -128,7 +143,7 @@ the document the source; if Accept All, is it the intent?"
 | - | List-range replacement collapsed N source paragraphs into one deleted paragraph; then empty-item and all-empty ranges lost paragraphs (three fix rounds) | `pipeline/list-generation.js` | Text equality | Word, then iterative review |
 | - | Historical `numPr`/`pStyle`/`outlineLvl` inside `w:pPrChange` reported as current | `services/document-inspection.js`, `core/list-targeting.js` (descendant lookups cross `pPrChange`) | n/a (inspection, not mutation) | Review |
 | - | `openDocx` path remapped deleted source paragraphs to a new generic `numId`; Reject (ListType) and Accept (ListValue) broke | `services/numbering-helpers.js`; standalone runner passed | Standalone suite green | Consumer integration |
-| - | Bare `document.xml` vs packaged `.docx` divergence (`"1. Header"` yields `RECEIPT_RECONCILIATION_FAILED` only on bare XML) | `services/receipt-collector.js` reconciliation vs bare-XML session | Not exercised | Reproduced in the canonical-list plan; still open |
+| - | Bare `document.xml` vs packaged `.docx` divergence (`"1. Header"` yields `RECEIPT_RECONCILIATION_FAILED` only on bare XML) | `services/receipt-collector.js` reconciliation vs bare-XML session | Not exercised | Reproduced in the canonical-list plan; fixed by WP-5b (`73c67e8`) |
 
 Three structural causes, all visible in that table.
 
