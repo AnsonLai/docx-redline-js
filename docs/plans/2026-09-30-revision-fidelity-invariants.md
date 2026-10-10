@@ -9,13 +9,32 @@ Resume here. Each line says what landed, where, and what is next. Verify with `g
 
 | WP | State | Commits / files | Next step |
 |---|---|---|---|
-| WP-1 | Reject-side invariants landed and **enforced by default** (`c07c37b`, owner decision 2026-10-10: refuse by default with clear, retry-oriented errors instead of a warn-only patch release) | `05dcf4c`, `c933dcd` (baseline cache), `bbb23cb` (accept-first baseline scoped to resolved target), `c07c37b` (enforce default, error payload, CLI `--revision-fidelity`, agent profile rejects `off`, capability `revision-fidelity-v1`): `core/word-revision-semantics.js` (Word Reject/Accept projection over DOM), `services/revision-fidelity-verifier.js`, wiring in `services/document-operation-applier.js` (after the `GENERATED_OOXML_INVALID` check, before `markMutationCommitted`), `REVISION_FIDELITY_VIOLATION` in `services/error-recovery.js`, `verifyRevisionFidelity` in `services/standalone-operation-runner.d.ts`, KB failure row, `tests/revision_fidelity_verifier_tests.mjs` | Next: `ACCEPT_INTENT`, `ACCEPT_NEIGHBORS`, numbering-part existence check, range-end scope for accept-first (`resolvedTargetEnd` is not captured today), re-benchmark on a quiet machine |
+| WP-1 | Reject-side invariants landed and **enforced by default** (`c07c37b`, owner decision 2026-10-10: refuse by default with clear, retry-oriented errors instead of a warn-only patch release) | `05dcf4c`, `c933dcd` (baseline cache), `bbb23cb` (accept-first baseline scoped to resolved target), `c07c37b` (enforce default, error payload, CLI `--revision-fidelity`, agent profile rejects `off`, capability `revision-fidelity-v1`): `core/word-revision-semantics.js` (Word Reject/Accept projection over DOM), `services/revision-fidelity-verifier.js`, wiring in `services/document-operation-applier.js` (after the `GENERATED_OOXML_INVALID` check, before `markMutationCommitted`), `REVISION_FIDELITY_VIOLATION` in `services/error-recovery.js`, `verifyRevisionFidelity` in `services/standalone-operation-runner.d.ts`, KB failure row, `tests/revision_fidelity_verifier_tests.mjs` | `ACCEPT_NEIGHBORS` landed for untracked single-target operations (`d045e7e`; tracked operations are already covered by the Reject All invariants). Next: `ACCEPT_INTENT` (partly covered by the localized-replacement `acceptedViewMatchesCompiledText` verification), numbering-part existence check, range-end scope for accept-first (`resolvedTargetEnd` is not captured today), re-benchmark on a quiet machine |
 | WP-2 | **Done** except the single-module refactor: simulator and library both match Word on all 27 cases (`KNOWN_DIVERGENCES` empty, `cedc68a`: cell last paragraph kept on reject, all-deleted single-cell table removed on accept, `pPrChange` reject keeps mark `rPr`/`sectPr`; regressions verified to fail pre-fix) | `1594add`: `scripts/generate-word-revision-semantics-matrix.mjs` (fixtures) + `scripts/word-revision-semantics-matrix.ps1` (run with `pwsh`, not Windows PowerShell 5.1, which hangs in `SaveAs2`) -> `tests/fixtures/word-revision-semantics/expectations.json` (Word 16.0.20430); `tests/word_revision_semantics_tests.mjs` with a `KNOWN_DIVERGENCES` map that fails when a divergence appears or disappears. `584c83a`: simulator end-of-container rule from COM evidence | Optional follow-ups: make `revision-comment-management.js` a thin author-filtering wrapper over one shared implementation (the plan's "one implementation" goal; the library mutates DOM while the simulator projects, so share the rules, not the code path); extend the matrix (non-empty trailing content with a removed mark, text boxes, footnotes, move revisions) |
 | WP-3 | Not started | | Needs WP-1 settled semantics |
 | WP-4 | **Done** (npm test 137/137, types, isolation green) | `1a3eeb6`, `3405bca`, `ff49729`, `cfc9419`, `1f89ae0`: `core/current-properties.js` (+ `getCurrentNumIdElements`, explicit `getAllReferencedNumIdElements`), migrated readers, `tests/current_properties_tests.mjs`, lint `tests/current_properties_usage_tests.mjs` (allowlist: accessor itself, `standalone-docx-plumbing.js` numbering-usage check) | Optional: converge the ~10 private `directChild` duplicates; plan asked for cases in `tests/document_inspection_edge_tests.mjs` (covered instead by `current_properties_tests.mjs`) |
 | WP-5a | Not started | | Blocked on canonical-list allocator |
 | WP-5b | **Done** | `73c67e8`: bare runner always seeds `numberingIdState` (`services/batch-operation-orchestrator.js`); `tryExplicitDecimalHeaderListConversion` reserves numbering before redlining so an abort records no receipt revisions; regression in `tests/phase3_list_structural_fallback_tests.mjs` | Add bare-vs-packaged parity dimension in WP-3 |
 | WP-6 | Not started | | Last |
+
+### Word verification (2026-10-10, Word 16.0.20430)
+
+- **API caveat (important for every Word lane):** `Document.RejectAllRevisions()` / `AcceptAllRevisions()` can leave a
+  revision behind. On a document whose last body paragraph has a tracked-inserted mark, `RejectAllRevisions()` keeps
+  that mark and an extra empty paragraph (`revisionsLeft=1`), while the ribbon command
+  (`CommandBars.ExecuteMso("ReviewRejectAllChangesInDocument")`), `WordBasic.RejectAllChangesInDoc` and
+  `Document.Revisions.RejectAll()` all remove it. All Word lanes now use the `Revisions` collection and fail on leftover
+  revisions (`d9c2fe1`); the COM matrix already did.
+- **Structural Word check:** `scripts/word-com-differential.ps1` (used by `npm run test:word` and the corpus lane) now
+  also fails when Word's Reject All paragraph count differs from `<name>.source.docx` (text-only comparison had missed
+  the defect below). Synthetic lane: 49/49 with the structural check.
+- **Corpus lane:** 60/60 on text, but the enforce verifier refused 3 real-document scenarios
+  (`administrative-table-reconciliation-status-update`, `-row-insertion`, `-multi-cell-update`): markdown-table
+  reconciliation drops, untracked, the trailing empty paragraph of an untouched sibling cell. Word confirms (source 86
+  paragraphs, Reject All 85). A Sonnet agent is fixing it in the table-reconciliation path; until then
+  `node scripts/prepare-superdoc-word-corpus.mjs` fails on those 3 (use `DOCX_REDLINE_REVISION_FIDELITY=warn` to prepare).
+- Scratch helpers (not committed): `%TEMP%\claude\wordcount.ps1` (source vs Reject All paragraph counts) and
+  `wordui.ps1` (compares the four Reject All entry points).
 
 ### WP-1 implementation decisions (deviations from the design below)
 
