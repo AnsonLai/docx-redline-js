@@ -10,7 +10,7 @@ Resume here. Each line says what landed, where, and what is next. Verify with `g
 | WP | State | Commits / files | Next step |
 |---|---|---|---|
 | WP-1 | Slice 1 landed, **warn** default | `05dcf4c`: `core/word-revision-semantics.js` (Word Reject/Accept projection over DOM), `services/revision-fidelity-verifier.js`, wiring in `services/document-operation-applier.js` (after the `GENERATED_OOXML_INVALID` check, before `markMutationCommitted`), `REVISION_FIDELITY_VIOLATION` in `services/error-recovery.js`, `verifyRevisionFidelity` in `services/standalone-operation-runner.d.ts`, KB failure row, `tests/revision_fidelity_verifier_tests.mjs` | Triage enforce-probe failures (below) once WP-2 COM results exist; then ACCEPT_INTENT/ACCEPT_NEIGHBORS; benchmark; flip default |
-| WP-2 | Investigation done; COM matrix in progress | see "WP-2 findings" below; COM matrix files `scripts/word-revision-semantics-matrix.ps1`, `tests/fixtures/word-revision-semantics/expectations.json`, `tests/word_revision_semantics_tests.mjs` | Align simulator + `services/revision-comment-management.js` to recorded Word behavior |
+| WP-2 | COM matrix **landed**; simulator matches Word on all 27 cases; library fixes in progress | `1594add`: `scripts/generate-word-revision-semantics-matrix.mjs` (fixtures) + `scripts/word-revision-semantics-matrix.ps1` (run with `pwsh`, not Windows PowerShell 5.1, which hangs in `SaveAs2`) -> `tests/fixtures/word-revision-semantics/expectations.json` (Word 16.0.20430); `tests/word_revision_semantics_tests.mjs` with a `KNOWN_DIVERGENCES` map that fails when a divergence appears or disappears. `584c83a`: simulator end-of-container rule from COM evidence | Library divergences left: `ins-mark-cell-last-of-two` (reject drops the cell's empty last paragraph), `del-mark-cell-sole` (accept should remove the table); also the `rejectPropertyChangeNode` mark-`rPr` loss. A Sonnet agent was assigned these in `services/revision-comment-management.js` on 2026-10-10; check `git log` for them |
 | WP-3 | Not started | | Needs WP-1 settled semantics |
 | WP-4 | **Done** (npm test 137/137, types, isolation green) | `1a3eeb6`, `3405bca`, `ff49729`, `cfc9419`, `1f89ae0`: `core/current-properties.js` (+ `getCurrentNumIdElements`, explicit `getAllReferencedNumIdElements`), migrated readers, `tests/current_properties_tests.mjs`, lint `tests/current_properties_usage_tests.mjs` (allowlist: accessor itself, `standalone-docx-plumbing.js` numbering-usage check) | Optional: converge the ~10 private `directChild` duplicates; plan asked for cases in `tests/document_inspection_edge_tests.mjs` (covered instead by `current_properties_tests.mjs`) |
 | WP-5a | Not started | | Blocked on canonical-list allocator |
@@ -42,7 +42,18 @@ Resume here. Each line says what landed, where, and what is next. Verify with `g
 
 ### Enforce probe (2026-10-10): `DOCX_REDLINE_REVISION_FIDELITY=enforce npm test`
 
-Default warn: everything green. Under enforce, 14 suites fail. Two classes found:
+**Update after COM evidence (`584c83a`):** Word removes a trailing body paragraph whose inserted mark is rejected
+(or deleted mark accepted), so class 2 below was a simulator error, not a library defect. Only 4 suites still fail
+under enforce:
+- `phase3_list_structural_fallback` (bare `1. Header`): **real defect**. The explicit-decimal conversion adds
+  `numPr` without a `w:pPrChange`, so Reject All leaves a numbered list item.
+- `existing_revisions_modes_matrix` (~line 338), `standalone_operation_runner` (text-to-table range), and
+  `interagency_agreement_multi_author`: not yet triaged.
+A Sonnet agent was assigned all four on 2026-10-10 (generator fixes only, verifier files untouched); check
+`git log` for its commits. When enforce passes everywhere: make enforce the default for the agent profile
+(Sequencing step 4).
+
+Original probe (before the COM evidence): default warn was all green. Under enforce, 14 suites failed. Two classes found:
 
 1. **Fixed:** `accept-all-first` policies compared against the wrong baseline (now `baselineView: 'accepted'`).
 2. **Open, dominant (~all remaining):** an operation that replaces/extends the **last body paragraph** (directly before
