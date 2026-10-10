@@ -6,12 +6,11 @@ import { acceptTrackedChangesInOoxml, rejectTrackedChangesInOoxml } from '../ind
 import { parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { unzipDocx } from '../document/zip-archive.js';
 import { applyOperationsToDocumentXml } from '../services/standalone-operation-runner.js';
+import { wordRevisionParagraphTexts } from '../core/word-revision-semantics.js';
 
 // Regression: Word-authored nested bullet list. Reject All in real Word must restore the exact
-// source paragraph boundaries. Word semantics modelled here:
-//   - a paragraph mark in w:pPr/w:rPr/w:ins is removed on Reject (content merges into the FOLLOWING paragraph)
-//   - a paragraph mark in w:pPr/w:rPr/w:del is restored on Reject
-//   - w:ins content is removed, w:del content is restored
+// source paragraph boundaries. Word semantics come from the shared, COM-validated simulator
+// (core/word-revision-semantics.js; see tests/word_revision_semantics_tests.mjs).
 
 const FIXTURE = new URL('./fixtures/agentic-lists/nested-lists-source.docx', import.meta.url);
 const files = unzipDocx(readFileSync(FIXTURE));
@@ -46,25 +45,12 @@ const inside = (node, name, root) => {
     for (let cur = node.parentNode; cur && cur !== root; cur = cur.parentNode) if (cur.localName === name) return true;
     return false;
 };
-// text a paragraph carries after Reject (ins removed, del restored)
-const rejectedFragment = p => elements(p, 't').concat(elements(p, 'delText'))
-    .filter(n => !inside(n, 'ins', p)).map(n => n.textContent).join('');
 const acceptedFragment = p => elements(p, 't').filter(n => !inside(n, 'del', p)).map(n => n.textContent).join('');
-
-function wordParagraphs(xml, action) {
-    const out = [];
-    let carry = '';
-    for (const p of paragraphsOf(xml)) {
-        const mark = markType(p);
-        const text = carry + (action === 'reject' ? rejectedFragment(p) : acceptedFragment(p));
-        const markGoes = action === 'reject' ? mark === 'ins' : mark === 'del';
-        if (markGoes) { carry = text; continue; }
-        carry = '';
-        out.push(text);
-    }
-    if (carry) out.push(carry);
-    return out;
-}
+const wordParagraphs = (xml, action) => {
+    const parsed = parseOoxmlSafe(xml);
+    assert.ok(parsed.doc, parsed.error?.message || 'parseable OOXML');
+    return wordRevisionParagraphTexts(parsed.doc, action === 'reject' ? 'rejected' : 'accepted');
+};
 const libraryParagraphs = (xml, fn) => paragraphsOf(fn(xml, { allAuthors: true }).oxml).map(p => elements(p, 't').map(n => n.textContent).join(''));
 
 async function run(operation) {
