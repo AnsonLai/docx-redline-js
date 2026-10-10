@@ -21,6 +21,10 @@
   `revisionFidelityViolations`. The Word-semantics simulator is `core/word-revision-semantics.js`, validated against
   recorded Word 16 Reject All / Accept All results (`tests/fixtures/word-revision-semantics/expectations.json`).
 
+### Internal
+
+- **One paragraph-mark revision helper:** `engine/paragraph-mark-revisions.js` is now the only module that constructs a tracked paragraph mark (`w:ins`/`w:del` under `w:pPr/w:rPr`): `markParagraphInserted`, `markParagraphDeleted`, `setParagraphPropertiesMarkRevision`, `restoreParagraphMarkInserted`, string builders `paragraphMarkRevisionXml` / `paragraphMarkPPrXml`, and `planParagraphMarks` (asserts the Reject All paragraph-count invariants). Document-level shortcuts, list generation, reconstruction, text-to-table and generated tables use it, and `tests/paragraph_mark_single_site_tests.mjs` fails on any other construction site. Output is unchanged except that a new mark `rPr` is placed before `sectPr`/`pPrChange`, an existing mark is replaced rather than duplicated, and the empty-modified shortcut's deleted-mark receipt kind is `del` (was `structural`).
+
 ### Fixed
 
 - **Table reconciliation keeps untouched cell paragraphs:** editing one cell of a Markdown table reconciliation collapsed a multi-paragraph cell (for example `LS` plus a trailing empty paragraph) to one paragraph, untracked, so Reject All lost a paragraph. Cells whose only difference is trailing empty paragraphs are now unchanged, and a modified multi-paragraph cell is reconciled paragraph by paragraph (inserted paragraphs carry tracked marks).
