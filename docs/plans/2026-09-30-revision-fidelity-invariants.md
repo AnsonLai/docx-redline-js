@@ -1,7 +1,20 @@
 # Revision Fidelity Invariants: Turning Gap Bugs into Fail-Closed Refusals
 
 Date: 2026-09-30
-Status: IN PROGRESS (started 2026-10-10 on 0.8.4 + `c98874d`). See "Progress and hand-off" directly below.
+Status: SUBSTANTIALLY DONE (2026-10-10, started on 0.8.4 + `c98874d`). WP-1, 2, 3, 4, 5b, 6 landed; WP-5a waits on the
+canonical-list allocator. See "Progress and hand-off" and the Definition-of-done status directly below.
+
+Definition-of-done status (details at the end of the plan):
+- [x] `REVISION_FIDELITY_VIOLATION` documented and enforced by default (agent profile rejects `off`); regressions for each
+  "Why now" row live in `tests/revision_fidelity_verifier_tests.mjs` as synthetic defective outputs (not rebuilt from
+  `git show` pre-fix sources).
+- [x] Library reject/accept equal recorded Word expectations for all 27 WP-2 matrix shapes.
+- [~] Matrix in `npm test` on bare and packaged paths; extended lane documented in `docs/TESTING.md` but not yet wired
+  into a nightly CI job (no CI config in this repo was changed).
+- [x] No descendant property reads outside `core/current-properties.js` (lint test).
+- [~] Paragraph-mark markup constructed in one module (done); numbering allocation in one function is WP-5a (open).
+- [x] `npm test`, `check:types`, `test:isolation`, Word differential (49/49) and Word corpus (60/60) pass; verifier cost
+  recorded.
 
 ## Progress and hand-off (keep this section current; newest first)
 
@@ -15,7 +28,7 @@ Resume here. Each line says what landed, where, and what is next. Verify with `g
 | WP-4 | **Done** (npm test 137/137, types, isolation green) | `1a3eeb6`, `3405bca`, `ff49729`, `cfc9419`, `1f89ae0`: `core/current-properties.js` (+ `getCurrentNumIdElements`, explicit `getAllReferencedNumIdElements`), migrated readers, `tests/current_properties_tests.mjs`, lint `tests/current_properties_usage_tests.mjs` (allowlist: accessor itself, `standalone-docx-plumbing.js` numbering-usage check) | Optional: converge the ~10 private `directChild` duplicates; plan asked for cases in `tests/document_inspection_edge_tests.mjs` (covered instead by `current_properties_tests.mjs`) |
 | WP-5a | Not started | | Blocked on canonical-list allocator |
 | WP-5b | **Done** | `73c67e8`: bare runner always seeds `numberingIdState` (`services/batch-operation-orchestrator.js`); `tryExplicitDecimalHeaderListConversion` reserves numbering before redlining so an abort records no receipt revisions; regression in `tests/phase3_list_structural_fallback_tests.mjs` | Add bare-vs-packaged parity dimension in WP-3 |
-| WP-6 | Not started | | Last |
+| WP-6 | **Done** (npm test 142/142, matrix + `FUZZ_SEED=3 MATRIX_ITERATIONS=500`, types, isolation, Word synthetic 49/49 and corpus 60/60 re-run by the parent after the last commit) | `c356c5c` helper `engine/paragraph-mark-revisions.js` (DOM `markParagraphInserted/Deleted`, `setParagraphPropertiesMarkRevision`, `restoreParagraphMarkInserted`, `clearParagraphMarkRevision`; string `paragraphMarkRevisionXml`/`paragraphMarkPPrXml`; `planParagraphMarks` with the plan's invariants) + `tests/paragraph_mark_revisions_tests.mjs`; callers migrated one per commit: `7cfa6d9` document-level shortcuts, `5bddb82` list-generation, `606f00b` reconstruction-writer, `9a4ef99` table-mode, `0d2b553` table-reconciliation, `83fb19b` oxml-engine; `172fd56` removed `run-builders.js` `markParagraphMark*` and added the single-site architecture test `tests/paragraph_mark_single_site_tests.mjs` (allowlist empty). Surgical mode builds no paragraph marks. Behavior deltas (all suites green): new mark `rPr` placed before `sectPr`/`pPrChange`; list-generation replaces an existing mark revision instead of duplicating; receipt kind for the empty-modified shortcut and generated table cell marks is `ins`/`del` (was `structural`) | Optional: call `planParagraphMarks` from the write paths (reconstruction-writer, list-generation) so they plan before they write |
 
 ### Word verification (2026-10-10, Word 16.0.20430)
 
