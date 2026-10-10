@@ -488,6 +488,15 @@ async function testFieldResultTextEditKeepsFldSimpleAndRejectsToSource() {
     assert.deepEqual(accepted, ['Page 3 of the agreement is revised.']);
 }
 
+async function testDeletedManualBreakAndTabAreTrackedAndRestoredOnReject() {
+    const { out, rejected } = await applyEnforced(
+        '<w:p><w:r><w:t>Line one</w:t><w:br/><w:t>Line two</w:t><w:tab/><w:t>tail</w:t></w:r></w:p>',
+        { type: 'redline', target: { exactText: 'Line one\nLine two\ttail' }, modified: 'Replaced entirely' }
+    );
+    assert.deepEqual(rejected, ['Line one\nLine two\ttail']);
+    assert.ok(elementsByLocalName(out, 'del').some(del => elementsByLocalName(del, 'br').length === 1), 'deleted break must sit inside a tracked deletion');
+}
+
 await testSurgicalInsertionSplitsRunAtCharacterOffset();
 await testSurgicalDeletionPreservesNeighboringRunChildren();
 await testEmptyDefaultNamespaceTableCellCanReceiveInsertion();
@@ -506,5 +515,6 @@ await testReplacementAcrossHyperlinkPreservesLeadingFontSize();
 await testReconstructionMultiParagraphFragmentDoesNotNestParagraphs();
 
 await testFieldResultTextEditKeepsFldSimpleAndRejectsToSource();
+await testDeletedManualBreakAndTabAreTrackedAndRestoredOnReject();
 
 console.log('engine_reliability_tests.mjs ... PASS');

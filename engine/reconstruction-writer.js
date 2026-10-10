@@ -370,6 +370,25 @@ function appendTextToCurrent(
         }
 
         if (referenceMap.has(part)) {
+            if (type === 'delete' && generateRedlines) {
+                // A deleted manual break, tab or inline object must be a tracked deletion so Reject All
+                // restores it; silently dropping the node loses it from the rejected view.
+                const refNode = referenceMap.get(part);
+                if (refNode) {
+                    const run = createWordElement(xmlDoc, 'w:r');
+                    if (rPr) run.appendChild(rPr.cloneNode(true));
+                    run.appendChild(refNode.cloneNode(true));
+                    let metadata = null;
+                    if (replacementEvent) {
+                        const id = replacementEvent.usedDeletionId
+                            ? createRevisionMetadata(author, xmlDoc, 'del').id
+                            : replacementEvent.deletionId;
+                        replacementEvent.usedDeletionId = true;
+                        metadata = { id, author: replacementEvent.author, date: replacementEvent.date };
+                    }
+                    localParagraph.appendChild(createTrackChange(xmlDoc, 'del', run, author, metadata));
+                }
+            }
             if (type !== 'delete') {
                 const refNode = referenceMap.get(part);
                 if (refNode) {
