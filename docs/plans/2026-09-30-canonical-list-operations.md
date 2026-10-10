@@ -439,8 +439,18 @@ numPr-without-`pPrChange` fix for explicit-start conversion (`f72f60a`). Consequ
    `core/current-properties.js` (`getCurrentNumIdElements` etc.), never raw `w:pPr` descendants, which include `w:pPrChange`
    snapshots. `tests/current_properties_usage_tests.mjs` lints this. This closes the historical-`numPr` inspection
    concern; do not re-fix it here.
-4. **Matrix.** The fidelity plan's WP-3 (pending) runs each operation on bare `document.xml` and packaged `.docx` paths and
-   asserts identical numbering parts and per-paragraph `numPr` in both views. Add `list-format` cases when WP-4/5 here land.
+4. **Matrix.** The fidelity plan's WP-3 (landed, `f5b485d`: `tests/reject_roundtrip_matrix_tests.mjs`,
+   `tests/helpers/operation-generators.mjs`) runs each operation on bare `document.xml` and packaged `.docx` paths and
+   asserts matching paragraph texts and per-paragraph `numPr` presence in both views. Add `list-format` /
+   `change-format` operation kinds to the generator when WP-4/5 here land.
+5. **Paragraph marks.** Paragraph-mark revisions (`w:pPr/w:rPr/w:ins|del`) must be built only through
+   `engine/paragraph-mark-revisions.js` (fidelity plan WP-6, `c356c5c`..`172fd56`; enforced by
+   `tests/paragraph_mark_single_site_tests.mjs`). `pPrChange` snapshots for pure numbering binding stay with
+   `snapshotAndAttachPPrChange`, and the binding helper `enforceListBindingOnParagraphNodes` now takes
+   `trackPropertyChange` (`f72f60a`).
+6. **Word checks.** Use `Document.Revisions.AcceptAll()/RejectAll()` in any new COM script, never
+   `Document.AcceptAllRevisions()/RejectAllRevisions()`, which can leave the final paragraph mark's revision behind
+   (fidelity plan, "Word verification"); `scripts/word-com-differential.ps1` also compares Reject All paragraph counts.
 
 ### Conflicts and stale statements to resolve
 
@@ -450,6 +460,6 @@ numPr-without-`pPrChange` fix for explicit-start conversion (`f72f60a`). Consequ
 - "Whole-paragraph delete/insert must stop being used for conversions" (letter markers): still a valid design goal, but the
   current letter form is reject-exact, so the verifier will not force the change. WP-4 must justify it on identity and
   review quality; its Word verification can reuse the WP-2 COM matrix script.
-- The fidelity plan lists the bare `1. Header` row as "still open" (line ~131); it is fixed by `73c67e8`.
+- (Resolved) The fidelity plan's bare `1. Header` row now records the `73c67e8` fix.
 - The "Interim safety fix" diagnostics are independent of the verifier modes; do not conflate `LIST_MARKER_NOT_BOUND` and
   friends with `REVISION_FIDELITY_VIOLATION`.
