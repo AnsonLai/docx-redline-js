@@ -20,10 +20,7 @@ const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const dir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'word-revision-semantics');
 const expectations = JSON.parse(readFileSync(join(dir, 'expectations.json'), 'utf8'));
 
-const KNOWN_DIVERGENCES = {
-    'ins-mark-cell-last-of-two': { library: 'Word keeps an empty cell paragraph when the last of two cell paragraphs has its inserted mark rejected; library drops it' },
-    'del-mark-cell-sole': { library: 'Word removes the whole table when its only cell paragraph is fully deleted on Accept; library keeps an empty cell paragraph' }
-};
+const KNOWN_DIVERGENCES = {};
 
 const wordParagraphs = list => (Array.isArray(list) ? list : [list]).map(p => ({
     text: String(p.text).replace(/\f/g, ''),
@@ -97,6 +94,17 @@ for (const name of Object.keys(KNOWN_DIVERGENCES)) {
 }
 
 if (process.env.WORD_SEMANTICS_REPORT) console.log([...seenDivergences].join('\n'));
+
+{
+    // Reject restores recorded pPr but keeps the paragraph-mark rPr and sectPr (not part of pPrChange).
+    const ns = `xmlns:w="${NS_W}"`;
+    const xml = `<w:body ${ns}><w:p><w:pPr><w:pStyle w:val="Heading1"/><w:rPr><w:b/></w:rPr><w:sectPr><w:pgSz w:w="1" w:h="1"/></w:sectPr><w:pPrChange w:id="1" w:author="A" w:date="2026-01-01T00:00:00Z"><w:pPr><w:pStyle w:val="Normal"/></w:pPr></w:pPrChange></w:pPr><w:r><w:t>x</w:t></w:r></w:p></w:body>`;
+    const out = rejectTrackedChangesInOoxml(xml, { allAuthors: true }).oxml;
+    checks += 1;
+    if (!/<w:pStyle w:val="Normal"\/>/.test(out) || !/<w:rPr><w:b\/><\/w:rPr>/.test(out) || !/<w:sectPr>/.test(out) || /Heading1|pPrChange/.test(out)) {
+        failures.push(`pPrChange reject must restore pPr but keep mark rPr and sectPr: ${out}`);
+    }
+}
 
 if (failures.length) {
     console.error(`❌ FAIL word revision semantics (${failures.length}):\n${failures.join('\n')}`);

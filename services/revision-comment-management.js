@@ -176,12 +176,23 @@ function getNextWordParagraph(paragraph) {
     return null;
 }
 
-function mergeParagraphIntoNextAndRemove(paragraph) {
+/**
+ * Resolves a paragraph whose mark is being removed. `view` is 'accept' or 'reject'.
+ * A table cell must keep its last paragraph: Word keeps it on Reject even when the
+ * cell has other paragraphs, and on Accept only when it is the cell's sole paragraph
+ * (otherwise the previous paragraph absorbs the mark). `keptCellParagraphs`
+ * collects the sole kept paragraphs so Accept can drop fully-deleted tables.
+ */
+function mergeParagraphIntoNextAndRemove(paragraph, view = 'accept', keptCellParagraphs = null) {
     if (!paragraph?.parentNode) return false;
     const nextParagraph = getNextWordParagraph(paragraph);
     if (!nextParagraph) {
-        if (isWordElement(paragraph.parentNode, 'tc') && getWordElementsByLocalName(paragraph.parentNode, 'p').length <= 1) {
-            return false;
+        if (isWordElement(paragraph.parentNode, 'tc')) {
+            const sole = getWordElementsByLocalName(paragraph.parentNode, 'p').length <= 1;
+            if (view === 'reject' || sole) {
+                if (sole && keptCellParagraphs) keptCellParagraphs.add(paragraph);
+                return false;
+            }
         }
         return removeNode(paragraph);
     }
@@ -227,6 +238,7 @@ export function acceptTrackedChangesInOoxml(oxml, options = {}) {
     const { xmlDoc, serializer } = parseResult;
     warnings.push(...(parseResult.warnings || []));
     let acceptedCount = 0;
+    const keptCellParagraphs = new Set();
 
     for (const insNode of getWordElementsByLocalName(xmlDoc, 'ins')) {
         if (!insNode.parentNode || !authorMatchesNode(insNode, filter)) continue;
@@ -245,7 +257,8 @@ export function acceptTrackedChangesInOoxml(oxml, options = {}) {
         if (!delNode.parentNode || !authorMatchesNode(delNode, filter)) continue;
         const paragraphMark = getContainingParagraphMarkRevision(delNode);
         if (paragraphMark) {
-            if (mergeParagraphIntoNextAndRemove(paragraphMark)) acceptedCount += 1;
+            if (mergeParagraphIntoNextAndRemove(paragraphMark, 'accept', keptCellParagraphs)) acceptedCount += 1;
+            else if (removeNode(delNode)) acceptedCount += 1;
             continue;
         }
         if (isTableRowRevisionMarker(delNode)) {
@@ -254,6 +267,19 @@ export function acceptTrackedChangesInOoxml(oxml, options = {}) {
             continue;
         }
         if (removeNode(delNode)) acceptedCount += 1;
+    }
+
+    // Word removes a table outright when accepting leaves every cell with only a
+    // deleted, content-free paragraph.
+    for (const tableNode of getWordElementsByLocalName(xmlDoc, 'tbl')) {
+        if (!tableNode.parentNode) continue;
+        const cells = getWordElementsByLocalName(tableNode, 'tc');
+        const allDeleted = cells.length > 0 && cells.every(cell => {
+            const paragraphs = getWordElementsByLocalName(cell, 'p');
+            return paragraphs.length === 1 && keptCellParagraphs.has(paragraphs[0])
+                && !Array.from(paragraphs[0].childNodes || []).some(child => !isWordElement(child, 'pPr'));
+        });
+        if (allDeleted && removeNode(tableNode)) acceptedCount += 1;
     }
 
     for (const moveFromNode of getWordElementsByLocalName(xmlDoc, 'moveFrom')) {
@@ -328,6 +354,11 @@ function rejectPropertyChangeNode(changeNode, localName) {
     }
 
     const toAppend = Array.from(historicalNode.childNodes || []);
+    // pPrChange records only paragraph properties: the paragraph-mark rPr and sectPr
+    // live in the same pPr but are not part of the recorded change, so they survive.
+    const keepNames = baseLocalName.toLowerCase() === 'ppr' ? ['rpr', 'sectpr'] : [];
+    const kept = Array.from(parent.childNodes || []).filter(child => child.nodeType === 1
+        && child.namespaceURI === NS_W && keepNames.includes(String(child.localName || '').toLowerCase()));
     while (parent.firstChild) {
         parent.removeChild(parent.firstChild);
     }
@@ -335,6 +366,7 @@ function rejectPropertyChangeNode(changeNode, localName) {
         const clone = xmlDocImportNode(parent.ownerDocument, node);
         parent.appendChild(clone);
     }
+    for (const node of kept) parent.appendChild(node);
     return true;
 }
 
@@ -415,7 +447,8 @@ export function rejectTrackedChangesInOoxml(oxml, options = {}) {
         if (!insNode.parentNode || !authorMatchesNode(insNode, filter)) continue;
         const paragraphMark = getContainingParagraphMarkRevision(insNode);
         if (paragraphMark) {
-            if (mergeParagraphIntoNextAndRemove(paragraphMark)) rejectedCount += 1;
+            if (mergeParagraphIntoNextAndRemove(paragraphMark, 'reject')) rejectedCount += 1;
+            else if (removeNode(insNode)) rejectedCount += 1;
             continue;
         }
         if (isTableRowRevisionMarker(insNode)) {
