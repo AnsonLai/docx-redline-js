@@ -6,6 +6,7 @@
 import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { getXmlParseError } from '../core/xml-query.js';
 import { NS_W } from '../core/types.js';
+import { getCurrentNumIdElements } from '../core/current-properties.js';
 import { createWordElement } from '../core/word-xml.js';
 import {
     getDocumentParagraphNodes,
@@ -311,7 +312,8 @@ function extractFirstParagraphNumIdFromOxml(oxml) {
     // Tracked-change output leads with a deleted-original paragraph that carries
     // no numPr, so the generated list binding is the first paragraph that has one.
     for (const paragraph of paragraphs) {
-        const numIdNodes = Array.from(paragraph.getElementsByTagNameNS('*', 'numId'));
+        // Current numIds only; a pPrChange snapshot must not supply the generated list binding.
+        const numIdNodes = getCurrentNumIdElements(paragraph);
         for (const numIdNode of numIdNodes) {
             const numId = getElementId(numIdNode, ['w:val', 'val']);
             if (numId != null) return String(numId);
