@@ -32,6 +32,11 @@ Resume here. Each line says what landed, where, and what is next. Verify with `g
 - **Untracked operations (`generateRedlines: false`) are skipped**; `ACCEPT_INTENT` and `ACCEPT_NEIGHBORS` are not
   implemented yet. `REJECT_NUMBERING_REFS` currently means "restored `numId`/`ilvl` differ from the source"; the
   numbering-part existence/format check is not implemented yet.
+- **Cost (2026-10-10, `c933dcd`):** zero extra parses/serializations (benchmark counts unchanged). Projection +
+  compare is ~8 ms per operation on a 1000-paragraph document without caching; the session caches the previous
+  verified `after` projection (`session._rejectedViewCache`, keyed by DOM identity, cleared on any unverified commit)
+  so a batch projects once per operation. `scripts/benchmark-operation-session.mjs` medians: off 265/277 ms vs warn
+  260 ms (within noise; a concurrent Word COM run made one sample 360 ms). Re-measure on a quiet machine before enforce.
 - **Mode resolution:** explicit `verifyRevisionFidelity` option, else env `DOCX_REDLINE_REVISION_FIDELITY`
   (diagnostic/test lanes), else `'warn'`. The agent profile does not yet force `enforce` or reject `off`.
 
