@@ -497,6 +497,15 @@ async function testDeletedManualBreakAndTabAreTrackedAndRestoredOnReject() {
     assert.ok(elementsByLocalName(out, 'del').some(del => elementsByLocalName(del, 'br').length === 1), 'deleted break must sit inside a tracked deletion');
 }
 
+async function testParagraphToListKeepsHyperlinkWrapperOnDeletedText() {
+    const { out, rejected } = await applyEnforced(
+        '<w:p><w:hyperlink r:id="rId7"><w:r><w:t>example.com/terms</w:t></w:r></w:hyperlink><w:r><w:t>.</w:t></w:r></w:p>',
+        { type: 'redline', target: { exactText: 'example.com/terms.' }, modified: '- first item\n- second item' }
+    );
+    assert.deepEqual(rejected, ['example.com/terms.']);
+    assert.ok(elementsByLocalName(out, 'hyperlink').some(link => elementsByLocalName(link, 'del').length > 0), 'deleted link text must stay inside the hyperlink');
+}
+
 await testSurgicalInsertionSplitsRunAtCharacterOffset();
 await testSurgicalDeletionPreservesNeighboringRunChildren();
 await testEmptyDefaultNamespaceTableCellCanReceiveInsertion();
@@ -516,5 +525,6 @@ await testReconstructionMultiParagraphFragmentDoesNotNestParagraphs();
 
 await testFieldResultTextEditKeepsFldSimpleAndRejectsToSource();
 await testDeletedManualBreakAndTabAreTrackedAndRestoredOnReject();
+await testParagraphToListKeepsHyperlinkWrapperOnDeletedText();
 
 console.log('engine_reliability_tests.mjs ... PASS');

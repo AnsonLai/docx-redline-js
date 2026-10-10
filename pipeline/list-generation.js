@@ -55,8 +55,11 @@ export async function executeListGeneration(options) {
     if (generateRedlines) {
         if (originalRunModel && originalRunModel.length > 0) {
             deletionRuns = originalRunModel
-                .filter(run => run.kind === 'text' || run.kind === 'run')
-                .map(run => ({ ...run, kind: 'deletion', author }));
+                .filter(run => run.kind === 'text' || run.kind === 'run'
+                    || run.kind === RunKind.CONTAINER_START || run.kind === RunKind.CONTAINER_END)
+                .map(run => (run.kind === RunKind.CONTAINER_START || run.kind === RunKind.CONTAINER_END
+                    ? run
+                    : { ...run, kind: 'deletion', author }));
         } else if (originalText && originalText.trim().length > 0) {
             const trimmed = originalText.trim();
             deletionRuns = [{
@@ -101,6 +104,10 @@ export async function executeListGeneration(options) {
                 }];
             } else if (segment && (run.kind === 'text' || run.kind === 'run')) {
                 segment.push({ ...run, kind: 'deletion', author });
+            } else if (segment && (run.kind === RunKind.CONTAINER_START || run.kind === RunKind.CONTAINER_END)) {
+                // Keep the hyperlink / content-control wrapper around the deleted runs so Reject All restores
+                // the text inside it, not as loose runs next to it.
+                segment.push(run);
             }
         }
         flushSegment();
