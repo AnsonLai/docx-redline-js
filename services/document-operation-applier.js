@@ -35,6 +35,12 @@ import { subtractValidationIssueMultiset, validationErrors } from '../core/valid
 import { normalizeErrorWithRecovery } from './error-recovery.js';
 import { extractCanonicalParagraphText } from '../core/paragraph-text.js';
 import { buildLocalizedReplacementChange } from './localized-replacement-compiler.js';
+import {
+    buildRevisionFidelityError,
+    resolveRevisionFidelityMode,
+    revisionFidelityBaselineView,
+    verifyRevisionFidelity
+} from './revision-fidelity-verifier.js';
 
 export function normalizeOperationError(error, context = {}) {
     return normalizeErrorWithRecovery(error, context);
@@ -436,6 +442,37 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                     receipt: operationReceipt,
                     ...resolutionCapture
                 };
+            }
+            const fidelityMode = resolveRevisionFidelityMode(options.verifyRevisionFidelity);
+            if (fidelityMode !== 'off' && operationOptions.generateRedlines !== false) {
+                const fidelity = verifyRevisionFidelity({
+                    before: savepoint.document,
+                    after: session.document,
+                    baselineView: revisionFidelityBaselineView(operationOptions.existingRevisions)
+                });
+                if (!fidelity.ok) {
+                    const fidelityError = buildRevisionFidelityError(fidelity.violations);
+                    if (fidelityMode === 'enforce') {
+                        session.restoreSavepoint(savepoint);
+                        return {
+                            documentXml,
+                            hasChanges: false,
+                            status: 'error',
+                            error: normalizeOperationError({
+                                ...fidelityError,
+                                recovery: {
+                                    hint: 'Retry with a smaller target range, or use replacements for a small literal change. Do not retry the same arguments.'
+                                }
+                            }, errorContext),
+                            operationType: operation.operationKind,
+                            authorUsed,
+                            receipt: createEmptyReceipt(operationIndex, operation.operationId, authorUsed, 'refused'),
+                            ...resolutionCapture
+                        };
+                    }
+                    result.warnings = [...(Array.isArray(result.warnings) ? result.warnings : []), `${fidelityError.code}: ${fidelityError.message}`];
+                    result.revisionFidelityViolations = fidelity.violations;
+                }
             }
             session.markMutationCommitted(true);
             if (operation._compiledSourceId && session.sourceTargetRegistry) {

@@ -60,6 +60,19 @@ assert.deepEqual(generated.issueSummary, {
     byCode: [{ code: 'A', count: 2 }, { code: 'B', count: 1 }]
 });
 
+const fidelity = normalizeErrorWithRecovery({
+    code: 'REVISION_FIDELITY_VIOLATION',
+    message: 'Operation would not restore the source on Reject All.',
+    violations: [{ invariant: 'REJECT_PARAGRAPH_COUNT', paragraph: 4, expected: '12', actual: '11' }],
+    recovery: { hint: 'Retry with a smaller target range.' }
+});
+assert.equal(fidelity.stage, 'verification');
+assert.equal(fidelity.category, 'library_or_builder_failure');
+assert.equal(fidelity.recovery.action, 'narrow_or_change_operation');
+assert.equal(fidelity.recovery.sameArgumentsSafe, false);
+assert.equal(fidelity.recovery.hint, 'Retry with a smaller target range.');
+assert.equal(fidelity.violations[0].invariant, 'REJECT_PARAGRAPH_COUNT');
+
 const patchMismatch = normalizeErrorWithRecovery({
     code: 'PATCH_ROUNDTRIP_MISMATCH',
     message: 'The requested accepted view could not be reconstructed exactly.'

@@ -54,6 +54,7 @@ const RULES = Object.freeze({
     AMBIGUOUS_CAPTURE_SELECTION: ['batch-compilation', 'candidate_selection_required', 'choose_candidate'],
     CAPTURE_STALE: ['batch-execution', 'source_conflict', 'replan_batch'],
     GENERATED_OOXML_INVALID: ['validation', 'library_or_builder_failure', 'report_library_failure'],
+    REVISION_FIDELITY_VIOLATION: ['verification', 'library_or_builder_failure', 'narrow_or_change_operation'],
     DOCUMENT_SERIALIZATION_FAILED: ['serialization', 'library_or_builder_failure', 'report_library_failure'],
     PACKAGE_OPERATION_FAILED: ['package', 'library_or_builder_failure', 'report_library_failure'],
     PACKAGE_VALIDATION: ['package-validation', 'library_or_builder_failure', 'report_library_failure'],

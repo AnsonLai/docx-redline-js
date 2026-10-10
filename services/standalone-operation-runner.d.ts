@@ -221,6 +221,13 @@ export interface StandaloneRunnerOptions {
   generateRedlines?: boolean;
   existingRevisions?: ExistingRevisionsPolicy;
   strictTargets?: boolean;
+  /**
+   * Post-apply check that Word's Reject All of each tracked operation's output equals the source
+   * (paragraph count, text, properties, numbering, wrapper membership). Transitional default
+   * `'warn'` appends a `REVISION_FIDELITY_VIOLATION` warning; `'enforce'` refuses the operation
+   * with that error code; `'off'` is for diagnosis only.
+   */
+  verifyRevisionFidelity?: 'enforce' | 'warn' | 'off';
   expectedRevision?: RevisionToken;
   pairReplacements?: boolean;
   insertionAffinity?: InsertionAffinity;
