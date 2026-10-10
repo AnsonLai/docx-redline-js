@@ -21,7 +21,7 @@ import { diffTablesWithVirtualGrid, serializeVirtualGridToOoxml, generateTableOo
 import { parseTable } from '../pipeline/pipeline.js';
 import { ingestTableToVirtualGrid } from '../pipeline/ingestion.js';
 import { createWordElement, withOoxmlSourceType } from '../core/word-xml.js';
-import { markParagraphMarkDeleted } from './run-builders.js';
+import { markParagraphDeleted } from './paragraph-mark-revisions.js';
 
 function noChanges(serializer, xmlDoc) {
     return withOoxmlSourceType({ oxml: serializer.serializeToString(xmlDoc), hasChanges: false });
@@ -151,7 +151,7 @@ export function applyTextToTableTransformation(xmlDoc, modifiedText, serializer,
 
     if (generateRedlines) {
         paragraphs.forEach(p => {
-            markParagraphMarkDeleted(workingDoc, p, author);
+            markParagraphDeleted(p, { author, revisionIdAllocator: workingDoc });
             const runs = getElementsByTagNS(p, NS_W, 'r');
             runs.forEach(run => {
                 const textNodes = getElementsByTagNS(run, NS_W, 't');
