@@ -168,5 +168,15 @@ assert.match(invalid.warnings[0], /no valid OOXML/);
         }
     }
     assert.ok(bare.receipts.some(r => r.revisionItems.length > 0), 'receipt records revisions');
+
+    // Reject All must restore the unnumbered source paragraph (numPr change is tracked via pPrChange).
+    const { projectWordRevisionView } = await import('../core/word-revision-semantics.js');
+    const { parseOoxmlSafe } = await import('../adapters/xml-adapter.js');
+    const rejected = projectWordRevisionView(parseOoxmlSafe(bare.documentXml).doc, 'rejected');
+    assert.deepEqual(rejected.map(r => r.text), ['1. Header']);
+    assert.equal(rejected[0].numPr, null, 'Reject All leaves no list binding');
+    assert.match(bare.documentXml, /<w:pPrChange [^>]*w:author="Rev"[^>]*><w:pPr\/><\/w:pPrChange>/);
+    const pPrChangeId = bare.documentXml.match(/<w:pPrChange w:id="(\d+)"/)[1];
+    assert.ok(bare.receipts.some(r => r.revisionItems.some(i => String(i.id) === pPrChangeId)), 'pPrChange id is receipted');
 }
 console.log('PASS: Phase 3 single-line list structural fallback behavior');

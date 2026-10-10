@@ -1453,7 +1453,8 @@ async function tryExplicitDecimalHeaderListConversion({
         numId: appliedNumId,
         ilvl: 0,
         clearParagraphPropertyChanges: true,
-        removeListPropertyNode: true
+        removeListPropertyNode: true,
+        trackPropertyChange: generateRedlines ? { author, revisionIdAllocator } : null
     });
 
     const parent = targetParagraph.parentNode;
@@ -1577,7 +1578,8 @@ async function trySingleParagraphListStructuralFallback({
                 numId: explicitNumIdForBinding,
                 ilvl: 0,
                 clearParagraphPropertyChanges: true,
-                removeListPropertyNode: true
+                removeListPropertyNode: true,
+                trackPropertyChange: generateRedlines ? { author, revisionIdAllocator } : null
             });
         }
     } else {

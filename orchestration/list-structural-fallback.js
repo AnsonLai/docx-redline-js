@@ -5,7 +5,8 @@
 
 import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { getXmlParseError } from '../core/xml-query.js';
-import { NS_W } from '../core/types.js';
+import { NS_W, createRevisionMetadata } from '../core/types.js';
+import { clonePropertiesWithoutRevisionHistory } from '../core/revision-cloning.js';
 import { getCurrentNumIdElements } from '../core/current-properties.js';
 import { createWordElement } from '../core/word-xml.js';
 import {
@@ -200,7 +201,8 @@ function getDirectWordChild(element, localName) {
  *   numId: string|number,
  *   ilvl?: number,
  *   clearParagraphPropertyChanges?: boolean,
- *   removeListPropertyNode?: boolean
+ *   removeListPropertyNode?: boolean,
+ *   trackPropertyChange?: { author?: string, revisionIdAllocator?: object|null }|null
  * }} options - Binding options
  * @returns {number} Number of paragraph nodes updated
  */
@@ -210,6 +212,7 @@ export function enforceListBindingOnParagraphNodes(nodes, options = {}) {
     const ilvl = Number.isInteger(options?.ilvl) ? Math.max(0, options.ilvl) : 0;
     const clearParagraphPropertyChanges = options?.clearParagraphPropertyChanges !== false;
     const removeListPropertyNode = options?.removeListPropertyNode !== false;
+    const trackPropertyChange = options?.trackPropertyChange || null;
 
     const paragraphs = (Array.isArray(nodes) ? nodes : [])
         .filter(node => node && node.nodeType === 1 && node.localName === 'p');
@@ -224,6 +227,9 @@ export function enforceListBindingOnParagraphNodes(nodes, options = {}) {
             pPr = createWordElement(ownerDoc, 'w:pPr');
             paragraph.insertBefore(pPr, paragraph.firstChild);
         }
+
+        // Snapshot the pre-binding pPr so Reject All restores the unnumbered paragraph.
+        const priorPPr = trackPropertyChange ? clonePropertiesWithoutRevisionHistory(pPr) : null;
 
         if (clearParagraphPropertyChanges) {
             const pPrChange = getDirectWordChild(pPr, 'pPrChange');
@@ -254,6 +260,20 @@ export function enforceListBindingOnParagraphNodes(nodes, options = {}) {
             numPr.appendChild(numIdEl);
         }
         numIdEl.setAttribute('w:val', String(numId));
+
+        if (trackPropertyChange && !getDirectWordChild(pPr, 'pPrChange')) {
+            const metadata = createRevisionMetadata(
+                trackPropertyChange.author,
+                trackPropertyChange.revisionIdAllocator || ownerDoc,
+                'pPrChange'
+            );
+            const pPrChange = createWordElement(ownerDoc, 'w:pPrChange');
+            pPrChange.setAttribute('w:id', String(metadata.id));
+            pPrChange.setAttribute('w:author', metadata.author);
+            pPrChange.setAttribute('w:date', metadata.date);
+            pPrChange.appendChild(priorPPr || createWordElement(ownerDoc, 'w:pPr'));
+            pPr.appendChild(pPrChange);
+        }
         updated++;
     }
 
