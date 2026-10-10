@@ -108,6 +108,21 @@ const invariantOf = (before, after) => {
     ), null);
 }
 
+// 2b. Accept-first policies: only the target's revisions are accepted, so untouched tracked
+//     paragraphs keep the rejected baseline while the target compares with its accepted view.
+{
+    const verify = (before, after) => verifyRevisionFidelity({
+        before: doc(before), after: doc(after), baselineView: 'accepted', acceptedScope: { from: 1, to: 1 }
+    });
+    const other = p(run('Para 1: ') + insRun('new') + delRun('old'));
+    const target = p(run('Para 2: ') + insRun('accepted') + delRun('pending'));
+    const edited = p(run('Para 2: ') + delRun('accepted') + insRun('final'));
+    assert.equal(verify(other + target + p(run('Tail')), other + edited + p(run('Tail'))).ok, true);
+    // Losing a revision outside the target is still caught.
+    const lost = verify(other + target + p(run('Tail')), p(run('Para 1: new')) + edited + p(run('Tail')));
+    assert.equal(lost.violations[0].invariant, 'REJECT_PARAGRAPH_TEXT');
+}
+
 // 3. Mutation test of the verifier against real library output.
 {
     const files = unzipDocx(readFileSync(new URL('./fixtures/agentic-lists/nested-lists-source.docx', import.meta.url)));

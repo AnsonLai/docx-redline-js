@@ -451,10 +451,17 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
             const fidelityMode = resolveRevisionFidelityMode(options.verifyRevisionFidelity);
             if (fidelityMode !== 'off' && operationOptions.generateRedlines !== false) {
                 const baselineView = revisionFidelityBaselineView(operationOptions.existingRevisions);
+                // Accept-first policies accept revisions in the resolved target only; a range
+                // target has no resolved end, so the verifier falls back to its region heuristic.
+                const targetPosition = resolutionCapture.resolvedTarget?.index;
+                const acceptedScope = Number.isInteger(targetPosition) && !operation.targetEndDescriptor && !operation.targetEndRef
+                    ? { from: targetPosition - 1, to: targetPosition - 1 }
+                    : null;
                 const fidelity = verifyRevisionFidelity({
                     before: baselineView === 'rejected' && cachedRejectedView ? cachedRejectedView : savepoint.document,
                     after: session.document,
-                    baselineView
+                    baselineView,
+                    acceptedScope
                 });
                 session._rejectedViewCache = { document: session.document, projection: fidelity.afterProjection };
                 if (!fidelity.ok) {

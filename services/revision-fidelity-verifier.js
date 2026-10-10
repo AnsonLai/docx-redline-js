@@ -32,14 +32,18 @@ export function projectRejectedView(documentNode) {
  * @param {Object} input
  * @param {Array|Document} input.before - savepoint DOM or its cached projection
  * @param {Array|Document} input.after - post-mutation DOM or its projection
- * @param {'rejected'|'accepted'} [input.baselineView='rejected'] - view of `before` that Reject All
- *   of `after` must reproduce; 'accepted' for policies that accept existing revisions first
+ * @param {'rejected'|'accepted'} [input.baselineView='rejected'] - 'accepted' for policies that
+ *   accept existing revisions in the target before editing: the changed region is compared with
+ *   the source's accepted view, everything else with its rejected view
  * @returns {{ ok: boolean, violations?: Array<{ invariant: string, paragraph: number, expected: string, actual: string }>,
  *   afterProjection: Array }} `afterProjection` lets a session reuse it as the next operation's baseline
  */
-export function verifyRevisionFidelity({ before, after, baselineView = 'rejected' }) {
-    const expected = Array.isArray(before) ? before : projectWordRevisionView(before, baselineView);
+export function verifyRevisionFidelity({ before, after, baselineView = 'rejected', acceptedScope = null }) {
     const actual = Array.isArray(after) ? after : projectRejectedView(after);
+    const rejectedBefore = Array.isArray(before) ? before : projectRejectedView(before);
+    const expected = baselineView === 'accepted' && !Array.isArray(before)
+        ? spliceAcceptedRegion(rejectedBefore, projectWordRevisionView(before, 'accepted'), actual, acceptedScope)
+        : rejectedBefore;
     const violations = [];
     const push = (invariant, paragraph, expectedValue, actualValue) => {
         violations.push({ invariant, paragraph, expected: preview(expectedValue), actual: preview(actualValue) });
@@ -73,6 +77,35 @@ export function verifyRevisionFidelity({ before, after, baselineView = 'rejected
     return violations.length
         ? { ok: false, violations, afterProjection: actual }
         : { ok: true, afterProjection: actual };
+}
+
+const sameRecord = (a, b) => a.text === b.text && a.props === b.props && a.container === b.container
+    && (a.numPr?.numId ?? null) === (b.numPr?.numId ?? null) && (a.numPr?.ilvl ?? null) === (b.numPr?.ilvl ?? null)
+    && a.wrappers.join('|') === b.wrappers.join('|');
+
+/**
+ * Accept-first policies accept only the target's revisions. With a known target scope
+ * (`{ from, to }`, zero-based body paragraph positions) those source paragraphs take the accepted
+ * view and all others the rejected view. Without one, the unchanged prefix and suffix keep the
+ * rejected view and the paragraphs between them take the accepted view (weaker: a lost revision
+ * adjacent to the target is absorbed).
+ */
+function spliceAcceptedRegion(rejected, accepted, actual, scope) {
+    if (scope && Number.isInteger(scope.from) && Number.isInteger(scope.to)) {
+        const inScope = record => record.sourceIndex >= scope.from && record.sourceIndex <= scope.to;
+        return [...rejected.filter(record => !inScope(record)), ...accepted.filter(inScope)]
+            .sort((a, b) => a.sourceIndex - b.sourceIndex);
+    }
+    let prefix = 0;
+    while (prefix < rejected.length && prefix < actual.length && sameRecord(rejected[prefix], actual[prefix])) prefix++;
+    let suffix = 0;
+    while (suffix < rejected.length - prefix && suffix < actual.length - prefix
+        && sameRecord(rejected[rejected.length - 1 - suffix], actual[actual.length - 1 - suffix])) suffix++;
+    if (prefix + suffix === rejected.length && prefix + suffix === actual.length) return rejected;
+    const low = prefix > 0 ? rejected[prefix - 1].sourceIndex : -1;
+    const high = suffix > 0 ? rejected[rejected.length - suffix].sourceIndex : Infinity;
+    const middle = accepted.filter(record => record.sourceIndex > low && record.sourceIndex < high);
+    return [...rejected.slice(0, prefix), ...middle, ...rejected.slice(rejected.length - suffix)];
 }
 
 /** Builds the structured error payload for a violation result. */
