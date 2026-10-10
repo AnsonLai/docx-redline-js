@@ -153,8 +153,9 @@ export function diffTablesWithVirtualGrid(oldGrid, newTableData) {
             if (col > oldCell.gridCol) continue;
 
             if (newCellText !== undefined) {
-                const oldText = oldCell.getText();
-                if (oldText !== newCellText) {
+                // Markdown cannot represent a cell's trailing empty paragraphs, so they do not count as a change.
+                const oldText = trimTrailingNewlines(oldCell.getText());
+                if (oldText !== trimTrailingNewlines(newCellText)) {
                     operations.push({
                         type: 'cell_modify',
                         gridRow: row,
@@ -311,7 +312,63 @@ function buildTableOperationIndex(operations) {
     };
 }
 
+function trimTrailingNewlines(text) {
+    return typeof text === 'string' ? text.replace(/\n+$/, '') : text;
+}
+
+/**
+ * Reconciles a multi-paragraph cell paragraph by paragraph so unchanged paragraphs (including
+ * empty ones the Markdown cell text cannot express) are preserved exactly.
+ */
+function reconcileMultiBlockCellContent(cell, newText, options) {
+    const { generateRedlines, author, revisionIdAllocator = null } = options;
+    const lines = String(newText ?? '').split('\n');
+    // Trailing blank lines carry no content; never create inserted paragraphs from them.
+    while (lines.length > cell.blocks.length && lines[lines.length - 1] === '') lines.pop();
+    let out = '';
+
+    cell.blocks.forEach((block, index) => {
+        const line = lines[index];
+        if (line === undefined || line === block.acceptedText) {
+            if (line === undefined && block.acceptedText !== '') {
+                // Markdown dropped this paragraph's text: track the text deletion.
+                const diffOps = computeWordLevelDiffOps(block.acceptedText, '');
+                const model = applyPatches(splitRunsAtDiffBoundaries(block.runModel, diffOps), diffOps, {
+                    generateRedlines, author, formatHints: []
+                });
+                out += serializeToOoxml(model, block.pPr, [], { author, generateRedlines, revisionIdAllocator });
+            } else {
+                out += serializeToOoxml(block.runModel, block.pPr, [], {});
+            }
+            return;
+        }
+        const { cleanText, formatHints } = preprocessMarkdown(line);
+        const diffOps = computeWordLevelDiffOps(block.acceptedText, cleanText);
+        const model = applyPatches(splitRunsAtDiffBoundaries(block.runModel, diffOps), diffOps, {
+            generateRedlines, author, formatHints
+        });
+        out += serializeToOoxml(model, block.pPr, formatHints, { author, generateRedlines, revisionIdAllocator });
+    });
+
+    for (let i = cell.blocks.length; i < lines.length; i++) {
+        const { cleanText, formatHints } = preprocessMarkdown(lines[i]);
+        const runModel = [{
+            kind: generateRedlines ? RunKind.INSERTION : RunKind.TEXT,
+            text: cleanText, rPrXml: '', author, startOffset: 0, endOffset: cleanText.length
+        }];
+        const markMeta = generateRedlines ? createRevisionMetadata(author, revisionIdAllocator) : null;
+        const pPr = markMeta
+            ? `<w:pPr><w:rPr><w:ins w:id="${markMeta.id}" w:author="${escapeXml(markMeta.author)}" w:date="${markMeta.date}"/></w:rPr></w:pPr>`
+            : null;
+        out += serializeToOoxml(runModel, pPr, formatHints, { author, generateRedlines, revisionIdAllocator });
+    }
+    return out;
+}
+
 function reconcileCellContent(cell, newText, options) {
+    if (cell.blocks.length > 1) {
+        return reconcileMultiBlockCellContent(cell, newText, options);
+    }
     const { generateRedlines, author, revisionIdAllocator = null } = options;
     const { cleanText, formatHints } = preprocessMarkdown(newText);
 

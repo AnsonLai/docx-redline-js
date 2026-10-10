@@ -23,6 +23,7 @@
 
 ### Fixed
 
+- **Table reconciliation keeps untouched cell paragraphs:** editing one cell of a Markdown table reconciliation collapsed a multi-paragraph cell (for example `LS` plus a trailing empty paragraph) to one paragraph, untracked, so Reject All lost a paragraph. Cells whose only difference is trailing empty paragraphs are now unchanged, and a modified multi-paragraph cell is reconciled paragraph by paragraph (inserted paragraphs carry tracked marks).
 - **Text-to-table redlines insert tracked table rows:** a paragraph range converted to a Markdown table carried tracked cell text but untracked rows, so Reject All left an empty table behind. Rows now carry `w:trPr/w:ins` and tracked cell paragraph marks like other inserted tables.
 - **Explicit-start list conversion is reversible with Reject All:** converting a `1. Header` paragraph to a list bound `numPr` without recording a `w:pPrChange`, so rejecting the tracked deletion of the marker left a numbered item. The binding now records the original paragraph properties (empty `<w:pPr/>` when none) in a receipted `w:pPrChange`.
 - **Reject/Accept All match Word for table cells and `pPrChange`:** rejecting an inserted paragraph mark keeps the cell's last paragraph (empty) instead of dropping it, accepting a fully deleted sole-paragraph table removes the table, and rejecting a `pPrChange` keeps the paragraph-mark `rPr` and `sectPr` instead of discarding them.
