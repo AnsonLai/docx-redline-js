@@ -39,6 +39,10 @@ export const REVISION_FIDELITY_INVARIANTS = Object.freeze({
         explanation: 'Reject All of the output puts a source paragraph in a different list or list level (numId/ilvl) than the source, so the restored document would number differently.',
         retry: 'Edit list item text without changing list markers or indentation, and make list membership or level changes in their own operation.'
     },
+    ACCEPT_NEIGHBORS: {
+        explanation: 'An untracked edit changed a paragraph outside its target, so the change could not be reviewed or undone.',
+        retry: 'Re-extract the target and retry against exactly that paragraph; if the edit must span several paragraphs, use a tracked operation with an explicit targetEnd range.'
+    },
     REJECT_WRAPPERS: {
         explanation: 'Reject All of the output moves text into or out of a hyperlink, field or content control compared with the source.',
         retry: 'Keep the change entirely inside or entirely outside the hyperlink, field or content control, for example with replacements that do not cross its boundary.'
@@ -131,6 +135,53 @@ const sameRecord = (a, b) => a.text === b.text && a.props === b.props && a.conta
     && a.wrappers.join('|') === b.wrappers.join('|');
 
 /**
+ * Untracked operations (generateRedlines: false) have no Reject All to protect, so their
+ * guarantee is locality: every paragraph before and after the single resolved target is
+ * unchanged in both the Accept All and Reject All views.
+ *
+ * @param {Object} input
+ * @param {Document} input.before - savepoint DOM
+ * @param {Document} input.after - post-mutation DOM
+ * @param {number} input.targetSourceIndex - zero-based body paragraph position of the target in `before`
+ */
+export function verifyUntrackedLocality({ before, after, targetSourceIndex }) {
+    const violations = [];
+    for (const view of ['accepted', 'rejected']) {
+        const expected = projectWordRevisionView(before, view);
+        const actual = projectWordRevisionView(after, view);
+        const targetPosition = expected.findIndex(record => record.sourceIndex >= targetSourceIndex);
+        if (targetPosition < 0) continue;
+        const needSuffix = expected.length - targetPosition - 1;
+        let prefix = 0;
+        while (prefix < targetPosition && prefix < actual.length && sameRecord(expected[prefix], actual[prefix])) prefix++;
+        let suffix = 0;
+        while (suffix < needSuffix && suffix < actual.length - prefix
+            && sameRecord(expected[expected.length - 1 - suffix], actual[actual.length - 1 - suffix])) suffix++;
+        if (prefix < targetPosition) {
+            violations.push(neighborViolation(prefix + 1, expected[prefix], actual[prefix], view));
+        } else if (suffix < needSuffix) {
+            const index = expected.length - 1 - suffix;
+            violations.push(neighborViolation(index + 1, expected[index], actual[actual.length - 1 - suffix], view));
+        }
+        if (violations.length) break;
+    }
+    return violations.length ? { ok: false, violations } : { ok: true };
+}
+
+function neighborViolation(paragraph, sourceRecord, outputRecord, view) {
+    return {
+        invariant: 'ACCEPT_NEIGHBORS',
+        paragraph,
+        view,
+        expected: excerpt(sourceRecord?.text ?? null),
+        actual: excerpt(outputRecord?.text ?? null),
+        explanation: REVISION_FIDELITY_INVARIANTS.ACCEPT_NEIGHBORS.explanation,
+        source: describeRecord(sourceRecord),
+        output: describeRecord(outputRecord)
+    };
+}
+
+/**
  * Accept-first policies accept only the target's revisions. With a known target scope
  * (`{ from, to }`, zero-based body paragraph positions) those source paragraphs take the accepted
  * view and all others the rejected view. Without one, the unchanged prefix and suffix keep the
@@ -170,7 +221,9 @@ export function buildRevisionFidelityError(violations, context = {}) {
         code: 'REVISION_FIDELITY_VIOLATION',
         stage: 'verification',
         message: `${mode === 'warn' ? 'Applied with a fidelity warning' : 'Refused, document unchanged'}: `
-            + `Reject All of this operation's output would not restore the source (${first.invariant} at ${where}: `
+            + (first.invariant === 'ACCEPT_NEIGHBORS'
+                ? `this untracked operation changed a paragraph outside its target (${first.invariant} in the ${first.view} view at ${where}: `
+                : `Reject All of this operation's output would not restore the source (${first.invariant} at ${where}: `)
             + `expected ${JSON.stringify(first.expected)}, got ${JSON.stringify(first.actual)}). ${first.explanation} `
             + `Retry: ${REVISION_FIDELITY_INVARIANTS[first.invariant].retry}`,
         violations,

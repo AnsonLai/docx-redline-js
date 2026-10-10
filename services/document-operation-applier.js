@@ -39,7 +39,8 @@ import {
     buildRevisionFidelityError,
     resolveRevisionFidelityMode,
     revisionFidelityBaselineView,
-    verifyRevisionFidelity
+    verifyRevisionFidelity,
+    verifyUntrackedLocality
 } from './revision-fidelity-verifier.js';
 
 export function normalizeOperationError(error, context = {}) {
@@ -449,7 +450,12 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                 };
             }
             const fidelityMode = resolveRevisionFidelityMode(options.verifyRevisionFidelity);
-            if (fidelityMode !== 'off' && operationOptions.generateRedlines !== false) {
+            const singleTargetPosition = !operation.targetEndDescriptor && !operation.targetEndRef
+                ? resolutionCapture.resolvedTarget?.index
+                : null;
+            const fidelity = fidelityMode === 'off' ? null
+                : (operationOptions.generateRedlines !== false ? 'tracked' : (Number.isInteger(singleTargetPosition) ? 'untracked' : null));
+            if (fidelity === 'tracked') {
                 const baselineView = revisionFidelityBaselineView(operationOptions.existingRevisions);
                 // Accept-first policies accept revisions in the resolved target only; a range
                 // target has no resolved end, so the verifier falls back to its region heuristic.
@@ -489,6 +495,32 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                 }
             } else {
                 session._rejectedViewCache = null;
+                const locality = fidelity === 'untracked'
+                    ? verifyUntrackedLocality({ before: savepoint.document, after: session.document, targetSourceIndex: singleTargetPosition - 1 })
+                    : { ok: true };
+                if (!locality.ok) {
+                    const fidelityError = buildRevisionFidelityError(locality.violations, { mode: fidelityMode });
+                    const logLine = `${fidelityError.code} (operation ${operationIndex}${operation.operationId ? ` "${operation.operationId}"` : ''}): ${fidelityError.message}`;
+                    if (typeof options?.onWarn === 'function') options.onWarn(logLine);
+                    if (fidelityMode === 'enforce') {
+                        session.restoreSavepoint(savepoint);
+                        const refusedReceipt = createEmptyReceipt(operationIndex, operation.operationId, authorUsed, 'refused');
+                        refusedReceipt.warnings.push(logLine);
+                        return {
+                            documentXml,
+                            hasChanges: false,
+                            status: 'error',
+                            error: normalizeOperationError(fidelityError, errorContext),
+                            warnings: [logLine],
+                            operationType: operation.operationKind,
+                            authorUsed,
+                            receipt: refusedReceipt,
+                            ...resolutionCapture
+                        };
+                    }
+                    result.warnings = [...(Array.isArray(result.warnings) ? result.warnings : []), logLine];
+                    result.revisionFidelityViolations = locality.violations;
+                }
             }
             session.markMutationCommitted(true);
             if (operation._compiledSourceId && session.sourceTargetRegistry) {

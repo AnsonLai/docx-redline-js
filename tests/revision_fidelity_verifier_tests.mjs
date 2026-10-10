@@ -10,7 +10,8 @@ import {
     buildRevisionFidelityError,
     REVISION_FIDELITY_INVARIANTS,
     resolveRevisionFidelityMode,
-    verifyRevisionFidelity
+    verifyRevisionFidelity,
+    verifyUntrackedLocality
 } from '../services/revision-fidelity-verifier.js';
 import { normalizeErrorWithRecovery } from '../services/error-recovery.js';
 
@@ -184,6 +185,30 @@ const invariantOf = (before, after) => {
     assert.equal(result.status, 'ok', JSON.stringify(result.error || result.results));
     assert.deepEqual(wordRevisionParagraphTexts(parseOoxmlSafe(result.documentXml).doc, 'rejected'),
         ['Alpha clause.', 'Beta term.', 'Gamma clause.', 'Delta clause.']);
+}
+
+// 4b. Untracked operations: locality instead of Reject All. Edits to the target (including new
+//     paragraphs after it) pass; a change to any other paragraph is ACCEPT_NEIGHBORS.
+{
+    const before = p(run('Alpha')) + p(run('Beta')) + p(run('Gamma'));
+    const check = after => verifyUntrackedLocality({ before: doc(before), after: doc(after), targetSourceIndex: 1 });
+    assert.equal(check(p(run('Alpha')) + p(run('Beta two')) + p(run('Gamma'))).ok, true);
+    assert.equal(check(p(run('Alpha')) + p(run('Beta')) + p(run('Inserted')) + p(run('Gamma'))).ok, true);
+    const neighbor = check(p(run('Alpha')) + p(run('Beta two')) + p(run('Gamma changed')));
+    assert.equal(neighbor.violations[0].invariant, 'ACCEPT_NEIGHBORS');
+    assert.equal(neighbor.violations[0].source.sourceParagraphIndex, 3);
+    const merged = check(p(run('AlphaBeta')) + p(run('Gamma')));
+    assert.equal(merged.violations[0].invariant, 'ACCEPT_NEIGHBORS');
+    const error = buildRevisionFidelityError(neighbor.violations, { mode: 'enforce' });
+    assert.match(error.message, /this untracked operation changed a paragraph outside its target \(ACCEPT_NEIGHBORS in the accepted view at source paragraph 3/);
+
+    // End to end: untracked edits of the target pass under the default (enforce).
+    const xml = `<w:document xmlns:w="${W}"><w:body>${before}<w:sectPr/></w:body></w:document>`;
+    const result = await applyOperationsToDocumentXml(xml, [
+        { type: 'redline', target: 'Beta', modified: 'Beta two\nBeta three', generateRedlines: false }
+    ], 'Verifier', {}, {});
+    assert.equal(result.status, 'ok', JSON.stringify(result.error || result.results));
+    assert.deepEqual(wordRevisionParagraphTexts(parseOoxmlSafe(result.documentXml).doc, 'accepted'), ['Alpha', 'Beta two', 'Beta three', 'Gamma']);
 }
 
 // 5. Refusal payload: one log-ready message plus machine-readable detail for a retry.
