@@ -1,7 +1,7 @@
 # Canonical List Operations: Header-to-List Conversion and List Format Change
 
 Date: 2026-09-30
-Status: PROPOSED. Package baseline 0.8.2, CLI `contractVersion` 8.
+Status: PROPOSED (WP-0 done; see "Cross-plan dependencies"). Package baseline 0.8.2, CLI `contractVersion` 8.
 Source: consumer report `AIWordPlugin/docs/library-issues/2026-09-30-canonical-list-operations.md`
 (with `reproduce-plain-header-conversion.mjs`). Reproductions below were re-run against this tree.
 
@@ -84,6 +84,14 @@ Two further observations from the same run:
    binds `numId=2`. Reproduced only on a minimal document without a package; confirm against a
    packaged `.docx` before treating it as a defect. Existing suite coverage passes, so the
    explicit-path receipt wiring should be checked first (WP-0).
+
+   **FIXED in `73c67e8` (2026-10-10).** Root cause: the bare runner did not seed `numberingIdState`, and
+   `tryExplicitDecimalHeaderListConversion` recorded receipt revisions before an aborted conversion, so the receipt named
+   ids absent from the output. The runner now always seeds the state (`services/batch-operation-orchestrator.js`) and the
+   explicit path reserves numbering before redlining (`services/document-operation-mutations.js`). Verified by re-running
+   `node tests/phase3_list_structural_fallback_tests.mjs` (PASS, includes the bare `1. Header` regression at line ~155:
+   `status: ok`, `numId` bound, every receipt revision id present in the output). Whether it ever reproduced on a packaged
+   `.docx` was never separately answered; the fidelity plan's WP-3 matrix will run both paths.
 
 ### (b) Format change keeps the old definition
 
@@ -241,7 +249,7 @@ diverge.
 
 ## Numbering definition allocation and remapping
 
-Same-kind edits (landed): a `redline` over a list range whose generated list has the same level
+Same-kind edits (landed in `c44f227`, 0.8.3; the fidelity plan's R3 targets this heuristic for replacement): a `redline` over a list range whose generated list has the same level
 formats (bullet-like vs bullet-like, otherwise equal `numFmt`) as the single existing list the
 range uses now binds the new paragraphs to that existing `numId` and drops the generated numbering
 payload (`reuseSourceListNumbering` in `services/numbering-helpers.js`). Tracked-deleted source
@@ -376,7 +384,7 @@ for the range.
 
 | WP | Work | Risk |
 |---|---|---|
-| 0 | Done in this change: strict-parse fix and start-value fix (item c). Still to do: confirm the decimal explicit-path `RECEIPT_RECONCILIATION_FAILED` with tracked changes on a packaged `.docx`; if real, fix before anything else because it is in the "supported" path. Re-check xmldom hierarchy warnings in the consumer's environment. | Low |
+| 0 | **Done.** Strict-parse and start-value fix (item c); bare-XML `RECEIPT_RECONCILIATION_FAILED` fixed in `73c67e8` (see section (a) observation 2). Remaining: re-check xmldom hierarchy warnings in the consumer's environment; bare-vs-packaged parity is covered by the fidelity plan's WP-3 matrix. | Low |
 | 1 | Interim safety diagnostics: `UNSUPPORTED_LIST_CONVERSION`, `LIST_MARKER_NOT_BOUND`, `LIST_FORMAT_NOT_APPLIED`, `listMarkers: 'literal'` opt-out; closed `paragraph-format.properties` schema with unknown-key rejection; capability `list-conversion-diagnostics-v1`. Patch release. | Low-medium: unknown-key rejection could break callers that pass ignored keys; ship as warning first, error in the next minor |
 | 2 | Numbering allocator module (new `services/numbering-allocation.js`): create-new-abstract-and-num, copy level geometry, per-level `startOverride`, id reservation through the document-scoped state; validator checks for numId/abstractNum/ilvl integrity. No operation exposed yet; unit tests only. | Medium: continuity across a batch |
 | 3 | `paragraph-format.numbering` binding (`numId`, `level`, null) with `pPrChange`; extend `applyParagraphPropertiesToPPr`, `checkParagraphPropertiesChanged`, and `insertPPrChildInOrder` for `w:numPr` position (before `w:ind`, after `w:keepLines`/`w:pageBreakBefore` per the CT_PPr sequence); roman/letter start values (`parseMarkerStart`). | Low-medium: pPr child order is schema-sensitive and Word repairs misordered children |
@@ -406,3 +414,41 @@ Word-verification work. WP-4 and WP-5 should not merge without the COM lane resu
 - Whether `list-format` should auto-detect `strip` from the text or require it. Recommendation: auto
   for exact `^\s*marker[.)]?\s` matches of the declared `format`, otherwise leave text alone
   and say so in the receipt.
+
+## Cross-plan dependencies (added 2026-10-10)
+
+Companion: `2026-09-30-revision-fidelity-invariants.md` (the fidelity plan). Landed there so far: WP-1 verifier
+(`services/revision-fidelity-verifier.js`; `05dcf4c`, `c933dcd`, `bbb23cb`), WP-2 Word-semantics alignment
+(`1594add`, `584c83a`, `cedc68a`), WP-4 `core/current-properties.js` (`1a3eeb6`..`1f89ae0`), WP-5b (`73c67e8`), and the
+numPr-without-`pPrChange` fix for explicit-start conversion (`f72f60a`). Consequences for the work packages here:
+
+1. **Acceptance gate.** The post-apply verifier compares Word Reject All of the output with Word Reject All of the source;
+   a new `list-format` / `change-format` / `paragraph-format.numbering` operation must leave them equal. The verifier is in
+   `warn` mode today and becomes `enforce` by default (refusal `REVISION_FIDELITY_VIOLATION`, disposition `refused`);
+   develop and test new operations under `DOCX_REDLINE_REVISION_FIDELITY=enforce`. This replaces "Reject All yields
+   canonical-equal `document.xml`" as an ad hoc property check in the Test plan. Untracked (`generateRedlines: false`)
+   operations are skipped by the verifier.
+2. **Allocator requirements (WP-2 here).** The allocator must satisfy: R1, tracked-deleted source paragraphs never change
+   `numPr` (verifier invariant `REJECT_NUMBERING_REFS`, not a convention; already true of same-kind reuse); R2, the runner
+   and the `openDocx` facade call one allocator function with the same arguments and neither carries its own merge; R3, the
+   same-kind reuse heuristic `reuseSourceListNumbering` (`services/numbering-helpers.js`, call site
+   `services/document-operation-mutations.js`) is replaced by allocator policy. Keep it and
+   `tests/facade_list_numbering_tests.mjs` until then.
+3. **Reading properties.** Any new code that reads `numPr`, `pStyle`, `outlineLvl` or other paragraph/run properties must use
+   `core/current-properties.js` (`getCurrentNumIdElements` etc.), never raw `w:pPr` descendants, which include `w:pPrChange`
+   snapshots. `tests/current_properties_usage_tests.mjs` lints this. This closes the historical-`numPr` inspection
+   concern; do not re-fix it here.
+4. **Matrix.** The fidelity plan's WP-3 (pending) runs each operation on bare `document.xml` and packaged `.docx` paths and
+   asserts identical numbering parts and per-paragraph `numPr` in both views. Add `list-format` cases when WP-4/5 here land.
+
+### Conflicts and stale statements to resolve
+
+- WP-3 here says to extend `insertPPrChildInOrder` and `rejectPropertyChangeNode` expectations for `numPr` in `pPrChange`.
+  `cedc68a` changed `pPrChange` reject (paragraph-mark `rPr` and `sectPr` kept) and Word-matched semantics now also live in
+  `core/word-revision-semantics.js`. Re-read both before WP-3 and treat the Word-backed simulator as the oracle.
+- "Whole-paragraph delete/insert must stop being used for conversions" (letter markers): still a valid design goal, but the
+  current letter form is reject-exact, so the verifier will not force the change. WP-4 must justify it on identity and
+  review quality; its Word verification can reuse the WP-2 COM matrix script.
+- The fidelity plan lists the bare `1. Header` row as "still open" (line ~131); it is fixed by `73c67e8`.
+- The "Interim safety fix" diagnostics are independent of the verifier modes; do not conflate `LIST_MARKER_NOT_BOUND` and
+  friends with `REVISION_FIDELITY_VIOLATION`.

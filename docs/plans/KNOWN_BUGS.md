@@ -200,3 +200,34 @@ Files saved by versions before 0.8.1 can carry the wrong `commentsExtended.xml` 
   repair-only save.
 - `docx-redline validate` reports the wrong type as an error and does not repair it.
 - Files that were already sent on to others are unaffected until someone re-saves them with this package or with Word.
+
+## 7. Revision Fidelity Verification and Resolved Gap Bugs
+
+### Post-apply verifier
+
+Every tracked operation is checked after generation: Word's Reject All of the output must equal Word's Reject All of the
+source (`services/revision-fidelity-verifier.js`). A violation fails closed with `REVISION_FIDELITY_VIOLATION` (disposition
+`refused`, nothing written). Current limits, tracked in `2026-09-30-revision-fidelity-invariants.md`:
+
+- The default mode is `warn`, not `enforce`; set `verifyRevisionFidelity: 'enforce'` or
+  `DOCX_REDLINE_REVISION_FIDELITY=enforce`. The agent profile does not yet force `enforce` or reject `off`.
+- Untracked operations (`generateRedlines: false`) are not verified.
+- Accept All intent and neighbor checks (`ACCEPT_INTENT`, `ACCEPT_NEIGHBORS`) and the numbering-part existence check are not
+  implemented; `REJECT_NUMBERING_REFS` only compares restored `numId`/`ilvl` with the source.
+
+### Fixed gap bugs (do not re-report)
+
+| Bug | Fixed in | Note |
+|---|---|---|
+| `1. Header` list conversion on a bare `document.xml` returned `RECEIPT_RECONCILIATION_FAILED` (still listed under 0.8.4 known issues in the released changelog) | `73c67e8` | Bare runner seeds numbering state; an aborted conversion records no receipt revisions. |
+| Explicit-start / `1. Header` list conversion bound `numPr` without `w:pPrChange`, so Reject All left a numbered item | `f72f60a` | `orchestration/list-structural-fallback.js` |
+| Text-to-table redline put tracked cell text in untracked rows, so Reject All kept the table | `c20f33c` | `engine/table-mode.js`; `pipeline/pipeline.js:~340` has the same call without `trackAsBlock` and is untested. |
+| Library Reject/Accept differed from Word for cell paragraph marks, deleted tables, and `pPrChange` paragraph marks | `cedc68a` | `tests/word_revision_semantics_tests.mjs` |
+| Numbering helpers and inspection read `numPr`/`pStyle` from `w:pPrChange` snapshots as current | `1a3eeb6`..`1f89ae0` | `core/current-properties.js` plus usage lint |
+
+### Still open
+
+- Generated numbering ids can collide across separate calls with fresh runtime contexts and no numbering merge between them
+  (`2026-10-01-consumer-reported-library-issues.md`, WP-3 residual; owner: the canonical-list allocator).
+- Lettered and roman marker conversion still uses whole-paragraph delete plus insert (loses `w14:paraId` and bookmarks). It is
+  reject-exact, so the verifier accepts it. Tracked in `2026-09-30-canonical-list-operations.md`.
