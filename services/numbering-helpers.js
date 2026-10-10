@@ -1,5 +1,6 @@
 import { parseOoxml, serializeOoxml } from '../engine/oxml-engine.js';
 import { WORD_MAIN_NS } from '../core/paragraph-targeting.js';
+import { getAllReferencedNumIdElements, getCurrentNumIdElements } from '../core/current-properties.js';
 
 function parseIntegerAttribute(element, names) {
     if (!element || !Array.isArray(names)) return null;
@@ -224,8 +225,8 @@ function setElementVal(element, value) {
 export function overwriteParagraphNumIds(paragraphNodes, targetNumId) {
     if (!Array.isArray(paragraphNodes) || targetNumId == null) return;
     for (const node of paragraphNodes) {
-        const numIdNodes = Array.from(node?.getElementsByTagNameNS?.('*', 'numId') || []);
-        for (const numIdNode of numIdNodes) {
+        // Current numIds only: a w:pPrChange snapshot keeps its numId so Reject restores the original binding.
+        for (const numIdNode of getCurrentNumIdElements(node)) {
             setElementVal(numIdNode, targetNumId);
         }
     }
@@ -239,8 +240,7 @@ export function overwriteParagraphNumIds(paragraphNodes, targetNumId) {
  */
 export function extractFirstParagraphNumId(paragraphNodes) {
     for (const node of paragraphNodes || []) {
-        const numIdNodes = Array.from(node?.getElementsByTagNameNS?.('*', 'numId') || []);
-        for (const numIdNode of numIdNodes) {
+        for (const numIdNode of getCurrentNumIdElements(node)) {
             const numId = getElementId(numIdNode, ['w:val', 'val']);
             if (numId != null) return String(numId);
         }
@@ -295,8 +295,8 @@ function isTrackedDeletedParagraph(node) {
 }
 
 function paragraphNumIdNodes(node) {
-    return Array.from(node?.getElementsByTagNameNS?.('*', 'numId') || [])
-        .filter(numIdNode => numIdNode.parentNode?.localName === 'numPr');
+    // Current paragraph numPr only; pPrChange snapshot numPr elements are excluded.
+    return getCurrentNumIdElements(node);
 }
 
 function levelFormats(abstractNum) {
@@ -448,8 +448,10 @@ export function remapNumberingPayloadForDocument(numberingXml, replacementNodes,
         // A paragraph whose mark is tracked-deleted is retained source content. Its numId refers to the
         // document's own definitions, never to this payload, so it must keep pointing at them.
         if (isTrackedDeletedParagraph(node)) continue;
-        const numIdNodes = Array.from(node?.getElementsByTagNameNS?.('*', 'numId') || []);
-        for (const numIdNode of numIdNodes) {
+        // Deliberately historical-inclusive: every numId in the payload (including pPrChange snapshots)
+        // refers to the payload's numbering part, so all of them must follow the remap or Reject would
+        // restore a binding to a definition that no longer exists.
+        for (const numIdNode of getAllReferencedNumIdElements(node)) {
             const oldNumRef = getElementId(numIdNode, ['w:val', 'val']);
             if (oldNumRef != null && numIdMap.has(oldNumRef)) {
                 setElementVal(numIdNode, numIdMap.get(oldNumRef));
