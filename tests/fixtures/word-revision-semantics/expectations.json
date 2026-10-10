@@ -1,0 +1,1374 @@
+{
+  "wordVersion": "16.0",
+  "wordBuild": "16.0.20430",
+  "generatedAt": "2026-10-10T20:34:36Z",
+  "cases": [
+    {
+      "name": "ins-mark-mid-plain",
+      "description": "Mid-body paragraph with inserted content and inserted mark",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">Alpha.</w:t></w:r></w:p><w:p><w:pPr><w:rPr><w:ins w:id=\"101\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t xml:space=\"preserve\">Inserted.</w:t></w:r></w:ins></w:p><w:p><w:r><w:t xml:space=\"preserve\">Omega.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 1,
+      "reject": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Omega.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Inserted.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Omega.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 2,
+      "acceptXmlParagraphs": 3
+    },
+    {
+      "name": "ins-mark-mid-untracked-content",
+      "description": "Mid-body paragraph, inserted mark, untracked content",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">Alpha.</w:t></w:r></w:p><w:p><w:pPr><w:rPr><w:ins w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:r><w:t xml:space=\"preserve\">Untracked.</w:t></w:r></w:p><w:p><w:r><w:t xml:space=\"preserve\">Omega.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 1,
+      "reject": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Untracked.Omega.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Untracked.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Omega.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 2,
+      "acceptXmlParagraphs": 3
+    },
+    {
+      "name": "ins-mark-list-then-plain",
+      "description": "List paragraph with inserted mark followed by plain paragraph",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">Alpha.</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val=\"ListParagraph\"/><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr><w:rPr><w:ins w:id=\"101\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t xml:space=\"preserve\">Item.</w:t></w:r></w:ins></w:p><w:p><w:r><w:t xml:space=\"preserve\">Plain after.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 1,
+      "reject": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Plain after.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Item.",
+          "style": "List Paragraph",
+          "listType": 2,
+          "listString": "-",
+          "inTable": false
+        },
+        {
+          "text": "Plain after.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 2,
+      "acceptXmlParagraphs": 3
+    },
+    {
+      "name": "ins-mark-last-prev-deleted",
+      "description": "Last body paragraph inserted mark; preceding paragraph mark deleted (replacement shape)",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">First.</w:t></w:r></w:p><w:p><w:pPr><w:rPr><w:del w:id=\"101\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:del w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText xml:space=\"preserve\">Second paragraph.</w:delText></w:r></w:del></w:p><w:p><w:pPr><w:pStyle w:val=\"ListParagraph\"/><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr><w:rPr><w:ins w:id=\"103\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"102\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t xml:space=\"preserve\">Item one.</w:t></w:r></w:ins></w:p><w:p><w:pPr><w:pStyle w:val=\"ListParagraph\"/><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr><w:rPr><w:ins w:id=\"105\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"104\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t xml:space=\"preserve\">Item two.</w:t></w:r></w:ins></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 2,
+      "reject": [
+        {
+          "text": "First.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Second paragraph.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "First.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Item one.",
+          "style": "List Paragraph",
+          "listType": 2,
+          "listString": "-",
+          "inTable": false
+        },
+        {
+          "text": "Item two.",
+          "style": "List Paragraph",
+          "listType": 2,
+          "listString": "-",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 2,
+      "acceptXmlParagraphs": 3
+    },
+    {
+      "name": "ins-mark-last-prev-plain",
+      "description": "Last body paragraph inserted mark; preceding paragraph plain",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">First.</w:t></w:r></w:p><w:p><w:r><w:t xml:space=\"preserve\">Second paragraph.</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val=\"ListParagraph\"/><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr><w:rPr><w:ins w:id=\"101\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t xml:space=\"preserve\">Added last.</w:t></w:r></w:ins></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 1,
+      "reject": [
+        {
+          "text": "First.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Second paragraph.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "First.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Second paragraph.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Added last.",
+          "style": "List Paragraph",
+          "listType": 2,
+          "listString": "-",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 2,
+      "acceptXmlParagraphs": 3
+    },
+    {
+      "name": "ins-mark-last-plain-style",
+      "description": "Last body paragraph inserted mark, no list props",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">First.</w:t></w:r></w:p><w:p><w:pPr><w:rPr><w:ins w:id=\"101\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t xml:space=\"preserve\">Added last.</w:t></w:r></w:ins></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 1,
+      "reject": [
+        {
+          "text": "First.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "First.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Added last.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 1,
+      "acceptXmlParagraphs": 2
+    },
+    {
+      "name": "ins-mark-cell-sole",
+      "description": "Sole paragraph in a table cell has inserted mark",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">Intro.</w:t></w:r></w:p><w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4000\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4000\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:rPr><w:ins w:id=\"101\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t xml:space=\"preserve\">Cell ins.</w:t></w:r></w:ins></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:t xml:space=\"preserve\">After table.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 1,
+      "reject": [
+        {
+          "text": "Intro.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": true
+        },
+        {
+          "text": "After table.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "Intro.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Cell ins.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": true
+        },
+        {
+          "text": "After table.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 3,
+      "acceptXmlParagraphs": 3
+    },
+    {
+      "name": "ins-mark-cell-last-of-two",
+      "description": "Last of two paragraphs in a cell has inserted mark",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">Intro.</w:t></w:r></w:p><w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4000\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4000\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t xml:space=\"preserve\">Cell one.</w:t></w:r></w:p><w:p><w:pPr><w:rPr><w:ins w:id=\"101\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t xml:space=\"preserve\">Cell two.</w:t></w:r></w:ins></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:t xml:space=\"preserve\">After table.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 1,
+      "reject": [
+        {
+          "text": "Intro.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Cell one.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": true
+        },
+        {
+          "text": "",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": true
+        },
+        {
+          "text": "After table.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "Intro.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Cell one.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": true
+        },
+        {
+          "text": "Cell two.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": true
+        },
+        {
+          "text": "After table.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 4,
+      "acceptXmlParagraphs": 4
+    },
+    {
+      "name": "ins-mark-before-table",
+      "description": "Paragraph with inserted mark directly before a table",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">Intro.</w:t></w:r></w:p><w:p><w:pPr><w:rPr><w:ins w:id=\"101\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t xml:space=\"preserve\">Inserted.</w:t></w:r></w:ins></w:p><w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4000\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4000\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t xml:space=\"preserve\">Cell.</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:t xml:space=\"preserve\">After table.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 1,
+      "reject": [
+        {
+          "text": "Intro.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Cell.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": true
+        },
+        {
+          "text": "After table.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "Intro.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Inserted.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Cell.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": true
+        },
+        {
+          "text": "After table.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 3,
+      "acceptXmlParagraphs": 4
+    },
+    {
+      "name": "ins-mark-bookmark-between",
+      "description": "Inserted mark paragraph with bookmark between paragraphs",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">Alpha.</w:t></w:r></w:p><w:p><w:pPr><w:rPr><w:ins w:id=\"101\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:bookmarkStart w:id=\"900\" w:name=\"bm1\"/><w:ins w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t xml:space=\"preserve\">Inserted.</w:t></w:r></w:ins><w:bookmarkEnd w:id=\"900\"/></w:p><w:p><w:r><w:t xml:space=\"preserve\">Omega.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 1,
+      "reject": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Omega.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Inserted.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Omega.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 2,
+      "acceptXmlParagraphs": 3
+    },
+    {
+      "name": "del-mark-mid-plain",
+      "description": "Mid-body paragraph with deleted content and deleted mark",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">Alpha.</w:t></w:r></w:p><w:p><w:pPr><w:rPr><w:del w:id=\"101\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:del w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText xml:space=\"preserve\">Deleted.</w:delText></w:r></w:del></w:p><w:p><w:r><w:t xml:space=\"preserve\">Omega.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 1,
+      "reject": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Deleted.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Omega.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Omega.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 3,
+      "acceptXmlParagraphs": 2
+    },
+    {
+      "name": "del-mark-mid-untracked-content",
+      "description": "Mid-body paragraph, deleted mark, untracked content",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">Alpha.</w:t></w:r></w:p><w:p><w:pPr><w:rPr><w:del w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:r><w:t xml:space=\"preserve\">Untracked.</w:t></w:r></w:p><w:p><w:r><w:t xml:space=\"preserve\">Omega.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 1,
+      "reject": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Untracked.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Omega.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Untracked.Omega.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 3,
+      "acceptXmlParagraphs": 2
+    },
+    {
+      "name": "del-mark-list-then-plain",
+      "description": "List paragraph with deleted mark followed by plain paragraph",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">Alpha.</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val=\"ListParagraph\"/><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr><w:rPr><w:del w:id=\"101\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:del w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText xml:space=\"preserve\">Item.</w:delText></w:r></w:del></w:p><w:p><w:r><w:t xml:space=\"preserve\">Plain after.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 1,
+      "reject": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Item.",
+          "style": "List Paragraph",
+          "listType": 2,
+          "listString": "-",
+          "inTable": false
+        },
+        {
+          "text": "Plain after.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Plain after.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 3,
+      "acceptXmlParagraphs": 2
+    },
+    {
+      "name": "del-mark-last",
+      "description": "Last body paragraph with deleted mark",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">First.</w:t></w:r></w:p><w:p><w:pPr><w:rPr><w:del w:id=\"101\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:del w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText xml:space=\"preserve\">Gone last.</w:delText></w:r></w:del></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 1,
+      "reject": [
+        {
+          "text": "First.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Gone last.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "First.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 2,
+      "acceptXmlParagraphs": 1
+    },
+    {
+      "name": "del-mark-last-list-prev-plain",
+      "description": "Last body list paragraph with deleted mark; preceding plain",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">First.</w:t></w:r></w:p><w:p><w:r><w:t xml:space=\"preserve\">Second.</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val=\"ListParagraph\"/><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr><w:rPr><w:del w:id=\"101\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:del w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText xml:space=\"preserve\">Gone last.</w:delText></w:r></w:del></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 1,
+      "reject": [
+        {
+          "text": "First.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Second.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Gone last.",
+          "style": "List Paragraph",
+          "listType": 2,
+          "listString": "-",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "First.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Second.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 3,
+      "acceptXmlParagraphs": 2
+    },
+    {
+      "name": "del-mark-cell-sole",
+      "description": "Sole cell paragraph with deleted mark",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">Intro.</w:t></w:r></w:p><w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4000\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4000\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:rPr><w:del w:id=\"101\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:del w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText xml:space=\"preserve\">Cell del.</w:delText></w:r></w:del></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:t xml:space=\"preserve\">After table.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 1,
+      "reject": [
+        {
+          "text": "Intro.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Cell del.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": true
+        },
+        {
+          "text": "After table.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "Intro.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "After table.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 3,
+      "acceptXmlParagraphs": 2
+    },
+    {
+      "name": "del-mark-cell-last-of-two",
+      "description": "Last of two cell paragraphs with deleted mark",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">Intro.</w:t></w:r></w:p><w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4000\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4000\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t xml:space=\"preserve\">Cell one.</w:t></w:r></w:p><w:p><w:pPr><w:rPr><w:del w:id=\"101\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:del w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText xml:space=\"preserve\">Cell two.</w:delText></w:r></w:del></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:t xml:space=\"preserve\">After table.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 1,
+      "reject": [
+        {
+          "text": "Intro.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Cell one.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": true
+        },
+        {
+          "text": "Cell two.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": true
+        },
+        {
+          "text": "After table.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "Intro.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Cell one.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "After table.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 4,
+      "acceptXmlParagraphs": 3
+    },
+    {
+      "name": "del-mark-before-table",
+      "description": "Paragraph with deleted mark directly before a table",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">Intro.</w:t></w:r></w:p><w:p><w:pPr><w:rPr><w:del w:id=\"101\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:del w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText xml:space=\"preserve\">Deleted.</w:delText></w:r></w:del></w:p><w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4000\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4000\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t xml:space=\"preserve\">Cell.</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:t xml:space=\"preserve\">After table.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 1,
+      "reject": [
+        {
+          "text": "Intro.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Deleted.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Cell.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": true
+        },
+        {
+          "text": "After table.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "Intro.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Cell.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": true
+        },
+        {
+          "text": "After table.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 4,
+      "acceptXmlParagraphs": 3
+    },
+    {
+      "name": "del-mark-bookmark-between",
+      "description": "Deleted mark paragraph with bookmark between paragraphs",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">Alpha.</w:t></w:r></w:p><w:p><w:pPr><w:rPr><w:del w:id=\"101\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:bookmarkStart w:id=\"900\" w:name=\"bm1\"/><w:del w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText xml:space=\"preserve\">Deleted.</w:delText></w:r></w:del><w:bookmarkEnd w:id=\"900\"/></w:p><w:p><w:r><w:t xml:space=\"preserve\">Omega.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 1,
+      "reject": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Deleted.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Omega.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Omega.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 3,
+      "acceptXmlParagraphs": 2
+    },
+    {
+      "name": "pprchange-restores-list",
+      "description": "pPrChange: current Heading1, previous list item; mark rPr has bold",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">Alpha.</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val=\"Heading1\"/><w:rPr><w:b/></w:rPr><w:pPrChange w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:pPr><w:pStyle w:val=\"ListParagraph\"/><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr></w:pPr></w:pPrChange></w:pPr><w:r><w:t xml:space=\"preserve\">Was a list item.</w:t></w:r></w:p><w:p><w:r><w:t xml:space=\"preserve\">Omega.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 1,
+      "reject": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Was a list item.",
+          "style": "List Paragraph",
+          "listType": 2,
+          "listString": "-",
+          "inTable": false
+        },
+        {
+          "text": "Omega.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Was a list item.",
+          "style": "Heading 1",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Omega.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 3,
+      "acceptXmlParagraphs": 3
+    },
+    {
+      "name": "pprchange-removes-list",
+      "description": "pPrChange: current list item, previous plain; mark rPr has bold",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">Alpha.</w:t></w:r></w:p><w:p><w:pPr><w:pStyle w:val=\"ListParagraph\"/><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr><w:rPr><w:b/></w:rPr><w:pPrChange w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:pPr></w:pPr></w:pPrChange></w:pPr><w:r><w:t xml:space=\"preserve\">Became a list item.</w:t></w:r></w:p><w:p><w:r><w:t xml:space=\"preserve\">Omega.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 1,
+      "reject": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Became a list item.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Omega.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Became a list item.",
+          "style": "List Paragraph",
+          "listType": 2,
+          "listString": "-",
+          "inTable": false
+        },
+        {
+          "text": "Omega.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 3,
+      "acceptXmlParagraphs": 3
+    },
+    {
+      "name": "del-mark-with-sectpr",
+      "description": "Deleted-mark paragraph carrying a section break",
+      "bodyXml": "<w:p><w:pPr><w:rPr><w:del w:id=\"101\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/></w:sectPr></w:pPr><w:del w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText xml:space=\"preserve\">Section one end.</w:delText></w:r></w:del></w:p><w:p><w:r><w:t xml:space=\"preserve\">Section two.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 1,
+      "reject": [
+        {
+          "text": "Section one end.\f",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Section two.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "Section two.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 2,
+      "acceptXmlParagraphs": 1
+    },
+    {
+      "name": "adjacent-ins-then-del-marks",
+      "description": "Inserted-mark paragraph followed by deleted-mark paragraph",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">Alpha.</w:t></w:r></w:p><w:p><w:pPr><w:rPr><w:ins w:id=\"101\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t xml:space=\"preserve\">New.</w:t></w:r></w:ins></w:p><w:p><w:pPr><w:rPr><w:del w:id=\"103\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:del w:id=\"102\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText xml:space=\"preserve\">Old.</w:delText></w:r></w:del></w:p><w:p><w:r><w:t xml:space=\"preserve\">Keep.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 2,
+      "reject": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Old.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Keep.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "New.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Keep.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 3,
+      "acceptXmlParagraphs": 3
+    },
+    {
+      "name": "adjacent-del-then-ins-marks",
+      "description": "Deleted-mark paragraph followed by inserted-mark paragraph",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">Alpha.</w:t></w:r></w:p><w:p><w:pPr><w:rPr><w:del w:id=\"101\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:del w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText xml:space=\"preserve\">Old.</w:delText></w:r></w:del></w:p><w:p><w:pPr><w:rPr><w:ins w:id=\"103\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"102\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t xml:space=\"preserve\">New.</w:t></w:r></w:ins></w:p><w:p><w:r><w:t xml:space=\"preserve\">Keep.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 2,
+      "reject": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Old.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Keep.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "New.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Keep.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 3,
+      "acceptXmlParagraphs": 3
+    },
+    {
+      "name": "mixed-authors-marks",
+      "description": "Inserted marks by two authors plus a deleted mark by a third",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">Alpha.</w:t></w:r></w:p><w:p><w:pPr><w:rPr><w:ins w:id=\"101\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t xml:space=\"preserve\">By A.</w:t></w:r></w:ins></w:p><w:p><w:pPr><w:rPr><w:ins w:id=\"103\" w:author=\"B\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"102\" w:author=\"B\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t xml:space=\"preserve\">By B.</w:t></w:r></w:ins></w:p><w:p><w:pPr><w:rPr><w:del w:id=\"105\" w:author=\"C\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:del w:id=\"104\" w:author=\"C\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText xml:space=\"preserve\">By C.</w:delText></w:r></w:del></w:p><w:p><w:r><w:t xml:space=\"preserve\">Omega.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 3,
+      "reject": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "By C.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Omega.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "By A.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "By B.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Omega.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 3,
+      "acceptXmlParagraphs": 4
+    },
+    {
+      "name": "ins-row",
+      "description": "Table with an inserted row",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">Intro.</w:t></w:r></w:p><w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4000\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4000\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t xml:space=\"preserve\">Existing row.</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:trPr><w:ins w:id=\"102\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:trPr><w:tc><w:tcPr><w:tcW w:w=\"4000\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:rPr><w:ins w:id=\"101\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t xml:space=\"preserve\">Inserted row.</w:t></w:r></w:ins></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:t xml:space=\"preserve\">After table.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 1,
+      "reject": [
+        {
+          "text": "Intro.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Existing row.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": true
+        },
+        {
+          "text": "After table.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "Intro.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Existing row.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": true
+        },
+        {
+          "text": "Inserted row.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": true
+        },
+        {
+          "text": "After table.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 3,
+      "acceptXmlParagraphs": 4
+    },
+    {
+      "name": "del-row",
+      "description": "Table with a deleted row",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">Intro.</w:t></w:r></w:p><w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4000\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4000\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t xml:space=\"preserve\">Existing row.</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:trPr><w:del w:id=\"102\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:trPr><w:tc><w:tcPr><w:tcW w:w=\"4000\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:rPr><w:del w:id=\"101\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:del w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText xml:space=\"preserve\">Deleted row.</w:delText></w:r></w:del></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:t xml:space=\"preserve\">After table.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 1,
+      "reject": [
+        {
+          "text": "Intro.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Existing row.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": true
+        },
+        {
+          "text": "Deleted row.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": true
+        },
+        {
+          "text": "After table.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "Intro.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Existing row.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": true
+        },
+        {
+          "text": "After table.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 4,
+      "acceptXmlParagraphs": 3
+    }
+  ]
+}
