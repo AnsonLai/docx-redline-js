@@ -11,7 +11,8 @@ import { readCanonicalRunText } from './paragraph-text.js';
  *     paragraph's remaining content merges into the FOLLOWING paragraph of the same
  *     container, whose mark and properties survive. A deleted mark (w:del/moveFrom)
  *     is removed on Accept with the same merge rule.
- *   - the last paragraph of a container (body, cell, text box, note) keeps its mark.
+ *   - at the end of a container: Reject keeps a table cell's last paragraph; otherwise a
+ *     trailing paragraph left empty by the removed mark disappears.
  *   - w:ins/moveTo content is removed on Reject, w:del/moveFrom restored; Accept is
  *     the converse. Rows whose w:trPr carries w:ins (Reject) or w:del (Accept) vanish.
  *   - Reject restores the w:pPrChange snapshot as the paragraph's properties.
@@ -189,8 +190,13 @@ export function projectWordRevisionView(root, view = 'rejected') {
         }
         records.push(finishRecord(paragraph, merged, view, container, sourceIndex));
     });
-    // The last mark in a container cannot be removed: Word keeps that paragraph.
+    // A removed mark on the last paragraph of a container (Word 16 COM evidence,
+    // tests/fixtures/word-revision-semantics/expectations.json): Reject keeps a cell's last
+    // paragraph; otherwise an emptied trailing paragraph disappears and the previous mark becomes
+    // the container's last. Non-empty trailing content is kept (not yet pinned by COM evidence).
     for (const [container, carried] of pending) {
+        const keepCellParagraph = view === 'rejected' && localName(container) === 'tc';
+        if (!keepCellParagraph && carried.text.length === 0) continue;
         records.push(finishRecord(carried.paragraph, carried, view, container, carried.sourceIndex));
     }
     records.sort((a, b) => a.sourceIndex - b.sourceIndex);

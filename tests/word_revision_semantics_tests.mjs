@@ -21,17 +21,8 @@ const dir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'word-revi
 const expectations = JSON.parse(readFileSync(join(dir, 'expectations.json'), 'utf8'));
 
 const KNOWN_DIVERGENCES = {
-    'ins-mark-last-prev-deleted': { simulator: 'Word removes the last body paragraph when its inserted mark is rejected (previous mark becomes final); simulator keeps an empty paragraph' },
-    'ins-mark-last-prev-plain': { simulator: 'Word removes the last body paragraph when its inserted mark is rejected (previous mark becomes final); simulator keeps an empty paragraph' },
-    'ins-mark-last-plain-style': { simulator: 'Word removes the last body paragraph when its inserted mark is rejected (previous mark becomes final); simulator keeps an empty paragraph' },
-    'del-mark-last': { simulator: 'Word removes the last body paragraph when its deleted mark is accepted; simulator keeps an empty paragraph' },
-    'del-mark-last-list-prev-plain': { simulator: 'Word removes the last body paragraph when its deleted mark is accepted; simulator keeps an empty paragraph' },
     'ins-mark-cell-last-of-two': { library: 'Word keeps an empty cell paragraph when the last of two cell paragraphs has its inserted mark rejected; library drops it' },
-    'del-mark-cell-sole': {
-        simulator: 'Word removes the whole table when its only cell paragraph is fully deleted on Accept; simulator keeps an empty cell paragraph',
-        library: 'Word removes the whole table when its only cell paragraph is fully deleted on Accept; library keeps an empty cell paragraph'
-    },
-    'del-mark-cell-last-of-two': { simulator: 'Word collapses the cell (no table left) when the last cell paragraph mark is deleted on Accept; simulator keeps an empty cell paragraph' }
+    'del-mark-cell-sole': { library: 'Word removes the whole table when its only cell paragraph is fully deleted on Accept; library keeps an empty cell paragraph' }
 };
 
 const wordParagraphs = list => (Array.isArray(list) ? list : [list]).map(p => ({
