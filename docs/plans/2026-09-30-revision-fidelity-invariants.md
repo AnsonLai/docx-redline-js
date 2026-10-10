@@ -1,7 +1,84 @@
 # Revision Fidelity Invariants: Turning Gap Bugs into Fail-Closed Refusals
 
 Date: 2026-09-30
-Status: PROPOSED. Package baseline 0.8.2 plus the uncommitted list fixes, CLI `contractVersion` 8.
+Status: IN PROGRESS (started 2026-10-10 on 0.8.4 + `c98874d`). See "Progress and hand-off" directly below.
+
+## Progress and hand-off (keep this section current; newest first)
+
+Resume here. Each line says what landed, where, and what is next. Verify with `git log --oneline`.
+
+| WP | State | Commits / files | Next step |
+|---|---|---|---|
+| WP-1 | Slice 1 landed, **warn** default | `05dcf4c`: `core/word-revision-semantics.js` (Word Reject/Accept projection over DOM), `services/revision-fidelity-verifier.js`, wiring in `services/document-operation-applier.js` (after the `GENERATED_OOXML_INVALID` check, before `markMutationCommitted`), `REVISION_FIDELITY_VIOLATION` in `services/error-recovery.js`, `verifyRevisionFidelity` in `services/standalone-operation-runner.d.ts`, KB failure row, `tests/revision_fidelity_verifier_tests.mjs` | Triage enforce-probe failures (below) once WP-2 COM results exist; then ACCEPT_INTENT/ACCEPT_NEIGHBORS; benchmark; flip default |
+| WP-2 | Investigation done; COM matrix in progress | see "WP-2 findings" below; COM matrix files `scripts/word-revision-semantics-matrix.ps1`, `tests/fixtures/word-revision-semantics/expectations.json`, `tests/word_revision_semantics_tests.mjs` | Align simulator + `services/revision-comment-management.js` to recorded Word behavior |
+| WP-3 | Not started | | Needs WP-1 settled semantics |
+| WP-4 | **Done** (npm test 137/137, types, isolation green) | `1a3eeb6`, `3405bca`, `ff49729`, `cfc9419`, `1f89ae0`: `core/current-properties.js` (+ `getCurrentNumIdElements`, explicit `getAllReferencedNumIdElements`), migrated readers, `tests/current_properties_tests.mjs`, lint `tests/current_properties_usage_tests.mjs` (allowlist: accessor itself, `standalone-docx-plumbing.js` numbering-usage check) | Optional: converge the ~10 private `directChild` duplicates; plan asked for cases in `tests/document_inspection_edge_tests.mjs` (covered instead by `current_properties_tests.mjs`) |
+| WP-5a | Not started | | Blocked on canonical-list allocator |
+| WP-5b | **Done** | `73c67e8`: bare runner always seeds `numberingIdState` (`services/batch-operation-orchestrator.js`); `tryExplicitDecimalHeaderListConversion` reserves numbering before redlining so an abort records no receipt revisions; regression in `tests/phase3_list_structural_fallback_tests.mjs` | Add bare-vs-packaged parity dimension in WP-3 |
+| WP-6 | Not started | | Last |
+
+### WP-1 implementation decisions (deviations from the design below)
+
+- **Reject-all on both sides instead of filtering by receipt revision ids.** The verifier compares Word Reject All of
+  `after` with Word Reject All of `before` (all authors). A tracked operation only adds revisions, so the views must be
+  equal; other reviewers' revisions cancel out without id bookkeeping. This answers the cross-author open question for
+  every policy except accept-first, which uses `baselineView: 'accepted'` (the policy accepts the source first).
+- **Whole-document projection, DOM only.** No serialization; it reuses `readCanonicalRunText` for text (no third text
+  walker). Not yet scoped to touched paragraphs; measure before optimising (cost is one projection of `before` and one of
+  `after` per operation; the applier already validates the whole document twice per operation).
+- **Runs per operation inside the applier**, so the batch/deferred path is covered with per-operation isolation; no
+  separate orchestrator hook was needed.
+- **Refusal disposition is `refused`** (detected before commit, like `GENERATED_OOXML_INVALID`), not `rolled_back`.
+- **Untracked operations (`generateRedlines: false`) are skipped**; `ACCEPT_INTENT` and `ACCEPT_NEIGHBORS` are not
+  implemented yet. `REJECT_NUMBERING_REFS` currently means "restored `numId`/`ilvl` differ from the source"; the
+  numbering-part existence/format check is not implemented yet.
+- **Mode resolution:** explicit `verifyRevisionFidelity` option, else env `DOCX_REDLINE_REVISION_FIDELITY`
+  (diagnostic/test lanes), else `'warn'`. The agent profile does not yet force `enforce` or reject `off`.
+
+### Enforce probe (2026-10-10): `DOCX_REDLINE_REVISION_FIDELITY=enforce npm test`
+
+Default warn: everything green. Under enforce, 14 suites fail. Two classes found:
+
+1. **Fixed:** `accept-all-first` policies compared against the wrong baseline (now `baselineView: 'accepted'`).
+2. **Open, dominant (~all remaining):** an operation that replaces/extends the **last body paragraph** (directly before
+   `w:body/w:sectPr`) emits the final paragraph with a tracked-inserted mark, e.g. "Second paragraph." -> "1. Item
+   one\n2. Item two" yields `[del-mark P][ins-mark Item one][ins-mark Item two]<sectPr/>`. The simulator keeps the last
+   paragraph of a container (its mark cannot be removed), so Reject All shows one extra empty paragraph. Whether Word
+   does the same is the WP-2 COM question "last-paragraph-in-body"; if Word keeps it, this is a real library defect in
+   every list/paragraph generator (the inserted mark belongs on the paragraph *before* the final one, as Word itself
+   writes it); if Word removes it, relax the simulator. Reproduce: `tests/receipt_collector_tests.mjs` case 5,
+   `tests/list_reject_fidelity_tests.mjs` case 3, `tests/table_append_fidelity_tests.mjs`.
+
+Failing suites under enforce (before class 1 fix): docxjs_dashboard_rendering, existing_revisions_modes_matrix,
+generated_bullet_numbering_collision, interagency_agreement_multi_author, list_reject_fidelity, mutation_receipt,
+phase3_list_structural_fallback, receipt_collector, standalone_operation_runner, structured_content_planner,
+table_append_fidelity (+ existing_revision_mutation_policy, merge_same_author, revision_scope, now passing).
+
+### WP-2 findings (investigation, 2026-10-10)
+
+- The plain-anchor premise was wrong: pre-fix (`c44f227^`) library reject already matched Word (it showed the stray
+  empty paragraph). The defect was generation-only (untracked mark), so library reject is not "healing" anything there.
+- Divergences in `services/revision-comment-management.js` against the plan's Word rules (to be confirmed by COM):
+  1. last body paragraph with ins mark (reject) / del mark (accept): `mergeParagraphIntoNextAndRemove` (~line 186)
+     removes the whole paragraph, losing untracked content;
+  2. sole paragraph in a cell: `return false` (~182-184) leaves the tracked mark in place;
+  3. last of two paragraphs in a cell: untracked text lost (~186);
+  4. ins mark directly before a table: `getNextWordParagraph` (~170-177) scans past the table and merges across it;
+  5. `rejectPropertyChangeNode` (~321-336) replaces the whole `pPr`, dropping the mark `rPr` (and `sectPr`);
+  6. del mark on a paragraph carrying `pPr/sectPr`: the section break is dropped on accept merge (~190).
+  Already Word-correct: untracked-mark paragraph with inserted content stays empty; mid-body ins mark merges into the
+  following paragraph keeping its `pPr`; `pPrChange` reject restores `pStyle`/removes `numPr`.
+
+### WP-4 audit summary (2026-10-10)
+
+Class (a) readers that crossed `*PrChange`: `pipeline/ingestion-export.js` (rStyle/b/i, pStyle/outlineLvl/numPr),
+`pipeline/ingestion-paragraph.js` `detectNumberingContext`, `services/numbering-helpers.js`
+(`overwriteParagraphNumIds`, `extractFirstParagraphNumId`, `paragraphNumIdNodes`), `orchestration/list-structural-fallback.js`
+numId lookup, `engine/oxml-engine.js` `sourceMatchesListShape`, `services/capture-engine.js` `hasList`. Intentionally
+historical: numbering remap (`numbering-helpers.js` ~451), `collectNumberingIdsFromNodes` (merge needs all referenced
+ids), `standalone-docx-plumbing.js` "uses numbering". ~10 private direct-child helpers duplicate the new accessor.
+
+---
 Source: holistic review of the last run of bug fixes (hyperlink boundary, manual line break,
 plain-anchor insertion, list-range replacement, historical list inspection, facade numbering).
 The review concluded that they were local gap-plugs, not structural fixes. This plan proposes the
