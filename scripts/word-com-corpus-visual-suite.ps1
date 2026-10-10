@@ -60,8 +60,8 @@ function Export-View($word, [string]$docxPath, [string]$pdfPath, [string]$viewNa
     $document = $null
     try {
         $document = $word.Documents.OpenNoRepairDialog($docxPath)
-        if ($viewName -eq 'acceptAll') { $document.AcceptAllRevisions(); $exportItem = 0 }
-        elseif ($viewName -eq 'rejectAll') { $document.RejectAllRevisions(); $exportItem = 0 }
+        if ($viewName -eq 'acceptAll') { $document.Revisions.AcceptAll(); $exportItem = 0 }
+        elseif ($viewName -eq 'rejectAll') { $document.Revisions.RejectAll(); $exportItem = 0 }
         else { $document.ShowRevisions = $true; $document.PrintRevisions = $true; $exportItem = 7 }
         $pages = $document.ComputeStatistics(2)
         $document.ExportAsFixedFormat($pdfPath, 17, $false, 0, 0, 1, 1, $exportItem, $true, $true, 0, $true, $true, $false)

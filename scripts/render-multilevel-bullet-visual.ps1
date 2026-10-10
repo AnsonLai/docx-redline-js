@@ -16,8 +16,8 @@ try {
         $pdfPath = Join-Path $resolvedOut "multilevel-bullet--$view.pdf"
         $doc = $word.Documents.OpenNoRepairDialog($resolvedDocx)
         try {
-            if ($view -eq 'acceptAll') { $doc.AcceptAllRevisions(); $exportItem = 0 }
-            elseif ($view -eq 'rejectAll') { $doc.RejectAllRevisions(); $exportItem = 0 }
+            if ($view -eq 'acceptAll') { $doc.Revisions.AcceptAll(); $exportItem = 0 }
+            elseif ($view -eq 'rejectAll') { $doc.Revisions.RejectAll(); $exportItem = 0 }
             else { $doc.ShowRevisions = $true; $doc.PrintRevisions = $true; $exportItem = 7 }
             $pages = $doc.ComputeStatistics(2)
             $doc.ExportAsFixedFormat($pdfPath, 17, $false, 0, 0, 1, 1, $exportItem, $true, $true, 0, $true, $true, $false)

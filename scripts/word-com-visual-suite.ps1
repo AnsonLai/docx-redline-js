@@ -67,11 +67,11 @@ function Export-View($word, [string]$docxPath, [string]$pdfPath, [string]$viewNa
     try {
         $document = $word.Documents.OpenNoRepairDialog($docxPath)
         if ($viewName -eq 'acceptAll') {
-            $document.AcceptAllRevisions()
+            $document.Revisions.AcceptAll()
             $exportItem = 0 # wdExportDocumentContent
         }
         elseif ($viewName -eq 'rejectAll') {
-            $document.RejectAllRevisions()
+            $document.Revisions.RejectAll()
             $exportItem = 0
         }
         else {

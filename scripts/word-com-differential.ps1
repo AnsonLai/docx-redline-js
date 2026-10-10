@@ -129,6 +129,45 @@ function Get-ScopeText($document, [string]$scope, [string]$fidelity) {
     return ($parts -join "`n")
 }
 
+# Paragraph structure, not just text: an untracked paragraph-mark change can leave the
+# Reject All text identical while adding or removing an (empty) paragraph.
+function Get-ScopeParagraphCount($document, [string]$scope) {
+    if ($scope -ne 'headers') { return $document.Paragraphs.Count }
+    $count = 0
+    foreach ($section in @($document.Sections)) {
+        foreach ($headerType in 1..3) {
+            $header = $section.Headers.Item($headerType)
+            if ($header.Exists) { $count += $header.Range.Paragraphs.Count }
+        }
+    }
+    return $count
+}
+
+# Use the Revisions collection, which matches the ribbon's "Accept/Reject All Changes"
+# (CommandBars.ExecuteMso and WordBasic agree). Document.AcceptAllRevisions() /
+# RejectAllRevisions() can leave a revision behind: on a document whose last body paragraph
+# has a tracked-inserted mark, RejectAllRevisions() keeps that mark and an extra empty
+# paragraph (verified on Word 16.0.20430, 2026-10-10).
+function Invoke-AllRevisions($document, [string]$scope, [string]$action) {
+    $ranges = if ($scope -ne 'headers') { @($document.Content) } else {
+        @(foreach ($section in @($document.Sections)) {
+            foreach ($headerType in 1..3) {
+                $header = $section.Headers.Item($headerType)
+                if ($header.Exists) { $header.Range }
+            }
+        })
+    }
+    if ($scope -ne 'headers') {
+        if ($action -eq 'accept') { $document.Revisions.AcceptAll() } else { $document.Revisions.RejectAll() }
+    }
+    else {
+        foreach ($range in $ranges) {
+            if ($action -eq 'accept') { $range.Revisions.AcceptAll() } else { $range.Revisions.RejectAll() }
+        }
+    }
+    return (Get-ScopeRevisionCount $document $scope)
+}
+
 function Get-ScopeRevisionCount($document, [string]$scope) {
     if ($scope -ne 'headers') { return $document.Revisions.Count }
     $count = 0
@@ -263,7 +302,11 @@ try {
                 $caseFailed = $true
             }
             else {
-                $document.AcceptAllRevisions()
+                $leftAfterAccept = Invoke-AllRevisions $document $assertionScope 'accept'
+                if ($leftAfterAccept -ne 0) {
+                    Write-Output "FAIL ${name}: $leftAfterAccept revision(s) remain after accept-all"
+                    $caseFailed = $true
+                }
                 $acceptedText = Get-ScopeText $document $assertionScope $fidelity
                 if ($assertionMode -eq 'contains') {
                     if (-not (Test-ContainsAssertions $acceptedText $expected.expectedAcceptedContains $expected.expectedAcceptedAbsent 'accept-all' $name)) {
@@ -291,7 +334,11 @@ try {
         if (-not $caseFailed) {
             try {
                 $document = Open-FixtureDocument $word ([string]$docxPath)
-                $document.RejectAllRevisions()
+                $leftAfterReject = Invoke-AllRevisions $document $assertionScope 'reject'
+                if ($leftAfterReject -ne 0) {
+                    Write-Output "FAIL ${name}: $leftAfterReject revision(s) remain after reject-all"
+                    $caseFailed = $true
+                }
                 $rejectedText = Get-ScopeText $document $assertionScope $fidelity
                 if ($assertionMode -eq 'contains') {
                     if (-not (Test-ContainsAssertions $rejectedText $expected.expectedRejectedContains $expected.expectedRejectedAbsent 'reject-all' $name)) {
@@ -303,6 +350,23 @@ try {
                     Write-Output "  expected: $expectedRejected"
                     Write-Output "  actual:   $rejectedText"
                     $caseFailed = $true
+                }
+                $sourceDocxPath = Join-Path $resolvedDir "$name.source.docx"
+                if (-not $caseFailed -and (Test-Path -LiteralPath $sourceDocxPath)) {
+                    $rejectedParagraphs = Get-ScopeParagraphCount $document $assertionScope
+                    $sourceCountDocument = $null
+                    try {
+                        $sourceCountDocument = Open-FixtureDocument $word ([string]$sourceDocxPath)
+                        $sourceParagraphs = Get-ScopeParagraphCount $sourceCountDocument $assertionScope
+                    }
+                    finally {
+                        Close-WordDocumentSafely $sourceCountDocument
+                        $sourceCountDocument = $null
+                    }
+                    if ($rejectedParagraphs -ne $sourceParagraphs) {
+                        Write-Output "FAIL ${name}: reject-all paragraph count $rejectedParagraphs, source has $sourceParagraphs"
+                        $caseFailed = $true
+                    }
                 }
             }
             catch {
