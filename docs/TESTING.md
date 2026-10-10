@@ -951,6 +951,30 @@ FUZZ_SEED=<seed> FUZZ_ITERATIONS=<n> node tests/roundtrip_fuzz_tests.mjs
 
 A failing case prints its exact reproduction command.
 
+### Reject-roundtrip matrix
+
+`tests/reject_roundtrip_matrix_tests.mjs` (generators in
+`tests/helpers/operation-generators.mjs`, fixtures in
+`tests/helpers/reject-roundtrip-fixtures.mjs`) applies seeded, generated
+operations (word/sentence/paragraph/range replace, insert-after, delete,
+`replacements`, format, paragraph-format, plain-to-list, last-paragraph) to the
+nested-lists fixture and synthetic documents (hyperlinks, breaks/tabs, simple
+fields, tables, multi-author revisions, empty list items). Each case runs
+through both `applyOperationsToDocumentXml` and `openDocx` with default options.
+A `REVISION_FIDELITY_VIOLATION` refusal, a rejected view that differs from the
+source, a missing intended accepted text, or bare/packaged divergence fails the
+run; other refusals are counted as skipped. The default run (fixed seed, 150
+cases, about 3 s) is part of `npm test`. Extended lane and replay:
+
+```bash
+FUZZ_SEED=<seed> MATRIX_ITERATIONS=<n> node tests/reject_roundtrip_matrix_tests.mjs
+```
+
+`MATRIX_VERBOSE=1` prints each skipped refusal; `MATRIX_MAX_REPORTED=<n>` raises
+the failure print limit. Known unfixable cases go in
+`tests/fixtures/reject-roundtrip-allowlist.json` (`{"entries":[{"fixture","kind","path","reason"}]}`);
+the file does not exist while the allowlist is empty.
+
 ### Runtime guardrail
 
 `validateRedlineOoxml(oxml)` (exported from `index.js`) runs structural
