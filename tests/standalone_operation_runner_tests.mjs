@@ -505,6 +505,21 @@ async function testTextToTableWithoutHeaderSeparatorPreservesAllRows() {
         tableText.includes('Receiving Party:'),
         'table should include second markdown row text'
     );
+
+    // Word Reject All must remove the inserted table: every row is a tracked row insertion and the
+    // original paragraphs come back unchanged.
+    assert.strictEqual(
+        tables[0].getElementsByTagNameNS(NS_W, 'trPr').length,
+        Array.from(tables[0].getElementsByTagNameNS(NS_W, 'tr')).filter(tr => Array.from(tr.childNodes)
+            .some(c => c.localName === 'trPr' && Array.from(c.childNodes).some(g => g.localName === 'ins'))).length,
+        'each inserted table row should carry a tracked w:trPr/w:ins'
+    );
+    const { wordRevisionParagraphTexts } = await import('../core/word-revision-semantics.js');
+    assert.deepStrictEqual(
+        wordRevisionParagraphTexts(resultDoc, 'rejected'),
+        ['Disclosing Party: [Name of Disclosing Party]', 'And', 'Receiving Party: [Name of Receiving Party]'],
+        'Reject All should restore the three source paragraphs and drop the inserted table'
+    );
 }
 
 async function testFormatOnlyRedlineSupportsNonWPrefixOoxml() {

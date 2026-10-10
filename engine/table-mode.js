@@ -102,7 +102,7 @@ export function applyTextToTableTransformation(xmlDoc, modifiedText, serializer,
         return noChanges(serializer, xmlDoc);
     }
 
-    const tableOoxml = generateTableOoxml(tableData, { generateRedlines, author, revisionIdAllocator });
+    const tableOoxml = generateTableOoxml(tableData, { generateRedlines, author, revisionIdAllocator, trackAsBlock: true });
     const tableDoc = parseOoxmlSafe(`<root xmlns:w="${NS_W}">${tableOoxml}</root>`, 'application/xml').doc;
     if (!tableDoc) return noChanges(serializer, xmlDoc);
 

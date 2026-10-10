@@ -12,6 +12,7 @@
 
 ### Fixed
 
+- **Text-to-table redlines insert tracked table rows:** a paragraph range converted to a Markdown table carried tracked cell text but untracked rows, so Reject All left an empty table behind. Rows now carry `w:trPr/w:ins` and tracked cell paragraph marks like other inserted tables.
 - **Explicit-start list conversion is reversible with Reject All:** converting a `1. Header` paragraph to a list bound `numPr` without recording a `w:pPrChange`, so rejecting the tracked deletion of the marker left a numbered item. The binding now records the original paragraph properties (empty `<w:pPr/>` when none) in a receipted `w:pPrChange`.
 - **Reject/Accept All match Word for table cells and `pPrChange`:** rejecting an inserted paragraph mark keeps the cell's last paragraph (empty) instead of dropping it, accepting a fully deleted sole-paragraph table removes the table, and rejecting a `pPrChange` keeps the paragraph-mark `rPr` and `sectPr` instead of discarding them.
 - **Property readers ignore `pPrChange`/`rPrChange` snapshots:** a new `core/current-properties.js` accessor reads only direct `w:pPr`/`w:rPr` children, so a tracked property change no longer makes its historical `numPr`, `pStyle`, `outlineLvl` or `b`/`i` look current. Markdown export, numbering-context detection, list-numbering reuse/overwrite, list-shape checks and captured-entity kind now use it; a usage test fails on new descendant property lookups.
