@@ -144,6 +144,7 @@ export const CLI_COMMAND_HELP = Object.freeze({
             option('textToComment', '--text-to-comment <text>', 'Anchor an inline comment to an exact subspan.'),
             option('targetRef', '--target-ref <N>', 'Disambiguate an inline target with a 1-based machine index.'),
             option('existingRevisions', '--existing-revisions <policy>', 'Select revision handling; cross-author slicing must be deliberate.'),
+            option('revisionFidelity', '--revision-fidelity <enforce|warn|off>', 'Reject All verification of each tracked operation (default enforce: refuse with REVISION_FIDELITY_VIOLATION); the agent profile rejects off.'),
             option('atomic', '--atomic[=true|false]', 'Choose all-or-nothing or progressive batch execution.'),
             option('generateRedlines', '--generate-redlines[=true|false]', 'Control tracked-change generation.'),
             option('noRedlines', '--no-redlines', 'Apply clean text without tracked-change markup.'),

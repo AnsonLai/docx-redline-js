@@ -6,7 +6,13 @@ import { parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { unzipDocx } from '../document/zip-archive.js';
 import { applyOperationsToDocumentXml } from '../services/standalone-operation-runner.js';
 import { projectWordRevisionView, wordRevisionParagraphTexts } from '../core/word-revision-semantics.js';
-import { verifyRevisionFidelity } from '../services/revision-fidelity-verifier.js';
+import {
+    buildRevisionFidelityError,
+    REVISION_FIDELITY_INVARIANTS,
+    resolveRevisionFidelityMode,
+    verifyRevisionFidelity
+} from '../services/revision-fidelity-verifier.js';
+import { normalizeErrorWithRecovery } from '../services/error-recovery.js';
 
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
@@ -178,6 +184,34 @@ const invariantOf = (before, after) => {
     assert.equal(result.status, 'ok', JSON.stringify(result.error || result.results));
     assert.deepEqual(wordRevisionParagraphTexts(parseOoxmlSafe(result.documentXml).doc, 'rejected'),
         ['Alpha clause.', 'Beta term.', 'Gamma clause.', 'Delta clause.']);
+}
+
+// 5. Refusal payload: one log-ready message plus machine-readable detail for a retry.
+{
+    assert.equal(resolveRevisionFidelityMode(undefined), process.env.DOCX_REDLINE_REVISION_FIDELITY || 'enforce');
+    const before = p(run('Intro')) + p(run('Plain')) + p(run('Bullet'), numPr(1));
+    const after = p(run('Intro')) + p(run('Plain')) + p(insRun('Inserted')) + p(run('Bullet'), numPr(1));
+    const { violations } = verifyRevisionFidelity({ before: doc(before), after: doc(after) });
+    const error = normalizeErrorWithRecovery(buildRevisionFidelityError(violations, { mode: 'enforce' }), { operationIndex: 2 });
+    assert.equal(error.code, 'REVISION_FIDELITY_VIOLATION');
+    assert.match(error.message, /^Refused, document unchanged: Reject All of this operation's output would not restore the source \(REJECT_PARAGRAPH_COUNT at source paragraph 3 \("Bullet"\)/);
+    assert.match(error.message, /Retry: Target one paragraph at a time/);
+    assert.deepEqual(error.invariants, ['REJECT_PARAGRAPH_COUNT']);
+    assert.equal(error.verificationMode, 'enforce');
+    assert.deepEqual(violations[0].source, { sourceParagraphIndex: 3, container: 'body', text: 'Bullet' });
+    assert.deepEqual(violations[0].output, { sourceParagraphIndex: 3, container: 'body', text: '' });
+    assert.match(violations[0].explanation, /without a tracked paragraph mark/);
+    assert.equal(error.category, 'library_or_builder_failure');
+    assert.equal(error.recovery.action, 'narrow_or_change_operation');
+    assert.equal(error.recovery.sameArgumentsSafe, false);
+    assert.equal(error.recovery.retryGuidance[0].invariant, 'REJECT_PARAGRAPH_COUNT');
+    assert.match(error.recovery.reportIfNarrowRetryFails, /do not disable verification/);
+    assert.equal(error.context.operationIndex, 2);
+    const warned = buildRevisionFidelityError(violations, { mode: 'warn' });
+    assert.match(warned.message, /^Applied with a fidelity warning:/);
+    for (const [invariant, guidance] of Object.entries(REVISION_FIDELITY_INVARIANTS)) {
+        assert.ok(guidance.explanation && guidance.retry, `${invariant} has explanation and retry guidance`);
+    }
 }
 
 console.log('PASS: revision fidelity verifier tests');

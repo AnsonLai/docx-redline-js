@@ -7,6 +7,7 @@ import { validateRedlineOoxml } from '../core/redline-validation.js';
 import { configureLogger } from '../adapters/logger.js';
 import { isExistingRevisionsPolicy } from '../services/document-operation-contract.js';
 import { normalizeErrorWithRecovery } from '../services/error-recovery.js';
+import { REVISION_FIDELITY_MODES, resolveRevisionFidelityMode } from '../services/revision-fidelity-verifier.js';
 import { localizedReplacementOffsets } from '../services/localized-replacement-compiler.js';
 import { buildCliHelp, CLI_COMMANDS, commandOptionKeys } from './cli-help.js';
 
@@ -39,7 +40,8 @@ const CLI_CAPABILITIES = [
     'comment-resolve-operation-v1',
     'delete-comments-by-id-v1',
     'header-footer-parts-v1',
-    'format-text-occurrence-v1'
+    'format-text-occurrence-v1',
+    'revision-fidelity-v1'
 ];
 const commandOptions = Object.fromEntries(CLI_COMMANDS.map(command => [command, new Set(commandOptionKeys(command))]));
 
@@ -597,7 +599,8 @@ function compactError(error) {
         'code', 'stage', 'mismatchOffset', 'expectedExcerpt', 'actualExcerpt',
         'expectedCodePoint', 'actualCodePoint', 'ownerAuthor', 'commentIds',
         'recoveryVersion', 'category', 'field', 'captureRef', 'operationIndexes',
-        'consumedByOperation', 'expectedScope', 'actualScope'
+        'consumedByOperation', 'expectedScope', 'actualScope',
+        'invariants', 'violations', 'verificationMode', 'baselineView'
     ];
     const compact = {};
     for (const field of fields) {
@@ -823,6 +826,12 @@ export async function executeCli(argv, io = process) {
     if (profile && profile !== 'agent') {
         return cliError('INVALID_PROFILE', `Unknown execution profile: "${profile}". Supported profiles: agent.`);
     }
+    if (flags.revisionFidelity != null && !REVISION_FIDELITY_MODES.includes(String(flags.revisionFidelity))) {
+        return cliError('INVALID_OPERATION', `Unsupported revision-fidelity mode: "${String(flags.revisionFidelity)}". Use enforce, warn or off.`);
+    }
+    if (profile === 'agent' && String(flags.revisionFidelity) === 'off') {
+        return cliError('INVALID_PROFILE', 'The agent profile requires Reject All verification; --revision-fidelity off is only for diagnosis outside the agent profile.');
+    }
     let inspectOptions = null;
     if (command === 'inspect' || command === 'extract') {
         try { inspectOptions = inspectionOptions(flags); }
@@ -925,6 +934,7 @@ export async function executeCli(argv, io = process) {
                 validate: true,
                 generateRedlines,
                 existingRevisions: flags.existingRevisions || 'merge-same-author',
+                verifyRevisionFidelity: resolveRevisionFidelityMode(flags.revisionFidelity == null ? undefined : String(flags.revisionFidelity)),
                 requireComplete
             };
             const result = await document.applyOperations(operations, {
@@ -934,6 +944,7 @@ export async function executeCli(argv, io = process) {
                 strictTargets: true,
                 generateRedlines,
                 ...(flags.existingRevisions ? { existingRevisions: flags.existingRevisions } : {}),
+                verifyRevisionFidelity: effectiveOptions.verifyRevisionFidelity,
                 ...(expectedRevision ? { expectedRevision } : {})
             });
             const localizedVerificationFailed = (result.results || []).some(item => item?.change && (

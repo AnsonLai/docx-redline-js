@@ -137,6 +137,12 @@ assert(version.capabilities.includes('human-document-references-v1'));
 assert(version.capabilities.includes('localized-replacements-v1'));
 assert(version.capabilities.includes('speculative-search-apply-v1'));
 assert(version.capabilities.includes('localized-change-summary-v1'));
+assert(version.capabilities.includes('revision-fidelity-v1'));
+
+const fidelityOff = await executeCli(['apply', fileURLToPath(fixturePath), '--profile', 'agent', '--revision-fidelity', 'off', '--modified', 'x', '--target', 'y']);
+assert.equal(fidelityOff.error.code, 'INVALID_PROFILE', 'the agent profile cannot disable Reject All verification');
+const fidelityBogus = await executeCli(['apply', fileURLToPath(fixturePath), '--revision-fidelity', 'sometimes', '--modified', 'x', '--target', 'y']);
+assert.equal(fidelityBogus.error.code, 'INVALID_OPERATION');
 
 const temp = await mkdtemp(path.join(tmpdir(), 'docx-recovery-contract-'));
 try {

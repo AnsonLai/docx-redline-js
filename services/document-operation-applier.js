@@ -465,26 +465,26 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                 });
                 session._rejectedViewCache = { document: session.document, projection: fidelity.afterProjection };
                 if (!fidelity.ok) {
-                    const fidelityError = buildRevisionFidelityError(fidelity.violations);
+                    const fidelityError = buildRevisionFidelityError(fidelity.violations, { mode: fidelityMode, baselineView });
+                    const logLine = `${fidelityError.code} (operation ${operationIndex}${operation.operationId ? ` "${operation.operationId}"` : ''}): ${fidelityError.message}`;
+                    if (typeof options?.onWarn === 'function') options.onWarn(logLine);
                     if (fidelityMode === 'enforce') {
                         session.restoreSavepoint(savepoint);
+                        const refusedReceipt = createEmptyReceipt(operationIndex, operation.operationId, authorUsed, 'refused');
+                        refusedReceipt.warnings.push(logLine);
                         return {
                             documentXml,
                             hasChanges: false,
                             status: 'error',
-                            error: normalizeOperationError({
-                                ...fidelityError,
-                                recovery: {
-                                    hint: 'Retry with a smaller target range, or use replacements for a small literal change. Do not retry the same arguments.'
-                                }
-                            }, errorContext),
+                            error: normalizeOperationError(fidelityError, errorContext),
+                            warnings: [logLine],
                             operationType: operation.operationKind,
                             authorUsed,
-                            receipt: createEmptyReceipt(operationIndex, operation.operationId, authorUsed, 'refused'),
+                            receipt: refusedReceipt,
                             ...resolutionCapture
                         };
                     }
-                    result.warnings = [...(Array.isArray(result.warnings) ? result.warnings : []), `${fidelityError.code}: ${fidelityError.message}`];
+                    result.warnings = [...(Array.isArray(result.warnings) ? result.warnings : []), logLine];
                     result.revisionFidelityViolations = fidelity.violations;
                 }
             } else {

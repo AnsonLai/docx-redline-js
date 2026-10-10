@@ -41,6 +41,8 @@ If the user requests deleted text, search with `--view rejected` first. Otherwis
 
 - Require `completion: true` and a non-null `outputPath`; the CLI computes this from write, operation, commit, and localized-verification results.
 - On failure, follow `error.recovery.action`; never retry unchanged arguments.
+- `REVISION_FIDELITY_VIOLATION` (Reject All would not restore the source): retry
+  narrower per `recovery.retryGuidance`; never pass `--revision-fidelity off`.
 - Use `retryPlan.base: "original"` to replay a batch and `"output"` to retain
   committed progressive work and retry the reported indexes.
 - The source is not overwritten unless `--in-place` is explicit.

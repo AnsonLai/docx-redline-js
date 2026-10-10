@@ -223,9 +223,10 @@ export interface StandaloneRunnerOptions {
   strictTargets?: boolean;
   /**
    * Post-apply check that Word's Reject All of each tracked operation's output equals the source
-   * (paragraph count, text, properties, numbering, wrapper membership). Transitional default
-   * `'warn'` appends a `REVISION_FIDELITY_VIOLATION` warning; `'enforce'` refuses the operation
-   * with that error code; `'off'` is for diagnosis only.
+   * (paragraph count, text, properties, numbering, wrapper membership). Default `'enforce'` refuses
+   * the operation with `REVISION_FIDELITY_VIOLATION` (per-invariant `violations[]` and
+   * `recovery.retryGuidance`); `'warn'` applies it and appends the same message to `warnings`;
+   * `'off'` is for diagnosis only.
    */
   verifyRevisionFidelity?: 'enforce' | 'warn' | 'off';
   expectedRevision?: RevisionToken;

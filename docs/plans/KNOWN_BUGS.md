@@ -209,8 +209,8 @@ Every tracked operation is checked after generation: Word's Reject All of the ou
 source (`services/revision-fidelity-verifier.js`). A violation fails closed with `REVISION_FIDELITY_VIOLATION` (disposition
 `refused`, nothing written). Current limits, tracked in `2026-09-30-revision-fidelity-invariants.md`:
 
-- The default mode is `warn`, not `enforce`; set `verifyRevisionFidelity: 'enforce'` or
-  `DOCX_REDLINE_REVISION_FIDELITY=enforce`. The agent profile does not yet force `enforce` or reject `off`.
+- The default mode is `enforce` (refuse). `verifyRevisionFidelity: 'warn'` applies and reports instead; `'off'` is for
+  diagnosis only and the CLI agent profile rejects it (`--revision-fidelity`, capability `revision-fidelity-v1`).
 - Untracked operations (`generateRedlines: false`) are not verified.
 - Accept All intent and neighbor checks (`ACCEPT_INTENT`, `ACCEPT_NEIGHBORS`) and the numbering-part existence check are not
   implemented; `REJECT_NUMBERING_REFS` only compares restored `numId`/`ilvl` with the source.

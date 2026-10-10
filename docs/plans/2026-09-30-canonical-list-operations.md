@@ -423,9 +423,10 @@ Companion: `2026-09-30-revision-fidelity-invariants.md` (the fidelity plan). Lan
 numPr-without-`pPrChange` fix for explicit-start conversion (`f72f60a`). Consequences for the work packages here:
 
 1. **Acceptance gate.** The post-apply verifier compares Word Reject All of the output with Word Reject All of the source;
-   a new `list-format` / `change-format` / `paragraph-format.numbering` operation must leave them equal. The verifier is in
-   `warn` mode today and becomes `enforce` by default (refusal `REVISION_FIDELITY_VIOLATION`, disposition `refused`);
-   develop and test new operations under `DOCX_REDLINE_REVISION_FIDELITY=enforce`. This replaces "Reject All yields
+   a new `list-format` / `change-format` / `paragraph-format.numbering` operation must leave them equal. The verifier refuses by
+   default (`enforce`; refusal `REVISION_FIDELITY_VIOLATION`, disposition `refused`, per-invariant `violations[]` with
+   `explanation`, source paragraph index/excerpt and `recovery.retryGuidance`), so a new operation that breaks Reject All
+   cannot ship silently. This replaces "Reject All yields
    canonical-equal `document.xml`" as an ad hoc property check in the Test plan. Untracked (`generateRedlines: false`)
    operations are skipped by the verifier.
 2. **Allocator requirements (WP-2 here).** The allocator must satisfy: R1, tracked-deleted source paragraphs never change

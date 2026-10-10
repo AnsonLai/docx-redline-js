@@ -78,6 +78,7 @@ try {
         validate: true,
         generateRedlines: true,
         existingRevisions: 'merge-same-author',
+        verifyRevisionFidelity: 'enforce',
         requireComplete: true
     });
     assert.equal(applied.result.results[0].receipt, undefined);

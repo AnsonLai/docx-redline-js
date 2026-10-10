@@ -2,13 +2,24 @@
 
 ## Unreleased
 
+### Changed
+
+- **Operations that would break Reject All are refused by default:** the revision fidelity verifier now runs in
+  `enforce` mode. A refused operation leaves the document unchanged and returns `REVISION_FIDELITY_VIOLATION` with a
+  one-line message naming the invariant, the source paragraph (extraction index and excerpt), expected vs actual, an
+  explanation and a retry instruction; `violations[]`, `invariants` and `recovery.retryGuidance` carry the same detail for
+  agents, the message is also sent to `onWarn`, and compact CLI output keeps it. Opt out per call with
+  `verifyRevisionFidelity: 'warn'` (apply and warn) or `'off'` (diagnosis). CLI: `--revision-fidelity <enforce|warn|off>`,
+  shown in `effectiveOptions`; the agent profile rejects `off`. Capability `revision-fidelity-v1`.
+
 ### Added
 
-- **Revision fidelity verifier (warn mode):** every tracked operation now checks, on the live DOM and without extra
+- **Revision fidelity verifier:** every tracked operation now checks, on the live DOM and without extra
   serialization, that Word's Reject All of its output equals Word's Reject All of the source (paragraph count and order,
   canonical text including breaks and tabs, paragraph properties, `numPr`, hyperlink/field/content-control membership).
-  A mismatch appends a `REVISION_FIDELITY_VIOLATION` warning and `revisionFidelityViolations`; `verifyRevisionFidelity:
-  'enforce'` refuses the operation instead. The Word-semantics simulator is `core/word-revision-semantics.js`.
+  A mismatch refuses the operation (see Changed); in `warn` mode it is applied with the message in `warnings` and
+  `revisionFidelityViolations`. The Word-semantics simulator is `core/word-revision-semantics.js`, validated against
+  recorded Word 16 Reject All / Accept All results (`tests/fixtures/word-revision-semantics/expectations.json`).
 
 ### Fixed
 
