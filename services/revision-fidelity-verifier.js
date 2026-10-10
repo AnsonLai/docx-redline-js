@@ -34,7 +34,8 @@ export function projectRejectedView(documentNode) {
  * @param {Array|Document} input.after - post-mutation DOM or its projection
  * @param {'rejected'|'accepted'} [input.baselineView='rejected'] - view of `before` that Reject All
  *   of `after` must reproduce; 'accepted' for policies that accept existing revisions first
- * @returns {{ ok: true } | { ok: false, violations: Array<{ invariant: string, paragraph: number, expected: string, actual: string }> }}
+ * @returns {{ ok: boolean, violations?: Array<{ invariant: string, paragraph: number, expected: string, actual: string }>,
+ *   afterProjection: Array }} `afterProjection` lets a session reuse it as the next operation's baseline
  */
 export function verifyRevisionFidelity({ before, after, baselineView = 'rejected' }) {
     const expected = Array.isArray(before) ? before : projectWordRevisionView(before, baselineView);
@@ -49,7 +50,7 @@ export function verifyRevisionFidelity({ before, after, baselineView = 'rejected
         while (first < expected.length && first < actual.length
             && expected[first].text === actual[first].text) first++;
         push('REJECT_PARAGRAPH_COUNT', first + 1, `${expected.length} paragraphs`, `${actual.length} paragraphs`);
-        return { ok: false, violations };
+        return { ok: false, violations, afterProjection: actual };
     }
 
     for (let i = 0; i < expected.length && violations.length < MAX_REPORTED_VIOLATIONS; i++) {
@@ -69,7 +70,9 @@ export function verifyRevisionFidelity({ before, after, baselineView = 'rejected
             push('REJECT_WRAPPERS', paragraph, source.wrappers, output.wrappers);
         }
     }
-    return violations.length ? { ok: false, violations } : { ok: true };
+    return violations.length
+        ? { ok: false, violations, afterProjection: actual }
+        : { ok: true, afterProjection: actual };
 }
 
 /** Builds the structured error payload for a violation result. */

@@ -150,4 +150,19 @@ const invariantOf = (before, after) => {
     assert.equal(check(lostDeletion).violations[0].invariant, 'REJECT_PARAGRAPH_TEXT');
 }
 
+// 4. Batches reuse the previous operation's projection as the baseline; an untracked commit
+//    in between must invalidate it (otherwise the next tracked op would be compared stale).
+{
+    const body = ['Alpha clause.', 'Beta clause.', 'Gamma clause.', 'Delta clause.'].map(t => p(run(t))).join('');
+    const xml = `<w:document xmlns:w="${W}"><w:body>${body}<w:sectPr/></w:body></w:document>`;
+    const result = await applyOperationsToDocumentXml(xml, [
+        { type: 'redline', target: 'Alpha clause.', modified: 'Alpha term.' },
+        { type: 'redline', target: 'Beta clause.', modified: 'Beta term.', generateRedlines: false },
+        { type: 'redline', target: 'Gamma clause.', modified: 'Gamma term.' }
+    ], 'Verifier', {}, { atomic: true, verifyRevisionFidelity: 'enforce' });
+    assert.equal(result.status, 'ok', JSON.stringify(result.error || result.results));
+    assert.deepEqual(wordRevisionParagraphTexts(parseOoxmlSafe(result.documentXml).doc, 'rejected'),
+        ['Alpha clause.', 'Beta term.', 'Gamma clause.', 'Delta clause.']);
+}
+
 console.log('PASS: revision fidelity verifier tests');

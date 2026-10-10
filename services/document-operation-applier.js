@@ -208,6 +208,11 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
     const resolutionCapture = {};
     let localizedChange = null;
     const savepoint = session.createSavepoint();
+    // The previous verified operation's Reject All projection is this operation's baseline
+    // while the live DOM is the one it was computed on (a restored savepoint swaps the DOM).
+    const cachedRejectedView = session._rejectedViewCache?.document === session.document
+        ? session._rejectedViewCache.projection
+        : null;
     session.receiptCollector?.beginOperation(
         operationIndex,
         operation.operationId,
@@ -445,11 +450,13 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
             }
             const fidelityMode = resolveRevisionFidelityMode(options.verifyRevisionFidelity);
             if (fidelityMode !== 'off' && operationOptions.generateRedlines !== false) {
+                const baselineView = revisionFidelityBaselineView(operationOptions.existingRevisions);
                 const fidelity = verifyRevisionFidelity({
-                    before: savepoint.document,
+                    before: baselineView === 'rejected' && cachedRejectedView ? cachedRejectedView : savepoint.document,
                     after: session.document,
-                    baselineView: revisionFidelityBaselineView(operationOptions.existingRevisions)
+                    baselineView
                 });
+                session._rejectedViewCache = { document: session.document, projection: fidelity.afterProjection };
                 if (!fidelity.ok) {
                     const fidelityError = buildRevisionFidelityError(fidelity.violations);
                     if (fidelityMode === 'enforce') {
@@ -473,6 +480,8 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                     result.warnings = [...(Array.isArray(result.warnings) ? result.warnings : []), `${fidelityError.code}: ${fidelityError.message}`];
                     result.revisionFidelityViolations = fidelity.violations;
                 }
+            } else {
+                session._rejectedViewCache = null;
             }
             session.markMutationCommitted(true);
             if (operation._compiledSourceId && session.sourceTargetRegistry) {
