@@ -30,9 +30,12 @@ Resume here. Each line says what landed, where, and what is next. Verify with `g
   the defect below). Synthetic lane: 49/49 with the structural check.
 - **Corpus lane:** 60/60 on text, but the enforce verifier refused 3 real-document scenarios
   (`administrative-table-reconciliation-status-update`, `-row-insertion`, `-multi-cell-update`): markdown-table
-  reconciliation drops, untracked, the trailing empty paragraph of an untouched sibling cell. Word confirms (source 86
-  paragraphs, Reject All 85). A Sonnet agent is fixing it in the table-reconciliation path; until then
-  `node scripts/prepare-superdoc-word-corpus.mjs` fails on those 3 (use `DOCX_REDLINE_REVISION_FIDELITY=warn` to prepare).
+  reconciliation drops, untracked, the trailing empty paragraph of an untouched sibling cell. Word confirmed (source 86
+  paragraphs, Reject All 85). **Fixed in `b4f3bd4`** (`services/table-reconciliation.js`: trailing empty paragraphs no
+  longer mark a cell modified; multi-paragraph cells reconcile per paragraph). Corpus prep prepares all 60 under enforce,
+  Word corpus lane 60/60 with the structural check (86 vs 86). Known trade-off: when Markdown drops a non-empty
+  paragraph of a multi-paragraph cell, its text is tracked-deleted but the paragraph shell stays, so Accept All leaves an
+  empty paragraph there (Reject All exact). Stale fixtures numbered 42-47 in `tmp/superdoc-word-fixtures` are leftovers.
 - Scratch helpers (not committed): `%TEMP%\claude\wordcount.ps1` (source vs Reject All paragraph counts) and
   `wordui.ps1` (compares the four Reject All entry points).
 
