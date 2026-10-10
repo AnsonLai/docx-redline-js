@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Explicit `1. Header` list conversion works on a bare `document.xml`:** with no numbering part the batch had no numbering id state, so the conversion aborted after recording tracked deletions in the receipt and failed with `RECEIPT_RECONCILIATION_FAILED`. The bare runner now always seeds numbering ids as `openDocx` does, and an aborted conversion no longer records receipt revisions.
+
 ## 0.8.4
 
 ### Added

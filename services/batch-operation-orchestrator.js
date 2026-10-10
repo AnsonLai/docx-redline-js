@@ -370,11 +370,17 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
     const atomic = options.atomic === true;
     const continueOnError = options.continueOnError !== false;
     // Generated list definitions must not collide with the supplied source numbering part.
-    if (runtimeContext && typeof runtimeContext === 'object' && !runtimeContext.numberingIdState
-        && typeof runtimeContext.numberingXml === 'string' && runtimeContext.numberingXml.trim()) {
-        runtimeContext.numberingIdState = createDynamicNumberingIdState(runtimeContext.numberingXml);
+    // Always seed a state (bare document.xml has no numbering part) to match the packaged facade.
+    if (runtimeContext && typeof runtimeContext === 'object' && !runtimeContext.numberingIdState) {
+        const seedXml = typeof runtimeContext.numberingXml === 'string' && runtimeContext.numberingXml.trim()
+            ? runtimeContext.numberingXml
+            : undefined;
+        runtimeContext.numberingIdState = createDynamicNumberingIdState(seedXml);
     }
     const context = cloneBatchRuntimeContext(runtimeContext);
+    if (!context.numberingIdState) {
+        context.numberingIdState = createDynamicNumberingIdState(undefined);
+    }
     if (!(context.targetRefSnapshot instanceof Map)) {
         context.targetRefSnapshot = session.initialTargetReferenceSnapshot;
     }

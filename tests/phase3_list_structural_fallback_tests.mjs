@@ -152,4 +152,21 @@ assert.match(invalid.warnings[0], /no valid OOXML/);
     assert.match(upperExecuted.numberingXml, /w:startOverride w:val="7"/);
 }
 
+// Regression: a bare <w:document> (no numbering part) must still seed numbering id state,
+// and every committed receipt revision id must exist in the output.
+{
+    const { applyOperationsToDocumentXml } = await import('../services/standalone-operation-runner.js');
+    const bareXml = `<w:document xmlns:w="${NS}"><w:body><w:p><w:r><w:t>1. Header</w:t></w:r></w:p></w:body></w:document>`;
+    const op = { type: 'list-change', target: { exactText: '1. Header' }, modified: '1. Header' };
+    const bare = await applyOperationsToDocumentXml(bareXml, [op], 'Rev', null, { generateRedlines: true });
+    assert.equal(bare.status, 'ok', JSON.stringify(bare.error || null));
+    const bareNumId = bare.documentXml.match(/<w:numPr>.*?<w:numId w:val="(\d+)"/s);
+    assert.ok(bareNumId, 'bare conversion binds a numId');
+    for (const receipt of bare.receipts) {
+        for (const item of receipt.revisionItems) {
+            assert.match(bare.documentXml, new RegExp(`w:id="${item.id}"`), `receipt revision ${item.id} present in output`);
+        }
+    }
+    assert.ok(bare.receipts.some(r => r.revisionItems.length > 0), 'receipt records revisions');
+}
 console.log('PASS: Phase 3 single-line list structural fallback behavior');

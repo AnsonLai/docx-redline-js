@@ -1383,20 +1383,6 @@ async function tryExplicitDecimalHeaderListConversion({
     if (!strippedContent) return null;
 
     onInfo('[List] Applying explicit numeric header conversion with direct list binding.');
-    const redlineResult = await applyRedlineToOxml(
-        serializer.serializeToString(targetParagraph),
-        currentParagraphText,
-        strippedContent,
-        {
-            author,
-            generateRedlines,
-            _revisionIdAllocator: revisionIdAllocator
-        }
-    );
-    if (!redlineResult?.hasChanges || typeof redlineResult?.oxml !== 'string') return null;
-
-    const extracted = extractReplacementNodes(redlineResult.oxml);
-    const replacementNodes = extracted.replacementNodes;
     const numberingAction = resolveSingleLineListFallbackNumberingAction(
         explicitPlan,
         runtimeContext?.listFallbackSequenceState || null
@@ -1426,6 +1412,22 @@ async function tryExplicitDecimalHeaderListConversion({
         }
         onInfo(`[List] Using isolated explicit-start numbering (start ${explicitStart}, numId ${appliedNumId}, abstractNumId ${reservedPair.abstractNumId}).`);
     }
+
+    // Redline only after numbering reservation succeeded so an aborted conversion never records receipt revisions.
+    const redlineResult = await applyRedlineToOxml(
+        serializer.serializeToString(targetParagraph),
+        currentParagraphText,
+        strippedContent,
+        {
+            author,
+            generateRedlines,
+            _revisionIdAllocator: revisionIdAllocator
+        }
+    );
+    if (!redlineResult?.hasChanges || typeof redlineResult?.oxml !== 'string') return null;
+
+    const extracted = extractReplacementNodes(redlineResult.oxml);
+    const replacementNodes = extracted.replacementNodes;
 
     if (explicitPlan.numberingKey && runtimeContext?.listFallbackSharedNumIdByKey instanceof Map) {
         runtimeContext.listFallbackSharedNumIdByKey.delete(explicitPlan.numberingKey);
