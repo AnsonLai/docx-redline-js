@@ -7,10 +7,9 @@
 import { getApplicableFormatHints } from '../pipeline/markdown-processor.js';
 import {
     createTrackChange,
-    createFormattedRuns,
-    markParagraphMarkDeleted,
-    markParagraphMarkInserted
+    createFormattedRuns
 } from './run-builders.js';
+import { markParagraphDeleted, markParagraphInserted } from './paragraph-mark-revisions.js';
 import { getFirstElementByTagNSOrTag } from '../core/xml-query.js';
 import { NS_W, createReplacementRevisionEvent, createRevisionMetadata } from '../core/types.js';
 import { createWordElement, isWordElement } from '../core/word-xml.js';
@@ -189,7 +188,7 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
                     const hasVisibleText = Array.from(node.getElementsByTagNameNS(NS_W, 't')).length > 0;
                     const hasDeletedText = Array.from(node.getElementsByTagNameNS(NS_W, 'delText')).length > 0;
                     if (paragraphs.length === 1 && !hasVisibleText && (hasDeletedText || context.originalFullText.trim() !== '')) {
-                        markParagraphMarkDeleted(xmlDoc, node, author);
+                        markParagraphDeleted(node, { author, revisionIdAllocator: xmlDoc });
                     }
                 }
             });
@@ -329,9 +328,9 @@ function appendTextToCurrent(
             const info = getParagraphInfo(localBaseIndex + 1);
             const nextParagraph = createNewParagraph(info.pPr);
             if (generateRedlines && type === 'insert') {
-                markParagraphMarkInserted(xmlDoc, localParagraph, author);
+                markParagraphInserted(localParagraph, { author, revisionIdAllocator: xmlDoc });
             } else if (generateRedlines && type === 'delete') {
-                markParagraphMarkDeleted(xmlDoc, localParagraph, author);
+                markParagraphDeleted(localParagraph, { author, revisionIdAllocator: xmlDoc });
             }
 
             const fragment = containerFragments.get(info.container);
