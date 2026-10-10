@@ -88,13 +88,13 @@ function ensureParagraphProperties(xmlDoc, paragraph) {
     return pPr;
 }
 
+// CT_PPr order: ... rPr, sectPr, pPrChange. A new mark rPr goes before them; an existing one stays put.
 function ensureMarkRunProperties(xmlDoc, pPr) {
     let rPr = directWordChild(pPr, 'rPr');
     if (!rPr) {
         rPr = createWordElement(xmlDoc, 'w:rPr');
-        pPr.appendChild(rPr);
-    } else if (pPr.lastChild !== rPr) {
-        pPr.appendChild(rPr);
+        const successor = directWordChild(pPr, 'sectPr') || directWordChild(pPr, 'pPrChange');
+        pPr.insertBefore(rPr, successor || null);
     }
     return rPr;
 }

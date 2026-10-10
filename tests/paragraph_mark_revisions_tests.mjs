@@ -88,6 +88,18 @@ const ctx = (allocator = new RevisionIdAllocator(100)) => ({ author: 'Unit Autho
     assert.throws(() => setParagraphPropertiesMarkRevision(pPr, 'bogus', ctx()), /Unsupported/);
 }
 
+// rPr placement follows CT_PPr order (before sectPr / pPrChange) and an existing rPr stays put.
+{
+    const doc = parse(`<w:root xmlns:w="${W}"><w:p><w:pPr><w:pStyle w:val="X"/><w:pPrChange w:id="1" w:author="A" w:date="2026-01-01T00:00:00Z"><w:pPr/></w:pPrChange></w:pPr></w:p><w:p><w:pPr><w:rPr><w:b/></w:rPr><w:sectPr/></w:pPr></w:p></w:root>`);
+    const [first, second] = paragraphsOf(doc);
+    markParagraphInserted(first, ctx());
+    markParagraphDeleted(second, ctx());
+    const names = p => Array.from(p.firstChild.childNodes).map(n => n.localName);
+    assert.deepEqual(names(first), ['pStyle', 'rPr', 'pPrChange']);
+    assert.deepEqual(names(second), ['rPr', 'sectPr']);
+    assert.deepEqual(Array.from(second.firstChild.firstChild.childNodes).map(n => n.localName), ['b', 'del']);
+}
+
 // String builders share allocation and escaping with the DOM path.
 {
     const allocator = new RevisionIdAllocator(7);

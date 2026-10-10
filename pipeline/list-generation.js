@@ -8,9 +8,9 @@ import { serializeToOoxml } from './serialization.js';
 import { generateTableOoxml } from '../services/table-reconciliation.js';
 import { parseTable } from './content-analysis.js';
 import { log } from '../adapters/logger.js';
-import { createRevisionMetadata, NS_W, RunKind } from '../core/types.js';
+import { NS_W, RunKind } from '../core/types.js';
 import { parseOoxmlSafe, serializeXml } from '../adapters/xml-adapter.js';
-import { createWordElement } from '../core/word-xml.js';
+import { setParagraphPropertiesMarkRevision } from '../engine/paragraph-mark-revisions.js';
 
 /**
  * Executes list generation when paragraph content expands into list/table blocks.
@@ -391,7 +391,6 @@ function mergeRunProperties(...sources) {
 }
 
 function addParagraphMarkRevision(xml, type, author, revisionIdAllocator) {
-    const metadata = createRevisionMetadata(author, revisionIdAllocator);
     let pPr;
     let ownerDoc;
 
@@ -411,16 +410,6 @@ function addParagraphMarkRevision(xml, type, author, revisionIdAllocator) {
     }
 
     if (!pPr || !ownerDoc) throw new Error('List paragraph properties are unavailable');
-    let rPr = Array.from(pPr.childNodes || []).find(node => node.nodeType === 1 && node.localName === 'rPr');
-    if (!rPr) {
-        rPr = createWordElement(ownerDoc, 'w:rPr');
-        pPr.appendChild(rPr);
-    }
-
-    const marker = createWordElement(ownerDoc, type === 'del' ? 'w:del' : 'w:ins');
-    marker.setAttribute('w:id', String(metadata.id));
-    marker.setAttribute('w:author', metadata.author);
-    marker.setAttribute('w:date', metadata.date);
-    rPr.appendChild(marker);
+    setParagraphPropertiesMarkRevision(pPr, type === 'del' ? 'del' : 'ins', { author, revisionIdAllocator });
     return serializeXml(pPr);
 }
