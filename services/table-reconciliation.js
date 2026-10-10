@@ -9,6 +9,7 @@ import { splitRunsAtDiffBoundaries, applyPatches } from '../pipeline/patching.js
 import { serializeToOoxml } from '../pipeline/serialization.js';
 import { createRevisionMetadata, escapeXml, RunKind } from '../core/types.js';
 import { preprocessMarkdown } from '../pipeline/markdown-processor.js';
+import { paragraphMarkPPrXml } from '../engine/paragraph-mark-revisions.js';
 
 /**
  * Generates a new w:tbl OOXML structure from Markdown table data.
@@ -75,10 +76,7 @@ export function generateTableOoxml(tableData, options = {}) {
                 endOffset: cleanText.length
             }];
 
-            const cellMarkMeta = trackRows ? createRevisionMetadata(author, revisionIdAllocator) : null;
-            const cellPPr = cellMarkMeta
-                ? `<w:pPr><w:rPr><w:ins w:id="${cellMarkMeta.id}" w:author="${escapeXml(cellMarkMeta.author)}" w:date="${cellMarkMeta.date}"/></w:rPr></w:pPr>`
-                : null;
+            const cellPPr = trackRows ? paragraphMarkPPrXml('ins', { author, revisionIdAllocator }) : null;
             const runsOoxml = serializeToOoxml(runModel, cellPPr, formatHints, {
                 author,
                 generateRedlines,
@@ -356,10 +354,7 @@ function reconcileMultiBlockCellContent(cell, newText, options) {
             kind: generateRedlines ? RunKind.INSERTION : RunKind.TEXT,
             text: cleanText, rPrXml: '', author, startOffset: 0, endOffset: cleanText.length
         }];
-        const markMeta = generateRedlines ? createRevisionMetadata(author, revisionIdAllocator) : null;
-        const pPr = markMeta
-            ? `<w:pPr><w:rPr><w:ins w:id="${markMeta.id}" w:author="${escapeXml(markMeta.author)}" w:date="${markMeta.date}"/></w:rPr></w:pPr>`
-            : null;
+        const pPr = generateRedlines ? paragraphMarkPPrXml('ins', { author, revisionIdAllocator }) : null;
         out += serializeToOoxml(runModel, pPr, formatHints, { author, generateRedlines, revisionIdAllocator });
     }
     return out;
