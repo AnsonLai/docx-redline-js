@@ -8,11 +8,10 @@ import { findReconstructionParagraphRange } from '../engine/reconstruction-mappe
 import { createRevisionMetadata } from '../core/types.js';
 import { containsTrackedChanges, getTrackedChangeAuthors, createWordElement, withOoxmlSourceType } from '../core/word-xml.js';
 import {
-    markParagraphMarkInserted,
-    markParagraphMarkDeleted,
     snapshotAndAttachRPrChange,
     snapshotAndAttachPPrChange
 } from '../engine/run-builders.js';
+import { markParagraphInserted, markParagraphDeleted } from '../engine/paragraph-mark-revisions.js';
 import {
     applyCharacterFormatToRPr,
     checkRunPropertiesChanged,
@@ -431,7 +430,7 @@ function buildInsertedListParagraph(xmlDoc, anchorParagraph, entry, revisionMeta
     // remove the list paragraph itself on Reject All instead of leaving an
     // empty bullet or number behind.
     if (generateRedlines) {
-        markParagraphMarkInserted(xmlDoc, paragraph, author);
+        markParagraphInserted(paragraph, { author });
     }
 
     const run = createWordElement(xmlDoc, 'w:r');
@@ -523,7 +522,7 @@ function buildFallbackInsertedPlainParagraph(xmlDoc, text, revisionMetadata, aut
 
     if (generateRedlines) {
         if (options.trackParagraphMark === true) {
-            markParagraphMarkInserted(xmlDoc, paragraph, author);
+            markParagraphInserted(paragraph, { author });
         }
         const metadata = revisionMetadata || createRevisionMetadata(author, xmlDoc, 'ins');
         const ins = createWordElement(xmlDoc, 'w:ins');
@@ -564,7 +563,7 @@ function wrapParagraphContentInInsertion(xmlDoc, paragraph, revisionMetadata, au
     if (pPr) wrappedParagraph.appendChild(pPr);
     if (options.paragraphId) wrappedParagraph.setAttributeNS(NS_W14, 'w14:paraId', options.paragraphId);
     if (options.trackParagraphMark === true) {
-        markParagraphMarkInserted(xmlDoc, wrappedParagraph, author);
+        markParagraphInserted(wrappedParagraph, { author });
     }
 
     const ins = createWordElement(xmlDoc, 'w:ins');
@@ -1808,7 +1807,7 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         && !(hasRevisions && existingPolicy === 'merge-same-author')
     ) {
         if (generateRedlines) {
-            markParagraphMarkDeleted(xmlDoc, targetParagraph, author, createRevisionMetadata(author, xmlDoc));
+            markParagraphDeleted(targetParagraph, { author });
             options?._mutationLiveNodes?.push(targetParagraph);
         } else {
             options?._mutationRemovedNodes?.push(targetParagraph);
@@ -2038,7 +2037,7 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
                     }
                     trailing.appendChild(trailingPPr);
                 }
-                if (generateRedlines) markParagraphMarkInserted(xmlDoc, trailing, author);
+                if (generateRedlines) markParagraphInserted(trailing, { author });
                 ensureParagraphIdsOnImportedNode(trailing, operationSession);
                 options?._mutationLiveNodes?.push(parent.insertBefore(trailing, followingNode));
             }
