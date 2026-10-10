@@ -382,7 +382,7 @@ function processChildNode(child, originalFullText, propertyMap, sentinelMap, ref
     if (isWordElement(child, 'r')) {
         return processRunForReconstruction(child, originalFullText, propertyMap, sentinelMap, referenceMap, tokenToCharMap, characterState, breakChars);
     }
-    if (isWordElement(child, 'hyperlink')) {
+    if (isWordElement(child, 'hyperlink') || isWordElement(child, 'fldSimple')) {
         return processHyperlinkForReconstruction(child, originalFullText, propertyMap);
     }
     if (

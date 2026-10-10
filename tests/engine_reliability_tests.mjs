@@ -3,6 +3,8 @@ import './setup-xml-provider.mjs';
 import assert from 'assert/strict';
 import { applyRedlineToOxml } from '../engine/oxml-engine.js';
 import { applySurgicalMode } from '../engine/surgical-mode.js';
+import { applyOperationsToDocumentXml } from '../services/standalone-operation-runner.js';
+import { wordRevisionParagraphTexts } from '../core/word-revision-semantics.js';
 import {
     acceptTrackedChangesInOoxml,
     ingestWordOoxmlToPlainText,
@@ -462,6 +464,30 @@ async function testReconstructionMultiParagraphFragmentDoesNotNestParagraphs() {
     });
 }
 
+// Regressions found by tests/reject_roundtrip_matrix_tests.mjs: driven through the document runner with the
+// default revision-fidelity enforcement, which refuses output whose Word Reject All differs from the source.
+async function applyEnforced(body, operation) {
+    const documentXml = `<w:document xmlns:w="${NS_W}" xmlns:r="${NS_R}"><w:body>${body}</w:body></w:document>`;
+    const result = await applyOperationsToDocumentXml(documentXml, [operation], 'Tester', null, {});
+    assert.equal(result.status, 'ok', JSON.stringify(result.error || result.results?.[0]?.error)?.slice(0, 600));
+    const out = parseXml(result.documentXml);
+    return {
+        out,
+        rejected: wordRevisionParagraphTexts(out, 'rejected'),
+        accepted: wordRevisionParagraphTexts(out, 'accepted')
+    };
+}
+
+async function testFieldResultTextEditKeepsFldSimpleAndRejectsToSource() {
+    const { out, rejected, accepted } = await applyEnforced(
+        '<w:p><w:r><w:t xml:space="preserve">Page </w:t></w:r><w:fldSimple w:instr=" PAGE "><w:r><w:t>3</w:t></w:r></w:fldSimple><w:r><w:t xml:space="preserve"> of the agreement is attached.</w:t></w:r></w:p>',
+        { type: 'redline', target: { exactText: 'Page 3 of the agreement is attached.' }, modified: 'Page 3 of the agreement is revised.' }
+    );
+    assert.equal(elementsByLocalName(out, 'fldSimple').length, 1, 'fldSimple must survive an edit elsewhere in the paragraph');
+    assert.deepEqual(rejected, ['Page 3 of the agreement is attached.']);
+    assert.deepEqual(accepted, ['Page 3 of the agreement is revised.']);
+}
+
 await testSurgicalInsertionSplitsRunAtCharacterOffset();
 await testSurgicalDeletionPreservesNeighboringRunChildren();
 await testEmptyDefaultNamespaceTableCellCanReceiveInsertion();
@@ -478,5 +504,7 @@ await testNumberedParagraphEditPreservesFormattingAndRoundTrip();
 await testReplacementDoesNotInheritTrailingSuperscript();
 await testReplacementAcrossHyperlinkPreservesLeadingFontSize();
 await testReconstructionMultiParagraphFragmentDoesNotNestParagraphs();
+
+await testFieldResultTextEditKeepsFldSimpleAndRejectsToSource();
 
 console.log('engine_reliability_tests.mjs ... PASS');
