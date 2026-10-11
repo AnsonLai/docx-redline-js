@@ -21,12 +21,13 @@ Converts AI-generated or programmatic text/markdown edits into valid Office Open
 - Package plumbing helpers for numbering.xml, comments.xml, content types, and relationships
 - Zero host dependencies: works in Node.js, browsers, Deno, and similar JS runtimes with DOM parsing support
 
-## What's New in 0.9.0 (unreleased) and 0.8.x
+## What's New in 0.9.0 and 0.8.x
 
-The current published release is 0.8.4 (`package.json` still reads 0.8.4). The unreleased 0.9.0 line moves the CLI
-contract to version 9 and adds the `list-format` operation, `paragraph-format` numbering binding and a Reject All
-revision fidelity verifier that refuses by default; see the draft [0.9.0 release notes](./docs/releases/0.9.0.md) and
-the CHANGELOG "Unreleased" section. The CLI contract was version 8 throughout the 0.8 line.
+0.9.0 moves the CLI contract to version 9 and adds the `list-format` operation (`convert-plain`, `change-format`, `join`),
+`paragraph-format` numbering binding, list-conversion diagnostics, a single numbering allocator and merge, and a Reject All
+revision fidelity verifier that refuses by default (`REVISION_FIDELITY_VIOLATION`). See the
+[0.9.0 release notes](./docs/releases/0.9.0.md) and the [CHANGELOG](./CHANGELOG.md). The CLI contract was version 8
+throughout the 0.8 line.
 
 - **0.8.0, universal document facade:** `openDocx` and `DocxDocument` are exported from the primary entry point and work
   on `Uint8Array` input in any JavaScript runtime. ZIP handling uses `fflate` and SHA-256 is pure JavaScript, so there are no
@@ -315,10 +316,9 @@ marker. Machine `index` and `ref` fields are for targeting and pagination, not
 user-facing Word locations; use `humanReference`, `provision`, or
 `nearestHeading` in reports.
 
-`docx-redline version` reports contract version 9 (which adds the `list-format` operation type,
-capability `list-format-v1`; its `change-format` and `join` modes are the additive capability
-`list-format-change-v1`; further 0.9.0 additions are `revision-fidelity-v1`,
-`list-conversion-diagnostics-v1` and `paragraph-numbering-binding-v1`, none of which is published yet) and the additive
+`docx-redline version` reports contract version 9 (adds the `list-format` operation type). Contract 9 adds the
+capabilities `revision-fidelity-v1`, `list-conversion-diagnostics-v1`, `paragraph-numbering-binding-v1`,
+`list-format-v1` (`convert-plain`) and `list-format-change-v1` (`change-format` and `join`), alongside the additive
 `command-help-v1`, `inspection-context-v1`, `bounded-inspection-v1`,
 `human-document-references-v1`, `batch-start-source-binding`,
 `recovery-envelope-v1`, `require-complete-exit`, `operations-stdin`,
@@ -327,7 +327,9 @@ capability `list-format-v1`; its `change-format` and `join` modes are the additi
 `speculative-search-apply-v1`, `localized-change-summary-v1`, and
 `restore-shortcuts-v1`, plus `localized-space-equivalence-v1` capabilities. Header/footer
 `part` targeting, the `comment_resolve` operation and `delete-comments --comment-id` are advertised as
-`header-footer-parts-v1`, `comment-resolve-operation-v1` and `delete-comments-by-id-v1`.
+`header-footer-parts-v1`, `comment-resolve-operation-v1` and `delete-comments-by-id-v1`. The remaining advertised
+capabilities are `atomic-batch-results-on-package-failure`, `baseline-aware-validation`, `compact-mutation-results`,
+`cross-author-revision-slicing`, `document-scoped-list-revision-ids` and `format-text-occurrence-v1`.
 Wrappers should negotiate only the
 capabilities they use. Run `docx-redline <command> --help` for that command's
 machine-readable options, behavior, exit codes, canonical GitHub documentation links, and compact examples.
@@ -379,6 +381,8 @@ See the [compact agent fast start](./docs/AGENT_FAST_START.md), the
 | `existingRevisions` | `string` | `'merge-same-author'` | How to handle paragraphs with existing tracked changes. `'merge-same-author'` merges revisions from the same author and protects other authors with `EXISTING_REVISIONS`. `'slice-cross-author'` keeps that same-author merge behavior while allowing Word-native edits inside another author's pending insertion. Pass `'accept-all-first'` to normalize prior revisions or `'reject-input'` to refuse editing revised paragraphs. |
 | `removeFormatting` | `boolean` | `false` | When `true` and the text is unchanged with no Markdown hints, strips existing bold/italic/underline/strikethrough formatting. |
 | `verifyRevisionFidelity` | `'enforce' \| 'warn' \| 'off'` | `'enforce'` | Post-apply Reject All check described under [Reject All verification](#reject-all-verification). CLI: `--revision-fidelity`; the agent profile rejects `off`. |
+| `listMarkers` | `'literal'` | unset | Per operation. Accepts list-marker text as literal text and suppresses `LIST_MARKER_NOT_BOUND`, `UNSUPPORTED_LIST_CONVERSION`, `LIST_FORMAT_NOT_APPLIED` and `UNSUPPORTED_LIST_FORMAT_CHANGE` for that operation. |
+| `strictListConversion` | `boolean` | `atomic` | Makes `UNSUPPORTED_LIST_CONVERSION` and `UNSUPPORTED_LIST_FORMAT_CHANGE` errors instead of warnings (capability `list-conversion-diagnostics-v1`). The CLI agent profile and `--atomic` set it; an operation's `listMarkers: 'literal'` wins. |
 | `sanitizeInput` | `boolean` | `false` | Opt-in removal of standalone leading assistant-preface lines. Literal dollar signs and `\n` sequences are always preserved. |
 
 Same-author revision merging refuses paragraphs containing comment anchors with
@@ -452,7 +456,10 @@ Text edits never create or restyle list structure. Typed markers such as `1.` or
 `UNSUPPORTED_LIST_FORMAT_CHANGE` under the strict policy, with a `list-format` request in `recovery.suggestedOperation`).
 Structure changes use the `list-format` operation. Every mode records each paragraph's previous `w:numPr` in a tracked
 `w:pPrChange`, so Reject All restores the original labels exactly and Accept All shows the new ones. The shared numbering
-definitions in `numbering.xml` are never edited in place. The CLI advertises `list-format-v1` (contract version 9) for
+definitions in `numbering.xml` are never edited in place: new definitions come from one allocator and are merged by one numbering
+merge, and an id that already exists with different content fails with `NUMBERING_ID_CONFLICT`. `paragraph-format`
+`properties.numbering` binds or removes a list on a paragraph the same way (tracked `w:pPrChange`). Unknown
+`paragraph-format.properties` keys are rejected with `INVALID_OPERATION`. The CLI advertises `list-format-v1` (contract version 9) for
 `convert-plain` and `list-format-change-v1` for `change-format` and `join`.
 
 ```js
@@ -728,14 +735,31 @@ guidance. Callers should pass `{ strictTargets: true }` and use strict descripto
 ### Reject All verification
 
 A tracked edit only adds revisions, so rejecting every revision in the output
-must give back the source document. After each tracked operation the library
-projects Word's Reject All of the output (`core/word-revision-semantics.js`,
-validated against recorded desktop Word results) and compares it with the same
-projection of the source: paragraph count, paragraph text including tabs and
-breaks, paragraph properties, list membership (`numId`/`ilvl`), and hyperlink,
-field and content-control membership. Untracked edits (`generateRedlines: false`)
-are checked for locality instead: no paragraph outside the target may change
-(`ACCEPT_NEIGHBORS`).
+must give back the source document. After each operation the library projects
+Word's Reject All and Accept All of the output (`core/word-revision-semantics.js`,
+validated against recorded desktop Word results) and checks these invariants:
+
+- `REJECT_PARAGRAPH_COUNT`, `REJECT_PARAGRAPH_TEXT` (including tabs and breaks),
+  `REJECT_PARAGRAPH_PROPS`, `REJECT_NUMBERING_REFS` (list membership `numId`/`ilvl`)
+  and `REJECT_WRAPPERS` (hyperlink, field and content-control membership):
+  Reject All of the output equals Reject All of the source (under accept-first
+  `existingRevisions` policies the target range is compared with the source's
+  accepted view). `REJECT_NUMBERING_REFS` also refuses a `numId` that the output
+  binds, or Reject All restores (including inside `w:pPrChange`), when the source
+  did not already use it and no `w:num` -> `w:abstractNum` -> `w:lvl` in the
+  available numbering defines it.
+- `ACCEPT_INTENT`: a tracked plain-text `redline` with complete `modified` (no
+  Markdown, list-marker or table syntax; a single paragraph or a `targetEnd`
+  range) is refused when Accept All of its target would not read as `modified`.
+- `ACCEPT_NEIGHBORS`: an untracked edit (`generateRedlines: false`) may not
+  change a paragraph outside its target in the Accept All or Reject All view.
+- `UNTRACKED_CREATED_REVISION`: an untracked edit may not create a tracked
+  revision that was not in the source (fragments of a sliced source revision
+  keep their element, author and date and are allowed).
+
+A localized replacement is also checked before it is committed: the target's
+accepted text must equal the compiled replacement text, otherwise the operation
+is refused with `PATCH_ROUNDTRIP_MISMATCH` rather than dropping content.
 
 By default a violation is refused with `REVISION_FIDELITY_VIOLATION`; the
 document is unchanged, `status` is `error`, and the receipt is `refused`. The
@@ -743,7 +767,8 @@ error payload contains:
 
 - `violations[]`, each with `invariant` (`REJECT_PARAGRAPH_COUNT`,
   `REJECT_PARAGRAPH_TEXT`, `REJECT_PARAGRAPH_PROPS`, `REJECT_NUMBERING_REFS`,
-  `REJECT_WRAPPERS`, or `ACCEPT_NEIGHBORS`), a plain-language `explanation`,
+  `REJECT_WRAPPERS`, `ACCEPT_INTENT`, `ACCEPT_NEIGHBORS` or
+  `UNTRACKED_CREATED_REVISION`), a plain-language `explanation`,
   `expected`/`actual` excerpts, and `source.sourceParagraphIndex` (the 1-based
   paragraph index from extraction) with a text excerpt;
 - `recovery.retryGuidance`, one retry instruction per reported invariant, for

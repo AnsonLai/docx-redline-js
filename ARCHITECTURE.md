@@ -59,6 +59,13 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 ├── services/
 │   ├── comment-engine.js
 │   ├── numbering-helpers.js
+│   ├── numbering-allocation.js
+│   ├── list-conversion-diagnostics.js
+│   ├── list-format.js
+│   ├── list-format-mutation.js
+│   ├── list-format-change.js
+│   ├── operation-batch-compiler.js
+│   ├── localized-replacement-compiler.js
 │   ├── revision-comment-management.js
 │   ├── document-inspection.js
 │   ├── document-operation-session.js
@@ -183,7 +190,36 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 - `services/comment-engine.js`
   - Comment creation and package-level comment XML handling.
 - `services/numbering-helpers.js`
-  - Dynamic numbering ID allocation, numbering payload remapping, and schema-order-safe numbering merges.
+  - Document-scoped numbering ID state (`createDynamicNumberingIdState`,
+    `reserveNextNumberingIdPair`), numbering payload remapping, and shared DOM
+    predicates. It no longer owns a merge.
+- `services/numbering-allocation.js`
+  - The single place that creates, continues, merges and validates numbering
+    definitions. `allocateNumberingDefinition` builds a new `w:abstractNum` +
+    `w:num` (source levels copied, chosen levels redefined, start overrides)
+    from ids reserved through the document state; `allocateNumberingForReplacement`
+    holds the reuse-source-list policy (`continue-source`, `allocate`,
+    `passthrough`) so no call site decides it; `continueBatchListSequence` lets
+    separate operations of one batch that generate items of the same kind,
+    format and level continue one numbering instance (reused only while its
+    `numId` is still bound in the live document). `mergeNumberingParts` /
+    `mergeNumberingXmlBySchemaOrder` are the one numbering merge, used by the
+    runner's consumers and the `openDocx` facade; an incoming `w:abstractNum` /
+    `w:num` id that exists with different content throws `NUMBERING_ID_CONFLICT`.
+    `checkNumberingBinding` validates a direct `{ numId, level }` binding and
+    `validateNumberingIntegrity` reports dangling `numId`, `abstractNumId` and
+    `ilvl` (`NUMBERING_*` issues) for the facade's baseline-delta validation.
+    Old definitions are never deleted or overwritten, and tracked-deleted source
+    paragraphs keep their `numPr`.
+- `services/list-conversion-diagnostics.js`
+  - Safety diagnostics for text edits that retype list markers
+    (`LIST_MARKER_NOT_BOUND` / `UNSUPPORTED_LIST_CONVERSION`,
+    `LIST_FORMAT_NOT_APPLIED` / `UNSUPPORTED_LIST_FORMAT_CHANGE`; warning by
+    default, error under `strictListConversion`, silenced by
+    `listMarkers: 'literal'`), the closed `paragraph-format` key set (unknown
+    keys are `INVALID_OPERATION`) and the `numbering` shape check behind
+    `paragraph-format` numbering binding. Recovery points at `list-format`
+    through `recovery.suggestedOperation`.
 - `services/standalone-docx-plumbing.js`
   - Package-level extraction/wiring/validation for `word/document.xml`, `word/numbering.xml`, and `word/comments.xml`.
 - `services/revision-comment-management.js`
@@ -195,7 +231,13 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
   - Canonical single-operation validation, author resolution, dispatch, and
     result metadata assembly. Before commit it validates the entire live
     document against the operation savepoint and refuses newly generated
-    structural errors, including duplicate revision IDs.
+    structural errors, including duplicate revision IDs. For localized
+    `replacements` it also checks, before commit, that the target's accepted text
+    (read from the successor paragraph via `SourceTargetRegistry.previewSuccessor`,
+    or the restored paragraph) equals the compiled desired text; otherwise the
+    savepoint is restored and `PATCH_ROUNDTRIP_MISMATCH` is returned, because a
+    tracked whole-paragraph deletion rejects back to the source and the Reject
+    All verifier alone cannot see it.
 - `services/document-operation-mutations.js`
   - Coupled OOXML mutation implementations for redline, highlight, and comment
     operations. For text-bearing edits, the resolved paragraph's exact
@@ -224,7 +266,8 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
   - Compatibility normalization, canonical operation kinds, author precedence,
     and stable runtime validation for document operations.
 - `services/list-format.js` and `services/list-format-mutation.js`
-  - The `list-format` operation (`convert-plain`): contract shape, the narrow
+  - The `list-format` operation (`convert-plain`, plus the shared request shape
+    for `change-format` and `join`): contract shape, the narrow
     typed-marker grammar (letter versus roman disambiguation by sequence or an
     explicit `format`), and the in-place DOM core. Every refusal is decided
     before mutation; the binding reuses the `paragraph-format.numbering` path
@@ -234,8 +277,14 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
     `runtimeContext.listFallbackSequenceState` (an entry is reused only while
     its `numId` is bound in the live document). Text-equal redline header
     conversions for letters, roman numerals and bullets call the same core.
+    The `paragraph-format` numbering binding (`properties.numbering`,
+    `{ numId, level }` or `null`) lives in `document-operation-mutations.js`: it
+    snapshots the earliest same-author `w:pPrChange`, refuses another author's
+    pending snapshot (`PARAGRAPH_FORMAT_REVISION_CONFLICT`), and checks the
+    binding with `checkNumberingBinding`. `list-format` is body-only; `openDocx`
+    refuses it with a `part` selector.
 - `services/list-format-change.js`
-  - `list-format` `change-format` and `join`: rebind existing list items with
+  - `list-format` `change-format` and `join` (`scope: 'list'` or `'range'`): rebind existing list items with
     one tracked `w:pPrChange` each, never editing a shared definition.
     `change-format` allocates a new definition through
     `allocateNumberingDefinition` (source levels copied, one redefined, start
@@ -245,6 +294,21 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
     refuses splits, joins and style-linked or instance-overridden definitions
     it cannot reproduce exactly. Definitions are read from the source part plus
     the batch's pending numbering parts.
+- `services/operation-batch-compiler.js`
+  - Binds every operation to batch-start source paragraphs
+    (`SourceTargetRegistry`), compiles localized `replacements`, and detects
+    overlap before any mutation. Composition rule for `redline` + `list-format`:
+    exactly one single-paragraph `redline` (no `targetEnd`, anchor, part or
+    structured content) that keeps the typed marker and changes the text after
+    it composes with one `list-format` on the same paragraph; the compiler fixes
+    the order by setting `_compiledRunAfter` on the list-format, which the batch
+    orchestrator honours, so the redline always runs first. Everything else on a
+    list-format target is refused with `LIST_FORMAT_COMPOSITION_CONFLICT`
+    (`reason`: `marker-changed`, `redline-unchanged`, `redline-shape`, or
+    `list-rebind` when a `scope: 'list'` `change-format`/`join` rebinds an item
+    that another operation also writes). `list.continueFrom` is bound at batch
+    start as a read-only target. `previewSuccessor` lets the applier find a
+    target's replacement paragraph before commit.
 - `services/operation-preflight.js`
   - Read-only strict target and anchor resolution, revision-policy diagnostics,
     artifact prediction, and same-paragraph conflict reporting.
@@ -278,17 +342,34 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
     `REJECT_NUMBERING_REFS` and `REJECT_WRAPPERS`. Under accept-first
     existing-revision policies the baseline is the accepted view, scoped to the
     resolved target range when known (otherwise the changed region between the
-    unchanged prefix and suffix). `verifyUntrackedLocality` covers
+    unchanged prefix and suffix). `REJECT_NUMBERING_REFS`
+    (`verifyNumberingReferences`) also refuses a numId that the output binds or
+    Reject All restores when the source did not use it and no `w:num` ->
+    `w:abstractNum` -> `w:lvl` defines it in the numbering available to the
+    operation (numbering existence). `verifyUntrackedLocality` covers
     `generateRedlines: false` single-target operations with `ACCEPT_NEIGHBORS`:
     no paragraph outside the target may change in either view.
+    `verifyNoCreatedRevisions` adds `UNTRACKED_CREATED_REVISION`: an untracked
+    operation may not introduce a revision id that was not in the source
+    (fragments of a sliced source revision, same element, author and date, are
+    allowed). `verifyAcceptIntent` adds `ACCEPT_INTENT`: a tracked plain-text
+    `redline` with complete `modified` (single paragraph or `targetEnd` range)
+    must read as `modified` in the Accept All view of its target; accept-first
+    range targets use the exact accepted scope.
     `buildRevisionFidelityError` produces the `REVISION_FIDELITY_VIOLATION`
     payload (`violations[].explanation`, `source.sourceParagraphIndex`,
     `recovery.retryGuidance`). Modes are `enforce` (default, refuse and roll
     back), `warn` (apply and append a warning) and `off`, resolved by
     `resolveRevisionFidelityMode`: explicit `verifyRevisionFidelity` option,
     then the diagnostic `DOCX_REDLINE_REVISION_FIDELITY` environment variable,
-    then `enforce`. The session caches the output projection and reuses it as
-    the next operation's baseline while the document is unchanged.
+    then `enforce`. The view memo is `createFidelityViews(document)`: lazily
+    filled `accepted` / `rejected` projections, revision-id signatures and
+    numbering references for one DOM. The applier builds a memo for the savepoint
+    (taking over `session._fidelityViews` when it still describes the live
+    document) and one for the result; after a committed tracked or untracked
+    operation the result's memo is stored back in `session._fidelityViews` as
+    the next operation's baseline, and a refused operation restores the prior
+    memo, so each view is computed at most once per DOM.
 - `orchestration/*`
   - Route planning and list fallback orchestration utilities.
 
@@ -297,19 +378,25 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 1. Caller imports from `index.js`.
 2. Caller configures XML provider/logger/defaults when needed via `adapters/*`.
 3. Caller invokes reconciliation APIs (`applyRedlineToOxml`, operation runner, ingestion/export helpers).
-4. A full-document batch parses once, captures its initial target snapshot, and
-   creates an operation savepoint before each mutation.
+4. A full-document batch parses once, captures its initial target snapshot,
+   compiles the operations against it (`operation-batch-compiler.js`: batch-start
+   source binding, localized replacements, overlap and list-format composition
+   checks, all before any mutation), and creates an operation savepoint before
+   each mutation.
 5. `engine/oxml-engine.js` routes each selected scope to format, table, list,
    surgical, or reconstruction flows; successful scoped output is imported
    into the live document.
 6. After each mutation the applier (`services/document-operation-applier.js`)
-   validates the generated OOXML against the savepoint, then runs the revision
-   fidelity verifier; a violation in `enforce` mode restores the savepoint and
+   validates the generated OOXML against the savepoint, checks the localized
+   replacement intent, then runs the revision fidelity verifier (Reject All,
+   Accept All intent, neighbor, created-revision and numbering-existence
+   invariants); a violation in `enforce` mode restores the savepoint and
    refuses the operation before anything is committed. Failed and no-op
    operations restore their savepoint. A successful changed
    batch serializes the full document once; atomic failures and all-no-op
    batches return the exact input string without serialization.
-7. Pipeline/services return OOXML, optional package artifacts (`numberingXml`, comments payloads), and non-breaking `status`/`error` fields where applicable.
+7. Pipeline/services return OOXML, optional package artifacts (`numberingXml`, comments payloads; numbering parts are merged by `mergeNumberingParts` and
+   checked by `validateNumberingIntegrity`), and non-breaking `status`/`error` fields where applicable.
 8. Optional revision/comment management transforms can accept/reject revisions, including move revisions, or delete comments by author.
 9. Caller writes resulting XML back to package/document boundaries.
 
@@ -345,10 +432,19 @@ still be re-exported from `index.js`.
   `COMMENTED_CONTENT_MERGE`; never discard anchors as a side effect of restoring
   the pre-revision baseline.
   Pass `existingRevisions: 'accept-all-first'` to normalize prior revisions explicitly.
-- Every tracked operation is checked after it is applied: Word's Reject All of
-  the output must equal Word's Reject All of the source
-  (`services/revision-fidelity-verifier.js`, default `enforce`). A violation
-  restores the operation savepoint and returns `REVISION_FIDELITY_VIOLATION`.
+- Every operation is checked after it is applied
+  (`services/revision-fidelity-verifier.js`, default `enforce`): Word's Reject
+  All of a tracked output must equal Word's Reject All of the source (`REJECT_*`),
+  a plain-text `redline` must read as its `modified` text under Accept All
+  (`ACCEPT_INTENT`), and an untracked edit must neither change other paragraphs
+  (`ACCEPT_NEIGHBORS`) nor create a revision (`UNTRACKED_CREATED_REVISION`). A
+  violation restores the operation savepoint and returns
+  `REVISION_FIDELITY_VIOLATION`; `warn` applies and warns, `off` is for
+  diagnosis only.
+- Allocate, continue, merge and validate numbering only through
+  `services/numbering-allocation.js`. Never edit a shared `w:abstractNum` or
+  `w:num` in place, never delete a definition Reject All may need, and keep
+  `numPr` on tracked-deleted source paragraphs.
 - Construct paragraph-mark `w:ins` / `w:del` only through
   `engine/paragraph-mark-revisions.js`, and read current paragraph/run
   properties only through `core/current-properties.js`. Two source-scanning
@@ -465,7 +561,7 @@ still be re-exported from `index.js`.
   text-bearing mutation. Mutation uses canonical accepted-view source text, and `resolvedTarget.targetTextMatch`
   records `exact`, `space_equivalent`, or `normalized` selection plus bounded
   invisible-character diagnostics.
-- CLI contract version 3 is deliberately narrower than library result objects.
+- The CLI contract (version 9; `docx-redline version` lists the capabilities) is deliberately narrower than library result objects.
   `apply`, `accept`, `reject`, and `delete-comments` omit `documentXml`, package
   parts, inspection text, and full issue arrays. `completion` is true only when
   `written === true`, top-level status is neither error nor partial, and every
@@ -536,11 +632,21 @@ The bundle inlines `diff-match-patch` and keeps `@xmldom/xmldom` external.
 - `npm run smoke:word:diff`
   - Windows/Word COM differential test: Word itself accepts/rejects the
     generated fixtures and the resulting text is compared to expectations.
+    Structural checks also compare paragraph counts, and list cases compare
+    `ListFormat.ListString` labels after `Revisions.AcceptAll()` /
+    `RejectAll()`.
 - `bash scripts/validate-fixtures-xsd.sh`
   - Validates exported fixtures against the ECMA-376 transitional `wml.xsd`.
+- `tests/reject_roundtrip_matrix_tests.mjs` (part of `npm test`)
+  - Generated operation matrix over fixtures and operation kinds, asserting the
+    revision fidelity invariants and receipt reconciliation (a
+    `RECEIPT_RECONCILIATION_FAILED` fails the case). Replay with `FUZZ_SEED` /
+    `MATRIX_ITERATIONS`.
 - `.github/workflows/validation.yml`
   - Nightly independent-oracle validation: XSD schema check, LibreOffice
-    conversion, and an extended 20k-case fuzz sweep with a fresh seed.
+    conversion, an extended 20k-case fuzz sweep with a fresh seed, and the
+    `matrix-extended` job (1000 reject-roundtrip matrix cases with a
+    date-derived seed; a failure prints its seed and replay command).
 
 Use these checks before publishing or tagging. See [docs/TESTING.md](./docs/TESTING.md#release-validation-and-independent-oracles).
 
@@ -553,7 +659,11 @@ Use this sequence to understand or modify behavior without reading everything:
 3. For targeting bugs, inspect `core/paragraph-targeting.js`, `core/list-targeting.js`, and `core/table-targeting.js`.
 4. For package wiring issues, inspect `services/standalone-docx-plumbing.js`.
 5. For revision/comment cleanup behavior, inspect `services/revision-comment-management.js`.
-6. For numbering/list issues, inspect `services/numbering-helpers.js` and orchestration list-fallback modules.
+6. For numbering/list issues, inspect `services/numbering-allocation.js`,
+   `services/list-format*.js`, `services/list-conversion-diagnostics.js` and
+   orchestration list-fallback modules; for batch composition,
+   `services/operation-batch-compiler.js`; for Reject All refusals,
+   `services/revision-fidelity-verifier.js`.
 7. For reliability regressions, start with `tests/roundtrip_invariant_tests.mjs`,
    `tests/engine_reliability_tests.mjs`, `tests/paragraph_mark_revision_tests.mjs`,
    `tests/move_revision_tests.mjs`, and `tests/hardening_status_tests.mjs`.
