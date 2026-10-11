@@ -53,7 +53,7 @@ const numberedRels = rels.replace('</Relationships>', '<Relationship Id="rId2" T
 const existingNumbering = `<w:numbering xmlns:w="${W}"><w:abstractNum w:abstractNumId="41"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl></w:abstractNum><w:num w:numId="41"><w:abstractNumId w:val="41"/></w:num></w:numbering>`;
 const numberedInput = buildZip([{name:'[Content_Types].xml',data:numberedTypes},{name:'word/document.xml',data:documentXml},{name:'word/_rels/document.xml.rels',data:numberedRels},{name:'word/comments.xml',data:comments},{name:'word/numbering.xml',data:existingNumbering}]);
 const numberedDoc = openDocx(numberedInput);
-const listResult = await numberedDoc.applyOperations([{ type:'replace', target:{ exactText:'Hello world' }, modified:'1. Hello world' }], { author:'Agent', atomic:true });
+const listResult = await numberedDoc.applyOperations([{ type:'replace', target:{ exactText:'Hello world' }, modified:'1. Hello world', listMarkers:'literal' }], { author:'Agent', atomic:true });
 assert.equal(listResult.written, true);
 assert.match(unzipEntries(listResult.toBuffer()).get('word/numbering.xml').toString(), /abstractNumId="41"/);
 

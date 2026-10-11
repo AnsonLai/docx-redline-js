@@ -42,6 +42,33 @@ export type HeaderFooterPartSelector =
   | string
   | { kind: 'header' | 'footer'; type?: 'default' | 'first' | 'even'; section?: number };
 
+/**
+ * Structured list-conversion diagnostic (`list-conversion-diagnostics-v1`). Warnings appear in
+ * `diagnostics` (and as `CODE: message` strings in `warnings`) on an operation that succeeded;
+ * the same details appear on `error` when the strict policy refuses the operation. They are
+ * unrelated to `REVISION_FIDELITY_VIOLATION`.
+ */
+export interface ListConversionDiagnostic {
+  code:
+    | 'LIST_MARKER_NOT_BOUND'
+    | 'UNSUPPORTED_LIST_CONVERSION'
+    | 'LIST_FORMAT_NOT_APPLIED'
+    | 'UNSUPPORTED_LIST_FORMAT_CHANGE'
+    | 'UNKNOWN_PARAGRAPH_FORMAT_PROPERTY';
+  severity: 'warning' | 'error';
+  message: string;
+  /** The literal marker text (for example `A.`) the edit introduced. */
+  listMarker?: string;
+  requestedList?: { kind: 'bullet' | 'numbered'; format: string };
+  /** The numbering definition the list item keeps (format-change diagnostics). */
+  sourceList?: { numId: string; level: number; kind: 'bullet' | 'numbered'; format: string };
+  targetExcerpt?: string;
+  operationIndex?: number;
+  /** Rejected `paragraph-format.properties` keys (UNKNOWN_PARAGRAPH_FORMAT_PROPERTY). */
+  properties?: string[];
+  recovery?: { action: string; hint?: string; field?: string; allowedValue?: string };
+}
+
 export interface DocumentOperationBase {
   operationId?: string;
   /** Target a header or footer instead of the body. Comments are not supported there. */
@@ -54,6 +81,11 @@ export interface DocumentOperationBase {
   existingRevisions?: ExistingRevisionsPolicy;
   pairReplacements?: boolean;
   insertionAffinity?: InsertionAffinity;
+  /**
+   * `'literal'` accepts list-marker text as literal text and suppresses LIST_MARKER_NOT_BOUND,
+   * UNSUPPORTED_LIST_CONVERSION, LIST_FORMAT_NOT_APPLIED and UNSUPPORTED_LIST_FORMAT_CHANGE for this operation.
+   */
+  listMarkers?: 'literal';
 }
 
 interface RedlineDocumentOperationCommon extends DocumentOperationBase {
@@ -148,6 +180,7 @@ export interface CharacterFormatProperties {
   fontFamily?: string | null;
 }
 
+/** Closed set. Unknown keys (including `numbering`, not implemented) are ignored with an UNKNOWN_PARAGRAPH_FORMAT_PROPERTY warning and will be rejected in a later minor release. */
 export interface ParagraphFormatProperties {
   alignment?: 'left' | 'center' | 'right' | 'both';
   keepNext?: boolean;
@@ -221,6 +254,12 @@ export interface StandaloneRunnerOptions {
   generateRedlines?: boolean;
   existingRevisions?: ExistingRevisionsPolicy;
   strictTargets?: boolean;
+  /**
+   * Make list-conversion diagnostics errors (UNSUPPORTED_LIST_CONVERSION, UNSUPPORTED_LIST_FORMAT_CHANGE)
+   * instead of warnings. Defaults to `atomic`; the CLI agent profile sets it. An operation's
+   * `listMarkers: 'literal'` always wins.
+   */
+  strictListConversion?: boolean;
   /**
    * Post-apply check that Word's Reject All of each tracked operation's output equals the source
    * (paragraph count, text, properties, numbering, wrapper membership). Default `'enforce'` refuses
@@ -296,6 +335,7 @@ export interface DocumentOperationResult {
   commentsXmlMode?: 'merge' | 'replace';
   commentsExtendedXmlMode?: 'merge' | 'replace';
   warnings?: string[];
+  diagnostics?: ListConversionDiagnostic[];
   status?: RedlineStatus;
   error?: RedlineError;
   operationType: 'redline' | 'comment' | 'comment_reply' | 'comment_resolve' | 'highlight' | 'format' | 'paragraph-format';
@@ -317,6 +357,7 @@ export interface BatchOperationItemResult {
   resolvedTarget?: ResolvedDocumentTarget;
   resolvedAnchor?: ResolvedCommentAnchor;
   warnings?: string[];
+  diagnostics?: ListConversionDiagnostic[];
   error?: RedlineError;
   receipt?: MutationReceipt;
   change?: LocalizedReplacementChange;

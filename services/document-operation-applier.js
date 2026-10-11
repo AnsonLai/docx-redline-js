@@ -231,6 +231,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
         ...(operation._localizedReplacementCompilation && operation.structuredContent !== true ? { literalTextEdit: true } : {}),
         pairReplacements: typeof operation.pairReplacements === 'boolean' ? operation.pairReplacements : (options.pairReplacements !== false),
         ...(operation.insertionAffinity ? { insertionAffinity: operation.insertionAffinity } : {}),
+        ...(operation.listMarkers ? { listMarkers: operation.listMarkers } : {}),
         ...(operation.formattingRevisionPolicy ? { formattingRevisionPolicy: operation.formattingRevisionPolicy } : {}),
         ...(operation.operationKind === 'format' && Number.isInteger(operation.textOccurrence) ? { textOccurrence: operation.textOccurrence } : {}),
         targetDescriptor: operation.targetDescriptor,

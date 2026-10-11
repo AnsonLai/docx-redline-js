@@ -41,7 +41,8 @@ const CLI_CAPABILITIES = [
     'delete-comments-by-id-v1',
     'header-footer-parts-v1',
     'format-text-occurrence-v1',
-    'revision-fidelity-v1'
+    'revision-fidelity-v1',
+    'list-conversion-diagnostics-v1'
 ];
 const commandOptions = Object.fromEntries(CLI_COMMANDS.map(command => [command, new Set(commandOptionKeys(command))]));
 
@@ -600,7 +601,8 @@ function compactError(error) {
         'expectedCodePoint', 'actualCodePoint', 'ownerAuthor', 'commentIds',
         'recoveryVersion', 'category', 'field', 'captureRef', 'operationIndexes',
         'consumedByOperation', 'expectedScope', 'actualScope',
-        'invariants', 'violations', 'verificationMode', 'baselineView'
+        'invariants', 'violations', 'verificationMode', 'baselineView',
+        'listMarker', 'requestedList', 'sourceList', 'targetExcerpt'
     ];
     const compact = {};
     for (const field of fields) {
@@ -942,6 +944,7 @@ export async function executeCli(argv, io = process) {
                 atomic,
                 validate: true,
                 strictTargets: true,
+                strictListConversion: agentProfile || atomic,
                 generateRedlines,
                 ...(flags.existingRevisions ? { existingRevisions: flags.existingRevisions } : {}),
                 verifyRevisionFidelity: effectiveOptions.verifyRevisionFidelity,

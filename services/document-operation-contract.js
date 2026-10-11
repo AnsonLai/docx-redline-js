@@ -408,6 +408,13 @@ export function validateDocumentOperation(operation) {
         };
     }
 
+    if (normalized.listMarkers != null && normalized.listMarkers !== 'literal') {
+        return {
+            valid: false,
+            error: { code: 'INVALID_OPERATION', message: 'listMarkers must be "literal" when provided.' }
+        };
+    }
+
     if (normalized.existingRevisions != null && !isExistingRevisionsPolicy(normalized.existingRevisions)) {
         return {
             valid: false,

@@ -33,6 +33,8 @@ const RULES = Object.freeze({
     PATCH_ROUNDTRIP_MISMATCH: ['patch-validation', 'request_fixable', 'reinspect_and_narrow'],
     DIFF_TOKEN_LIMIT: ['patch-compilation', 'request_fixable', 'narrow_operation'],
     STRUCTURED_CONTENT_INVALID: ['request', 'request_fixable', 'change_request'],
+    UNSUPPORTED_LIST_CONVERSION: ['list-conversion', 'request_fixable', 'apply_plain_text_or_convert_in_host'],
+    UNSUPPORTED_LIST_FORMAT_CHANGE: ['list-conversion', 'request_fixable', 'change_list_format_in_host'],
     UNSUPPORTED_INSERTION_AFFINITY: ['request', 'request_fixable', 'change_request'],
     EXISTING_REVISIONS: ['target-safety', 'policy_choice_required', 'set_option'],
     PART_NOT_FOUND: ['target-resolution', 'target_refresh_required', 'reinspect'],

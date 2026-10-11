@@ -468,6 +468,7 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
                     ? { resolved: result.resolved, threadRootId: result.threadRootId, commentIds: result.commentIds }
                     : {}),
                 ...(Array.isArray(result.warnings) && result.warnings.length > 0 ? { warnings: result.warnings } : {}),
+                ...(Array.isArray(result.diagnostics) && result.diagnostics.length > 0 ? { diagnostics: result.diagnostics } : {}),
                 ...(result.error ? { error: result.error } : {}),
                 ...(result.receipt ? { receipt: result.receipt } : {})
             });

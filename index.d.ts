@@ -30,6 +30,7 @@ export type {
   DocumentOperationBatchResult,
   HighlightDocumentOperation,
   InsertionAffinity,
+  ListConversionDiagnostic,
   LocalizedReplacement,
   LocalizedReplacementChange,
   OperationConflict,
@@ -52,6 +53,8 @@ export interface RedlineError {
     | 'DIFF_TOKEN_LIMIT'
     | 'UNSUPPORTED_REVISION_VIEW_MUTATION'
     | 'UNSUPPORTED_INSERTION_AFFINITY'
+    | 'UNSUPPORTED_LIST_CONVERSION'
+    | 'UNSUPPORTED_LIST_FORMAT_CHANGE'
     | 'UNSAFE_PARAGRAPH_BOUNDARY'
     | 'FOREIGN_PARAGRAPH_MARK_DELETION'
     | 'RESTORATION_STATE_REQUIRED'
@@ -80,6 +83,11 @@ export interface RedlineError {
   recoveryVersion?: number;
   category?: 'request_fixable' | 'target_refresh_required' | 'candidate_selection_required' | 'policy_choice_required' | 'user_authorization_required' | 'source_conflict' | 'library_or_builder_failure' | 'manual_document_resolution' | string;
   context?: Record<string, unknown>;
+  /** List-conversion errors: the literal marker, the requested list kind/format and the kept source definition. */
+  listMarker?: string;
+  requestedList?: { kind: 'bullet' | 'numbered'; format: string };
+  sourceList?: { numId: string; level: number; kind: 'bullet' | 'numbered'; format: string };
+  targetExcerpt?: string;
   recovery?: {
     action: string;
     sameArgumentsSafe: boolean;
@@ -87,6 +95,8 @@ export interface RedlineError {
     requiresUserAuthorization: boolean;
     field?: string;
     recommendedValue?: unknown;
+    allowedValue?: unknown;
+    hint?: string;
   };
   expectedRevision?: RevisionToken;
   currentRevision?: RevisionToken;

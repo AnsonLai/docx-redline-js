@@ -87,6 +87,18 @@
         }
       ]
     },
+    "paragraphFormatProperties": {
+      "description": "Closed set. Unknown keys (including numbering bindings, which are not implemented) are ignored with an UNKNOWN_PARAGRAPH_FORMAT_PROPERTY warning today and will be rejected in a future minor release.",
+      "type": "object",
+      "properties": {
+        "alignment": { "type": "string", "examples": ["left", "center", "right", "both"] },
+        "keepNext": { "type": "boolean" },
+        "keepLines": { "type": "boolean" },
+        "pageBreakBefore": { "type": "boolean" },
+        "style": { "type": "string", "description": "Paragraph style id (w:pStyle)." }
+      },
+      "additionalProperties": false
+    },
     "base": {
       "type": "object",
       "required": ["type", "target"],
@@ -98,6 +110,7 @@
         "author": { "type": "string", "minLength": 1 }, "generateRedlines": { "type": "boolean" },
         "existingRevisions": { "enum": ["merge-same-author", "slice-cross-author", "reject-input", "accept-all-first", "accept-all-first-keep-normalized"] },
         "pairReplacements": { "type": "boolean" },
+        "listMarkers": { "const": "literal", "description": "Accepts list-marker text as literal text. Suppresses LIST_MARKER_NOT_BOUND / UNSUPPORTED_LIST_CONVERSION and LIST_FORMAT_NOT_APPLIED / UNSUPPORTED_LIST_FORMAT_CHANGE for this operation." },
         "insertionAffinity": {
           "type": "object",
           "properties": {
@@ -160,7 +173,7 @@
           "allOf": [ { "$ref": "#/$defs/base" }, { "type": "object", "required": ["textToFormat", "properties"], "properties": { "type": { "enum": ["format", "character-format"] }, "textToFormat": { "type": "string", "minLength": 1 }, "textOccurrence": { "type": "integer", "minimum": 1, "default": 1 }, "properties": { "type": "object" }, "formattingRevisionPolicy": { "enum": ["always", "coalesce-own-insertion"] } } } ]
         },
         {
-          "allOf": [ { "$ref": "#/$defs/base" }, { "type": "object", "required": ["properties"], "properties": { "type": { "const": "paragraph-format" }, "properties": { "type": "object" } } } ]
+          "allOf": [ { "$ref": "#/$defs/base" }, { "type": "object", "required": ["properties"], "properties": { "type": { "const": "paragraph-format" }, "properties": { "$ref": "#/$defs/paragraphFormatProperties" } } } ]
         }
       ]
     }

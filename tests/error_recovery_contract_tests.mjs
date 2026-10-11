@@ -81,6 +81,23 @@ assert.equal(patchMismatch.category, 'request_fixable');
 assert.equal(patchMismatch.recovery.action, 'reinspect_and_narrow');
 assert.equal(patchMismatch.recovery.requiresReinspection, true);
 
+// List diagnostics are separate from the Reject All verifier and carry their own stage and actions.
+const listConversion = normalizeErrorWithRecovery({
+    code: 'UNSUPPORTED_LIST_CONVERSION',
+    message: 'The new text begins with a list marker that would be written as literal text.',
+    listMarker: 'A.',
+    requestedList: { kind: 'numbered', format: 'upperLetter' }
+});
+assert.equal(listConversion.stage, 'list-conversion');
+assert.equal(listConversion.category, 'request_fixable');
+assert.equal(listConversion.recovery.action, 'apply_plain_text_or_convert_in_host');
+assert.equal(listConversion.recovery.sameArgumentsSafe, false);
+assert.equal(listConversion.listMarker, 'A.');
+assert.notEqual(listConversion.code, 'REVISION_FIDELITY_VIOLATION');
+const listFormatChange = normalizeErrorWithRecovery({ code: 'UNSUPPORTED_LIST_FORMAT_CHANGE', message: 'The list keeps its source format.' });
+assert.equal(listFormatChange.stage, 'list-conversion');
+assert.equal(listFormatChange.recovery.action, 'change_list_format_in_host');
+
 const unsafeBoundary = normalizeErrorWithRecovery({
     code: 'SECTION_BREAK_PARAGRAPH',
     message: 'The target carries a section boundary.'
@@ -138,6 +155,8 @@ assert(version.capabilities.includes('localized-replacements-v1'));
 assert(version.capabilities.includes('speculative-search-apply-v1'));
 assert(version.capabilities.includes('localized-change-summary-v1'));
 assert(version.capabilities.includes('revision-fidelity-v1'));
+assert(version.capabilities.includes('list-conversion-diagnostics-v1'));
+assert.equal(version.contractVersion, 8, 'the interim list diagnostics are additive and do not bump the contract version');
 
 const fidelityOff = await executeCli(['apply', fileURLToPath(fixturePath), '--profile', 'agent', '--revision-fidelity', 'off', '--modified', 'x', '--target', 'y']);
 assert.equal(fidelityOff.error.code, 'INVALID_PROFILE', 'the agent profile cannot disable Reject All verification');

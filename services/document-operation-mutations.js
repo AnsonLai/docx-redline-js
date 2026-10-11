@@ -3,6 +3,16 @@
  */
 
 import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
+import {
+    resolveListDiagnosticPolicy,
+    detectUnboundListMarker,
+    buildUnboundListMarkerDiagnostic,
+    detectRequestedListFormatMismatch,
+    buildListFormatDiagnostic,
+    findUnknownParagraphFormatKeys,
+    buildUnknownParagraphFormatDiagnostic,
+    diagnosticWarningText
+} from './list-conversion-diagnostics.js';
 import { getAllReferencedNumIdElements } from '../core/current-properties.js';
 import { findReconstructionParagraphRange } from '../engine/reconstruction-mapper.js';
 import { createRevisionMetadata } from '../core/types.js';
@@ -1632,6 +1642,43 @@ async function trySingleParagraphListStructuralFallback({
     };
 }
 
+function listDiagnosticFailure(documentXml, diagnostic) {
+    const { severity: _severity, ...error } = diagnostic;
+    return { documentXml, hasChanges: false, numberingXml: null, status: 'error', error };
+}
+
+function listDiagnosticFields(diagnostics) {
+    return diagnostics.length > 0
+        ? { diagnostics, warnings: diagnostics.map(diagnosticWarningText) }
+        : {};
+}
+
+/**
+ * Compares the markers of a list edit with the numbering definition the source paragraphs keep.
+ * Returns a diagnostic (warning or error severity per policy) or null.
+ */
+function diagnoseListFormatNotApplied({ sourceParagraphs, modifiedText, runtimeContext, options }) {
+    const policy = resolveListDiagnosticPolicy(options);
+    if (policy === 'off') return null;
+    const sourceNumberingXml = runtimeContext?.numberingIdState?.sourceNumberingXml;
+    if (!sourceNumberingXml) return null;
+    const sourceItems = [];
+    for (const paragraph of sourceParagraphs || []) {
+        const info = getParagraphListInfo(paragraph);
+        if (info) sourceItems.push({ text: getParagraphText(paragraph), numId: info.numId, ilvl: info.ilvl });
+    }
+    const found = detectRequestedListFormatMismatch({ modifiedText, sourceItems, sourceNumberingXml });
+    if (!found) return null;
+    return buildListFormatDiagnostic(found.mismatch, {
+        policy,
+        numId: found.numId,
+        level: found.level,
+        marker: found.marker,
+        targetText: found.targetText,
+        operationIndex: options?._operationIndex
+    });
+}
+
 export async function applyToParagraphByExactText(documentXml, targetText, modifiedText, author, targetRef = null, targetEndRef = null, runtimeContext = null, options = {}) {
     const generateRedlines = options.generateRedlines !== false;
     const onInfo = typeof options?.onInfo === 'function' ? options.onInfo : () => { };
@@ -1870,6 +1917,13 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
             for (const entry of insertionEntries) {
                 onInfo(`[List] Explicit-range insertion: ilvl=${entry.ilvl}, markerType=${entry.markerType}, text="${String(entry.text || '').slice(0, 80)}${String(entry.text || '').length > 80 ? '…' : ''}"`);
             }
+            const rangeFormatDiagnostic = diagnoseListFormatNotApplied({
+                sourceParagraphs: explicitRangeParagraphs,
+                modifiedText: effectiveModifiedText,
+                runtimeContext,
+                options
+            });
+            if (rangeFormatDiagnostic?.severity === 'error') return listDiagnosticFailure(documentXml, rangeFormatDiagnostic);
             const applied = applyExplicitRangeListInsertions({
                 xmlDoc,
                 explicitRangeParagraphs,
@@ -1881,7 +1935,8 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
                 return {
                     documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
                     hasChanges: true,
-                    numberingXml: null
+                    numberingXml: null,
+                    ...listDiagnosticFields(rangeFormatDiagnostic ? [rangeFormatDiagnostic] : [])
                 };
             }
         }
@@ -2103,6 +2158,13 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         })
         : null;
     if (insertionOnlyPlan && insertionOnlyPlan.entries.length > 0) {
+        const insertionFormatDiagnostic = diagnoseListFormatNotApplied({
+            sourceParagraphs: [targetParagraph],
+            modifiedText: effectiveModifiedText,
+            runtimeContext,
+            options
+        });
+        if (insertionFormatDiagnostic?.severity === 'error') return listDiagnosticFailure(documentXml, insertionFormatDiagnostic);
         onInfo(`[List] Applying insertion-only list redline heuristic (${insertionOnlyPlan.entries.length} new item(s)).`);
         for (const entry of insertionOnlyPlan.entries) {
             onInfo(`[List] Insertion entry resolved: ilvl=${entry.ilvl}, markerType=${entry.markerType}, text="${String(entry.text || '').slice(0, 80)}${String(entry.text || '').length > 80 ? '…' : ''}"`);
@@ -2127,7 +2189,8 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         return {
             documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
             hasChanges: true,
-            numberingXml: null
+            numberingXml: null,
+            ...listDiagnosticFields(insertionFormatDiagnostic ? [insertionFormatDiagnostic] : [])
         };
     }
 
@@ -2143,6 +2206,7 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         effectiveModifiedText = listScopeEdit.modifiedText;
     }
 
+    let unboundMarkerDiagnostic = null;
     if (!bypassSingleParagraphHeuristics && !useTableScope && !useListScope && !hasExplicitRangeScope) {
         const explicitHeaderListConversion = await tryExplicitDecimalHeaderListConversion({
             xmlDoc,
@@ -2177,6 +2241,25 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
             options
         });
         if (listFallback) return listFallback;
+
+        // Both structural fallbacks declined. A plain paragraph whose new text starts a list marker
+        // would be written as literal text: report that instead of returning a silent success.
+        const unboundPolicy = resolveListDiagnosticPolicy(options);
+        if (unboundPolicy !== 'off' && !targetListInfo) {
+            const requestedMarker = detectUnboundListMarker({
+                originalText: currentParagraphText,
+                modifiedText: effectiveModifiedText,
+                targetIsListItem: false
+            });
+            if (requestedMarker) {
+                unboundMarkerDiagnostic = buildUnboundListMarkerDiagnostic(requestedMarker, {
+                    policy: unboundPolicy,
+                    targetText: currentParagraphText,
+                    operationIndex: options?._operationIndex
+                });
+                if (unboundPolicy === 'error') return listDiagnosticFailure(documentXml, unboundMarkerDiagnostic);
+            }
+        }
     }
 
     const originalTextForApply = useListScope
@@ -2295,7 +2378,10 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         hasChanges: true,
         numberingXml,
         status: 'ok',
-        ...(Array.isArray(result.warnings) && result.warnings.length > 0 ? { warnings: result.warnings } : {})
+        ...(unboundMarkerDiagnostic ? {
+            diagnostics: [unboundMarkerDiagnostic],
+            warnings: [...(Array.isArray(result.warnings) ? result.warnings : []), diagnosticWarningText(unboundMarkerDiagnostic)]
+        } : (Array.isArray(result.warnings) && result.warnings.length > 0 ? { warnings: result.warnings } : {}))
     };
 }
 
@@ -2702,9 +2788,13 @@ export async function applyParagraphFormatToParagraphByExactText(
         targetParagraph.insertBefore(pPr, targetParagraph.firstChild);
     }
 
+    const unknownPropertyKeys = findUnknownParagraphFormatKeys(properties);
+    const propertyDiagnostics = unknownPropertyKeys.length > 0
+        ? [buildUnknownParagraphFormatDiagnostic(unknownPropertyKeys)]
+        : [];
     const hasChanges = checkParagraphPropertiesChanged(pPr, properties);
     if (!hasChanges) {
-        return { documentXml, hasChanges: false, status: 'no-op' };
+        return { documentXml, hasChanges: false, status: 'no-op', ...listDiagnosticFields(propertyDiagnostics) };
     }
 
     if (generateRedlines) {
@@ -2719,6 +2809,7 @@ export async function applyParagraphFormatToParagraphByExactText(
     return {
         documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
         hasChanges: true,
-        status: 'ok'
+        status: 'ok',
+        ...listDiagnosticFields(propertyDiagnostics)
     };
 }
