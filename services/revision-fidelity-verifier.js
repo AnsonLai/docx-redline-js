@@ -43,6 +43,10 @@ export const REVISION_FIDELITY_INVARIANTS = Object.freeze({
         explanation: 'An untracked edit changed a paragraph outside its target, so the change could not be reviewed or undone.',
         retry: 'Re-extract the target and retry against exactly that paragraph; if the edit must span several paragraphs, use a tracked operation with an explicit targetEnd range.'
     },
+    UNTRACKED_CREATED_REVISION: {
+        explanation: 'An untracked edit (generateRedlines: false) created a tracked revision (w:ins, w:del, a move, a property change or a paragraph-mark revision) that was not in the source, so the edit is not the plain change the caller asked for.',
+        retry: 'Retry the same edit against the current extraction; if it is refused again the untracked path wrote a tracked revision, so report the operation instead of working around it, or make the edit tracked (generateRedlines: true) if a reviewable change is acceptable.'
+    },
     REJECT_WRAPPERS: {
         explanation: 'Reject All of the output moves text into or out of a hyperlink, field or content control compared with the source.',
         retry: 'Keep the change entirely inside or entirely outside the hyperlink, field or content control, for example with replacements that do not cross its boundary.'
@@ -168,6 +172,63 @@ export function verifyUntrackedLocality({ before, after, targetSourceIndex }) {
     return violations.length ? { ok: false, violations } : { ok: true };
 }
 
+const REVISION_ELEMENTS = new Set([
+    'ins', 'del', 'moveFrom', 'moveTo', 'rPrChange', 'pPrChange', 'sectPrChange', 'tblPrChange',
+    'tblGridChange', 'tblPrExChange', 'trPrChange', 'tcPrChange', 'numberingChange',
+    'cellIns', 'cellDel', 'cellMerge'
+]);
+
+const nameOf = node => node.localName || String(node.nodeName).replace(/^.*:/, '');
+
+function collectRevisionIds(documentNode) {
+    const ids = new Map();
+    const stack = [documentNode];
+    while (stack.length) {
+        const node = stack.pop();
+        if (node.nodeType === 1 && REVISION_ELEMENTS.has(nameOf(node))) {
+            const id = node.getAttribute('w:id');
+            if (id !== null && !ids.has(id)) ids.set(id, node);
+        }
+        for (let child = node.firstChild; child; child = child.nextSibling) stack.push(child);
+    }
+    return ids;
+}
+
+/**
+ * An untracked operation (generateRedlines: false) must not create any revision: every revision
+ * id (w:id on a revision element) in the output must already exist in the source, or be a fragment
+ * of a source revision sliced around the edit (same element, author and date).
+ *
+ * @param {Object} input
+ * @param {Document} input.before - savepoint DOM
+ * @param {Document} input.after - post-mutation DOM
+ */
+export function verifyNoCreatedRevisions({ before, after }) {
+    const existing = collectRevisionIds(before);
+    // Slicing a foreign revision around an untracked edit gives the fragments fresh ids but keeps the
+    // original element, author and date; that preserves the reviewer's revision rather than creating one.
+    const signature = node => `${nameOf(node)}|${node.getAttribute('w:author')}|${node.getAttribute('w:date')}`;
+    const sliceable = new Set([...existing.values()].map(signature));
+    const violations = [];
+    for (const [id, node] of collectRevisionIds(after)) {
+        if (existing.has(id) || sliceable.has(signature(node))) continue;
+        const name = nameOf(node);
+        const author = node.getAttribute('w:author');
+        const text = excerpt(node.textContent || '');
+        violations.push({
+            invariant: 'UNTRACKED_CREATED_REVISION',
+            paragraph: null,
+            expected: 'no new revisions',
+            actual: `w:${name} w:id=${id}${author ? ` by ${author}` : ''}${text ? ` ("${text}")` : ''}`,
+            explanation: REVISION_FIDELITY_INVARIANTS.UNTRACKED_CREATED_REVISION.explanation,
+            source: null,
+            output: null
+        });
+        if (violations.length >= MAX_REPORTED_VIOLATIONS) break;
+    }
+    return violations.length ? { ok: false, violations } : { ok: true };
+}
+
 function neighborViolation(paragraph, sourceRecord, outputRecord, view) {
     return {
         invariant: 'ACCEPT_NEIGHBORS',
@@ -221,10 +282,15 @@ export function buildRevisionFidelityError(violations, context = {}) {
         code: 'REVISION_FIDELITY_VIOLATION',
         stage: 'verification',
         message: `${mode === 'warn' ? 'Applied with a fidelity warning' : 'Refused, document unchanged'}: `
-            + (first.invariant === 'ACCEPT_NEIGHBORS'
+            + (first.invariant === 'UNTRACKED_CREATED_REVISION'
+                ? `this untracked operation created a tracked revision (${first.invariant}: `
+                : first.invariant === 'ACCEPT_NEIGHBORS'
                 ? `this untracked operation changed a paragraph outside its target (${first.invariant} in the ${first.view} view at ${where}: `
                 : `Reject All of this operation's output would not restore the source (${first.invariant} at ${where}: `)
-            + `expected ${JSON.stringify(first.expected)}, got ${JSON.stringify(first.actual)}). ${first.explanation} `
+            + (first.invariant === 'UNTRACKED_CREATED_REVISION'
+                ? `found ${first.actual}). `
+                : `expected ${JSON.stringify(first.expected)}, got ${JSON.stringify(first.actual)}). `)
+            + `${first.explanation} `
             + `Retry: ${REVISION_FIDELITY_INVARIANTS[first.invariant].retry}`,
         violations,
         invariants,

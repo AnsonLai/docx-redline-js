@@ -42,6 +42,7 @@ import {
     resolveRevisionFidelityMode,
     revisionFidelityBaselineView,
     verifyRevisionFidelity,
+    verifyNoCreatedRevisions,
     verifyUntrackedLocality
 } from './revision-fidelity-verifier.js';
 
@@ -469,6 +470,40 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                     ...resolutionCapture
                 };
             }
+            if (operation._localizedReplacementCompilation) {
+                // Accept-view intent: the target's accepted text must be exactly the compiled
+                // text, whatever path produced it. A tracked whole-paragraph deletion rejects
+                // back to the source, so the Reject All verifier alone cannot see it.
+                let intentText = null;
+                if (operation.operationKind === 'restore') {
+                    const restored = operationOptions._mutationLiveNodes.find(node => node?.localName === 'p');
+                    if (restored) intentText = extractCanonicalParagraphText(restored, { revisionView: 'accepted' });
+                } else if (operation._compiledSourceId && session.sourceTargetRegistry) {
+                    const live = session.sourceTargetRegistry.previewSuccessor(
+                        operation._compiledSourceId,
+                        operationOptions._mutationRemovedNodes,
+                        operationOptions._mutationLiveNodes
+                    );
+                    if (live) intentText = extractCanonicalParagraphText(live, { revisionView: 'accepted' });
+                }
+                if (intentText !== operation._localizedReplacementCompilation.desiredText) {
+                    session.restoreSavepoint(savepoint);
+                    const message = 'The localized replacement did not produce the compiled accepted text, so it was refused before commit to avoid losing content. Re-extract the paragraph and retry with its current text.';
+                    const refusedReceipt = createEmptyReceipt(operationIndex, operation.operationId, authorUsed, 'refused');
+                    refusedReceipt.warnings.push(message);
+                    return {
+                        documentXml,
+                        hasChanges: false,
+                        status: 'error',
+                        error: normalizeOperationError({ code: 'PATCH_ROUNDTRIP_MISMATCH', stage: 'validation', message }, errorContext),
+                        warnings: [message],
+                        operationType: operation.operationKind,
+                        authorUsed,
+                        receipt: refusedReceipt,
+                        ...resolutionCapture
+                    };
+                }
+            }
             const fidelityMode = resolveRevisionFidelityMode(options.verifyRevisionFidelity);
             const singleTargetPosition = !operation.targetEndDescriptor && !operation.targetEndRef
                 ? resolutionCapture.resolvedTarget?.index
@@ -515,9 +550,12 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                 }
             } else {
                 session._rejectedViewCache = null;
-                const locality = fidelity === 'untracked'
+                let locality = fidelity === 'untracked'
                     ? verifyUntrackedLocality({ before: savepoint.document, after: session.document, targetSourceIndex: singleTargetPosition - 1 })
                     : { ok: true };
+                if (locality.ok && fidelityMode !== 'off' && operationOptions.generateRedlines === false) {
+                    locality = verifyNoCreatedRevisions({ before: savepoint.document, after: session.document });
+                }
                 if (!locality.ok) {
                     const fidelityError = buildRevisionFidelityError(locality.violations, { mode: fidelityMode });
                     const logLine = `${fidelityError.code} (operation ${operationIndex}${operation.operationId ? ` "${operation.operationId}"` : ''}): ${fidelityError.message}`;

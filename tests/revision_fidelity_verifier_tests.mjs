@@ -10,9 +10,12 @@ import {
     buildRevisionFidelityError,
     REVISION_FIDELITY_INVARIANTS,
     resolveRevisionFidelityMode,
+    verifyNoCreatedRevisions,
     verifyRevisionFidelity,
     verifyUntrackedLocality
 } from '../services/revision-fidelity-verifier.js';
+import { openDocx } from '../index.js';
+import { buildMatrixFixtures } from './helpers/reject-roundtrip-fixtures.mjs';
 import { normalizeErrorWithRecovery } from '../services/error-recovery.js';
 
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
@@ -209,6 +212,61 @@ const invariantOf = (before, after) => {
     ], 'Verifier', {}, {});
     assert.equal(result.status, 'ok', JSON.stringify(result.error || result.results));
     assert.deepEqual(wordRevisionParagraphTexts(parseOoxmlSafe(result.documentXml).doc, 'accepted'), ['Alpha', 'Beta two', 'Beta three', 'Gamma']);
+}
+
+// 4c. UNTRACKED_CREATED_REVISION: an untracked operation must not add a revision id the source lacked
+//     (R4: generateRedlines false + slice-cross-author wrote a tracked w:ins).
+{
+    const before = p(run('This agreement is governed by local law.'));
+    const probeIns = `<w:ins w:id="77" w:author="Probe" w:date="2026-10-02T00:00:00Z"><w:r><w:t xml:space="preserve">applicable </w:t></w:r></w:ins>`;
+    // The pre-fix output shape: a new tracked insertion by the editing author.
+    const created = verifyNoCreatedRevisions({
+        before: doc(before),
+        after: doc(p(run('This agreement is governed by ') + probeIns + run('local law.')))
+    });
+    assert.equal(created.ok, false);
+    assert.equal(created.violations[0].invariant, 'UNTRACKED_CREATED_REVISION');
+    assert.match(created.violations[0].actual, /w:ins w:id=77 by Probe/);
+    const error = buildRevisionFidelityError(created.violations, { mode: 'enforce' });
+    assert.match(error.message, /^Refused, document unchanged: this untracked operation created a tracked revision \(UNTRACKED_CREATED_REVISION: found w:ins w:id=77 by Probe/);
+    assert.equal(error.invariants[0], 'UNTRACKED_CREATED_REVISION');
+    // Plain text, unchanged revisions and a foreign revision sliced around the edit all pass.
+    const foreign = id => `<w:ins w:id="${id}" w:author="Bob" w:date="2026-09-01T00:00:00Z"><w:r><w:t xml:space="preserve">Bob wrote this.</w:t></w:r></w:ins>`;
+    const withForeign = p(foreign(9));
+    assert.equal(verifyNoCreatedRevisions({ before: doc(before), after: doc(p(run('This agreement is governed by applicable local law.'))) }).ok, true);
+    assert.equal(verifyNoCreatedRevisions({ before: doc(withForeign), after: doc(withForeign) }).ok, true);
+    assert.equal(verifyNoCreatedRevisions({ before: doc(withForeign), after: doc(p(foreign(9) + run('plain') + foreign(10))) }).ok, true);
+    // A deletion, property change or paragraph-mark revision by anyone new is also refused.
+    for (const created of [delRun('x'), `<w:r><w:rPr><w:rPrChange ${META}><w:rPr/></w:rPrChange></w:rPr><w:t>x</w:t></w:r>`]) {
+        assert.equal(verifyNoCreatedRevisions({ before: doc(before), after: doc(p(created)) }).ok, false);
+    }
+    assert.equal(verifyNoCreatedRevisions({ before: doc(before), after: doc(p(run('x')).replace('<w:p>', `<w:p><w:pPr><w:rPr><w:ins ${META}/></w:rPr></w:pPr>`)) }).ok, false);
+
+    // End to end (bare + openDocx): plain edit under slice-cross-author, no tracked insertion and no new ids.
+    const xml = `<w:document xmlns:w="${W}"><w:body>${before}<w:sectPr/></w:body></w:document>`;
+    for (const operation of [
+        { type: 'redline', target: 'This agreement is governed by local law.', modified: 'This agreement is governed by applicable local law.' },
+        { type: 'replace', target: 'This agreement is governed by local law.', replacements: [{ find: 'governed by local law', replace: 'governed by applicable local law' }] }
+    ]) {
+        const result = await applyOperationsToDocumentXml(xml, [{ ...operation, generateRedlines: false, existingRevisions: 'slice-cross-author' }], 'Probe', {}, { generateRedlines: false, existingRevisions: 'slice-cross-author' });
+        assert.equal(result.status, 'ok', JSON.stringify(result.error || result.results));
+        assert.doesNotMatch(result.documentXml, /<w:ins\b/);
+        assert.deepEqual(wordRevisionParagraphTexts(parseOoxmlSafe(result.documentXml).doc, 'rejected'), ['This agreement is governed by applicable local law.']);
+    }
+    const fixture = buildMatrixFixtures().find(entry => entry.name === 'multi-author-revisions+slice-cross-author');
+    const packaged = openDocx(fixture.bytes);
+    const paragraph = packaged.inspect({ existingRevisions: 'slice-cross-author' }).paragraphs.find(item => item.exactText === 'A paragraph Bob inserted entirely.');
+    assert.ok(paragraph, 'multi-author fixture has the Bob insertion paragraph');
+    const edited = await packaged.applyOperations([{
+        type: 'redline',
+        target: { paragraphId: paragraph.paragraphId, fingerprint: paragraph.fingerprint, exactText: paragraph.exactText },
+        replacements: [{ find: 'paragraph', replace: 'amended' }],
+        generateRedlines: false
+    }], { author: 'Probe', existingRevisions: 'slice-cross-author', generateRedlines: false });
+    assert.equal(edited.status, 'ok', JSON.stringify(edited.error || edited.results));
+    const editedXml = new TextDecoder().decode(unzipDocx(edited.toUint8Array()).get('word/document.xml'));
+    assert.doesNotMatch(editedXml, /w:author="Probe"/);
+    assert.match(editedXml, /amended/);
 }
 
 // 5. Refusal payload: one log-ready message plus machine-readable detail for a retry.

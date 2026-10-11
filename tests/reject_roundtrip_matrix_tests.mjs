@@ -89,10 +89,17 @@ async function runPackaged(bytes, operation, options = {}) {
     };
 }
 
+const UNTRACKED_KINDS = new Set(['replace-word', 'replace-sentence', 'replace-paragraph', 'replacements', 'insert-after', 'delete']);
+// Revisions as `element|id|author|date`; a sliced fragment of a source revision keeps element/author/date.
+const REVISION_TAG = /<w:(ins|del|moveFrom|moveTo|rPrChange|pPrChange|sectPrChange|tblPrChange|trPrChange|tcPrChange)([^>]*)>/g;
+const attr = (attrs, name) => attrs.match(new RegExp(`\bw:${name}="([^"]*)"`))?.[1] ?? '';
+const revisionIds = xml => new Set([...xml.matchAll(REVISION_TAG)].map(m => `${m[1]}|${attr(m[2], 'id')}|${attr(m[2], 'author')}|${attr(m[2], 'date')}`));
+const sliceSignatures = ids => new Set([...ids].map(key => key.split('|').filter((_, i) => i !== 1).join('|')));
+
 const failures = [];
 const skipped = new Map();
 const unavailableKinds = new Map();
-const counts = { cases: 0, applied: 0, refusedOther: 0, allowlisted: 0, numberingCompared: 0 };
+const counts = { cases: 0, applied: 0, refusedOther: 0, allowlisted: 0, numberingCompared: 0, untracked: 0 };
 const startedAt = Date.now();
 
 function fail(context, message, detail = {}) {
@@ -220,6 +227,31 @@ for (let fixtureIndex = 0; fixtureIndex < fixtures.length && counts.cases < ITER
                 }
             }
         }
+        // (7) Untracked variant (generateRedlines: false) under slice-cross-author: applying must not create revisions.
+        if (fixture.options.existingRevisions === 'slice-cross-author' && UNTRACKED_KINDS.has(generated.kind)
+            && !Array.isArray(generated.operation)) {
+            const untracked = { ...generated.operation, generateRedlines: false };
+            const sourceIds = revisionIds(sourceDocXml);
+            for (const [pathName, runPath] of [
+                ['bare', () => runBare(entries, untracked, fixture.options)],
+                ['packaged', () => runPackaged(fixture.bytes, untracked, fixture.options)]
+            ]) {
+                const run = await runPath();
+                if (run.result.status === 'error') {
+                    if (violationsOf(run.result).some(v => v.invariant === 'UNTRACKED_CREATED_REVISION')) {
+                        fail({ ...context, path: `${pathName}+untracked` }, 'untracked operation created a revision', { violations: violationsOf(run.result) });
+                    }
+                    continue;
+                }
+                counts.untracked++;
+                const sourceSlices = sliceSignatures(sourceIds);
+                const created = [...revisionIds(run.documentXml)].filter(key => !sourceIds.has(key)
+                    && !sourceSlices.has(key.split('|').filter((_, i) => i !== 1).join('|')));
+                if (created.length) {
+                    fail({ ...context, path: `${pathName}+untracked` }, 'untracked operation created revisions', { created });
+                }
+            }
+        }
     }
 }
 
@@ -239,6 +271,6 @@ if (failures.length > 0) {
 const skipSummary = [...skipped.entries()].map(([key, count]) => `${key}=${count}`).join('; ') || 'none';
 console.log(`PASS: ${counts.cases} reject-roundtrip matrix cases x 2 paths (seed ${BASE_SEED}, ${elapsed}s): ` +
     `${counts.applied} applied, ${counts.refusedOther} non-fidelity refusals skipped, ${counts.allowlisted} allowlisted, ` +
-    `${counts.numberingCompared} paragraph numbering definitions compared`);
+    `${counts.numberingCompared} paragraph numbering definitions compared, ${counts.untracked} untracked variants checked`);
 console.log(`  skipped refusals: ${skipSummary}`);
 if (unavailableKinds.size) console.log(`  generator had no site for: ${[...unavailableKinds.keys()].join(', ')}`);
