@@ -504,7 +504,7 @@ Word-verification work. WP-4 and WP-5 should not merge without the COM lane resu
   finds it; if a future diff change put the marker inside the `w:ins`/`w:del`, convert-plain refuses `marker-shape`
   rather than guessing.
 - Finding (pre-existing, not list work): a plain `redline` reconstruction rewrites the `w:p` and drops `w14:paraId`; the
-  composed pair therefore does not keep paragraph identity while a lone convert-plain does. Fixed pre-0.9.0 (A1, HASH): the rebuilt paragraph that survives for a source paragraph keeps its `w14:paraId` / `w14:textId`.
+  composed pair therefore does not keep paragraph identity while a lone convert-plain does. Fixed pre-0.9.0 (A1, 0d0bd2d): the rebuilt paragraph that survives for a source paragraph keeps its `w14:paraId` / `w14:textId`.
 - Comments are not writes and never conflict with rebinds; paragraphs outside the list are free.
 
 ### WP-7 notes
