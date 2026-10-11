@@ -90,8 +90,9 @@ text-box lists, joining plain paragraphs.
     (`REJECT_PARAGRAPH_PROPS`); use `redline` + `list-format convert-plain` instead.
   - `2026-10-01-word-reject-table-append-paragraph.md`: on this tree Word's ribbon Reject All and
     `Document.Revisions.RejectAll()` give exactly the 7 source paragraphs and 0 revisions; the extra paragraph and
-    leftover revision appear only with `Document.RejectAllRevisions()` (see section 5), so check the add-in's Word oracle
-    (`scripts/verify-wp6-word.ps1`) for that call. A real neighbouring defect (pretty-printed bodies) was fixed in
+    leftover revision appear only with `Document.RejectAllRevisions()` (see section 5). The add-in's Word oracle
+    `scripts/verify-wp6-word.ps1` (lines 112-113) uses `AcceptAllRevisions()`/`RejectAllRevisions()`; switch it to
+    `$document.Revisions.AcceptAll()`/`$document.Revisions.RejectAll()` and re-run. A real neighbouring defect (pretty-printed bodies) was fixed in
     `0835f58`.
   - `2026-09-30-canonical-list-operations.md`: superseded by `list-format` (section 2).
 - Any workaround in the add-in for these can be removed after upgrading; keep tests for them. Move each report to
