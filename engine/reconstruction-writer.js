@@ -14,6 +14,35 @@ import { getFirstElementByTagNSOrTag } from '../core/xml-query.js';
 import { NS_W, createReplacementRevisionEvent, createRevisionMetadata } from '../core/types.js';
 import { createWordElement, isWordElement } from '../core/word-xml.js';
 
+const NS_W14 = 'http://schemas.microsoft.com/office/word/2010/wordml';
+const IDENTITY_ATTRIBUTES = ['paraId', 'textId'];
+
+function hasMarkRevision(paragraph, kind) {
+    const pPr = Array.from(paragraph.childNodes).find(node => isWordElement(node, 'pPr'));
+    const rPr = pPr && Array.from(pPr.childNodes).find(node => isWordElement(node, 'rPr'));
+    return !!rPr && Array.from(rPr.childNodes).some(node => isWordElement(node, kind));
+}
+
+/**
+ * Carries the source paragraph identity (`w14:paraId`, `w14:textId`) onto the rebuilt paragraph that survives
+ * for it. Several rebuilt paragraphs can derive from one source paragraph (an inserted split), so the identity
+ * goes to exactly one: the paragraph whose mark is not tracked, else one whose mark is not tracked-deleted,
+ * else the first. Ids therefore stay unique; inserted paragraphs carry none, as on
+ * every other insertion path (Word assigns them on open).
+ */
+function carrySourceIdentity(claims) {
+    claims.forEach((rebuilt, source) => {
+        const survivor = rebuilt.find(p => !hasMarkRevision(p, 'ins') && !hasMarkRevision(p, 'del'))
+            || rebuilt.find(p => !hasMarkRevision(p, 'del'))
+            || rebuilt[0];
+        if (!survivor) return;
+        IDENTITY_ATTRIBUTES.forEach(name => {
+            const value = source.getAttributeNS?.(NS_W14, name) || source.getAttribute?.(`w14:${name}`);
+            if (value) survivor.setAttributeNS(NS_W14, `w14:${name}`, value);
+        });
+    });
+}
+
 /**
  * Applies diffs to reconstruction context and writes updated XML.
  *
@@ -39,8 +68,13 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
         isParagraphStart
     } = context;
 
-    const createNewParagraph = (pPr) => {
+    const identityClaims = new Map();
+    const createNewParagraph = (pPr, sourceParagraph = null) => {
         const newParagraph = createWordElement(xmlDoc, 'w:p');
+        if (sourceParagraph) {
+            if (!identityClaims.has(sourceParagraph)) identityClaims.set(sourceParagraph, []);
+            identityClaims.get(sourceParagraph).push(newParagraph);
+        }
         if (pPr) {
             const clonedPPr = pPr.cloneNode(true);
             // Safeguard: Never place w:sectPr on both paragraphs during split
@@ -54,7 +88,7 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
     };
 
     const startInfo = getParagraphInfo(0);
-    let currentParagraph = createNewParagraph(startInfo.pPr);
+    let currentParagraph = createNewParagraph(startInfo.pPr, startInfo.paragraph);
     const initialFragment = containerFragments.get(startInfo.container);
     if (initialFragment) {
         initialFragment.appendChild(currentParagraph);
@@ -214,6 +248,8 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
         }
     });
 
+    carrySourceIdentity(identityClaims);
+
     const paragraphSet = new Set(paragraphs);
     const insertionAnchors = new Map();
     paragraphs.forEach(paragraph => {
@@ -326,7 +362,7 @@ function appendTextToCurrent(
 
         if (part === '\n') {
             const info = getParagraphInfo(localBaseIndex + 1);
-            const nextParagraph = createNewParagraph(info.pPr);
+            const nextParagraph = createNewParagraph(info.pPr, info.paragraph);
             if (generateRedlines && type === 'insert') {
                 markParagraphInserted(localParagraph, { author, revisionIdAllocator: xmlDoc });
             } else if (generateRedlines && type === 'delete') {

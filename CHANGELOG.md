@@ -127,6 +127,12 @@
 
 ### Fixed
 
+- **Plain `redline` keeps `w14:paraId` / `w14:textId`:** reconstruction used to rebuild the paragraph without its identity 
+  attributes; the rebuilt paragraph that survives for a source paragraph (not tracked-deleted) now keeps them, once (an inserted
+  split gives them to the paragraph whose mark Reject All keeps). A composed `redline` + `list-format` pair keeps identity.
+- **Text-changed header conversion with direct `keepNext` / spacing is no longer refused `REJECT_PARAGRAPH_PROPS`:** the list
+  fallback's tracked-deleted source paragraph keeps its original `pPr`; the new list paragraph carries the direct properties and
+  the source `w14:paraId`.
 - **`ReconciliationPipeline.executeTableGeneration` inserts a tracked table block:** the public pipeline method generated
   tracked cell text in untracked rows (the defect `engine/table-mode.js` had); rows now carry `w:trPr/w:ins` so Reject All
   removes the table.

@@ -74,7 +74,7 @@ function indexSentinelsByStart(sentinelMap) {
  * @returns {{
  *   paragraphs: Element[],
  *   body: Element|Document,
- *   paragraphMap: Array<{start:number,end:number,pPr:Element|null,container:Node}>,
+ *   paragraphMap: Array<{start:number,end:number,pPr:Element|null,paragraph:Element,container:Node}>,
  *   paragraphStarts: Set<number>,
  *   propertyMap: Array<{start:number,end:number,rPr:Element|null,wrapper?:Element}>,
  *   sentinelMap: Array<Object>,
@@ -136,6 +136,7 @@ export function buildReconstructionMapping(xmlDoc, modifiedText, selectedParagra
             start: paragraphStart,
             end: paragraphEnd,
             pPr,
+            paragraph,
             container: container || body
         });
     });

@@ -1571,6 +1571,74 @@ function tryInPlaceMarkerListConversion({
     };
 }
 
+// CT_PPrBase child order (ECMA-376), used to place copied direct properties on the new list paragraph.
+const PPR_CHILD_ORDER = [
+    'pStyle', 'keepNext', 'keepLines', 'pageBreakBefore', 'framePr', 'widowControl', 'numPr', 'suppressLineNumbers',
+    'pBdr', 'shd', 'tabs', 'suppressAutoHyphens', 'kinsoku', 'wordWrap', 'overflowPunct', 'topLinePunct',
+    'autoSpaceDE', 'autoSpaceDN', 'bidi', 'adjustRightInd', 'snapToGrid', 'spacing', 'ind', 'contextualSpacing',
+    'mirrorIndents', 'suppressOverlap', 'jc', 'textDirection', 'textAlignment', 'textboxTightWrap', 'outlineLvl',
+    'divId', 'cnfStyle', 'rPr', 'sectPr', 'pPrChange'
+];
+const PPR_NOT_COPIED = new Set(['pStyle', 'numPr', 'rPr', 'sectPr', 'pPrChange']);
+
+/**
+ * The list structural fallback rebuilds the paragraph as a tracked-deleted source paragraph plus a new list
+ * paragraph from text alone. The deleted paragraph must keep the source `pPr` (Reject All restores it, so the
+ * Reject All verifier sees no property change), the new paragraph carries the source's direct properties that the
+ * list binding does not own (`keepNext`, spacing, alignment...), and the paragraph that survives Accept All
+ * keeps the source `w14:paraId` / `w14:textId`.
+ */
+function restoreSourceIdentityAndPropertiesOnFallback(xmlDoc, replacementNodes, targetParagraph) {
+    const paragraphs = replacementNodes.filter(node => node?.nodeType === 1 && node.localName === 'p');
+    const markOf = (paragraph, kind) => {
+        const rPr = getDirectWordChild(getDirectWordChild(paragraph, 'pPr'), 'rPr');
+        return !!rPr && !!getDirectWordChild(rPr, kind);
+    };
+    const deleted = paragraphs.find(paragraph => markOf(paragraph, 'del'));
+    const created = paragraphs.find(paragraph => !markOf(paragraph, 'del'));
+    const sourcePPr = getDirectWordChild(targetParagraph, 'pPr');
+    if (deleted && sourcePPr) {
+        const restored = xmlDoc.importNode(sourcePPr, true);
+        const mark = getDirectWordChild(getDirectWordChild(deleted, 'pPr'), 'rPr');
+        const delMarker = mark && getDirectWordChild(mark, 'del');
+        if (delMarker) {
+            let rPr = getDirectWordChild(restored, 'rPr');
+            if (!rPr) {
+                rPr = createWordElement(xmlDoc, 'w:rPr');
+                const successor = getDirectWordChild(restored, 'sectPr') || getDirectWordChild(restored, 'pPrChange');
+                restored.insertBefore(rPr, successor || null);
+            }
+            Array.from(rPr.childNodes).forEach(child => {
+                if (child.nodeType === 1 && (child.localName === 'ins' || child.localName === 'del')) rPr.removeChild(child);
+            });
+            rPr.appendChild(xmlDoc.importNode(delMarker, true));
+            deleted.replaceChild(restored, getDirectWordChild(deleted, 'pPr'));
+        }
+    }
+    if (created && sourcePPr) {
+        let createdPPr = getDirectWordChild(created, 'pPr');
+        if (!createdPPr) {
+            createdPPr = createWordElement(xmlDoc, 'w:pPr');
+            created.insertBefore(createdPPr, created.firstChild || null);
+        }
+        for (const child of Array.from(sourcePPr.childNodes)) {
+            if (child.nodeType !== 1 || PPR_NOT_COPIED.has(child.localName)) continue;
+            if (getDirectWordChild(createdPPr, child.localName)) continue;
+            const rank = PPR_CHILD_ORDER.indexOf(child.localName);
+            const successor = Array.from(createdPPr.childNodes).find(node => (
+                node.nodeType === 1 && PPR_CHILD_ORDER.indexOf(node.localName) > rank
+            ));
+            createdPPr.insertBefore(xmlDoc.importNode(child, true), successor || null);
+        }
+    }
+    if (created) {
+        for (const name of ['paraId', 'textId']) {
+            const value = targetParagraph.getAttributeNS?.(NS_W14, name) || targetParagraph.getAttribute?.(`w14:${name}`);
+            if (value) created.setAttributeNS(NS_W14, `w14:${name}`, value);
+        }
+    }
+}
+
 async function trySingleParagraphListStructuralFallback({
     xmlDoc,
     serializer,
@@ -1721,6 +1789,7 @@ async function trySingleParagraphListStructuralFallback({
 
     const parent = targetParagraph.parentNode;
     if (!parent) return null;
+    if (generateRedlines) restoreSourceIdentityAndPropertiesOnFallback(xmlDoc, replacementNodes, targetParagraph);
     for (const node of replacementNodes) {
         const imported = xmlDoc.importNode(node, true);
         ensureParagraphIdsOnImportedNode(imported, operationSession);

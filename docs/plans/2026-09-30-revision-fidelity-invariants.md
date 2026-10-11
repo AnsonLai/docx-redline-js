@@ -4,9 +4,7 @@ Date: 2026-09-30
 Status: DONE except the open items below (2026-10-11, started on 0.8.4 + `c98874d`). All WPs landed, including WP-5a
 (`4718c36`). Open items: nightly matrix wiring (no CI config changed); `ACCEPT_INTENT` (now worked under
 `2026-10-11-word-plugin-reported-issues.md` as I1); numbering-part existence check; accept-first range-end scope
-(`resolvedTargetEnd` not captured); optional `planParagraphMarks` wiring into the write paths; plain redline
-reconstruction drops `w14:paraId` (found during list WP-6; a composed redline + list-format pair does not keep paragraph
-identity); re-measure verifier cost on a quiet machine. See "Progress and hand-off" and the Definition-of-done status below.
+(`resolvedTargetEnd` not captured); `planParagraphMarks` wiring into the write paths (deferred, aspirational, owner decision 2026-10-11); re-measure verifier cost on a quiet machine. See "Progress and hand-off" and the Definition-of-done status below.
 
 Definition-of-done status (details at the end of the plan):
 - [x] `REVISION_FIDELITY_VIOLATION` documented and enforced by default (agent profile rejects `off`); regressions for each
