@@ -12,8 +12,12 @@
   `{ mode: 'convert-plain', format: 'upperLetter', strip: 'none', start: 3 }`). `listMarkers: 'literal'` is unchanged.
 - **`UNSUPPORTED_LIST_FORMAT_CHANGE` / `LIST_FORMAT_NOT_APPLIED` now point at `list-format` `change-format`:** `recovery.action`
   is `use_list_format_change_format` (was `change_list_format_in_host`) and `recovery.suggestedOperation` carries
-  `{ type: 'list-format', list: { mode: 'change-format', format, level, scope: 'list' } }`; add a target on one item of the list and
-  send it as its own operation.
+  `{ type: 'list-format', list: { mode: 'change-format', format, level, scope: 'list' } }`; add a target on one item of the list.
+  `list-change` still never applies a format change itself.
+- **A `list-format` with `scope: 'list'` counts as a write to every item it rebinds:** another write to one of those items in the
+  same batch (`paragraph-format`, `highlight`, `format`, a second `list-format` of the same list) now fails before mutation with
+  `LIST_FORMAT_COMPOSITION_CONFLICT` (`reason: list-rebind`); in WP-5 it ran in batch order. Send it in a separate apply or use
+  `scope: 'range'`. A single-paragraph `redline` of an item still composes (see Added).
 - **Text-equal letter, roman and bullet header conversions are made in place:** a `redline` whose `modified` equals the plain
   paragraph's typed-marker text (`B. Header` -> `B. Header`) now strips the marker as a tracked deletion and binds the list with a
   tracked `w:pPrChange` in the same paragraph, like the decimal path. The previous whole-paragraph delete plus insert lost
@@ -35,6 +39,15 @@
 
 ### Added
 
+- **`redline` + `list-format` on one paragraph in one batch:** a changed-text header (`1. Old` -> `1. New`) is a `redline` that keeps
+  the typed marker exactly (`modified: '1. New'` or `replacements`) plus a `list-format` `convert-plain` of the same paragraph. The
+  batch compiler allows exactly this pair (both bind at batch start) and fixes the order whatever the batch order: the redline runs
+  first, then the list-format strips the unchanged marker, so Accept All shows label `1.` with `New` and Reject All the literal
+  `1. Old` (verified in Word with `ListFormat.ListString`, including a `3.` start value). A single-paragraph `redline` of a list item
+  also composes with a `change-format`/`join` that rebinds it. Incompatible pairs are refused before mutation with
+  `LIST_FORMAT_COMPOSITION_CONFLICT` (`reason`: `marker-changed` with `sourceMarker`/`modifiedMarker`, `redline-unchanged`,
+  `redline-shape`; `recovery.action: split_text_and_list_changes`); other kinds keep `OVERLAPPING_SOURCE_TARGETS` /
+  `REVISION_ORDER_CONFLICT`. No new capability: it is part of `list-format-v1` behavior.
 - **`list-format` `change-format` and `join` modes (`list-format-change-v1`, contract version stays 9):** `change-format` changes
   the kind or numbering format of an existing list (`format`, `lvlText`, `start`, `level`, default the target's level). It never
   edits the shared definition: a NEW `w:abstractNum` + `w:num` is allocated with the source levels, indentation and fonts copied
