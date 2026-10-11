@@ -247,7 +247,7 @@
 ### Known limitations
 
 - Plain paragraph to list conversion and list format changes are not yet supported canonically; see
-  `docs/plans/2026-09-30-canonical-list-operations.md`.
+  `docs/plans/completed/2026-09-30-canonical-list-operations.md`.
 - `1. Header` to `1. Header` on a bare `document.xml` (not a packaged `.docx`) can fail with `RECEIPT_RECONCILIATION_FAILED`.
 
 ## 0.8.2

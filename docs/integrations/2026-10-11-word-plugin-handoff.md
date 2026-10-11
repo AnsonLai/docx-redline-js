@@ -82,7 +82,7 @@ text-box lists, joining plain paragraphs.
 - Text-equal letter/roman/bullet header conversions now happen in place (keeps `w14:paraId`, bookmarks, formatting).
 - Historical `numPr`/`pStyle` inside `w:pPrChange` is no longer reported or used as current.
 - Open reports in `AIWordPlugin/docs/library-issues/` (all reproducers exit 1 against this tree, 2026-10-11; tracked in
-  this repo's `docs/plans/2026-10-11-word-plugin-reported-issues.md`):
+  this repo's `docs/plans/completed/2026-10-11-word-plugin-reported-issues.md`):
   - `2026-10-02-weak-target-soft-break-deletion.md`: fixed (`7548a9e`); a localized replacement whose accepted text does
     not match the request is now refused (`PATCH_ROUNDTRIP_MISMATCH`) instead of reported `ok`.
   - `2026-10-02-generate-redlines-false-cross-author-insertion.md`: fixed (`7ae4f00`); new invariant

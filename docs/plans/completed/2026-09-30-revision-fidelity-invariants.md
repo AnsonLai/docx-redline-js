@@ -1,20 +1,24 @@
 # Revision Fidelity Invariants: Turning Gap Bugs into Fail-Closed Refusals
 
 Date: 2026-09-30
-Status: DONE except the open items below (2026-10-11, started on 0.8.4 + `c98874d`). All WPs landed, including WP-5a
-(`4718c36`). Open items: nightly matrix wiring is DONE (`matrix-extended` job, pre-0.9.0 plan E1); `ACCEPT_INTENT`, numbering-part existence and accept-first range-end scope are DONE (2026-10-11, pre-0.9.0 plan B1-B3); `planParagraphMarks` wiring into the write paths (deferred, aspirational, owner decision 2026-10-11); verifier cost re-measured 2026-10-11 (about +38% per batch, over the 10% budget; optimisation deferred, aspirational, owner decision 2026-10-11). See "Progress and hand-off" and the Definition-of-done status below.
+Status: COMPLETE (2026-10-11; started on 0.8.4 + `c98874d`; shipped in 0.9.0). All WPs landed, including WP-5a
+(`4718c36`). Former open items were closed under `2026-10-11-pre-0.9.0-open-issues.md`: nightly matrix wiring (E1),
+`ACCEPT_INTENT`, numbering-part existence and accept-first range-end scope (B1-B3), verifier cost optimised to about
++8-14% per operation (B4, `427eb33`). Deferred as aspirational (owner decision 2026-10-11): `planParagraphMarks` wiring
+into the write paths (A3).
 
 Definition-of-done status (details at the end of the plan):
 - [x] `REVISION_FIDELITY_VIOLATION` documented and enforced by default (agent profile rejects `off`); regressions for each
   "Why now" row live in `tests/revision_fidelity_verifier_tests.mjs` as synthetic defective outputs (not rebuilt from
   `git show` pre-fix sources).
-- [x] Library reject/accept equal recorded Word expectations for all 27 WP-2 matrix shapes.
-- [~] Matrix in `npm test` on bare and packaged paths; extended lane documented in `docs/TESTING.md` but not yet wired
-  into a nightly CI job (no CI config in this repo was changed).
+- [x] Library reject/accept equal recorded Word expectations for every WP-2 matrix shape (31 shapes incl. the R5 table
+  append cases; one documented library-only divergence for a body ending in a table with no trailing paragraph).
+- [x] Matrix in `npm test` on bare and packaged paths; extended lane in the nightly `matrix-extended` job
+  (`.github/workflows/validation.yml`).
 - [x] No descendant property reads outside `core/current-properties.js` (lint test).
 - [x] Paragraph-mark markup constructed in one module (done); numbering allocation in one function (WP-5a, `4718c36`, done).
-- [x] `npm test`, `check:types`, `test:isolation`, Word differential (64/64 synthetic) and Word corpus (60/60) pass; verifier cost
-  recorded (re-measure on a quiet machine is an open item).
+- [x] `npm test` (149/149), `check:types`, `test:isolation`, Word differential (67/67 synthetic) and Word corpus (60/60)
+  pass; verifier cost re-measured and within about +8-14%.
 
 ## Progress and hand-off (keep this section current; newest first)
 
@@ -169,8 +173,8 @@ adds R1-R3; its "Cross-plan dependencies" section makes this plan's verifier the
 `2026-10-01-consumer-reported-library-issues.md` (LOCAL ONLY: `docs/plans/*` is gitignored and this file was never
 force-added, so other agents cannot rely on it; its WP-3 id-collision residual is WP-5a R2), `KNOWN_BUGS.md` (section 7 mirrors verifier limits and the
 fixed gap bugs; update it when a limit is lifted),
-`completed/2026-09-05-structural-revisions-and-fidelity-oracles.md` (origin of the oracle helpers and
-the paragraph-mark model), `completed/2026-09-01-performance-and-complexity-reduction.md` (budget rules).
+`2026-09-05-structural-revisions-and-fidelity-oracles.md` (origin of the oracle helpers and
+the paragraph-mark model), `2026-09-01-performance-and-complexity-reduction.md` (budget rules).
 
 ## Why now
 
@@ -352,7 +356,7 @@ examples and `index.d.ts`.
   `numId` the operation referenced.
 - Complexity is O(touched), not O(document). Do not parse or serialize the whole part. Wrapper
   checks use the paragraph's own spans.
-- Budget (consistent with `completed/2026-09-01-performance-and-complexity-reduction.md`: accuracy
+- Budget (consistent with `2026-09-01-performance-and-complexity-reduction.md`: accuracy
   governs, record the measured cost): verifier adds at most 10% to the per-operation time in
   `scripts/benchmark-operation-session.mjs` on its default scenario and zero extra full-document
   serializations (assert with the Phase 1 instrumentation in

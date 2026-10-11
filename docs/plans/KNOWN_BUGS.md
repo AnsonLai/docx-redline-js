@@ -207,15 +207,16 @@ Files saved by versions before 0.8.1 can carry the wrong `commentsExtended.xml` 
 
 Every tracked operation is checked after generation: Word's Reject All of the output must equal Word's Reject All of the
 source (`services/revision-fidelity-verifier.js`). A violation fails closed with `REVISION_FIDELITY_VIOLATION` (disposition
-`refused`, nothing written). Current limits, tracked in `2026-09-30-revision-fidelity-invariants.md`:
+`refused`, nothing written). Plans: `completed/2026-09-30-revision-fidelity-invariants.md`,
+`completed/2026-10-11-pre-0.9.0-open-issues.md`. Current behavior and limits (0.9.0):
 
 - The default mode is `enforce` (refuse). `verifyRevisionFidelity: 'warn'` applies and reports instead; `'off'` is for
   diagnosis only and the CLI agent profile rejects it (`--revision-fidelity`, capability `revision-fidelity-v1`).
-- Untracked operations (`generateRedlines: false`) skip the Reject All invariants. Since `d045e7e`, `ACCEPT_NEIGHBORS` covers
-  untracked single-target operations (tracked operations are covered by the Reject All invariants).
-- Still open: `ACCEPT_INTENT` (worked under `2026-10-11-word-plugin-reported-issues.md` as I1), the numbering-part existence
-  check (`REJECT_NUMBERING_REFS` only compares restored `numId`/`ilvl` with the source), and range-end scope for accept-first
-  baselines (`resolvedTargetEnd` is not captured).
+- Untracked operations (`generateRedlines: false`) skip the Reject All invariants; instead `ACCEPT_NEIGHBORS` (single-target
+  locality, `d045e7e`) and `UNTRACKED_CREATED_REVISION` (no new revision ids, `7cd74bd`) apply.
+- Also enforced: `ACCEPT_INTENT` for plain-text `redline` with complete `modified` and the pre-commit localized-replacement
+  intent check (`73d3d1b`, `7548a9e`); numbering-part existence for new `numId`s (`REJECT_NUMBERING_REFS`, `73d3d1b`); exact
+  accept-first range scope (`73d3d1b`). Cost about +8-14% per operation (`427eb33`).
 
 ### Fixed gap bugs (do not re-report)
 
@@ -223,7 +224,7 @@ source (`services/revision-fidelity-verifier.js`). A violation fails closed with
 |---|---|---|
 | `1. Header` list conversion on a bare `document.xml` returned `RECEIPT_RECONCILIATION_FAILED` (still listed under 0.8.4 known issues in the released changelog) | `73c67e8` | Bare runner seeds numbering state; an aborted conversion records no receipt revisions. |
 | Explicit-start / `1. Header` list conversion bound `numPr` without `w:pPrChange`, so Reject All left a numbered item | `f72f60a` | `orchestration/list-structural-fallback.js` |
-| Text-to-table redline put tracked cell text in untracked rows, so Reject All kept the table | `c20f33c` | `engine/table-mode.js`; `pipeline/pipeline.js:~340` has the same call without `trackAsBlock` and is untested. |
+| Text-to-table redline put tracked cell text in untracked rows, so Reject All kept the table | `c20f33c`, `4568ddc` | `engine/table-mode.js`; `ReconciliationPipeline.executeTableGeneration` (`pipeline/pipeline.js`) fixed in `4568ddc`. |
 | Library Reject/Accept differed from Word for cell paragraph marks, deleted tables, and `pPrChange` paragraph marks | `cedc68a` | `tests/word_revision_semantics_tests.mjs` |
 | Numbering helpers and inspection read `numPr`/`pStyle` from `w:pPrChange` snapshots as current | `1a3eeb6`..`1f89ae0` | `core/current-properties.js` plus usage lint |
 | Lettered/roman whole-paragraph delete plus insert conversion lost `w14:paraId` and bookmarks | `1240842` | `list-format` `convert-plain` edits in place (tracked marker deletion plus `pPrChange`). |
@@ -231,7 +232,7 @@ source (`services/revision-fidelity-verifier.js`). A violation fails closed with
 ### Still open
 
 - Generated numbering ids can still collide across separate calls whose runtime context is not given the document's numbering
-  (`2026-10-01-consumer-reported-library-issues.md`, WP-3 residual). Since `4718c36` this is detected, not silent: merging the
+  (`completed/2026-10-01-consumer-reported-library-issues.md`, WP-3 residual). Since `4718c36` this is detected, not silent: merging the
   parts through `mergeNumberingParts` / `ensureNumberingArtifactsInZip` (the single merge, used by `openDocx`) throws
   `NUMBERING_ID_CONFLICT` when an incoming id exists with different content. Bare callers must pass `numberingXml` (or a shared
   `numberingIdState`) to every call; no automatic remap of already-written paragraphs is attempted (deferred (aspirational, owner decision 2026-10-11)).
