@@ -88,7 +88,7 @@
       ]
     },
     "paragraphFormatProperties": {
-      "description": "Closed set. Unknown keys are ignored with an UNKNOWN_PARAGRAPH_FORMAT_PROPERTY warning today and will be rejected in a future minor release.",
+      "description": "Closed set. Unknown keys are rejected with INVALID_OPERATION (field properties.<key>) since 0.9.0.",
       "type": "object",
       "properties": {
         "alignment": { "type": "string", "examples": ["left", "center", "right", "both"] },

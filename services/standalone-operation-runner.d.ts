@@ -190,7 +190,7 @@ export interface CharacterFormatProperties {
   fontFamily?: string | null;
 }
 
-/** Closed set. Unknown keys are ignored with an UNKNOWN_PARAGRAPH_FORMAT_PROPERTY warning and will be rejected in a later minor release. */
+/** Closed set. Unknown keys are rejected with INVALID_OPERATION (field `properties.<key>`) since 0.9.0. */
 export interface ParagraphFormatProperties {
   alignment?: 'left' | 'center' | 'right' | 'both';
   keepNext?: boolean;

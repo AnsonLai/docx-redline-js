@@ -42,8 +42,9 @@ canonical, Word-verified operations. Several old silent successes are now warnin
    another write to one of those items in the same batch fails with `LIST_FORMAT_COMPOSITION_CONFLICT`. Send it in a
    separate apply, or use `scope: 'range'`.
 6. **Small result changes:** receipt revision kind for some generated paragraph marks is now `ins`/`del` (was
-   `structural`); unknown `paragraph-format.properties` keys produce warning `UNKNOWN_PARAGRAPH_FORMAT_PROPERTY` (they
-   will be rejected in the next minor).
+   `structural`); unknown `paragraph-format.properties` keys are now rejected with `INVALID_OPERATION`
+   (`field: properties.<key>`, recovery `change_request`); the 0.8.x warning `UNKNOWN_PARAGRAPH_FORMAT_PROPERTY` no longer
+   fires. Send only `alignment`, `keepNext`, `keepLines`, `pageBreakBefore`, `style`, `numbering`.
 7. **CLI contract version is 9.** If the add-in shells out to the CLI and only uses existing operations, requiring 8 still
    works.
 

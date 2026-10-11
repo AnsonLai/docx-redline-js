@@ -6,7 +6,7 @@
  */
 
 import { validateExactReplacementRequests } from './localized-replacement-compiler.js';
-import { validateParagraphNumberingShape } from './list-conversion-diagnostics.js';
+import { validateParagraphNumberingShape, findUnknownParagraphFormatKeys, PARAGRAPH_FORMAT_PROPERTY_KEYS } from './list-conversion-diagnostics.js';
 import { validateListFormatShape } from './list-format.js';
 
 const SUPPORTED_OPERATION_TYPES = new Set([
@@ -543,6 +543,19 @@ export function validateDocumentOperation(operation) {
             return {
                 valid: false,
                 error: { code: 'INVALID_OPERATION', message: 'Paragraph-format operations require a "properties" object.' }
+            };
+        }
+        const unknownKeys = findUnknownParagraphFormatKeys(normalized.properties);
+        if (unknownKeys.length > 0) {
+            return {
+                valid: false,
+                error: {
+                    code: 'INVALID_OPERATION',
+                    message: `paragraph-format does not support ${unknownKeys.length === 1 ? 'property' : 'properties'} ${unknownKeys.map(key => `"${key}"`).join(', ')}. Supported: ${PARAGRAPH_FORMAT_PROPERTY_KEYS.join(', ')}.`,
+                    field: `properties.${unknownKeys[0]}`,
+                    properties: unknownKeys,
+                    recovery: { action: 'change_request', hint: `Use only: ${PARAGRAPH_FORMAT_PROPERTY_KEYS.join(', ')}.` }
+                }
             };
         }
         if (normalized.properties.numbering !== undefined) {

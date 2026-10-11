@@ -193,23 +193,23 @@ for (const [target, modified] of [
     assert.equal(readSourceListLevel('', '9', 0), null);
 }
 
-// paragraph-format: unknown keys are reported (warning first, error in a later minor).
+// paragraph-format: unknown keys are rejected up front (0.9.0; a warning in 0.8.x).
 {
     const result = await apply([{
         type: 'paragraph-format',
         target: { exactText: PLAIN },
         properties: { alignment: 'center', spacingAfter: 120, indentLeft: 720 }
     }]);
-    assert.equal(result.status, 'ok');
-    const [diagnostic] = result.results[0].diagnostics;
-    assert.equal(diagnostic.code, 'UNKNOWN_PARAGRAPH_FORMAT_PROPERTY');
-    assert.equal(diagnostic.severity, 'warning');
-    assert.deepEqual(diagnostic.properties, ['spacingAfter', 'indentLeft']);
-    assert.equal(result.results[0].status, 'applied', 'supported keys are still applied');
+    assert.equal(result.status, 'error');
+    assert.equal(result.hasChanges, false);
+    const failure = result.results[0].error;
+    assert.equal(failure.code, 'INVALID_OPERATION');
+    assert.equal(failure.field, 'properties.spacingAfter');
+    assert.deepEqual(failure.properties, ['spacingAfter', 'indentLeft']);
+    assert.equal(failure.recovery.action, 'change_request');
 
     const onlyUnknown = await apply([{ type: 'paragraph-format', target: { exactText: PLAIN }, properties: { spacingAfter: 120 } }]);
-    assert.equal(onlyUnknown.results[0].status, 'no_change');
-    assert.equal(onlyUnknown.results[0].diagnostics[0].code, 'UNKNOWN_PARAGRAPH_FORMAT_PROPERTY');
+    assert.equal(onlyUnknown.status, 'error');
 
     const clean = await apply([{ type: 'paragraph-format', target: { exactText: PLAIN }, properties: { alignment: 'center', keepNext: true } }]);
     assert.equal(clean.results[0].diagnostics, undefined);

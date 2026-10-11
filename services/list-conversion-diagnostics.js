@@ -253,7 +253,7 @@ export function buildUnknownParagraphFormatDiagnostic(keys) {
     return {
         code: UNKNOWN_PARAGRAPH_FORMAT_PROPERTY,
         severity: 'warning',
-        message: `paragraph-format ignored unsupported ${keys.length === 1 ? 'property' : 'properties'} ${list}. Supported: ${PARAGRAPH_FORMAT_PROPERTY_KEYS.join(', ')}. A future minor release will reject unknown keys.`,
+        message: `paragraph-format ignored unsupported ${keys.length === 1 ? 'property' : 'properties'} ${list}. Supported: ${PARAGRAPH_FORMAT_PROPERTY_KEYS.join(', ')}.`,
         properties: keys,
         recovery: { action: 'change_request', hint: `Use only: ${PARAGRAPH_FORMAT_PROPERTY_KEYS.join(', ')}.` }
     };

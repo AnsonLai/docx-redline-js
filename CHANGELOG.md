@@ -4,6 +4,8 @@
 
 ### Changed
 
+- **Unknown `paragraph-format.properties` keys are rejected:** `INVALID_OPERATION` with `field: properties.<key>`, `properties[]`
+  and `recovery.action: change_request`; nothing is applied. The 0.8.x `UNKNOWN_PARAGRAPH_FORMAT_PROPERTY` warning no longer fires.
 - **CLI contract version 9** (`list-format` operation type, capability `list-format-v1`). Integrations that do not send
   `list-format` can keep requiring version 8.
 - **`UNSUPPORTED_LIST_CONVERSION` / `LIST_MARKER_NOT_BOUND` now point at `list-format`:** `recovery.action` is
@@ -98,7 +100,7 @@
   under the strict policy (`--profile agent`, `--atomic`, or `strictListConversion: true`). A list item whose retained marker asks for a
   different kind or format than its numbering definition returns `LIST_FORMAT_NOT_APPLIED` / `UNSUPPORTED_LIST_FORMAT_CHANGE`.
   `listMarkers: 'literal'` on an operation opts out. `paragraph-format.properties` is now a closed schema; unknown keys (such as
-  `numbering`) are still ignored but produce an `UNKNOWN_PARAGRAPH_FORMAT_PROPERTY` warning, with rejection planned for the next minor.
+  `spacingAfter`) first produced an `UNKNOWN_PARAGRAPH_FORMAT_PROPERTY` warning (superseded in 0.9.0, see Changed).
   Independent of `REVISION_FIDELITY_VIOLATION`; compact CLI output keeps `diagnostics` and the error fields.
 
 - **Numbering allocator:** new `services/numbering-allocation.js` (exported from the package root): `allocateNumberingDefinition`
