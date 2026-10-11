@@ -1,7 +1,22 @@
 # Canonical List Operations: Header-to-List Conversion and List Format Change
 
 Date: 2026-09-30
-Status: PROPOSED (WP-0 done; see "Cross-plan dependencies"). Package baseline 0.8.2, CLI `contractVersion` 8.
+Status: IN PROGRESS (2026-10-10): WP-0, WP-1, WP-2 done; WP-3 next. Package baseline 0.8.4+, CLI `contractVersion` 8.
+
+## Progress and hand-off (keep current; resume here)
+
+| WP | State | Commits | Next |
+|---|---|---|---|
+| 0 | Done | `73c67e8` (+ earlier item c fix) | - |
+| 1 | Done: list diagnostics warn by default, error under `strictListConversion` (CLI agent profile / `--atomic`) or `atomic`; `listMarkers: 'literal'` opt-out; `UNKNOWN_PARAGRAPH_FORMAT_PROPERTY` warning; capability `list-conversion-diagnostics-v1` | `db10d39`, `7ab6490`; tests `tests/list_conversion_diagnostics_tests.mjs` | Promote unknown `paragraph-format` keys to an error in the next minor; one-line adjacency insertion form not covered; consumer impact: atomic batches that type `1.`/`A.` onto plain paragraphs are now refused (tell AIWordPlugin) |
+| 2 | Done: `services/numbering-allocation.js` is the single allocator and the single numbering merge for runner and facade (fidelity plan WP-5a R1-R3); `reuseSourceListNumbering` removed; facade refuses dangling numbering references it adds; `NUMBERING_ID_CONFLICT` on conflicting ids | `4718c36`, `f41bd3b`; tests `tests/numbering_allocation_tests.mjs`, matrix numbering parity in `tests/reject_roundtrip_matrix_tests.mjs` | Residual: separate bare calls without shared `numberingXml`/`numberingIdState` can still allocate the same ids (now detected, not auto-remapped) |
+| 3 | Not started | | `paragraph-format.numbering` binding with `pPrChange` |
+| 4-7 | Not started | | See "Work packages" |
+
+Gates every WP must keep green (verified 2026-10-10 after WP-1/WP-2): `npm test` (144 suites), `check:types`,
+`test:isolation`, `node tests/reject_roundtrip_matrix_tests.mjs` (+ a `FUZZ_SEED=<n> MATRIX_ITERATIONS=500` run), Word
+synthetic lane 49/49 and corpus lane 60/60 (`pwsh`, redirect output to a log file; see docs/TESTING.md). The fidelity
+verifier refuses by default, so a new list operation that breaks Reject All cannot pass these gates.
 Source: consumer report `AIWordPlugin/docs/library-issues/2026-09-30-canonical-list-operations.md`
 (with `reproduce-plain-header-conversion.mjs`). Reproductions below were re-run against this tree.
 
