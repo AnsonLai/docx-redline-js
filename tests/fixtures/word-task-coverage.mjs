@@ -57,6 +57,8 @@ export const WORD_TASK_COVERAGE = Object.freeze({
     'legal-list-format-join-adjacent-lists': coverage('list-change', ['list']),
     'legal-list-format-redline-changed-header': coverage('list-change', ['list']),
     'administrative-list-format-redline-changed-header-start-value': coverage('list-change', ['list', 'tab-break']),
+    'legal-list-redline-separate-continuing-headers': coverage('list-change', ['list']),
+    'administrative-list-redline-separate-gap-headers': coverage('list-change', ['list']),
     'legal-suppressed-heading-to-bullet-list': coverage('list-change', ['list', 'formatted-runs'], AI_REVIEWED),
     'legal-table-append-after-final-paragraph': coverage('insert', ['table', 'multi-paragraph']),
     'administrative-table-reconciliation-cell-update': coverage('table-reconciliation', ['table'], AI_REVIEWED),

@@ -160,6 +160,24 @@ function Test-ListStrings($document, $expectedStrings, [string]$phase, [string]$
     return $true
 }
 
+# List identity, not just labels: a start value can make two separate lists read A. and B., so each paragraph's
+# ListFormat.List.ListParagraphs.Count says how many paragraphs share its list (0 = not a list item).
+function Test-ListGroupSizes($document, $expectedSizes, [string]$phase, [string]$name) {
+    if ($null -eq $expectedSizes) { return $true }
+    $actual = @(foreach ($paragraph in @($document.Paragraphs)) {
+        $list = $paragraph.Range.ListFormat.List
+        if ($null -eq $list) { 0 } else { [int]$list.ListParagraphs.Count }
+    })
+    $expectedList = @($expectedSizes | ForEach-Object { [int]$_ })
+    if (($actual -join '|') -ne ($expectedList -join '|')) {
+        [Console]::Out.WriteLine("FAIL ${name}: $phase list group sizes differ")
+        [Console]::Out.WriteLine("  expected: $($expectedList -join ' | ')")
+        [Console]::Out.WriteLine("  actual:   $($actual -join ' | ')")
+        return $false
+    }
+    return $true
+}
+
 # Use the Revisions collection, which matches the ribbon's "Accept/Reject All Changes"
 # (CommandBars.ExecuteMso and WordBasic agree). Document.AcceptAllRevisions() /
 # RejectAllRevisions() can leave a revision behind: on a document whose last body paragraph
@@ -337,6 +355,9 @@ try {
                     $caseFailed = $true
                 }
                 if (-not $caseFailed -and -not (Test-ListStrings $document $expected.expectedAcceptedListStrings 'accept-all' $name)) {
+                    $caseFailed = $true
+                }
+                if (-not $caseFailed -and -not (Test-ListGroupSizes $document $expected.expectedAcceptedListGroupSizes 'accept-all' $name)) {
                     $caseFailed = $true
                 }
             }

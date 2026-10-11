@@ -240,6 +240,7 @@ for (const testCase of cases) {
       expectedAcceptedListStrings: testCase.expectedAcceptedListStrings,
       expectedRejectedListStrings: testCase.expectedRejectedListStrings
     } : {}),
+    ...(testCase.expectedAcceptedListGroupSizes ? { expectedAcceptedListGroupSizes: testCase.expectedAcceptedListGroupSizes } : {}),
     untouchedPartSha256
   };
   writeFileSync(join(outputDir, `${testCase.name}.expected.json`), `${JSON.stringify(expected, null, 2)}\n`, 'utf8');

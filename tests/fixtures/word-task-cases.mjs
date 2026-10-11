@@ -1376,6 +1376,58 @@ const WORD_TASK_CASE_DEFINITIONS = [
         expectedAcceptedListStrings: ['3.', '', '4.'],
         expectedRejectedListStrings: ['', '', ''],
         requiredElements: { pPrChange: 2, numPr: 2, del: 2, ins: 1 }
+    },
+    {
+        // R2 (2026-10-02 report): two SEPARATE redline operations in one batch convert non-adjacent typed headers.
+        // Continuing values (A. then B.) must be ONE list (one ListFormat.List with two paragraphs, not two lists that
+        // merely start at the right value); a gap starts a second list.
+        name: 'legal-list-redline-separate-continuing-headers',
+        category: 'legal',
+        task: 'convert-typed-headers-to-list',
+        sourceDocumentXml: typedHeaderDocument([
+            typedBody(1, '1. First Header'),
+            typedBody(2, 'Body text between the headers.'),
+            typedBody(3, '2. Second Header'),
+            typedBody(4, 'Closing body text.')
+        ]),
+        original: lines('1. First Header', 'Body text between the headers.', '2. Second Header', 'Closing body text.'),
+        modified: lines('A. First Header', 'Body text between the headers.', 'B. Second Header', 'Closing body text.'),
+        batchOperations: [
+            { type: 'redline', target: { exactText: '1. First Header' }, modified: 'A. First Header' },
+            { type: 'redline', target: { exactText: '2. Second Header' }, modified: 'B. Second Header' }
+        ],
+        expectedAcceptedText: lines('First Header', 'Body text between the headers.', 'Second Header', 'Closing body text.'),
+        expectedRejectedText: lines('1. First Header', 'Body text between the headers.', '2. Second Header', 'Closing body text.'),
+        expectedAcceptedListStrings: ['A.', '', 'B.', ''],
+        expectedRejectedListStrings: ['', '', '', ''],
+        expectedAcceptedListGroupSizes: [2, 0, 2, 0],
+        requiredElements: { numPr: 2 }
+    },
+    {
+        // R2 (2026-10-02 report): two SEPARATE redline operations in one batch convert non-adjacent typed headers.
+        // Continuing values (A. then B.) must be ONE list (one ListFormat.List with two paragraphs, not two lists that
+        // merely start at the right value); a gap starts a second list.
+        name: 'administrative-list-redline-separate-gap-headers',
+        category: 'administrative',
+        task: 'convert-typed-headers-to-list',
+        sourceDocumentXml: typedHeaderDocument([
+            typedBody(1, '1. First Header'),
+            typedBody(2, 'Body text between the headers.'),
+            typedBody(3, '2. Second Header'),
+            typedBody(4, 'Closing body text.')
+        ]),
+        original: lines('1. First Header', 'Body text between the headers.', '2. Second Header', 'Closing body text.'),
+        modified: lines('A. First Header', 'Body text between the headers.', 'C. Second Header', 'Closing body text.'),
+        batchOperations: [
+            { type: 'redline', target: { exactText: '1. First Header' }, modified: 'A. First Header' },
+            { type: 'redline', target: { exactText: '2. Second Header' }, modified: 'C. Second Header' }
+        ],
+        expectedAcceptedText: lines('First Header', 'Body text between the headers.', 'Second Header', 'Closing body text.'),
+        expectedRejectedText: lines('1. First Header', 'Body text between the headers.', '2. Second Header', 'Closing body text.'),
+        expectedAcceptedListStrings: ['A.', '', 'C.', ''],
+        expectedRejectedListStrings: ['', '', '', ''],
+        expectedAcceptedListGroupSizes: [1, 0, 1, 0],
+        requiredElements: { numPr: 2 }
     }
 ];
 
