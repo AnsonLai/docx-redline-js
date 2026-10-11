@@ -227,7 +227,10 @@ source (`services/revision-fidelity-verifier.js`). A violation fails closed with
 
 ### Still open
 
-- Generated numbering ids can collide across separate calls with fresh runtime contexts and no numbering merge between them
-  (`2026-10-01-consumer-reported-library-issues.md`, WP-3 residual; owner: the canonical-list allocator).
+- Generated numbering ids can still collide across separate calls whose runtime context is not given the document's numbering
+  (`2026-10-01-consumer-reported-library-issues.md`, WP-3 residual). Since `4718c36` this is detected, not silent: merging the
+  parts through `mergeNumberingParts` / `ensureNumberingArtifactsInZip` (the single merge, used by `openDocx`) throws
+  `NUMBERING_ID_CONFLICT` when an incoming id exists with different content. Bare callers must pass `numberingXml` (or a shared
+  `numberingIdState`) to every call; no automatic remap of already-written paragraphs is attempted.
 - Lettered and roman marker conversion still uses whole-paragraph delete plus insert (loses `w14:paraId` and bookmarks). It is
   reject-exact, so the verifier accepts it. Tracked in `2026-09-30-canonical-list-operations.md`.

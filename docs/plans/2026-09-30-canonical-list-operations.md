@@ -249,10 +249,10 @@ diverge.
 
 ## Numbering definition allocation and remapping
 
-Same-kind edits (landed in `c44f227`, 0.8.3; the fidelity plan's R3 targets this heuristic for replacement): a `redline` over a list range whose generated list has the same level
+Same-kind edits (landed in `c44f227`, 0.8.3; since `4718c36` this is allocator policy, `allocateNumberingForReplacement` in `services/numbering-allocation.js`, with identical behavior): a `redline` over a list range whose generated list has the same level
 formats (bullet-like vs bullet-like, otherwise equal `numFmt`) as the single existing list the
 range uses now binds the new paragraphs to that existing `numId` and drops the generated numbering
-payload (`reuseSourceListNumbering` in `services/numbering-helpers.js`). Tracked-deleted source
+payload (formerly `reuseSourceListNumbering`). Tracked-deleted source
 paragraphs are never remapped, so Reject All restores the source `numPr`. The existing definitions
 are read from `numberingIdState.sourceNumberingXml`. Regression:
 `tests/facade_list_numbering_tests.mjs`. Format-changing and multi-list ranges still take the
@@ -386,7 +386,7 @@ for the range.
 |---|---|---|
 | 0 | **Done.** Strict-parse and start-value fix (item c); bare-XML `RECEIPT_RECONCILIATION_FAILED` fixed in `73c67e8` (see section (a) observation 2). Remaining: re-check xmldom hierarchy warnings in the consumer's environment; bare-vs-packaged parity is covered by the fidelity plan's WP-3 matrix. | Low |
 | 1 | Interim safety diagnostics: `UNSUPPORTED_LIST_CONVERSION`, `LIST_MARKER_NOT_BOUND`, `LIST_FORMAT_NOT_APPLIED`, `listMarkers: 'literal'` opt-out; closed `paragraph-format.properties` schema with unknown-key rejection; capability `list-conversion-diagnostics-v1`. Patch release. | Low-medium: unknown-key rejection could break callers that pass ignored keys; ship as warning first, error in the next minor |
-| 2 | Numbering allocator module (new `services/numbering-allocation.js`): create-new-abstract-and-num, copy level geometry, per-level `startOverride`, id reservation through the document-scoped state; validator checks for numId/abstractNum/ilvl integrity. No operation exposed yet; unit tests only. | Medium: continuity across a batch |
+| 2 | **Done (`4718c36`).** Numbering allocator module `services/numbering-allocation.js`: `allocateNumberingDefinition` (create new abstractNum + num, copy level geometry, per-level `startOverride`, ids via `reserveNextNumberingIdPair`), `allocateNumberingForReplacement` (replacement policy, replaces `reuseSourceListNumbering`), the single merge `mergeNumberingParts`, `validateNumberingIntegrity` (numId/abstractNum/ilvl; wired into the `openDocx` validation as introduced-issues-only). No operation exposed yet; `tests/numbering_allocation_tests.mjs`, parity in the WP-3 matrix. Not yet used by an operation: `allocateNumberingDefinition` (WP-4/5 callers), batch continuity (`listFallbackSequenceState`) stays with WP-4. | Medium: continuity across a batch |
 | 3 | `paragraph-format.numbering` binding (`numId`, `level`, null) with `pPrChange`; extend `applyParagraphPropertiesToPPr`, `checkParagraphPropertiesChanged`, and `insertPPrChildInOrder` for `w:numPr` position (before `w:ind`, after `w:keepLines`/`w:pageBreakBefore` per the CT_PPr sequence); roman/letter start values (`parseMarkerStart`). | Low-medium: pPr child order is schema-sensitive and Word repairs misordered children |
 | 4 | `list-format` `convert-plain` with `strip: marker` (decimal, letters, roman, bullets), replacing the whole-paragraph letter fallback; Word-authored fixtures and COM lane for A./1./I.; header runs share one `numId` via the sequence state. Contract version 9 and `list-format-v1`. | High: Word fidelity, partial reject coherence, sequence continuity |
 | 5 | `list-format` `change-format` (`scope: list` then `range`), `join`; reroute the `list-change` format-change case; refusal rules (style-linked, mixed ranges). | High: splitting a list mid-sequence, nested level remap, style-linked numbering |
@@ -429,7 +429,7 @@ numPr-without-`pPrChange` fix for explicit-start conversion (`f72f60a`). Consequ
    cannot ship silently. This replaces "Reject All yields
    canonical-equal `document.xml`" as an ad hoc property check in the Test plan. Untracked (`generateRedlines: false`)
    operations are skipped by the verifier.
-2. **Allocator requirements (WP-2 here).** The allocator must satisfy: R1, tracked-deleted source paragraphs never change
+2. **Allocator requirements (WP-2 here; R1-R3 satisfied by `4718c36`).** The allocator must satisfy: R1, tracked-deleted source paragraphs never change
    `numPr` (verifier invariant `REJECT_NUMBERING_REFS`, not a convention; already true of same-kind reuse); R2, the runner
    and the `openDocx` facade call one allocator function with the same arguments and neither carries its own merge; R3, the
    same-kind reuse heuristic `reuseSourceListNumbering` (`services/numbering-helpers.js`, call site
