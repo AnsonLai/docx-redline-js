@@ -38,8 +38,10 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 │   ├── logger.js
 │   └── xml-adapter.js
 ├── core/
+│   ├── current-properties.js
 │   ├── paragraph-text.js
 │   ├── sha256.js
+│   ├── word-revision-semantics.js
 │   └── word-xml.js
 ├── document/
 │   ├── docx-document.js
@@ -50,6 +52,7 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 │   ├── surgical-mode.js
 │   ├── reconstruction-mode.js
 │   ├── run-builders.js
+│   ├── paragraph-mark-revisions.js
 │   └── formatting-removal.js
 ├── orchestration/
 ├── pipeline/
@@ -62,6 +65,7 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 │   ├── document-operation-applier.js
 │   ├── document-operation-mutations.js
 │   ├── batch-operation-orchestrator.js
+│   ├── revision-fidelity-verifier.js
 │   ├── operation-heuristics.js
 │   ├── standalone-docx-plumbing.js
 │   └── standalone-operation-runner.js
@@ -116,6 +120,24 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 - `core/validation-delta.js`
   - Stable issue signatures and multiset subtraction for classifying baseline
     versus generated validation issues without hiding added duplicate errors.
+- `core/word-revision-semantics.js`
+  - Pure DOM projection of what Word shows after Reject All or Accept All
+    (`projectWordRevisionView`, `wordRevisionParagraphTexts`,
+    `paragraphMarkRevision`). It encodes Word's paragraph-mark rules: a
+    tracked-inserted mark vanishes on Reject and its content merges into the
+    following paragraph of the same container, a tracked-deleted mark does the
+    same on Accept, a table cell keeps its last paragraph, rows marked inserted
+    or deleted vanish, and Reject restores `w:pPrChange` snapshots. It never
+    mutates or serializes. The rules are validated against recorded desktop
+    Word 16 COM results (`tests/fixtures/word-revision-semantics/`).
+- `core/current-properties.js`
+  - Direct-child accessors for the current paragraph/run properties
+    (`getCurrentParagraphProperties`, `getCurrentRunProperties`,
+    `getCurrentChild`, `getCurrentNumIdElements`, ...). Descendant lookups cross
+    `w:pPrChange` / `w:rPrChange`, so a historical `numPr` or `pStyle` would look
+    current; the snapshot is reachable only through the explicit
+    `getHistoricalParagraphProperties` / `getHistoricalRunProperties` and
+    `getAllReferencedNumIdElements`. Depends only on `core/types.js`.
 - `core/revision-cloning.js`
   - Shared effective-property cloning strips historical revision descendants;
     intentional revision-bearing splits refresh cloned property-change IDs.
@@ -125,7 +147,20 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
   - Internal reconciliation capability matrix and opt-in diagnostic route
     instrumentation. It observes policy; it does not expose a route override.
 - `engine/run-builders.js`
-  - Shared builders for insertion/deletion wrappers, paragraph-mark revisions, visible run content, and run-property changes.
+  - Shared builders for insertion/deletion wrappers, visible run content, and run-property changes. It does not build paragraph-mark revisions.
+- `engine/paragraph-mark-revisions.js`
+  - The single construction site for a tracked paragraph mark (`w:ins` / `w:del`
+    under `w:pPr/w:rPr`). DOM entry points (`markParagraphInserted`,
+    `markParagraphDeleted`, `setParagraphPropertiesMarkRevision`,
+    `clearParagraphMarkRevision`, `restoreParagraphMarkInserted`) and string
+    builders (`paragraphMarkRevisionXml`, `paragraphMarkPPrXml`) share one
+    metadata path, so ids are allocated through the document's allocator and
+    recorded in receipts. `planParagraphMarks` is a pure check that an
+    alignment gives every source paragraph exactly one untracked or deleted
+    mark and every new target paragraph an inserted mark, so Reject All yields
+    the source paragraph count and a deleted paragraph is never collapsed into
+    another. Reconstruction, list and table generation, and document-level
+    shortcuts all call it. Depends only on `core/`.
 - `engine/surgical-*.js`
   - Surgical run splitting, diff application, and span helpers for localized edits that preserve surrounding markup. Plain-text edit groups execute from right to left with a fresh live span index, while space/NBSP-only replacement hunks are refined to character-local changes so unchanged hyperlink containers survive.
     The shared carrier splitter also handles explicit rejected-view deletion
@@ -213,6 +248,25 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
     Mutation commands expose a compact contract: package/XML payloads and full
     validation arrays remain internal, while stdout contains durability fields,
     per-operation evidence, validation counts, and a derived completion flag.
+- `services/revision-fidelity-verifier.js`
+  - Post-apply invariant check built on `core/word-revision-semantics.js`.
+    `verifyRevisionFidelity` compares Reject All of the output with Reject All
+    of the savepoint (both reject every author's revisions) and reports
+    `REJECT_PARAGRAPH_COUNT`, `REJECT_PARAGRAPH_TEXT`, `REJECT_PARAGRAPH_PROPS`,
+    `REJECT_NUMBERING_REFS` and `REJECT_WRAPPERS`. Under accept-first
+    existing-revision policies the baseline is the accepted view, scoped to the
+    resolved target range when known (otherwise the changed region between the
+    unchanged prefix and suffix). `verifyUntrackedLocality` covers
+    `generateRedlines: false` single-target operations with `ACCEPT_NEIGHBORS`:
+    no paragraph outside the target may change in either view.
+    `buildRevisionFidelityError` produces the `REVISION_FIDELITY_VIOLATION`
+    payload (`violations[].explanation`, `source.sourceParagraphIndex`,
+    `recovery.retryGuidance`). Modes are `enforce` (default, refuse and roll
+    back), `warn` (apply and append a warning) and `off`, resolved by
+    `resolveRevisionFidelityMode`: explicit `verifyRevisionFidelity` option,
+    then the diagnostic `DOCX_REDLINE_REVISION_FIDELITY` environment variable,
+    then `enforce`. The session caches the output projection and reuses it as
+    the next operation's baseline while the document is unchanged.
 - `orchestration/*`
   - Route planning and list fallback orchestration utilities.
 
@@ -226,7 +280,11 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 5. `engine/oxml-engine.js` routes each selected scope to format, table, list,
    surgical, or reconstruction flows; successful scoped output is imported
    into the live document.
-6. Failed and no-op operations restore their savepoint. A successful changed
+6. After each mutation the applier (`services/document-operation-applier.js`)
+   validates the generated OOXML against the savepoint, then runs the revision
+   fidelity verifier; a violation in `enforce` mode restores the savepoint and
+   refuses the operation before anything is committed. Failed and no-op
+   operations restore their savepoint. A successful changed
    batch serializes the full document once; atomic failures and all-no-op
    batches return the exact input string without serialization.
 7. Pipeline/services return OOXML, optional package artifacts (`numberingXml`, comments payloads), and non-breaking `status`/`error` fields where applicable.
@@ -265,6 +323,19 @@ still be re-exported from `index.js`.
   `COMMENTED_CONTENT_MERGE`; never discard anchors as a side effect of restoring
   the pre-revision baseline.
   Pass `existingRevisions: 'accept-all-first'` to normalize prior revisions explicitly.
+- Every tracked operation is checked after it is applied: Word's Reject All of
+  the output must equal Word's Reject All of the source
+  (`services/revision-fidelity-verifier.js`, default `enforce`). A violation
+  restores the operation savepoint and returns `REVISION_FIDELITY_VIOLATION`.
+- Construct paragraph-mark `w:ins` / `w:del` only through
+  `engine/paragraph-mark-revisions.js`, and read current paragraph/run
+  properties only through `core/current-properties.js`. Two source-scanning
+  tests enforce this: `tests/paragraph_mark_single_site_tests.mjs` rejects
+  paragraph-mark revision construction (templates opening an `rPr` with
+  `ins`/`del`, DOM creation attached to an `rPr`, retired helper names) outside
+  the helper, and `tests/current_properties_usage_tests.mjs` rejects descendant
+  lookups of property names (`numPr`, `pStyle`, `b`, ...) outside the accessor.
+  Exceptions need an entry with a written reason in each test's allowlist.
 - Do not write unknown `result.oxml` payloads directly into `word/document.xml`;
   normalize with `extractReplacementNodesFromOoxml(...)` or use
   `applyOperationToDocumentXml(...).documentXml` for full-document replacement.
@@ -400,6 +471,10 @@ still be re-exported from `index.js`.
   is parsed from the serialized output XML parts (`word/document.xml`, `word/comments.xml`,
   `word/numbering.xml`). Any discrepancy immediately fails the transaction and triggers
   atomic rollback.
+- The oracle checks that durable IDs are committed; the revision fidelity
+  verifier checks what Reject All would restore. A refused operation restores
+  its savepoint and receipt state like any other refusal, so it contributes no
+  committed IDs (`finalDisposition: 'refused'`).
 
 
 ## Build Output

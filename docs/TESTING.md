@@ -20,7 +20,10 @@ fixtures rarely contain.
 | Visual evidence inspection | `npm run test:visual:inspect` | Automated inspection of rendered Word PDFs across synthetic and SuperDoc suites (page counts, PDF integrity, anomaly detection) | Human visual sign-off |
 | Visual failure regressions | `node tests/visual_failure_regression_tests.mjs` | Semantic OOXML guards against visual failures (formatting leaks, font resets, ghost bullets, table cell destruction) | Visual rendering proof in Word |
 | Multimodal LLM visual spot check | On-demand / sampled | Evaluates rendered real-document pages with vision models for layout, table alignment, and typography regressions | Full-corpus automated coverage (intentionally decoupled and sampled due to cost/time) |
-| XSD and LibreOffice | See [Release validation and independent oracles](#release-validation-and-independent-oracles) | Schema conformance and acceptance by a second consumer | Word-specific revision semantics |
+| XSD and LibreOffice | See [Release validation and independent oracles](#release-validation-and-independent-oracles) | Schema conformance and acceptance by a second consumer | Word-specific revision semantics (see the Word revision semantics row) |
+| Word revision semantics | `node tests/word_revision_semantics_tests.mjs` | The Reject All / Accept All projection in `core/word-revision-semantics.js` and the library's reject/accept agree with recorded desktop Word 16 results for each paragraph-mark revision shape (inserted/deleted marks mid-document, last paragraph, table cells, rows, lists, `w:pPrChange`, mixed authors); no Word needed to run | That Word still behaves as recorded (regenerate the expectations) |
+| Revision fidelity verifier | `node tests/revision_fidelity_verifier_tests.mjs` | Post-apply Reject All invariants (`REJECT_*`), `ACCEPT_NEIGHBORS` locality for untracked edits, accept-first scoping, modes, baseline cache, and the `REVISION_FIDELITY_VIOLATION` payload through the bare runner and `openDocx` | Desktop Word behavior beyond the recorded semantics |
+| Paragraph-mark and property layering | `node tests/paragraph_mark_single_site_tests.mjs`, `node tests/current_properties_usage_tests.mjs` | Tracked paragraph-mark `w:ins`/`w:del` is constructed only in `engine/paragraph-mark-revisions.js`; current properties are read only through `core/current-properties.js` (allowlists carry written reasons) | Behavior of the allowed sites |
 | Agent inspection and package facade | `node tests/document_inspection_tests.mjs`, `node tests/docx_package_facade_tests.mjs` | Canonical text, comment/list resolution, package-scoped IDs, untouched-part preservation, and atomic rollback | Desktop Word rendering |
 | Agent CLI | `node tests/agent_cli_tests.mjs`, `node tests/agent_cli_protocol_tests.mjs`, `node tests/agent_cli_help_tests.mjs`, `node tests/agent_cli_inspection_context_tests.mjs`, `node tests/agent_cli_output_budget_tests.mjs` | JSON contracts, command-specific help, contextual pagination, composable progressive/atomic profiles, deduplicated receipts, compact stdout, file/stdin Unicode fidelity, complete-success exits, source safety, command families, and schema readability | Cross-platform CI beyond the current runner |
 | Example agent session | `node tests/agent_session_example_tests.mjs`, `node tests/localized_edit_example_tests.mjs` | A non-package sample wrapper delegates to the Node facade, binds and refreshes opaque handles across package revisions, returns context windows, compiles exact localized edits, preserves accepted/rejected lifecycle and atomic rollback, and supports review resolution | LLM/provider latency or a production tool-server transport |
@@ -485,6 +488,11 @@ sufficient proof of a table.
 
 ## Synthetic Microsoft Word tests
 
+Run only one Word job at a time. `scripts/word-com-suite.ps1` and
+`scripts/word-com-corpus-suite.ps1` begin by force-killing every windowless
+`WINWORD` process to clear orphans from aborted runs, which also kills the
+invisible Word instance of any other COM job running concurrently.
+
 The runtime library contains no COM or Word dependency. Word automation exists
 only in Windows development scripts and is intentionally excluded from package
 runtime paths.
@@ -515,7 +523,17 @@ To add a synthetic Word case:
    element counts checked before Word runs.
 4. Supply `expectedAcceptedText` and `expectedRejectedText` when the source is a
    multi-paragraph document or Word exposes structural separators such as table
-   row boundaries. Exact comparison is the default.
+   row boundaries. For tracked-change scenarios the script also compares the paragraph count after
+Reject All with the source package's paragraph count and fails on a mismatch, so
+a leftover or extra paragraph mark is caught even when the text matches.
+
+Accept All and Reject All are issued through `Document.Revisions.AcceptAll()` /
+`RejectAll()` (per-range `Revisions` for header stories). Do not use
+`Document.AcceptAllRevisions()` / `RejectAllRevisions()` in COM scripts: when
+the last body paragraph has a tracked-inserted mark they can leave that mark and
+an extra empty paragraph behind, unlike the ribbon command and Word users.
+
+Exact comparison is the default.
 5. Run `node tests/word_task_catalog_tests.mjs`, then `npm run test:word` on a
    Windows machine with desktop Word installed.
 
@@ -974,6 +992,37 @@ FUZZ_SEED=<seed> MATRIX_ITERATIONS=<n> node tests/reject_roundtrip_matrix_tests.
 the failure print limit. Known unfixable cases go in
 `tests/fixtures/reject-roundtrip-allowlist.json` (`{"entries":[{"fixture","kind","path","reason"}]}`);
 the file does not exist while the allowlist is empty.
+
+### Word revision semantics matrix
+
+`tests/fixtures/word-revision-semantics/` holds small packages (`cases.json`
+lists them) covering each paragraph-mark revision shape, and
+`expectations.json`, what desktop Word 16 produced on Reject All and Accept All
+for each. `tests/word_revision_semantics_tests.mjs` checks the projection and
+the library's reject/accept against those recorded results and needs no Word.
+`KNOWN_DIVERGENCES` in that test lists current differences from Word; the suite
+fails when a listed divergence disappears or an unlisted one appears.
+
+Regenerate the packages and re-record expectations after changing the case list
+or when Word's behavior may have changed (requires desktop Word; use `pwsh`,
+PowerShell 7, because Windows PowerShell 5.1 hangs in `SaveAs2` over COM here):
+
+```bash
+node scripts/generate-word-revision-semantics-matrix.mjs
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/word-revision-semantics-matrix.ps1
+```
+
+Review the `expectations.json` diff before committing it.
+
+### Revision fidelity verification in tests
+
+Every tracked operation is verified after it is applied (default `enforce`).
+Diagnostic lanes may override the default without code changes by setting
+`DOCX_REDLINE_REVISION_FIDELITY=warn` (apply and report) or `off`. An explicit
+`verifyRevisionFidelity` option or CLI `--revision-fidelity` flag wins over the
+environment variable. Use it only to investigate a refusal; the reject
+round-trip matrix and `tests/revision_fidelity_verifier_tests.mjs` run with the
+default.
 
 ### Runtime guardrail
 

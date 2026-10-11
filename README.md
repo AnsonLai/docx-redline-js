@@ -15,6 +15,7 @@ Converts AI-generated or programmatic text/markdown edits into valid Office Open
 - Comment management: delete comments by author or for all authors
 - Highlights: apply highlight colors to runs
 - Markdown and OOXML conversion in both directions
+- Reject All verification: every tracked operation is refused unless Word's Reject All of the output reproduces the source
 - Status/error result fields for parse, targeting, and existing-revision failures
 - Localized exact replacements against inspected targets, plus optional fail-closed speculative CLI edits
 - Package plumbing helpers for numbering.xml, comments.xml, content types, and relationships
@@ -371,6 +372,7 @@ See the [compact agent fast start](./docs/AGENT_FAST_START.md), the
 | `strictTargets` | `boolean` | `true` (CLI/facade) | Requires exact target descriptors (`exactText`, `paragraphId`, `index`, `occurrence`, `fingerprint`) and forbids ambiguous matching. Defaults to `false` in low-level runner for backwards compatibility. |
 | `existingRevisions` | `string` | `'merge-same-author'` | How to handle paragraphs with existing tracked changes. `'merge-same-author'` merges revisions from the same author and protects other authors with `EXISTING_REVISIONS`. `'slice-cross-author'` keeps that same-author merge behavior while allowing Word-native edits inside another author's pending insertion. Pass `'accept-all-first'` to normalize prior revisions or `'reject-input'` to refuse editing revised paragraphs. |
 | `removeFormatting` | `boolean` | `false` | When `true` and the text is unchanged with no Markdown hints, strips existing bold/italic/underline/strikethrough formatting. |
+| `verifyRevisionFidelity` | `'enforce' \| 'warn' \| 'off'` | `'enforce'` | Post-apply Reject All check described under [Reject All verification](#reject-all-verification). CLI: `--revision-fidelity`; the agent profile rejects `off`. |
 | `sanitizeInput` | `boolean` | `false` | Opt-in removal of standalone leading assistant-preface lines. Literal dollar signs and `\n` sequences are always preserved. |
 
 Same-author revision merging refuses paragraphs containing comment anchors with
@@ -666,6 +668,39 @@ chooses among multiple candidate paragraphs heuristically, it emits an
 `AMBIGUOUS_TARGET_HEURISTIC_USED` warning containing candidate count and migration
 guidance. Callers should pass `{ strictTargets: true }` and use strict descriptors
 (`paragraphId`, `index`, `occurrence`, or `fingerprint`) to prepare for v1.0.0.
+
+### Reject All verification
+
+A tracked edit only adds revisions, so rejecting every revision in the output
+must give back the source document. After each tracked operation the library
+projects Word's Reject All of the output (`core/word-revision-semantics.js`,
+validated against recorded desktop Word results) and compares it with the same
+projection of the source: paragraph count, paragraph text including tabs and
+breaks, paragraph properties, list membership (`numId`/`ilvl`), and hyperlink,
+field and content-control membership. Untracked edits (`generateRedlines: false`)
+are checked for locality instead: no paragraph outside the target may change
+(`ACCEPT_NEIGHBORS`).
+
+By default a violation is refused with `REVISION_FIDELITY_VIOLATION`; the
+document is unchanged, `status` is `error`, and the receipt is `refused`. The
+error payload contains:
+
+- `violations[]`, each with `invariant` (`REJECT_PARAGRAPH_COUNT`,
+  `REJECT_PARAGRAPH_TEXT`, `REJECT_PARAGRAPH_PROPS`, `REJECT_NUMBERING_REFS`,
+  `REJECT_WRAPPERS`, or `ACCEPT_NEIGHBORS`), a plain-language `explanation`,
+  `expected`/`actual` excerpts, and `source.sourceParagraphIndex` (the 1-based
+  paragraph index from extraction) with a text excerpt;
+- `recovery.retryGuidance`, one retry instruction per reported invariant, for
+  example use `replacements` for a literal edit, keep breaks and hyperlink
+  boundaries, or move formatting and list changes into their own operation.
+
+Control it with the `verifyRevisionFidelity` option (`'enforce'` default,
+`'warn'`, `'off'`) or `--revision-fidelity enforce|warn|off` on the CLI. `warn`
+applies the edit and appends the same text to `warnings`. The `--profile agent`
+profile rejects `off`. A narrower retry that is also refused indicates an
+unsupported shape; report it rather than disabling verification. Recovery
+details are in the `REVISION_FIDELITY_VIOLATION` row of
+[docs/AGENT_KNOWLEDGE_BASE.md](./docs/AGENT_KNOWLEDGE_BASE.md).
 
 ### Mutation Receipts
 
