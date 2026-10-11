@@ -271,9 +271,8 @@ export function processInsert(xmlDoc, spanIndex, pos, text, author, formatHints 
             return true;
         }
 
-        const generateNestedRevision = !(
-            generateRedlines
-            && existingRevisions === 'slice-cross-author'
+        const generateNestedRevision = generateRedlines && !(
+            existingRevisions === 'slice-cross-author'
             && isSameAuthorInsertion(parent, author)
         );
 
