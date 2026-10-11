@@ -410,8 +410,10 @@ still be re-exported from `index.js`.
 - Comment IDs must be allocated against both document anchors and the existing
   `word/comments.xml` part. Revision IDs must be allocated against the complete
   document revision scope.
-- Numbering payloads must be merged with `mergeNumberingXmlBySchemaOrder` when
-  a package already contains numbering definitions; replacement is not a merge.
+- Numbering payloads are merged, never replaced, by the single merge in
+  `services/numbering-allocation.js` (`mergeNumberingParts`), which both the
+  runner's consumers and the `openDocx` facade call; conflicting ids fail with
+  `NUMBERING_ID_CONFLICT`.
 - Safe package mutation is transactional: retain the original package, apply
   operations, merge all artifacts, validate redline markup and package wiring,
   and commit only if every required check succeeds.

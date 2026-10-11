@@ -511,7 +511,7 @@ an earlier block has already replaced.
 | `deleteCommentsByAuthorInOoxml(oxml, { author?, allAuthors? })` | Delete matching comment definitions and anchors present in the supplied OOXML payload. Real `.docx` packages require updating both `word/comments.xml` and `word/document.xml`. |
 | `generateTableOoxml(headers, rows, options)` | Generate a `w:tbl` from tabular data. |
 | `createDynamicNumberingIdState(numberingXml)` | Allocate numbering IDs without collisions. |
-| `ensureNumberingArtifactsInZip(zip, numberingXml, options)` | Add numbering artifacts to a `.docx` package. Replacement of existing numbering without `mergeNumberingXmlBySchemaOrder` is deprecated and will throw in the next major version. |
+| `ensureNumberingArtifactsInZip(zip, numberingXml, options)` | Add numbering artifacts to a `.docx` package. Always merges into an existing `word/numbering.xml` through the package's single numbering merge (`mergeNumberingParts`); an incoming id that already exists with different content fails with `NUMBERING_ID_CONFLICT`. The former `mergeNumberingXml` option is ignored. |
 | `ensureCommentsArtifactsInZip(zip, commentsXml)` | Merge comments artifacts into a `.docx` package. |
 | `ensureCommentsExtendedArtifactsInZip(zip, commentsExtendedXml)` | Add or replace modern Word comment-thread metadata in a `.docx` package. |
 | `validateDocxPackage(zip)` | Validate `.docx` structural consistency. |
@@ -757,7 +757,7 @@ Different APIs return different OOXML shapes. Use this as a packaging safety che
   ID. Generated bullet and numbered paragraphs must reference a positive ID
   whose definition is merged into `word/numbering.xml`.
 - Do use `extractReplacementNodesFromOoxml(...)` when you are consuming `result.oxml` from paragraph/range/table APIs.
-- Do merge numbering/comments artifacts with `ensureNumberingArtifactsInZip(...)` and `ensureCommentsArtifactsInZip(...)` when those parts are present. Supply `mergeNumberingXmlBySchemaOrder` when numbering already exists.
+- Do merge numbering/comments artifacts with `ensureNumberingArtifactsInZip(...)` and `ensureCommentsArtifactsInZip(...)` when those parts are present. Numbering is always merged, never replaced; pass `numberingXml` or a shared `numberingIdState` to every call so generated ids cannot collide.
 - Don't write payloads that start with `<pkg:package` directly into `word/document.xml`.
 - Don't assume every `result.oxml` payload is a raw paragraph fragment.
 
@@ -779,7 +779,6 @@ import {
   applyRedlineToOxml,
   extractReplacementNodesFromOoxml,
   ensureNumberingArtifactsInZip,
-  mergeNumberingXmlBySchemaOrder,
   validateDocxPackage
 } from '@ansonlai/docx-redline-js';
 import { applyOperationToDocumentXml } from '@ansonlai/docx-redline-js/standalone-runner';
@@ -842,9 +841,7 @@ const normalized = extractReplacementNodesFromOoxml(fragmentResult.oxml);
 // If sourceType === 'package', merge extracted content/artifacts instead of
 // writing the raw pkg:package payload into word/document.xml.
 if (normalized.numberingXml) {
-  await ensureNumberingArtifactsInZip(zip, normalized.numberingXml, {
-    mergeNumberingXml: mergeNumberingXmlBySchemaOrder
-  });
+  await ensureNumberingArtifactsInZip(zip, normalized.numberingXml);
 }
 
 await validateDocxPackage(zip);
