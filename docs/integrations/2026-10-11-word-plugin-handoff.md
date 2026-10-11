@@ -77,7 +77,25 @@ text-box lists, joining plain paragraphs.
   conversion, `1. Header` list bindings.
 - Text-equal letter/roman/bullet header conversions now happen in place (keeps `w14:paraId`, bookmarks, formatting).
 - Historical `numPr`/`pStyle` inside `w:pPrChange` is no longer reported or used as current.
-- Any workaround in the add-in for these can be removed after upgrading; keep tests for them.
+- Open reports in `AIWordPlugin/docs/library-issues/` (all reproducers exit 1 against this tree, 2026-10-11; tracked in
+  this repo's `docs/plans/2026-10-11-word-plugin-reported-issues.md`):
+  - `2026-10-02-weak-target-soft-break-deletion.md`: fixed (`7548a9e`); a localized replacement whose accepted text does
+    not match the request is now refused (`PATCH_ROUNDTRIP_MISMATCH`) instead of reported `ok`.
+  - `2026-10-02-generate-redlines-false-cross-author-insertion.md`: fixed (`7ae4f00`); new invariant
+    `UNTRACKED_CREATED_REVISION` refuses any `generateRedlines: false` edit that would create a revision. The add-in's
+    `TRACKING_POLICY_MISMATCH` guard can stay as defense in depth.
+  - `2026-10-02-separate-list-operations-restart-numbering.md`: fixed (`be539d5`); separate conversions with continuing
+    markers in one batch share one list (Word `ListFormat.List.ListParagraphs.Count` confirms one list, not just labels).
+    Known limit: a text-changed header conversion of a paragraph with direct `keepNext`/spacing is refused
+    (`REJECT_PARAGRAPH_PROPS`); use `redline` + `list-format convert-plain` instead.
+  - `2026-10-01-word-reject-table-append-paragraph.md`: on this tree Word's ribbon Reject All and
+    `Document.Revisions.RejectAll()` give exactly the 7 source paragraphs and 0 revisions; the extra paragraph and
+    leftover revision appear only with `Document.RejectAllRevisions()` (see section 5), so check the add-in's Word oracle
+    (`scripts/verify-wp6-word.ps1`) for that call. A real neighbouring defect (pretty-printed bodies) was fixed in
+    `0835f58`.
+  - `2026-09-30-canonical-list-operations.md`: superseded by `list-format` (section 2).
+- Any workaround in the add-in for these can be removed after upgrading; keep tests for them. Move each report to
+  `completed/` once its reproducer exits 1 against the installed package.
 
 ## 4. Suggested work for the add-in agent
 
