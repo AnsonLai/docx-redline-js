@@ -135,6 +135,10 @@
 
 ### Fixed
 
+- **Range replace over empty paragraphs no longer fails receipt reconciliation:** a replacement whose diff deletes only paragraph
+  breaks recorded a paired deletion revision id in the receipt that was never written, so the operation was refused with
+  `RECEIPT_RECONCILIATION_FAILED`. Paired replacement ids are now recorded only when written. The reject-roundtrip matrix
+  treats that code as a failure, not a skipped refusal.
 - **Plain `redline` keeps `w14:paraId` / `w14:textId`:** reconstruction used to rebuild the paragraph without its identity 
   attributes; the rebuilt paragraph that survives for a source paragraph (not tracked-deleted) now keeps them, once (an inserted
   split gives them to the paragraph whose mark Reject All keeps). A composed `redline` + `list-format` pair keeps identity.
