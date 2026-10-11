@@ -998,6 +998,10 @@ the failure print limit. Known unfixable cases go in
 `tests/fixtures/reject-roundtrip-allowlist.json` (`{"entries":[{"fixture","kind","path","reason"}]}`);
 the file does not exist while the allowlist is empty.
 
+The nightly `matrix-extended` job in `.github/workflows/validation.yml` runs 1000 cases with a date-derived `FUZZ_SEED`;
+a failure prints the seed, fixture, kind, operation and verifier violations. `tests/list_parser_diagnostics_tests.mjs` asserts that the
+list conversion paths emit no `console.warn`/`console.error` parser diagnostics under the pure-JS fallback and the explicit xmldom provider.
+
 ### Word revision semantics matrix
 
 `tests/fixtures/word-revision-semantics/` holds small packages (`cases.json`
