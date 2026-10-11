@@ -437,7 +437,29 @@ export function overwriteParagraphNumIds(oxml: string, numId: string | number): 
 export function extractFirstParagraphNumId(oxml: string): string | null;
 export function buildExplicitDecimalMultilevelNumberingXml(options?: Record<string, unknown>): string;
 export function remapNumberingPayloadForDocument(numberingXml: string, state: unknown): unknown;
-export function mergeNumberingXmlBySchemaOrder(baseXml: string, incomingXml: string): string;
+export interface NumberingIdConflict { kind: 'abstractNum' | 'num'; id: number }
+export interface NumberingMergeOptions { onConflict?: (conflict: NumberingIdConflict) => void }
+export interface NumberingIntegrityIssue { code: string; severity: 'error'; message: string; numId?: number; abstractNumId?: number; ilvl?: number }
+export function mergeNumberingXmlBySchemaOrder(baseXml: string, incomingXml: string, options?: NumberingMergeOptions): string;
+export function mergeNumberingParts(existingXml: string | null | undefined, incomingParts: string | Array<string | null | undefined> | null | undefined, options?: NumberingMergeOptions): string;
+export function allocateNumberingDefinition(params: {
+    numberingIdState: unknown;
+    sourceNumberingXml?: string | null;
+    sourceNumId?: number | string | null;
+    levels?: Array<{ ilvl: number; numFmt?: string; lvlText?: string; start?: number }>;
+    startOverrides?: Record<number | string, number>;
+}): { numId: number; abstractNumId: number; numberingXml: string } | null;
+export function allocateNumberingForReplacement(params: {
+    numberingXml: string | null;
+    replacementNodes: unknown[];
+    sourceParagraphs?: unknown[];
+    numberingIdState?: unknown;
+    allowContinueSource?: boolean;
+}): { policy: 'continue-source' | 'allocate' | 'passthrough'; numberingXml: string | null; replacementNodes: unknown[]; numId?: number };
+export function applyStartOverridesToNum(numElement: unknown, startOverrides: Record<number | string, number>): void;
+export function copyLevelGeometry(sourceLvl: unknown, targetLvl: unknown): void;
+export function canonicalNumberingDefinition(numbering: unknown, numId: string | number): string | null;
+export function validateNumberingIntegrity(documentXml: unknown, numberingXml?: unknown): NumberingIntegrityIssue[];
 
 export function buildListMarkdown(items: unknown[], options?: Record<string, unknown>): string;
 export function inferNumberingStyleFromMarker(marker: string): string;

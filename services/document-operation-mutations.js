@@ -71,11 +71,11 @@ import {
 import {
     reserveNextNumberingIdPair,
     remapNumberingPayloadForDocument,
-    reuseSourceListNumbering,
     overwriteParagraphNumIds,
     extractFirstParagraphNumId,
     buildExplicitDecimalMultilevelNumberingXml
 } from './numbering-helpers.js';
+import { allocateNumberingForReplacement } from './numbering-allocation.js';
 import {
     extractReplacementNodesFromOoxml,
     normalizeBodySectionOrderStandalone
@@ -2244,18 +2244,16 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
     const extracted = extractReplacementNodes(result.oxml);
     let replacementNodes = removeListPackagingSentinel(extracted.replacementNodes, result.warnings);
     let numberingXml = extracted.numberingXml;
-    if (numberingXml && runtimeContext?.numberingIdState && !useTableScope) {
-        const sourceParagraphs = useListScope ? listScopeEdit.paragraphs : (explicitRangeParagraphs || [targetParagraph]);
-        const continued = reuseSourceListNumbering(numberingXml, replacementNodes, sourceParagraphs, runtimeContext.numberingIdState);
-        if (continued) {
-            replacementNodes = continued.replacementNodes;
-            numberingXml = null;
-        }
-    }
     if (numberingXml && runtimeContext?.numberingIdState) {
-        const normalizedNumbering = remapNumberingPayloadForDocument(numberingXml, replacementNodes, runtimeContext.numberingIdState);
-        replacementNodes = normalizedNumbering.replacementNodes;
-        numberingXml = normalizedNumbering.numberingXml;
+        const allocated = allocateNumberingForReplacement({
+            numberingXml,
+            replacementNodes,
+            sourceParagraphs: useListScope ? listScopeEdit.paragraphs : (explicitRangeParagraphs || [targetParagraph]),
+            numberingIdState: runtimeContext.numberingIdState,
+            allowContinueSource: !useTableScope
+        });
+        replacementNodes = allocated.replacementNodes;
+        numberingXml = allocated.numberingXml;
     }
     const scopeNodes = useTableScope
         ? [containingTable]

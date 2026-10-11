@@ -7,12 +7,12 @@ import {
     buildExplicitDecimalMultilevelNumberingXml,
     createDynamicNumberingIdState,
     extractFirstParagraphNumId,
-    mergeNumberingXmlBySchemaOrder,
     overwriteParagraphNumIds,
     remapNumberingPayloadForDocument,
     reserveNextNumberingId,
     reserveNextNumberingIdPair
 } from '../services/numbering-helpers.js';
+import { mergeNumberingXmlBySchemaOrder } from '../services/numbering-allocation.js';
 import {
     RoutePlanKind,
     buildReconciliationPlan,

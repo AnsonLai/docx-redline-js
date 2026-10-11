@@ -11,9 +11,20 @@
   agents, the message is also sent to `onWarn`, and compact CLI output keeps it. Opt out per call with
   `verifyRevisionFidelity: 'warn'` (apply and warn) or `'off'` (diagnosis). CLI: `--revision-fidelity <enforce|warn|off>`,
   shown in `effectiveOptions`; the agent profile rejects `off`. Capability `revision-fidelity-v1`.
+- **`ensureNumberingArtifactsInZip` always merges numbering, and refuses id conflicts:** the optional `mergeNumberingXml`
+  callback is ignored (the single merge is `mergeNumberingParts` in `services/numbering-allocation.js`), an existing
+  `numbering.xml` is no longer replaced when no callback is given, and an incoming `w:abstractNum` / `w:num` whose id exists with
+  different content throws `NUMBERING_ID_CONFLICT` instead of silently binding new paragraphs to another list. `openDocx` also
+  rejects output that introduces a dangling `numId`, `abstractNumId` or `ilvl` (`NUMBERING_*` issues).
 
 ### Added
 
+- **Numbering allocator:** new `services/numbering-allocation.js` (exported from the package root): `allocateNumberingDefinition`
+  (new abstractNum + num with fresh ids, copied level geometry, per-level `startOverride`), `allocateNumberingForReplacement`
+  (same-kind source-list continuation or fresh allocation; tracked-deleted source paragraphs never change `numPr`),
+  `mergeNumberingParts` / `mergeNumberingXmlBySchemaOrder` (now with an `onConflict` option), `canonicalNumberingDefinition` and
+  `validateNumberingIntegrity`. The standalone runner's consumers and the `openDocx` facade merge through the same function;
+  `reuseSourceListNumbering` is replaced by allocator policy.
 - **Revision fidelity verifier:** every tracked operation now checks, on the live DOM and without extra
   serialization, that Word's Reject All of its output equals Word's Reject All of the source (paragraph count and order,
   canonical text including breaks and tabs, paragraph properties, `numPr`, hyperlink/field/content-control membership).

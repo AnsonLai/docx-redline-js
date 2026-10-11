@@ -260,9 +260,18 @@ export {
     overwriteParagraphNumIds,
     extractFirstParagraphNumId,
     buildExplicitDecimalMultilevelNumberingXml,
-    remapNumberingPayloadForDocument,
-    mergeNumberingXmlBySchemaOrder
+    remapNumberingPayloadForDocument
 } from './services/numbering-helpers.js';
+export {
+    allocateNumberingDefinition,
+    allocateNumberingForReplacement,
+    applyStartOverridesToNum,
+    canonicalNumberingDefinition,
+    copyLevelGeometry,
+    mergeNumberingParts,
+    mergeNumberingXmlBySchemaOrder,
+    validateNumberingIntegrity
+} from './services/numbering-allocation.js';
 
 // Pipeline components
 export { ReconciliationPipeline } from './pipeline/pipeline.js';

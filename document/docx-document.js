@@ -11,7 +11,8 @@ import { applyThreadResolutionToParts, commentParaId, reconcileCommentSiblingPar
 import { collectRevisionIds, countRevisionsInsideFields, discoverHeaderFooterParts, isHeaderFooterPath, renumberCollidingRevisionIds, resolvePartSelector } from '../services/headers-footers.js';
 import { inspectDocumentParts } from '../services/document-inspection.js';
 import { applyOperationsToDocumentXml, preflightOperations } from '../services/standalone-operation-runner.js';
-import { createDynamicNumberingIdState, mergeNumberingXmlBySchemaOrder } from '../services/numbering-helpers.js';
+import { createDynamicNumberingIdState } from '../services/numbering-helpers.js';
+import { validateNumberingIntegrity } from '../services/numbering-allocation.js';
 import { ensureCommentsArtifactsInZip, ensureCommentsExtendedArtifactsInZip, ensureNumberingArtifactsInZip, repairKnownContentTypes, validateDocxPackage } from '../services/standalone-docx-plumbing.js';
 import { validateRedlineOoxml } from '../core/redline-validation.js';
 import { subtractValidationIssueMultiset, validationErrors } from '../core/validation-delta.js';
@@ -426,7 +427,7 @@ export class DocxDocument {
                 ? { ...receipt, revisionItems: receipt.revisionItems.map(revision => ({ ...revision, id: renumbered.idMap.get(String(revision.id)) ?? revision.id, partName: path })) }
                 : receipt);
             if (outcome.numberingXmlParts?.length) {
-                await ensureNumberingArtifactsInZip(zip, outcome.numberingXmlParts, { mergeNumberingXml: mergeNumberingXmlBySchemaOrder });
+                await ensureNumberingArtifactsInZip(zip, outcome.numberingXmlParts);
             }
             changedParts.add(path);
             anyChange = true;
@@ -448,6 +449,8 @@ export class DocxDocument {
             for (const path of changedParts) {
                 const before = validateRedlineOoxml(text(this.entries, path)).issues.map(issue => ({ source: path, ...issue }));
                 const after = validateRedlineOoxml(text(working, path)).issues.map(issue => ({ source: path, ...issue }));
+                before.push(...validateNumberingIntegrity(text(this.entries, path), text(this.entries, 'word/numbering.xml')).map(issue => ({ source: path, ...issue })));
+                after.push(...validateNumberingIntegrity(text(working, path), text(working, 'word/numbering.xml')).map(issue => ({ source: path, ...issue })));
                 generatedIssues.push(...validationErrors(subtractValidationIssueMultiset(after, before)));
             }
             if (options.validate !== false && changedParts.size) {
@@ -569,6 +572,8 @@ export class DocxDocument {
             if (!documentXml) throw new Error('Missing word/document.xml.');
             const baseline = validateRedlineOoxml(documentXml);
             originalIssues = baseline.issues.map(issue => ({ source: 'word/document.xml', ...issue }));
+            originalIssues.push(...validateNumberingIntegrity(documentXml, text(working, 'word/numbering.xml'))
+                .map(issue => ({ source: 'word/numbering.xml', ...issue })));
             try {
                 await validateDocxPackage(new MemoryZip(cloneEntries(originalEntries)));
             } catch (error) {
@@ -623,7 +628,7 @@ export class DocxDocument {
             // Resolving a thread only changes the comment parts; keep document.xml byte-identical.
             const bodyChanged = (result.results || []).some(item => item?.status !== 'error' && item?.operationType !== 'comment_resolve');
             if (bodyChanged) working.set('word/document.xml', textEncoder.encode(result.documentXml));
-            await ensureNumberingArtifactsInZip(zip, result.numberingXmlParts, { mergeNumberingXml: mergeNumberingXmlBySchemaOrder });
+            await ensureNumberingArtifactsInZip(zip, result.numberingXmlParts);
 
             const existingCommentsXml = text(working, 'word/comments.xml');
             const commentsXmlForPackaging = result.commentsXml || existingCommentsXml;
@@ -645,6 +650,8 @@ export class DocxDocument {
             if (options.validate !== false) {
                 const generated = validateRedlineOoxml(result.documentXml);
                 const outputIssues = generated.issues.map(issue => ({ source: 'word/document.xml', ...issue }));
+                outputIssues.push(...validateNumberingIntegrity(result.documentXml, text(working, 'word/numbering.xml'))
+                    .map(issue => ({ source: 'word/numbering.xml', ...issue })));
                 try {
                     await validateDocxPackage(zip);
                 } catch (error) {

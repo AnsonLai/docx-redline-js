@@ -160,38 +160,19 @@ export function reserveNextNumberingIdPair(state) {
     return { numId, abstractNumId };
 }
 
-function hasXmlParseError(doc) {
+export function hasXmlParseError(doc) {
     if (!doc || !doc.documentElement) return true;
     if (doc.documentElement.localName === 'parsererror') return true;
     return doc.getElementsByTagName('parsererror').length > 0;
 }
 
-function isDirectWordChild(node, localName) {
+export function isDirectWordChild(node, localName) {
     return !!(
         node &&
         node.nodeType === 1 &&
         node.namespaceURI === WORD_MAIN_NS &&
         node.localName === localName
     );
-}
-
-function insertNumberingNodeInSchemaOrder(root, node, kind) {
-    if (!root || !node) return;
-    const directChildren = Array.from(root.childNodes || []).filter(
-        child => child && child.nodeType === 1 && child.namespaceURI === WORD_MAIN_NS
-    );
-
-    let anchor = null;
-    if (kind === 'abstract') {
-        anchor = directChildren.find(
-            child => child.localName === 'num' || child.localName === 'numIdMacAtCleanup'
-        ) || null;
-    } else {
-        anchor = directChildren.find(child => child.localName === 'numIdMacAtCleanup') || null;
-    }
-
-    if (anchor) root.insertBefore(node, anchor);
-    else root.appendChild(node);
 }
 
 function getAttributeFirst(element, names) {
@@ -202,7 +183,7 @@ function getAttributeFirst(element, names) {
     return null;
 }
 
-function getElementId(element, names) {
+export function getElementId(element, names) {
     const raw = getAttributeFirst(element, names);
     const parsed = Number.parseInt(String(raw || ''), 10);
     return Number.isFinite(parsed) ? parsed : null;
@@ -225,6 +206,8 @@ function setElementVal(element, value) {
 export function overwriteParagraphNumIds(paragraphNodes, targetNumId) {
     if (!Array.isArray(paragraphNodes) || targetNumId == null) return;
     for (const node of paragraphNodes) {
+        // R1: retained (tracked-deleted) source paragraphs keep the binding Reject All must restore.
+        if (isTrackedDeletedParagraph(node)) continue;
         // Current numIds only: a w:pPrChange snapshot keeps its numId so Reject restores the original binding.
         for (const numIdNode of getCurrentNumIdElements(node)) {
             setElementVal(numIdNode, targetNumId);
@@ -287,107 +270,12 @@ export function buildExplicitDecimalMultilevelNumberingXml(numId, abstractNumId,
 </w:numbering>`.trim();
 }
 
-function isTrackedDeletedParagraph(node) {
+/** A paragraph whose mark is tracked-deleted is retained source content (R1: its numPr is never rebound). */
+export function isTrackedDeletedParagraph(node) {
     if (!node || node.nodeType !== 1 || node.localName !== 'p') return false;
     const pPr = Array.from(node.childNodes || []).find(child => isDirectWordChild(child, 'pPr'));
     const rPr = pPr && Array.from(pPr.childNodes || []).find(child => isDirectWordChild(child, 'rPr'));
     return !!rPr && Array.from(rPr.childNodes || []).some(child => isDirectWordChild(child, 'del'));
-}
-
-function paragraphNumIdNodes(node) {
-    // Current paragraph numPr only; pPrChange snapshot numPr elements are excluded.
-    return getCurrentNumIdElements(node);
-}
-
-function levelFormats(abstractNum) {
-    const formats = new Map();
-    for (const lvl of Array.from(abstractNum?.getElementsByTagNameNS?.('*', 'lvl') || [])) {
-        const ilvl = getElementId(lvl, ['w:ilvl', 'ilvl']);
-        const fmt = Array.from(lvl.getElementsByTagNameNS('*', 'numFmt'))[0]?.getAttribute('w:val') || null;
-        if (ilvl != null && fmt) formats.set(ilvl, fmt);
-    }
-    return formats;
-}
-
-function normalizeListFormat(format) {
-    return format === 'bullet' || format === 'circle' || format === 'square' ? 'bullet' : format;
-}
-
-function abstractNumForNumId(numberingDoc, numId) {
-    const num = Array.from(numberingDoc.getElementsByTagNameNS('*', 'num'))
-        .find(candidate => getElementId(candidate, ['w:numId', 'numId']) === numId);
-    const abstractId = num && getElementId(Array.from(num.getElementsByTagNameNS('*', 'abstractNumId'))[0], ['w:val', 'val']);
-    if (abstractId == null) return null;
-    return Array.from(numberingDoc.getElementsByTagNameNS('*', 'abstractNum'))
-        .find(candidate => getElementId(candidate, ['w:abstractNumId', 'abstractNumId']) === abstractId) || null;
-}
-
-/**
- * Lets a same-kind list replacement continue the list it replaces instead of allocating a new
- * numbering definition. When every new list paragraph's generated definition has the same format
- * as the single existing list used by the source paragraphs at each level in use, the new
- * paragraphs are bound to that existing numId and the generated numbering payload is dropped.
- * Format-changing replacements (and anything ambiguous) return null and take the allocation path.
- *
- * @param {string|null} numberingXml - Generated numbering payload
- * @param {Node[]} replacementNodes - Generated paragraphs (tracked-deleted source copies are left alone)
- * @param {Node[]} sourceParagraphs - Paragraphs being replaced
- * @param {{ sourceNumberingXml?: string }|null} numberingIdState
- * @returns {{ numId: number, replacementNodes: Node[] }|null}
- */
-export function reuseSourceListNumbering(numberingXml, replacementNodes, sourceParagraphs, numberingIdState) {
-    const sourceXml = numberingIdState?.sourceNumberingXml;
-    if (!numberingXml || !String(sourceXml || '').trim() || !Array.isArray(replacementNodes)) return null;
-
-    const sourceNumIds = new Set();
-    for (const paragraph of sourceParagraphs || []) {
-        for (const numIdNode of paragraphNumIdNodes(paragraph)) {
-            const id = getElementId(numIdNode, ['w:val', 'val']);
-            if (id != null && id !== 0) sourceNumIds.add(id);
-        }
-    }
-    if (sourceNumIds.size !== 1) return null;
-    const [sourceNumId] = sourceNumIds;
-
-    const sourceDoc = parseOoxml(sourceXml);
-    const payloadDoc = parseOoxml(numberingXml);
-    if (hasXmlParseError(sourceDoc) || hasXmlParseError(payloadDoc)) return null;
-    const sourceAbstract = abstractNumForNumId(sourceDoc, sourceNumId);
-    if (!sourceAbstract) return null;
-    const sourceFormats = levelFormats(sourceAbstract);
-
-    const newParagraphNumIds = [];
-    for (const node of replacementNodes) {
-        if (isTrackedDeletedParagraph(node)) continue;
-        for (const numIdNode of paragraphNumIdNodes(node)) {
-            const ilvlNode = Array.from(numIdNode.parentNode.childNodes || []).find(child => child.localName === 'ilvl');
-            newParagraphNumIds.push({
-                numId: getElementId(numIdNode, ['w:val', 'val']),
-                ilvl: ilvlNode ? (getElementId(ilvlNode, ['w:val', 'val']) ?? 0) : 0
-            });
-        }
-    }
-    if (newParagraphNumIds.length === 0) return null;
-
-    const payloadFormats = new Map();
-    for (const { numId, ilvl } of newParagraphNumIds) {
-        if (numId == null) return null;
-        if (!payloadFormats.has(numId)) {
-            const abstract = abstractNumForNumId(payloadDoc, numId);
-            if (!abstract) return null;
-            payloadFormats.set(numId, levelFormats(abstract));
-        }
-        const generated = payloadFormats.get(numId).get(ilvl);
-        const existing = sourceFormats.get(ilvl);
-        if (!generated || !existing || normalizeListFormat(generated) !== normalizeListFormat(existing)) return null;
-    }
-
-    const clonedNodes = replacementNodes.map(node => (node?.cloneNode ? node.cloneNode(true) : node));
-    for (const node of clonedNodes) {
-        if (isTrackedDeletedParagraph(node)) continue;
-        for (const numIdNode of paragraphNumIdNodes(node)) setElementVal(numIdNode, sourceNumId);
-    }
-    return { numId: sourceNumId, replacementNodes: clonedNodes };
 }
 
 /**
@@ -463,64 +351,4 @@ export function remapNumberingPayloadForDocument(numberingXml, replacementNodes,
         numberingXml: serializeOoxml(numberingDoc),
         replacementNodes: clonedNodes
     };
-}
-
-/**
- * Merges incoming numbering definitions into an existing numbering part while
- * preserving schema child order (`abstractNum*` before `num*`).
- *
- * @param {string} existingNumberingXml
- * @param {string} incomingNumberingXml
- * @returns {string}
- */
-export function mergeNumberingXmlBySchemaOrder(existingNumberingXml, incomingNumberingXml) {
-    const existingText = String(existingNumberingXml || '');
-    const incomingText = String(incomingNumberingXml || '');
-    if (!incomingText.trim()) return existingText;
-    if (!existingText.trim()) return incomingText;
-
-    try {
-        const existingDoc = parseOoxml(existingText);
-        const incomingDoc = parseOoxml(incomingText);
-        if (hasXmlParseError(existingDoc) || hasXmlParseError(incomingDoc)) {
-            return existingText;
-        }
-
-        const existingRoot = existingDoc.documentElement;
-        const incomingRoot = incomingDoc.documentElement;
-        if (!existingRoot || !incomingRoot) return existingText;
-
-        const existingAbstractIds = new Set(
-            Array.from(existingRoot.childNodes || [])
-                .filter(node => isDirectWordChild(node, 'abstractNum'))
-                .map(node => parseIntegerAttribute(node, ['w:abstractNumId', 'abstractNumId']))
-                .filter(id => id != null)
-        );
-        const existingNumIds = new Set(
-            Array.from(existingRoot.childNodes || [])
-                .filter(node => isDirectWordChild(node, 'num'))
-                .map(node => parseIntegerAttribute(node, ['w:numId', 'numId']))
-                .filter(id => id != null)
-        );
-
-        for (const incomingNode of Array.from(incomingRoot.childNodes || [])) {
-            if (!isDirectWordChild(incomingNode, 'abstractNum')) continue;
-            const incomingId = parseIntegerAttribute(incomingNode, ['w:abstractNumId', 'abstractNumId']);
-            if (incomingId == null || existingAbstractIds.has(incomingId)) continue;
-            insertNumberingNodeInSchemaOrder(existingRoot, existingDoc.importNode(incomingNode, true), 'abstract');
-            existingAbstractIds.add(incomingId);
-        }
-
-        for (const incomingNode of Array.from(incomingRoot.childNodes || [])) {
-            if (!isDirectWordChild(incomingNode, 'num')) continue;
-            const incomingId = parseIntegerAttribute(incomingNode, ['w:numId', 'numId']);
-            if (incomingId == null || existingNumIds.has(incomingId)) continue;
-            insertNumberingNodeInSchemaOrder(existingRoot, existingDoc.importNode(incomingNode, true), 'num');
-            existingNumIds.add(incomingId);
-        }
-
-        return serializeOoxml(existingDoc);
-    } catch {
-        return existingText;
-    }
 }

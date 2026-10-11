@@ -12,6 +12,11 @@ import { projectWordRevisionView } from '../core/word-revision-semantics.js';
 import { generateOperationsForFixture, makeRng, resolveBaseSeed } from './helpers/operation-generators.mjs';
 import { buildMatrixFixtures } from './helpers/reject-roundtrip-fixtures.mjs';
 import { assertPackageFidelity } from './helpers/package-fidelity.mjs';
+import {
+    canonicalNumberingDefinition,
+    mergeNumberingParts,
+    validateNumberingIntegrity
+} from '../services/numbering-allocation.js';
 
 /**
  * WP-3 reject-roundtrip matrix: every generated (fixture, operation) is applied through both the bare
@@ -42,6 +47,11 @@ const parse = xml => {
 const view = (xml, which) => projectWordRevisionView(parse(xml), which);
 const texts = records => records.map(record => record.text);
 const numPresence = records => records.map(record => Boolean(record.numPr));
+// Per paragraph: level plus the canonical (id-free) numbering definition its numPr resolves to.
+const numberingSignature = (records, numberingXml) => records.map(record => (record.numPr
+    ? [record.numPr.ilvl, record.numPr.numId == null || !numberingXml ? null : canonicalNumberingDefinition(numberingXml, record.numPr.numId)]
+    : null));
+const issueKeys = issues => new Set(issues.map(issue => `${issue.code}:${issue.numId ?? ''}:${issue.ilvl ?? ''}`));
 const innerError = result => result?.results?.find(item => item?.error)?.error || result?.error || null;
 const errorCode = result => {
     const outer = result?.error?.code;
@@ -62,19 +72,27 @@ async function runBare(entries, operation, options = {}) {
         numberingXml: partText(entries, 'word/numbering.xml'),
         stylesXml: partText(entries, 'word/styles.xml')
     }, options);
-    return { result, documentXml: result.documentXml };
+    // Bare callers merge the returned numbering parts themselves, through the one allocator merge.
+    const numberingXml = mergeNumberingParts(partText(entries, 'word/numbering.xml'), result.numberingXmlParts);
+    return { result, documentXml: result.documentXml, numberingXml };
 }
 
 async function runPackaged(bytes, operation, options = {}) {
     const result = await openDocx(bytes).applyOperations([operation], { author: AUTHOR, ...options });
     const output = result.status === 'error' ? null : result.toUint8Array();
-    return { result, output, documentXml: output ? partText(unzipDocx(output), 'word/document.xml') : null };
+    const outputEntries = output ? unzipDocx(output) : null;
+    return {
+        result,
+        output,
+        documentXml: outputEntries ? partText(outputEntries, 'word/document.xml') : null,
+        numberingXml: outputEntries ? partText(outputEntries, 'word/numbering.xml') : null
+    };
 }
 
 const failures = [];
 const skipped = new Map();
 const unavailableKinds = new Map();
-const counts = { cases: 0, applied: 0, refusedOther: 0, allowlisted: 0 };
+const counts = { cases: 0, applied: 0, refusedOther: 0, allowlisted: 0, numberingCompared: 0 };
 const startedAt = Date.now();
 
 function fail(context, message, detail = {}) {
@@ -101,7 +119,22 @@ function checkApplied(context, sourceEntries, sourceDocXml, kindInfo, path, run)
             fail({ ...context, path }, `accepted view lacks intended text ${JSON.stringify(expected)}`, { accepted: texts(resultAccepted) });
         }
     }
-    return { rejected: resultRejected, accepted: resultAccepted };
+    // (6) numbering integrity: no numId/abstractNum/ilvl reference is left dangling that the source did not have.
+    const sourceNumbering = partText(sourceEntries, 'word/numbering.xml');
+    const preExisting = issueKeys(validateNumberingIntegrity(sourceDocXml, sourceNumbering));
+    for (const issue of validateNumberingIntegrity(documentXml, run.numberingXml)) {
+        if (!preExisting.has(`${issue.code}:${issue.numId ?? ''}:${issue.ilvl ?? ''}`)) {
+            fail({ ...context, path }, `numbering integrity: ${issue.code}: ${issue.message}`);
+        }
+    }
+    return {
+        rejected: resultRejected,
+        accepted: resultAccepted,
+        numbering: {
+            accepted: numberingSignature(resultAccepted, run.numberingXml),
+            rejected: numberingSignature(resultRejected, run.numberingXml)
+        }
+    };
 }
 
 const fixtures = buildMatrixFixtures();
@@ -179,6 +212,11 @@ for (let fixtureIndex = 0; fixtureIndex < fixtures.length && counts.cases < ITER
                     if (JSON.stringify(numPresence(bare[which])) !== JSON.stringify(numPresence(packaged[which]))) {
                         fail(context, `bare vs packaged ${which} numPr presence differs`, { bare: numPresence(bare[which]), packaged: numPresence(packaged[which]) });
                     }
+                    // WP-5a parity: the numbering definitions each paragraph references are canonically equal.
+                    counts.numberingCompared += bare.numbering[which].filter(entry => entry && entry[1]).length;
+                    if (JSON.stringify(bare.numbering[which]) !== JSON.stringify(packaged.numbering[which])) {
+                        fail(context, `bare vs packaged ${which} referenced numbering definitions differ`, { bare: bare.numbering[which], packaged: packaged.numbering[which] });
+                    }
                 }
             }
         }
@@ -200,6 +238,7 @@ if (failures.length > 0) {
 
 const skipSummary = [...skipped.entries()].map(([key, count]) => `${key}=${count}`).join('; ') || 'none';
 console.log(`PASS: ${counts.cases} reject-roundtrip matrix cases x 2 paths (seed ${BASE_SEED}, ${elapsed}s): ` +
-    `${counts.applied} applied, ${counts.refusedOther} non-fidelity refusals skipped, ${counts.allowlisted} allowlisted`);
+    `${counts.applied} applied, ${counts.refusedOther} non-fidelity refusals skipped, ${counts.allowlisted} allowlisted, ` +
+    `${counts.numberingCompared} paragraph numbering definitions compared`);
 console.log(`  skipped refusals: ${skipSummary}`);
 if (unavailableKinds.size) console.log(`  generator had no site for: ${[...unavailableKinds.keys()].join(', ')}`);

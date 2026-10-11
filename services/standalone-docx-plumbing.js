@@ -3,9 +3,9 @@
  */
 
 import { createSerializer, parseOoxmlSafe } from '../adapters/xml-adapter.js';
-import { warn as logWarning } from '../adapters/logger.js';
 import { commentParaId } from './comment-thread-parts.js';
 import { correctedContentTypeFor, getPartSpec } from './package-parts.js';
+import { mergeNumberingParts } from './numbering-allocation.js';
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const NS_CT = 'http://schemas.openxmlformats.org/package/2006/content-types';
@@ -257,35 +257,31 @@ async function readZipText(zip, filePath) {
 /**
  * Ensures numbering part + package metadata exist and merges numbering payloads.
  *
+ * Merging is always done by `mergeNumberingParts` (services/numbering-allocation.js), the single numbering merge:
+ * both the standalone runner's consumers and the `openDocx` facade call this function with the same arguments.
+ * An incoming id that already exists with different content would silently bind new paragraphs to someone
+ * else's list, so it fails closed with `NUMBERING_ID_CONFLICT`.
+ *
  * @param {any} zip
  * @param {string|string[]|null|undefined} numberingXmlList
- * @param {{
- *   mergeNumberingXml?: ((existingXml: string, incomingXml: string) => string),
- *   onInfo?: (message: string) => void
- * }} [options]
+ * @param {{ onInfo?: (message: string) => void }} [options] A legacy `mergeNumberingXml` option is ignored.
  */
 export async function ensureNumberingArtifactsInZip(zip, numberingXmlList, options = {}) {
     const onInfo = typeof options?.onInfo === 'function' ? options.onInfo : () => {};
-    const mergeNumberingXml = typeof options?.mergeNumberingXml === 'function'
-        ? options.mergeNumberingXml
-        : null;
-    const onWarn = typeof options?.onWarn === 'function' ? options.onWarn : logWarning;
     const incomingPayloads = (Array.isArray(numberingXmlList) ? numberingXmlList : [numberingXmlList]).filter(Boolean);
     if (incomingPayloads.length === 0) return;
 
     const existing = await readZipText(zip, NUMBERING_PATH);
-    if (existing && !mergeNumberingXml) {
-        onWarn('[Deprecation] Replacing an existing numbering.xml without mergeNumberingXml is deprecated and will throw in the next major version.');
-    }
-    let mergedNumberingXml = existing || null;
-    for (const incomingNumberingXml of incomingPayloads) {
-        if (!mergedNumberingXml) {
-            mergedNumberingXml = incomingNumberingXml;
-            continue;
-        }
-        mergedNumberingXml = mergeNumberingXml
-            ? mergeNumberingXml(mergedNumberingXml, incomingNumberingXml)
-            : incomingNumberingXml;
+    const conflicts = [];
+    const mergedNumberingXml = mergeNumberingParts(existing, incomingPayloads, {
+        onConflict: conflict => conflicts.push(conflict)
+    });
+    if (conflicts.length > 0) {
+        const list = conflicts.map(conflict => `${conflict.kind} ${conflict.id}`).join(', ');
+        throw Object.assign(
+            new Error(`Numbering id conflict: ${list} already exist with different content. Generated list numbering must be allocated from the document's own numbering state (pass the current numbering part to the operation runner).`),
+            { code: 'NUMBERING_ID_CONFLICT', conflicts }
+        );
     }
 
     if (!existing) {
