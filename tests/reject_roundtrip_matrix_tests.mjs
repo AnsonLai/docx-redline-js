@@ -32,6 +32,8 @@ import {
 const BASE_SEED = resolveBaseSeed(20261010);
 const ITERATIONS = Math.max(1, Number(process.env.MATRIX_ITERATIONS) || 150);
 const MAX_REPORTED_FAILURES = Number(process.env.MATRIX_MAX_REPORTED) || 8;
+// Refusal codes that signal a library defect rather than an unsupported request; they fail the matrix.
+const INTERNAL_DEFECT_CODES = new Set(['RECEIPT_RECONCILIATION_FAILED']);
 const ALLOWED_PACKAGE_CHANGES = ['word/document.xml', 'word/numbering.xml'];
 const AUTHOR = 'Matrix Author';
 const here = path.dirname(fileURLToPath(import.meta.url));
