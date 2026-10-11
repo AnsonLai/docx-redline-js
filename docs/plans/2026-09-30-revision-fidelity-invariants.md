@@ -2,9 +2,7 @@
 
 Date: 2026-09-30
 Status: DONE except the open items below (2026-10-11, started on 0.8.4 + `c98874d`). All WPs landed, including WP-5a
-(`4718c36`). Open items: nightly matrix wiring (no CI config changed); `ACCEPT_INTENT` (now worked under
-`2026-10-11-word-plugin-reported-issues.md` as I1); numbering-part existence check; accept-first range-end scope
-(`resolvedTargetEnd` not captured); `planParagraphMarks` wiring into the write paths (deferred, aspirational, owner decision 2026-10-11); re-measure verifier cost on a quiet machine. See "Progress and hand-off" and the Definition-of-done status below.
+(`4718c36`). Open items: nightly matrix wiring (no CI config changed); `ACCEPT_INTENT`, numbering-part existence and accept-first range-end scope are DONE (2026-10-11, pre-0.9.0 plan B1-B3); `planParagraphMarks` wiring into the write paths (deferred, aspirational, owner decision 2026-10-11); verifier cost re-measured 2026-10-11 (about +38% per batch, over the 10% budget; optimisation deferred, aspirational, owner decision 2026-10-11). See "Progress and hand-off" and the Definition-of-done status below.
 
 Definition-of-done status (details at the end of the plan):
 - [x] `REVISION_FIDELITY_VIOLATION` documented and enforced by default (agent profile rejects `off`); regressions for each
@@ -81,7 +79,7 @@ Resume here. Each line says what landed, where, and what is next. Verify with `g
   compare is ~8 ms per operation on a 1000-paragraph document without caching; the session caches the previous
   verified `after` projection (`session._rejectedViewCache`, keyed by DOM identity, cleared on any unverified commit)
   so a batch projects once per operation. `scripts/benchmark-operation-session.mjs` medians: off 265/277 ms vs warn
-  260 ms (within noise; a concurrent Word COM run made one sample 360 ms). Re-measure on a quiet machine: OPEN (enforce shipped without the re-measure).
+  260 ms (within noise; a concurrent Word COM run made one sample 360 ms). Re-measured 2026-10-11 (pre-0.9.0 B4, other agents running, 3 runs each, `DOCX_REDLINE_REVISION_FIDELITY=off` vs default, 10 replace operations): 1000 paragraphs batch 257 -> 358 ms (+39%), sequential 329 -> 431 ms (+31%); 5000 paragraphs batch 1346 -> 1848 ms (+37%), sequential 1747 -> 2248 ms (+29%). Over the ~10% budget (B1 adds two accepted-view projections per plain redline, B2 two numId scans); optimisation (scope projection to touched containers) deferred, aspirational, owner decision 2026-10-11.
 - **Mode resolution:** explicit `verifyRevisionFidelity` option (CLI `--revision-fidelity`), else env
   `DOCX_REDLINE_REVISION_FIDELITY` (diagnostic/test lanes), else `'enforce'`. The CLI agent profile rejects `off`;
   `effectiveOptions.verifyRevisionFidelity` reports the resolved mode.

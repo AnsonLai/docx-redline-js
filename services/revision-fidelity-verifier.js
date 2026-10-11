@@ -1,3 +1,4 @@
+import { getAllReferencedNumIdElements } from '../core/current-properties.js';
 import { projectWordRevisionView } from '../core/word-revision-semantics.js';
 
 /**
@@ -46,6 +47,10 @@ export const REVISION_FIDELITY_INVARIANTS = Object.freeze({
     UNTRACKED_CREATED_REVISION: {
         explanation: 'An untracked edit (generateRedlines: false) created a tracked revision (w:ins, w:del, a move, a property change or a paragraph-mark revision) that was not in the source, so the edit is not the plain change the caller asked for.',
         retry: 'Retry the same edit against the current extraction; if it is refused again the untracked path wrote a tracked revision, so report the operation instead of working around it, or make the edit tracked (generateRedlines: true) if a reviewable change is acceptable.'
+    },
+    ACCEPT_INTENT: {
+        explanation: 'Accept All of the target of the operation would not read as the complete replacement text the operation declared: content was lost, duplicated or left out of the accepted result.',
+        retry: 'Re-extract the target paragraph(s) and retry with the exact current text as the basis; for a small literal change use replacements instead of complete modified text, and keep list, table and Markdown structure out of a plain-text edit.'
     },
     REJECT_WRAPPERS: {
         explanation: 'Reject All of the output moves text into or out of a hyperlink, field or content control compared with the source.',
@@ -172,6 +177,127 @@ export function verifyUntrackedLocality({ before, after, targetSourceIndex }) {
     return violations.length ? { ok: false, violations } : { ok: true };
 }
 
+/**
+ * Numbering-part existence (REJECT_NUMBERING_REFS, part 2). Every numId the output binds or that
+ * Reject All would restore (current numPr and the historical numPr inside w:pPrChange) and that the
+ * source did not already reference must resolve to a w:num -> w:abstractNum -> w:lvl in the numbering
+ * parts available at the seam (source numbering plus parts generated in the session and by this operation).
+ * Ids the source already used are the source's responsibility and are not re-checked.
+ *
+ * @param {Object} input
+ * @param {Document} input.before - savepoint DOM
+ * @param {Document} input.after - post-mutation DOM
+ * @param {Array<string|null|undefined>} input.numberingXmls - numbering part texts available at the seam
+ */
+export function verifyNumberingReferences({ before, after, numberingXmls }) {
+    const references = documentNode => {
+        const found = new Map();
+        for (const numIdNode of getAllReferencedNumIdElements(documentNode)) {
+            const numId = numIdNode.getAttribute('w:val');
+            if (numId === null || numId === '' || numId === '0') continue;
+            const ilvlNode = Array.from(numIdNode.parentNode?.childNodes || []).find(child => child.nodeType === 1 && nameOf(child) === 'ilvl');
+            const ilvl = ilvlNode?.getAttribute('w:val') || '0';
+            if (!found.has(numId)) found.set(numId, new Set());
+            found.get(numId).add(ilvl);
+        }
+        return found;
+    };
+    const used = references(after);
+    if (used.size === 0) return { ok: true };
+    const known = references(before);
+    const text = (numberingXmls || []).filter(Boolean).join('\n');
+    const abstractLevels = new Map();
+    for (const match of text.matchAll(/<(?:\w+:)?abstractNum\b([^>]*)>([\s\S]*?)<\/(?:\w+:)?abstractNum>/g)) {
+        const id = /abstractNumId="([^"]*)"/.exec(match[1])?.[1];
+        if (id == null) continue;
+        const levels = abstractLevels.get(id) || new Set();
+        for (const lvl of match[2].matchAll(/<(?:\w+:)?lvl\b[^>]*?ilvl="([^"]*)"/g)) levels.add(lvl[1]);
+        abstractLevels.set(id, levels);
+    }
+    const numToAbstract = new Map();
+    for (const match of text.matchAll(/<(?:\w+:)?num\b([^>]*)>([\s\S]*?)<\/(?:\w+:)?num>/g)) {
+        const id = /numId="([^"]*)"/.exec(match[1])?.[1];
+        const abstractId = /abstractNumId[^>]*?val="([^"]*)"/.exec(match[2])?.[1];
+        if (id != null && abstractId != null) numToAbstract.set(id, abstractId);
+    }
+    const violations = [];
+    for (const [numId, levels] of used) {
+        if (known.has(numId)) continue;
+        const abstractId = numToAbstract.get(numId);
+        const available = abstractId != null ? abstractLevels.get(abstractId) : null;
+        let actual = null;
+        if (abstractId == null) actual = `numId ${numId} has no w:num in the output numbering`;
+        else if (!available) actual = `numId ${numId} points at missing w:abstractNum ${abstractId}`;
+        else {
+            const missing = [...levels].find(level => !available.has(level));
+            if (missing !== undefined) actual = `numId ${numId} level ${missing} is not defined by w:abstractNum ${abstractId}`;
+        }
+        if (actual === null) continue;
+        violations.push({
+            invariant: 'REJECT_NUMBERING_REFS',
+            paragraph: null,
+            expected: `numId ${numId} defined in the output numbering`,
+            actual,
+            explanation: 'The output (or what Reject All restores) references a list numId that no numbering definition in the output provides, so Word would drop or renumber the list.',
+            source: null,
+            output: null
+        });
+        if (violations.length >= MAX_REPORTED_VIOLATIONS) break;
+    }
+    return violations.length ? { ok: false, violations } : { ok: true };
+}
+
+const STRUCTURE_CHARACTERS = /\+\+|==|[*_#>`|~\[\]\\]/;
+const LIST_MARKER_LINE = /^\s*(?:[-+•●]|[A-Za-z0-9]{1,5}[.)]|\d[0-9.]*[.)]?|\(\w{1,4}\))\s/m;
+
+/** True when `modified` is plain text whose Accept All result is derivable verbatim (no Markdown, list or table syntax). */
+export function isPlainTextIntent(modified) {
+    return typeof modified === 'string' && modified.length > 0
+        && !STRUCTURE_CHARACTERS.test(modified) && !LIST_MARKER_LINE.test(modified);
+}
+
+/**
+ * ACCEPT_INTENT: Accept All of a plain-text redline's target range must equal the declared complete
+ * `modified` text (accepted-view paragraph texts joined by a newline). The range is located in the
+ * accepted view of the output by the untouched paragraphs before and after it.
+ *
+ * @param {Object} input
+ * @param {Document} input.before - savepoint DOM
+ * @param {Document} input.after - post-mutation DOM
+ * @param {{ from: number, to: number }} input.range - zero-based document positions of the target range in `before`
+ * @param {string} input.modified - declared complete replacement text
+ */
+export function verifyAcceptIntent({ before, after, range, modified }) {
+    const sourceView = projectWordRevisionView(before, 'accepted');
+    const outputView = projectWordRevisionView(after, 'accepted');
+    const prefix = sourceView.filter(record => record.sourceIndex < range.from).length;
+    const suffix = sourceView.filter(record => record.sourceIndex > range.to).length;
+    const targetRecords = sourceView.filter(record => record.sourceIndex >= range.from && record.sourceIndex <= range.to);
+    // Skip when the target is not a plain run of body paragraphs in the accepted view (a foreign deleted
+    // paragraph mark merges paragraphs there, so the target cannot be located by position).
+    if (targetRecords.length !== range.to - range.from + 1 || targetRecords.some(record => record.container !== 'body')) {
+        return { ok: true, skipped: 'target not positionally comparable' };
+    }
+    const region = outputView.slice(prefix, Math.max(prefix, outputView.length - suffix));
+    const actual = region.map(record => record.text).join('\n');
+    // Paragraph boundaries may differ (a list adjacency heuristic splits a concatenated edit into items);
+    // the text itself must be exactly what was declared.
+    const flat = value => value.replace(/\r?\n/g, '');
+    if (actual === modified || flat(actual) === flat(modified)) return { ok: true };
+    return {
+        ok: false,
+        violations: [{
+            invariant: 'ACCEPT_INTENT',
+            paragraph: null,
+            expected: modified,
+            actual,
+            explanation: REVISION_FIDELITY_INVARIANTS.ACCEPT_INTENT.explanation,
+            source: targetRecords[0] ? describeRecord(targetRecords[0]) : null,
+            output: region[0] ? describeRecord(region[0]) : null
+        }]
+    };
+}
+
 const REVISION_ELEMENTS = new Set([
     'ins', 'del', 'moveFrom', 'moveTo', 'rPrChange', 'pPrChange', 'sectPrChange', 'tblPrChange',
     'tblGridChange', 'tblPrExChange', 'trPrChange', 'tcPrChange', 'numberingChange',
@@ -286,6 +412,8 @@ export function buildRevisionFidelityError(violations, context = {}) {
                 ? `this untracked operation created a tracked revision (${first.invariant}: `
                 : first.invariant === 'ACCEPT_NEIGHBORS'
                 ? `this untracked operation changed a paragraph outside its target (${first.invariant} in the ${first.view} view at ${where}: `
+                : first.invariant === 'ACCEPT_INTENT'
+                ? `Accept All of this operation's target would not read as the requested text (${first.invariant} at ${where}: `
                 : `Reject All of this operation's output would not restore the source (${first.invariant} at ${where}: `)
             + (first.invariant === 'UNTRACKED_CREATED_REVISION'
                 ? `found ${first.actual}). `

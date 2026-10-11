@@ -344,6 +344,52 @@ function resolveTargetParagraph(xmlDoc, targetText, targetRef, opType, runtimeCo
     return resolved;
 }
 
+/**
+ * Zero-based document-order positions `{ from, to }` of an operation's target (and its targetEnd, when it
+ * is a range), resolved against the current DOM without mutating, capturing or warning. Used by the
+ * revision fidelity verifier to scope accept-first baselines and the accepted-intent check exactly.
+ * Returns null when the target or its end cannot be resolved.
+ */
+export function resolveOperationSourceRange(xmlDoc, targetText, targetRef, targetEndRef, runtimeContext, options = {}) {
+    const quiet = { ...options, _resolutionCapture: null, onInfo: () => { }, onWarn: () => { } };
+    const positionOf = paragraph => {
+        if (!paragraph) return null;
+        const position = getDocumentParagraphNodes(xmlDoc).indexOf(paragraph);
+        return position >= 0 ? position : null;
+    };
+    let start;
+    try {
+        start = resolveTargetParagraph(xmlDoc, targetText, targetRef, 'redline', runtimeContext, quiet);
+    } catch {
+        return null;
+    }
+    const from = positionOf(start?.paragraph);
+    if (from === null) return null;
+    const descriptor = options.targetEndDescriptor || null;
+    let endParagraph = null;
+    if (options._compiledSourceEndId && options._sourceTargetRegistry) {
+        endParagraph = options._sourceTargetRegistry.resolve(options._compiledSourceEndId, xmlDoc)?.paragraph || null;
+    } else if (descriptor) {
+        endParagraph = resolveTargetParagraph(xmlDoc, descriptor.text || '', descriptor.index, 'redline', runtimeContext, {
+            ...quiet,
+            targetDescriptor: descriptor,
+            _compiledSourceId: null
+        })?.paragraph || null;
+    } else if (targetEndRef) {
+        endParagraph = resolveTargetParagraphWithSnapshotShared(xmlDoc, {
+            targetRef: targetEndRef,
+            opType: 'redline',
+            targetRefSnapshot: runtimeContext?.targetRefSnapshot || null,
+            onInfo: () => { },
+            onWarn: () => { }
+        })?.paragraph || null;
+    } else {
+        return { from, to: from };
+    }
+    const to = positionOf(endParagraph);
+    return to !== null && to >= from ? { from, to } : null;
+}
+
 function extractReplacementNodes(outputOxml) {
     return extractReplacementNodesFromOoxml(outputOxml);
 }
@@ -2069,7 +2115,31 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
     let effectiveModifiedText = synthesizedTableMarkdown || modifiedText;
     const useTableScope = !!containingTable && isMarkdownTableText(effectiveModifiedText);
     const isTableMarkdownEdit = isMarkdownTableText(effectiveModifiedText);
-    const explicitRangeParagraphs = targetEndRef
+    // A targetEnd given as a compact handle (paragraphId + fingerprint, no numeric index) has no targetEndRef;
+    // its range comes from the batch-compiled end or the end descriptor, never silently dropped.
+    let compiledEndRange = null;
+    if (!targetEndRef && (options._compiledSourceEndId || options.targetEndDescriptor)) {
+        const rangeResolution = resolveOperationParagraphRange(xmlDoc, targetText, targetRef, targetEndRef, 'redline', runtimeContext, {
+            ...options,
+            _resolutionCapture: null
+        });
+        if (rangeResolution.error) {
+            return { documentXml, hasChanges: false, status: 'error', error: rangeResolution.error };
+        }
+        if (rangeResolution.paragraphs.length > 1) {
+            const container = rangeResolution.paragraphs[0].parentNode;
+            if (rangeResolution.paragraphs.some(paragraph => paragraph.parentNode !== container)) {
+                return {
+                    documentXml,
+                    hasChanges: false,
+                    status: 'error',
+                    error: { code: 'TARGET_RANGE_INVALID', message: 'A redline target range must stay inside one container (body, table cell, header, ...); it spans a table or other container boundary. Edit the paragraphs on each side separately.' }
+                };
+            }
+            compiledEndRange = rangeResolution.paragraphs;
+        }
+    }
+    const explicitRangeParagraphs = compiledEndRange ? compiledEndRange : targetEndRef
         ? resolveParagraphRangeByRefs(xmlDoc, targetRef, targetEndRef, {
             opType: 'redline',
             targetRefSnapshot: runtimeContext?.targetRefSnapshot || null,

@@ -35,6 +35,14 @@
   shown in `effectiveOptions`; the agent profile rejects `off`. Capability `revision-fidelity-v1`. A single-target untracked
   operation (`generateRedlines: false`) is also refused when it changes a paragraph outside its target in the Accept All or
   Reject All view (invariant `ACCEPT_NEIGHBORS`).
+- **`ACCEPT_INTENT` and numbering-part existence in the revision fidelity check:** a tracked plain-text `redline` with complete
+  `modified` (no Markdown, list-marker or table syntax; single-paragraph targets and `targetEnd` ranges) is refused when Accept All of
+  its target would not read as `modified`. `REJECT_NUMBERING_REFS` also refuses a numId that the output binds or Reject All restores
+  (including inside `w:pPrChange`) when the source did not already use it and no `w:num` -> `w:abstractNum` -> `w:lvl` defines it in the
+  numbering available to the operation. Accept-first range targets now use the exact accepted scope.
+- **Fixed: a `targetEnd` given as a compact handle (`paragraphId` + `fingerprint`, no numeric `index`) was silently ignored** for a
+  plain `redline`, so only the first paragraph of the range was replaced and the rest stayed in the accepted text. The range is now
+  resolved from the end handle; a range that crosses a table or other container boundary is refused `TARGET_RANGE_INVALID`.
 - **`ensureNumberingArtifactsInZip` always merges numbering, and refuses id conflicts:** the optional `mergeNumberingXml`
   callback is ignored (the single merge is `mergeNumberingParts` in `services/numbering-allocation.js`), an existing
   `numbering.xml` is no longer replaced when no callback is given, and an incoming `w:abstractNum` / `w:num` whose id exists with

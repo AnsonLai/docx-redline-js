@@ -20,6 +20,7 @@ import {
     applyListFormatToParagraphByExactText,
     insertIntoRejectedDeletedText,
     restoreDeletedParagraphByExactText,
+    resolveOperationSourceRange,
     applyToParagraphByExactText
 } from './document-operation-mutations.js';
 import { applyCommentReplyToParts } from './comment-replies.js';
@@ -41,6 +42,9 @@ import {
     buildRevisionFidelityError,
     resolveRevisionFidelityMode,
     revisionFidelityBaselineView,
+    isPlainTextIntent,
+    verifyAcceptIntent,
+    verifyNumberingReferences,
     verifyRevisionFidelity,
     verifyNoCreatedRevisions,
     verifyUntrackedLocality
@@ -280,6 +284,23 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
             if (typeof options?.onWarn === 'function') options.onWarn(msg);
         }
     };
+
+    // Resolve the target range before mutating, for the revision fidelity verifier: the exact accepted scope of an
+    // accept-first range target, and the target of a plain-text redline's ACCEPT_INTENT check.
+    const isRangeTarget = !!(operation.targetEndDescriptor || operation.targetEndRef);
+    const earlyFidelityMode = resolveRevisionFidelityMode(options.verifyRevisionFidelity);
+    const acceptFirstBaseline = revisionFidelityBaselineView(operationOptions.existingRevisions) === 'accepted';
+    const declaresAcceptIntent = operation.operationKind === 'redline'
+        && operationOptions.generateRedlines !== false
+        && !operation._localizedReplacementCompilation
+        && operation.structuredContent !== true
+        && isPlainTextIntent(operation.modified)
+        && !/\r?\n/.test(String(operation.targetDescriptor?.exactText ?? operation.targetDescriptor?.text ?? (typeof operation.target === 'string' ? operation.target : '')));
+    const sourceRange = earlyFidelityMode !== 'off' && session.document
+        && ((isRangeTarget && acceptFirstBaseline) || declaresAcceptIntent)
+        ? resolveOperationSourceRange(session.document, operation.target, operation.targetRef, operation.targetEndRef, runtimeContext, operationOptions)
+        : null;
+    const rangeEndIndex = sourceRange ? sourceRange.to : null;
 
     try {
         let result;
@@ -531,12 +552,15 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                 : (operationOptions.generateRedlines !== false ? 'tracked' : (Number.isInteger(singleTargetPosition) ? 'untracked' : null));
             if (fidelity === 'tracked') {
                 const baselineView = revisionFidelityBaselineView(operationOptions.existingRevisions);
-                // Accept-first policies accept revisions in the resolved target only; a range
-                // target has no resolved end, so the verifier falls back to its region heuristic.
+                // Accept-first policies accept revisions in the resolved target only. A range target uses the
+                // end resolved before mutation; if that could not be resolved the verifier falls back to its
+                // weaker region heuristic.
                 const targetPosition = resolutionCapture.resolvedTarget?.index;
-                const acceptedScope = Number.isInteger(targetPosition) && !operation.targetEndDescriptor && !operation.targetEndRef
-                    ? { from: targetPosition - 1, to: targetPosition - 1 }
-                    : null;
+                const acceptedScope = !Number.isInteger(targetPosition) ? null
+                    : !isRangeTarget ? { from: targetPosition - 1, to: targetPosition - 1 }
+                    : (Number.isInteger(rangeEndIndex) && rangeEndIndex >= targetPosition - 1
+                        ? { from: targetPosition - 1, to: rangeEndIndex }
+                        : null);
                 const fidelity = verifyRevisionFidelity({
                     before: baselineView === 'rejected' && cachedRejectedView ? cachedRejectedView : savepoint.document,
                     after: session.document,
@@ -544,6 +568,22 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                     acceptedScope
                 });
                 session._rejectedViewCache = { document: session.document, projection: fidelity.afterProjection };
+                const numbering = verifyNumberingReferences({
+                    before: savepoint.document,
+                    after: session.document,
+                    numberingXmls: [runtimeContext?.numberingXml || options.numberingXml, ...(session.numberingXmlParts || []), result.numberingXml]
+                });
+                if (!numbering.ok) {
+                    fidelity.ok = false;
+                    fidelity.violations = [...(fidelity.violations || []), ...numbering.violations];
+                }
+                if (declaresAcceptIntent && sourceRange) {
+                    const intent = verifyAcceptIntent({ before: savepoint.document, after: session.document, range: sourceRange, modified: operation.modified });
+                    if (!intent.ok) {
+                        fidelity.ok = false;
+                        fidelity.violations = [...(fidelity.violations || []), ...intent.violations];
+                    }
+                }
                 if (!fidelity.ok) {
                     const fidelityError = buildRevisionFidelityError(fidelity.violations, { mode: fidelityMode, baselineView });
                     const logLine = `${fidelityError.code} (operation ${operationIndex}${operation.operationId ? ` "${operation.operationId}"` : ''}): ${fidelityError.message}`;

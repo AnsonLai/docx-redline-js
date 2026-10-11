@@ -12,6 +12,9 @@ import {
     resolveRevisionFidelityMode,
     verifyNoCreatedRevisions,
     verifyRevisionFidelity,
+    isPlainTextIntent,
+    verifyAcceptIntent,
+    verifyNumberingReferences,
     verifyUntrackedLocality
 } from '../services/revision-fidelity-verifier.js';
 import { openDocx } from '../index.js';
@@ -132,6 +135,83 @@ const invariantOf = (before, after) => {
     // Losing a revision outside the target is still caught.
     const lost = verify(other + target + p(run('Tail')), p(run('Para 1: new')) + edited + p(run('Tail')));
     assert.equal(lost.violations[0].invariant, 'REJECT_PARAGRAPH_TEXT');
+}
+
+// 2c. Accept-first RANGE targets (B3): the exact { from, to } scope catches a revision lost in a paragraph adjacent to
+//     the range; the prefix/suffix heuristic (no scope) absorbs it.
+{
+    const foreignIns = (id, text) => `<w:ins w:id="${id}" w:author="Bob" w:date="2026-09-01T00:00:00Z"><w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:ins>`;
+    const before = p(run('Zero')) + p(run('One ') + foreignIns(31, 'a')) + p(run('Two ') + foreignIns(32, 'b')) + p(run('Three ') + foreignIns(33, 'c'));
+    const rangeEdited = p(run('One ') + delRun('a') + insRun('X')) + p(run('Two ') + delRun('b') + insRun('Y'));
+    const keepAdjacent = p(run('Zero')) + rangeEdited + p(run('Three ') + foreignIns(33, 'c'));
+    const lostAdjacent = p(run('Zero')) + rangeEdited + p(run('Three c'));
+    const verifyWith = (after, acceptedScope) => verifyRevisionFidelity({ before: doc(before), after: doc(after), baselineView: 'accepted', acceptedScope });
+    assert.equal(verifyWith(keepAdjacent, { from: 1, to: 2 }).ok, true);
+    assert.equal(verifyWith(lostAdjacent, { from: 1, to: 2 }).violations[0].invariant, 'REJECT_PARAGRAPH_TEXT');
+    assert.equal(verifyWith(lostAdjacent, null).ok, true, 'heuristic fallback absorbs the lost adjacent revision (why the exact scope matters)');
+
+    // End to end: the applier resolves the range end and passes the exact scope.
+    const xml = `<w:document xmlns:w="${W}"><w:body>${before}<w:sectPr/></w:body></w:document>`;
+    const result = await applyOperationsToDocumentXml(xml, [{
+        type: 'redline',
+        target: { index: 2, exactText: 'One a' },
+        targetEnd: { index: 3, exactText: 'Two b' },
+        modified: 'One X\nTwo Y',
+        existingRevisions: 'accept-all-first'
+    }], 'Verifier', {}, { atomic: true, strictTargets: true, verifyRevisionFidelity: 'enforce' });
+    assert.equal(result.status, 'ok', JSON.stringify(result.error || result.results));
+    assert.match(result.documentXml, /w:author="Bob"[^>]*>\s*<w:r><w:t xml:space="preserve">c</);
+}
+
+// 2d. Numbering-part existence (B2): a numId bound by the output (or restored by Reject All via w:pPrChange)
+//     must resolve to w:num -> w:abstractNum -> w:lvl in the available numbering parts.
+{
+    const numbering = `<w:numbering xmlns:w="${W}"><w:abstractNum w:abstractNumId="4"><w:lvl w:ilvl="0"/><w:lvl w:ilvl="1"/></w:abstractNum><w:num w:numId="7"><w:abstractNumId w:val="4"/></w:num><w:num w:numId="8"><w:abstractNumId w:val="99"/></w:num></w:numbering>`;
+    const before = p(run('Item')) + p(run('Tail'));
+    const bound = (numId, ilvl = 0) => p(insRun('Item'), numPr(numId, ilvl)) + p(run('Tail'));
+    const check = (after, parts = [numbering]) => verifyNumberingReferences({ before: doc(before), after: doc(after), numberingXmls: parts });
+    assert.equal(check(bound(7)).ok, true);
+    assert.equal(check(bound(7, 1)).ok, true);
+    const dangling = check(bound(9));
+    assert.equal(dangling.violations[0].invariant, 'REJECT_NUMBERING_REFS');
+    assert.match(dangling.violations[0].actual, /numId 9 has no w:num/);
+    assert.match(check(bound(8)).violations[0].actual, /missing w:abstractNum 99/);
+    assert.match(check(bound(7, 5)).violations[0].actual, /level 5 is not defined/);
+    assert.equal(check(bound(7), []).ok, false, 'no numbering parts at all');
+    // A restored historical numId (inside w:pPrChange) counts too.
+    const restored = p(run('Item'), `<w:pPrChange ${META}><w:pPr>${numPr(9)}</w:pPr></w:pPrChange>`) + p(run('Tail'));
+    assert.equal(check(restored).violations[0].invariant, 'REJECT_NUMBERING_REFS');
+    // Ids the source already referenced are the source's responsibility.
+    const sourceBound = p(run('Item'), numPr(9)) + p(run('Tail'));
+    assert.equal(verifyNumberingReferences({ before: doc(sourceBound), after: doc(sourceBound), numberingXmls: [] }).ok, true);
+}
+
+// 2e. ACCEPT_INTENT (B1): a plain-text redline's Accept All target equals the declared `modified`. Found by the
+//     check: a targetEnd given as a compact handle (no numeric index) was silently ignored, so only the first
+//     paragraph of the range was replaced and the rest stayed in the accepted view.
+{
+    const xml = `<w:document xmlns:w="${W}"><w:body>${['Alpha clause.', 'Beta clause.', 'Gamma clause.'].map(t => p(run(t))).join('')}<w:sectPr/></w:body></w:document>`;
+    const result = await applyOperationsToDocumentXml(xml, [{
+        type: 'redline',
+        target: { exactText: 'Alpha clause.' },
+        targetEnd: { exactText: 'Beta clause.' },
+        modified: 'Merged clause.'
+    }], 'Verifier', {}, { atomic: true, verifyRevisionFidelity: 'enforce' });
+    assert.equal(result.status, 'ok', JSON.stringify(result.error || result.results));
+    assert.deepEqual(wordRevisionParagraphTexts(parseOoxmlSafe(result.documentXml).doc, 'accepted'), ['Merged clause.', 'Gamma clause.']);
+    assert.deepEqual(wordRevisionParagraphTexts(parseOoxmlSafe(result.documentXml).doc, 'rejected'), ['Alpha clause.', 'Beta clause.', 'Gamma clause.']);
+
+    // Unit: lost/duplicated text is refused; structure and Markdown are not declared intent.
+    const before = doc(p(run('One')) + p(run('Two')));
+    const intent = after => verifyAcceptIntent({ before, after: doc(after), range: { from: 0, to: 0 }, modified: 'Uno' });
+    assert.equal(intent(p(delRun('One') + insRun('Uno')) + p(run('Two'))).ok, true);
+    const lost = intent(p(delRun('One') + insRun('Un')) + p(run('Two')));
+    assert.equal(lost.violations[0].invariant, 'ACCEPT_INTENT');
+    assert.match(buildRevisionFidelityError(lost.violations, { mode: 'enforce' }).message, /Accept All of this operation's target would not read as the requested text \(ACCEPT_INTENT/);
+    for (const structured of ['- item', '1. item', '**bold**', 'a | b', '# Heading', 'x ++u++ y', '']) {
+        assert.equal(isPlainTextIntent(structured), false, structured);
+    }
+    assert.equal(isPlainTextIntent('Plain sentence, with punctuation (and brackets).\nSecond line.'), true);
 }
 
 // 3. Mutation test of the verifier against real library output.
