@@ -369,6 +369,77 @@ export function allocateNumberingForReplacement(params) {
     return { policy: 'passthrough', numberingXml: numberingXml ?? null, replacementNodes };
 }
 
+/** Same key `list-format convert-plain` records, so redline conversions and list-format share one sequence. */
+function batchSequenceKey(numFmt, ilvl, lvlText) {
+    const terminator = String(lvlText || '').replace(/%\d+/g, '').trim() || '.';
+    return `list-format:${numFmt}:${ilvl}:${numFmt === 'bullet' ? '' : terminator}`;
+}
+
+/**
+ * Describes the single list a generated payload creates: every new (not tracked-deleted) list paragraph binds one
+ * `numId` at one level. Returns null for nested, multi-list or unresolvable payloads (those never join a sequence).
+ */
+function describeGeneratedList(numberingXml, replacementNodes) {
+    const bindings = [];
+    for (const node of replacementNodes || []) {
+        if (isTrackedDeletedParagraph(node)) continue;
+        bindings.push(...currentBindings(node));
+    }
+    if (bindings.length === 0) return null;
+    const { numId, ilvl } = bindings[0];
+    if (numId == null || numId === 0 || bindings.some(binding => binding.numId !== numId || binding.ilvl !== ilvl)) return null;
+    const doc = parseOoxml(numberingXml);
+    if (hasXmlParseError(doc)) return null;
+    const num = descendants(doc, 'num').find(candidate => getElementId(candidate, ['w:numId', 'numId']) === Number(numId));
+    const abstract = findAbstractForNum(doc, numId);
+    const lvl = descendants(abstract, 'lvl').find(candidate => valOfIlvl(candidate) === ilvl);
+    const numFmt = descendants(lvl, 'numFmt')[0]?.getAttribute('w:val');
+    if (!num || !lvl || !numFmt) return null;
+    const lvlText = descendants(lvl, 'lvlText')[0]?.getAttribute('w:val') || '';
+    const override = wordChildren(num, 'lvlOverride').find(candidate => valOfIlvl(candidate) === ilvl);
+    const start = valOf(wordChildren(override, 'startOverride')[0]) ?? valOf(descendants(lvl, 'start')[0]) ?? 1;
+    const isBullet = normalizeListFormat(numFmt) === 'bullet';
+    return {
+        numId,
+        ilvl,
+        count: bindings.length,
+        isBullet,
+        start,
+        key: batchSequenceKey(isBullet ? 'bullet' : numFmt, ilvl, lvlText)
+    };
+}
+
+/**
+ * Batch sequence: separate operations of one batch that generate items of the same kind, format and level continue
+ * ONE numbering instance while their values continue (`A.` then `B.`; bullets always). A gap or a different format
+ * allocates a new instance. The previous entry is reused only while its numId is still bound in the document
+ * (`isNumIdLive`), so a refused or rolled-back operation cannot poison the sequence. The sequence is the one
+ * `list-format convert-plain` uses (same keys), so ids still come from the document-scoped allocator: a continued
+ * list reuses an id that was already allocated, and a new list keeps the id the caller already reserved.
+ * Returns `{ numId, replacementNodes }` rebound to the previous instance (the caller drops the generated payload),
+ * or null when the caller keeps its own allocation (which this call has recorded as the new sequence entry).
+ */
+export function continueBatchListSequence({ numberingXml, replacementNodes, sequence, isNumIdLive }) {
+    if (!(sequence instanceof Map) || !numberingXml) return null;
+    const described = describeGeneratedList(numberingXml, replacementNodes);
+    if (!described) return null;
+    const previous = sequence.get(described.key) || null;
+    const live = previous && previous.numId != null && (typeof isNumIdLive !== 'function' || isNumIdLive(previous.numId));
+    const continues = live && (described.isBullet || previous.nextStartAt === described.start);
+    const nextStartAt = described.isBullet ? null : described.start + described.count;
+    if (!continues) {
+        sequence.set(described.key, { numId: String(described.numId), nextStartAt });
+        return null;
+    }
+    const clonedNodes = replacementNodes.map(node => (node?.cloneNode ? node.cloneNode(true) : node));
+    for (const node of clonedNodes) {
+        if (isTrackedDeletedParagraph(node)) continue;
+        for (const numIdElement of getCurrentNumIdElements(node)) numIdElement.setAttribute('w:val', String(previous.numId));
+    }
+    sequence.set(described.key, { numId: String(previous.numId), nextStartAt });
+    return { numId: previous.numId, replacementNodes: clonedNodes };
+}
+
 // ---------------------------------------------------------------------------------------------------------
 // Merge (R2): the only numbering merge in the package
 // ---------------------------------------------------------------------------------------------------------

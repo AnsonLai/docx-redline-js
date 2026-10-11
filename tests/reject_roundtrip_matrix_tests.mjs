@@ -126,6 +126,15 @@ function checkApplied(context, sourceEntries, sourceDocXml, kindInfo, path, run)
             fail({ ...context, path }, `accepted view lacks intended text ${JSON.stringify(expected)}`, { accepted: texts(resultAccepted) });
         }
     }
+    // (3b) Two separate continuing conversions in one batch (A. then B.) are ONE list.
+    if (kindInfo.kind === 'list-sequence-redline') {
+        const [first, second] = kindInfo.expectAccepted.map(text => resultAccepted.find(record => record.text === text));
+        const firstId = first?.numPr?.numId;
+        const secondId = second?.numPr?.numId;
+        if (first && second && first !== second && (firstId == null || String(firstId) !== String(secondId))) {
+            fail({ ...context, path }, 'separate continuing conversions did not share one numbering instance', { first: firstId, second: secondId });
+        }
+    }
     // (6) numbering integrity: no numId/abstractNum/ilvl reference is left dangling that the source did not have.
     const sourceNumbering = partText(sourceEntries, 'word/numbering.xml');
     const preExisting = issueKeys(validateNumberingIntegrity(sourceDocXml, sourceNumbering));

@@ -935,4 +935,86 @@ const levelOf = (numberingXml, numId, ilvl) => {
     assert.equal(innerError(refused).code, 'LIST_FORMAT_COMPOSITION_CONFLICT');
 }
 
+// ---------------------------------------------------------------------------------------------------------
+// 12. Separate operations of one batch continue one list (2026-10-02 report, 0.8.4 regression): two redlines that
+//     turn non-adjacent headers into continuing markers share one w:num, allocated through the numbering allocator.
+// ---------------------------------------------------------------------------------------------------------
+{
+    const quiet = console.log;
+    console.log = () => { };
+    try {
+        const body = [p('1. First Header'), p('Body one.'), p('2. Second Header'), p('Body two.'), p('3. Third Header')].join('');
+        const bytes = buildDocx(body);
+        const before = labelsOf(bytes);
+        const sourceEntries = unzipDocx(bytes);
+        const sourceNumbering = dec.decode(sourceEntries.get('word/numbering.xml'));
+        const sourceNumIds = new Set(el(parse(sourceNumbering), 'num').map(node => attr(node, 'numId')));
+        const redline = (from, to) => ({ type: 'redline', target: { exactText: from }, modified: to });
+        const run = async (operations, options = {}) => {
+            const result = await openDocx(bytes).applyOperations(operations, { author: AUTHOR, ...options });
+            assert.equal(result.status, 'ok', JSON.stringify(innerError(result) || null));
+            const output = result.toUint8Array();
+            const accepted = (await openDocx(output).resolveRevisions('accept', { allAuthors: true })).toUint8Array();
+            const rejected = (await openDocx(output).resolveRevisions('reject', { allAuthors: true })).toUint8Array();
+            assert.deepEqual(labelsOf(rejected), before, 'Reject All restores the literal markers');
+            const entries = unzipDocx(output);
+            assert.deepEqual(validateNumberingIntegrity(dec.decode(entries.get('word/document.xml')), dec.decode(entries.get('word/numbering.xml'))), []);
+            const acceptedListOf = text => openDocx(accepted).inspect({}).paragraphs.find(item => item.text === text)?.list ?? null;
+            return { output, acceptedListOf, acceptedLabels: labelsOf(accepted) };
+        };
+
+        // Continuing values (A. then B.): ONE instance, labels A. and B., id not colliding with the source.
+        const continuing = await run([redline('1. First Header', 'A. First Header'), redline('2. Second Header', 'B. Second Header')]);
+        const first = continuing.acceptedListOf('First Header');
+        const second = continuing.acceptedListOf('Second Header');
+        assert.equal(first.numId, second.numId, 'the two conversions share one numbering instance');
+        assert.deepEqual([first.label, second.label], ['A.', 'B.']);
+        assert.equal(sourceNumIds.has(String(first.numId)), false, 'the id comes from the allocator, not from the source');
+
+        // A convert-plain of a typed A. followed by redline conversions of 2. and 3. continue the same instance.
+        const mixedBytes = buildDocx([p('A. First Header'), p('Body one.'), p('2. Second Header'), p('Body two.'), p('3. Third Header')].join(''));
+        const mixedResult = await openDocx(mixedBytes).applyOperations([
+            { type: 'list-format', target: { exactText: 'A. First Header' }, list: { mode: 'convert-plain' } },
+            redline('2. Second Header', 'B. Second Header'),
+            redline('3. Third Header', 'C. Third Header')
+        ], { author: AUTHOR });
+        assert.equal(mixedResult.status, 'ok', JSON.stringify(innerError(mixedResult) || null));
+        const mixedAccepted = (await openDocx(mixedResult.toUint8Array()).resolveRevisions('accept', { allAuthors: true })).toUint8Array();
+        const threeLists = ['First Header', 'Second Header', 'Third Header']
+            .map(text => openDocx(mixedAccepted).inspect({}).paragraphs.find(item => item.text === text)?.list ?? null);
+        assert.equal(new Set(threeLists.map(list => list?.numId)).size, 1, 'convert-plain and redline conversions share one instance');
+        assert.deepEqual(threeLists.map(list => list?.label), ['A.', 'B.', 'C.']);
+
+        // A gap (A. then C.) starts a new instance at the typed value.
+        const gap = await run([redline('1. First Header', 'A. First Header'), redline('3. Third Header', 'C. Third Header')]);
+        const gapFirst = gap.acceptedListOf('First Header');
+        const gapThird = gap.acceptedListOf('Third Header');
+        assert.notEqual(gapFirst.numId, gapThird.numId);
+        assert.deepEqual([gapFirst.label, gapThird.label], ['A.', 'C.']);
+
+        // A different format (A. then ii.) starts a new instance.
+        const mixed = await run([redline('1. First Header', 'A. First Header'), redline('2. Second Header', 'ii. Second Header')]);
+        const mixedFirst = mixed.acceptedListOf('First Header');
+        const mixedSecond = mixed.acceptedListOf('Second Header');
+        assert.notEqual(mixedFirst.numId, mixedSecond.numId);
+        assert.deepEqual([mixedFirst.label, mixedSecond.label], ['A.', 'ii.']);
+
+        // Bare runner with the numbering context, as the reproducer calls it.
+        const entries = unzipDocx(bytes);
+        const numberingXml = dec.decode(entries.get('word/numbering.xml'));
+        const bareResult = await bare(dec.decode(entries.get('word/document.xml')),
+            [redline('1. First Header', 'A. First Header'), redline('2. Second Header', 'B. Second Header')],
+            { context: { numberingXml, stylesXml: dec.decode(entries.get('word/styles.xml')) } });
+        assert.equal(bareResult.status, 'ok', JSON.stringify(innerError(bareResult) || null));
+        const accepted = views(bareResult.documentXml).accepted;
+        const headerNumIds = accepted.filter(record => /Header$/.test(record.text) && record.numId).map(record => record.numId);
+        assert.equal(headerNumIds.length, 2);
+        assert.equal(headerNumIds[0], headerNumIds[1], 'bare runner: one numbering instance');
+        const rejectedBare = views(bareResult.documentXml).rejected;
+        assert.deepEqual(rejectedBare.filter(record => /Header$/.test(record.text)).map(record => record.numId), [null, null, null], 'bare runner: Reject All restores plain headers');
+    } finally {
+        console.log = quiet;
+    }
+}
+
 console.log('PASS: list-format operation');

@@ -87,8 +87,13 @@ import {
     extractFirstParagraphNumId,
     buildExplicitDecimalMultilevelNumberingXml
 } from './numbering-helpers.js';
-import { allocateNumberingForReplacement, checkNumberingBinding, mergeNumberingParts } from './numbering-allocation.js';
-import { convertPlainParagraphsToList } from './list-format-mutation.js';
+import {
+    allocateNumberingForReplacement,
+    checkNumberingBinding,
+    continueBatchListSequence,
+    mergeNumberingParts
+} from './numbering-allocation.js';
+import { convertPlainParagraphsToList, numIdIsLive, sequenceMapOf } from './list-format-mutation.js';
 import { changeListParagraphsFormat, joinListParagraphs } from './list-format-change.js';
 import { LIST_FORMAT_UNCHANGED, normalizeListFormatRequest } from './list-format.js';
 import {
@@ -1683,6 +1688,22 @@ async function trySingleParagraphListStructuralFallback({
         );
     }
 
+    if (!hasExplicitStartAt && numberingXml && runtimeContext) {
+        // Separate operations of one batch that convert continuing markers (`A.` then `B.`) join one numbering
+        // instance, through the same sequence state `list-format convert-plain` uses.
+        const batch = continueBatchListSequence({
+            numberingXml,
+            replacementNodes,
+            sequence: sequenceMapOf(runtimeContext),
+            isNumIdLive: numId => numIdIsLive(xmlDoc, numId)
+        });
+        if (batch) {
+            replacementNodes = batch.replacementNodes;
+            numberingXml = null;
+            onInfo(`[List] Continuing batch list numbering (numId ${batch.numId}).`);
+        }
+    }
+
     if (!hasExplicitStartAt && !hasNonDecimalStart && runtimeContext?.listFallbackSharedNumIdByKey instanceof Map) {
         const sharedNumId = numberingKey ? runtimeContext.listFallbackSharedNumIdByKey.get(numberingKey) : null;
         if (sharedNumId) {
@@ -2161,8 +2182,11 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
             // Word cannot end the body (or a container) with a table: it would add an untracked paragraph
             // there that Reject All leaves behind. Supply the paragraph ourselves with a tracked-inserted
             // mark so Reject All removes it and the source paragraph count is restored.
-            const endsContainer = !followingNode
-                || (followingNode.nodeType === 1 && followingNode.namespaceURI === NS_W && followingNode.localName === 'sectPr');
+            // Skip whitespace/comment nodes of pretty-printed documents when deciding what follows the table.
+            let followingElement = followingNode;
+            while (followingElement && followingElement.nodeType !== 1) followingElement = followingElement.nextSibling;
+            const endsContainer = !followingElement
+                || (followingElement.namespaceURI === NS_W && followingElement.localName === 'sectPr');
             if (endsContainer) {
                 const trailing = createWordElement(xmlDoc, 'w:p');
                 const trailingPPr = clonePropertiesWithoutRevisionHistory(getDirectWordChild(targetParagraph, 'pPr'));

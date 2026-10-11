@@ -169,12 +169,12 @@ function stripMarkerPrefix(xmlDoc, segments, prefixLength, { author, generateRed
 // Numbering
 // ---------------------------------------------------------------------------------------------------------
 
-function numIdIsLive(xmlDoc, numId) {
+export function numIdIsLive(xmlDoc, numId) {
     if (numId == null) return false;
     return getCurrentNumIdElements(xmlDoc.documentElement).some(element => readVal(element) === String(numId));
 }
 
-function sequenceMapOf(runtimeContext) {
+export function sequenceMapOf(runtimeContext) {
     if (!runtimeContext || typeof runtimeContext !== 'object') return null;
     if (!runtimeContext.listFallbackSequenceState || typeof runtimeContext.listFallbackSequenceState !== 'object') {
         runtimeContext.listFallbackSequenceState = { explicitByNumberingKey: new Map() };

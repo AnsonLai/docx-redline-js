@@ -60,6 +60,7 @@ export const OPERATION_KINDS = [
     'list-format-change-format',
     'list-format-join',
     'list-format-redline-compose',
+    'list-sequence-redline',
     'last-paragraph-replace'
 ];
 
@@ -368,6 +369,21 @@ export function generateOperation(rng, paragraphs, kind, serial = 0) {
                 paragraphIndex = item.i;
             }
             return { kind, paragraphIndex, expectAccepted, operation: rng.chance(0.5) ? [redline, listFormat] : [listFormat, redline] };
+        }
+        case 'list-sequence-redline': {
+            // 2026-10-02 report: two separate redlines in one batch turn two plain typed headers (not necessarily adjacent)
+            // into continuing markers (A. then B.). Both must land in ONE numbering instance and Reject All must restore both.
+            const typed = withText
+                .filter(({ q }) => !q.list && !q.inTable)
+                .map(entry => ({ ...entry, marker: typedMarker(entry.q.exactText) }))
+                .filter(entry => entry.marker && entry.marker.family !== 'bullet');
+            const pairs = [];
+            for (const a of typed) for (const b of typed) if (b.i > a.i) pairs.push([a, b]);
+            if (pairs.length === 0) return null;
+            const [first, second] = rng.pick(pairs);
+            const redlineOf = (site, marker, suffix) => ({ ...base, operationId: `${operationId}-${suffix}`, target: targetOf(site.q), modified: `${marker}. ${site.marker.rest}` });
+            return { kind, paragraphIndex: first.i, expectAccepted: [first.marker.rest, second.marker.rest],
+                operation: [redlineOf(first, 'A', 'a'), redlineOf(second, 'B', 'b')] };
         }
         case 'last-paragraph-replace': {
             let index = n - 1;
