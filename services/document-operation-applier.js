@@ -40,6 +40,7 @@ import { extractCanonicalParagraphText } from '../core/paragraph-text.js';
 import { buildLocalizedReplacementChange } from './localized-replacement-compiler.js';
 import {
     buildRevisionFidelityError,
+    createFidelityViews,
     resolveRevisionFidelityMode,
     revisionFidelityBaselineView,
     isPlainTextIntent,
@@ -236,9 +237,13 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
     const savepoint = session.createSavepoint();
     // The previous verified operation's Reject All projection is this operation's baseline
     // while the live DOM is the one it was computed on (a restored savepoint swaps the DOM).
-    const cachedRejectedView = session._rejectedViewCache?.document === session.document
-        ? session._rejectedViewCache.projection
-        : null;
+    // The memo is consumed here: any path that does not store a fresh one (an unverified commit, an
+    // early return) leaves it empty, so a stale entry can never describe a mutated DOM. The before-state
+    // entry is re-keyed to the savepoint clone, which is the live DOM again after a refusal restores it.
+    const priorViews = session._fidelityViews?.document === session.document ? session._fidelityViews : null;
+    session._fidelityViews = null;
+    const beforeViews = { ...(priorViews || createFidelityViews(null)), document: savepoint.document };
+    const afterViews = createFidelityViews(session.document);
     session.receiptCollector?.beginOperation(
         operationIndex,
         operation.operationId,
@@ -562,23 +567,26 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                         ? { from: targetPosition - 1, to: rangeEndIndex }
                         : null);
                 const fidelity = verifyRevisionFidelity({
-                    before: baselineView === 'rejected' && cachedRejectedView ? cachedRejectedView : savepoint.document,
+                    before: savepoint.document,
                     after: session.document,
                     baselineView,
-                    acceptedScope
+                    acceptedScope,
+                    beforeViews,
+                    afterViews
                 });
-                session._rejectedViewCache = { document: session.document, projection: fidelity.afterProjection };
                 const numbering = verifyNumberingReferences({
                     before: savepoint.document,
                     after: session.document,
-                    numberingXmls: [runtimeContext?.numberingXml || options.numberingXml, ...(session.numberingXmlParts || []), result.numberingXml]
+                    numberingXmls: [runtimeContext?.numberingXml || options.numberingXml, ...(session.numberingXmlParts || []), result.numberingXml],
+                    beforeViews,
+                    afterViews
                 });
                 if (!numbering.ok) {
                     fidelity.ok = false;
                     fidelity.violations = [...(fidelity.violations || []), ...numbering.violations];
                 }
                 if (declaresAcceptIntent && sourceRange) {
-                    const intent = verifyAcceptIntent({ before: savepoint.document, after: session.document, range: sourceRange, modified: operation.modified });
+                    const intent = verifyAcceptIntent({ before: savepoint.document, after: session.document, range: sourceRange, modified: operation.modified, beforeViews, afterViews });
                     if (!intent.ok) {
                         fidelity.ok = false;
                         fidelity.violations = [...(fidelity.violations || []), ...intent.violations];
@@ -590,6 +598,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                     if (typeof options?.onWarn === 'function') options.onWarn(logLine);
                     if (fidelityMode === 'enforce') {
                         session.restoreSavepoint(savepoint);
+                        session._fidelityViews = beforeViews;
                         const refusedReceipt = createEmptyReceipt(operationIndex, operation.operationId, authorUsed, 'refused');
                         refusedReceipt.warnings.push(logLine);
                         return {
@@ -608,12 +617,11 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                     result.revisionFidelityViolations = fidelity.violations;
                 }
             } else {
-                session._rejectedViewCache = null;
                 let locality = fidelity === 'untracked'
-                    ? verifyUntrackedLocality({ before: savepoint.document, after: session.document, targetSourceIndex: singleTargetPosition - 1 })
+                    ? verifyUntrackedLocality({ before: savepoint.document, after: session.document, targetSourceIndex: singleTargetPosition - 1, beforeViews, afterViews })
                     : { ok: true };
                 if (locality.ok && fidelityMode !== 'off' && operationOptions.generateRedlines === false) {
-                    locality = verifyNoCreatedRevisions({ before: savepoint.document, after: session.document });
+                    locality = verifyNoCreatedRevisions({ before: savepoint.document, after: session.document, beforeViews, afterViews });
                 }
                 if (!locality.ok) {
                     const fidelityError = buildRevisionFidelityError(locality.violations, { mode: fidelityMode });
@@ -621,6 +629,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                     if (typeof options?.onWarn === 'function') options.onWarn(logLine);
                     if (fidelityMode === 'enforce') {
                         session.restoreSavepoint(savepoint);
+                        session._fidelityViews = beforeViews;
                         const refusedReceipt = createEmptyReceipt(operationIndex, operation.operationId, authorUsed, 'refused');
                         refusedReceipt.warnings.push(logLine);
                         return {
@@ -639,6 +648,8 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                     result.revisionFidelityViolations = locality.violations;
                 }
             }
+            // Both verified branches leave the after-state's projections as the next operation's baseline.
+            if (fidelity === 'tracked' || fidelity === 'untracked') session._fidelityViews = afterViews;
             session.markMutationCommitted(true);
             if (operation._compiledSourceId && session.sourceTargetRegistry) {
                 session.sourceTargetRegistry.commitMutation(

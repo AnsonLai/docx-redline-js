@@ -72,6 +72,21 @@ function describeRecord(record) {
     } : null;
 }
 
+/**
+ * Session-level memo of one document's derived views. `document` identifies the DOM it was computed on;
+ * `accepted`/`rejected` are projections, `revisionSignatures` the revision-id to signature map and `numberingRefs` the
+ * numbering references. Fields fill lazily so a verifier computes each at most once per DOM, and the
+ * after-state's entry becomes the next operation's baseline.
+ */
+export function createFidelityViews(document) {
+    return { document, accepted: null, rejected: null, revisionSignatures: null, numberingRefs: null };
+}
+
+function memoView(views, documentNode, view) {
+    if (!views) return projectWordRevisionView(documentNode, view);
+    return views[view] || (views[view] = projectWordRevisionView(documentNode, view));
+}
+
 /** Projects the Reject All view of a document DOM; exposed so callers can cache it. */
 export function projectRejectedView(documentNode) {
     return projectWordRevisionView(documentNode, 'rejected');
@@ -90,11 +105,11 @@ export function projectRejectedView(documentNode) {
  *   actual: string|null, explanation: string, source: Object|null, output: Object|null }>,
  *   afterProjection: Array }} `afterProjection` lets a session reuse it as the next operation's baseline
  */
-export function verifyRevisionFidelity({ before, after, baselineView = 'rejected', acceptedScope = null }) {
-    const actual = Array.isArray(after) ? after : projectRejectedView(after);
-    const rejectedBefore = Array.isArray(before) ? before : projectRejectedView(before);
+export function verifyRevisionFidelity({ before, after, baselineView = 'rejected', acceptedScope = null, beforeViews = null, afterViews = null }) {
+    const actual = Array.isArray(after) ? after : memoView(afterViews, after, 'rejected');
+    const rejectedBefore = Array.isArray(before) ? before : memoView(beforeViews, before, 'rejected');
     const expected = baselineView === 'accepted' && !Array.isArray(before)
-        ? spliceAcceptedRegion(rejectedBefore, projectWordRevisionView(before, 'accepted'), actual, acceptedScope)
+        ? spliceAcceptedRegion(rejectedBefore, memoView(beforeViews, before, 'accepted'), actual, acceptedScope)
         : rejectedBefore;
     const violations = [];
     const push = (invariant, paragraph, expectedValue, actualValue, sourceRecord, outputRecord) => {
@@ -153,11 +168,11 @@ const sameRecord = (a, b) => a.text === b.text && a.props === b.props && a.conta
  * @param {Document} input.after - post-mutation DOM
  * @param {number} input.targetSourceIndex - zero-based body paragraph position of the target in `before`
  */
-export function verifyUntrackedLocality({ before, after, targetSourceIndex }) {
+export function verifyUntrackedLocality({ before, after, targetSourceIndex, beforeViews = null, afterViews = null }) {
     const violations = [];
     for (const view of ['accepted', 'rejected']) {
-        const expected = projectWordRevisionView(before, view);
-        const actual = projectWordRevisionView(after, view);
+        const expected = memoView(beforeViews, before, view);
+        const actual = memoView(afterViews, after, view);
         const targetPosition = expected.findIndex(record => record.sourceIndex >= targetSourceIndex);
         if (targetPosition < 0) continue;
         const needSuffix = expected.length - targetPosition - 1;
@@ -177,6 +192,33 @@ export function verifyUntrackedLocality({ before, after, targetSourceIndex }) {
     return violations.length ? { ok: false, violations } : { ok: true };
 }
 
+const numberingDefinitionCache = new Map();
+const NUMBERING_DEFINITION_CACHE_SIZE = 8;
+
+/** Parses one numbering part's abstractNum levels and num -> abstractNum links; memoized by the part text. */
+function parseNumberingDefinitions(text) {
+    const cached = numberingDefinitionCache.get(text);
+    if (cached) return cached;
+    const abstractLevels = new Map();
+    for (const match of text.matchAll(/<(?:\w+:)?abstractNum([^>]*)>([\s\S]*?)<\/(?:\w+:)?abstractNum>/g)) {
+        const id = /abstractNumId="([^"]*)"/.exec(match[1])?.[1];
+        if (id == null) continue;
+        const levels = abstractLevels.get(id) || new Set();
+        for (const lvl of match[2].matchAll(/<(?:\w+:)?lvl[^>]*?ilvl="([^"]*)"/g)) levels.add(lvl[1]);
+        abstractLevels.set(id, levels);
+    }
+    const numToAbstract = new Map();
+    for (const match of text.matchAll(/<(?:\w+:)?num([^>]*)>([\s\S]*?)<\/(?:\w+:)?num>/g)) {
+        const id = /numId="([^"]*)"/.exec(match[1])?.[1];
+        const abstractId = /abstractNumId[^>]*?val="([^"]*)"/.exec(match[2])?.[1];
+        if (id != null && abstractId != null) numToAbstract.set(id, abstractId);
+    }
+    const definitions = { abstractLevels, numToAbstract };
+    if (numberingDefinitionCache.size >= NUMBERING_DEFINITION_CACHE_SIZE) numberingDefinitionCache.delete(numberingDefinitionCache.keys().next().value);
+    numberingDefinitionCache.set(text, definitions);
+    return definitions;
+}
+
 /**
  * Numbering-part existence (REJECT_NUMBERING_REFS, part 2). Every numId the output binds or that
  * Reject All would restore (current numPr and the historical numPr inside w:pPrChange) and that the
@@ -189,7 +231,7 @@ export function verifyUntrackedLocality({ before, after, targetSourceIndex }) {
  * @param {Document} input.after - post-mutation DOM
  * @param {Array<string|null|undefined>} input.numberingXmls - numbering part texts available at the seam
  */
-export function verifyNumberingReferences({ before, after, numberingXmls }) {
+export function verifyNumberingReferences({ before, after, numberingXmls, beforeViews = null, afterViews = null }) {
     const references = documentNode => {
         const found = new Map();
         for (const numIdNode of getAllReferencedNumIdElements(documentNode)) {
@@ -267,9 +309,9 @@ export function isPlainTextIntent(modified) {
  * @param {{ from: number, to: number }} input.range - zero-based document positions of the target range in `before`
  * @param {string} input.modified - declared complete replacement text
  */
-export function verifyAcceptIntent({ before, after, range, modified }) {
-    const sourceView = projectWordRevisionView(before, 'accepted');
-    const outputView = projectWordRevisionView(after, 'accepted');
+export function verifyAcceptIntent({ before, after, range, modified, beforeViews = null, afterViews = null }) {
+    const sourceView = memoView(beforeViews, before, 'accepted');
+    const outputView = memoView(afterViews, after, 'accepted');
     const prefix = sourceView.filter(record => record.sourceIndex < range.from).length;
     const suffix = sourceView.filter(record => record.sourceIndex > range.to).length;
     const targetRecords = sourceView.filter(record => record.sourceIndex >= range.from && record.sourceIndex <= range.to);
@@ -329,14 +371,22 @@ function collectRevisionIds(documentNode) {
  * @param {Document} input.before - savepoint DOM
  * @param {Document} input.after - post-mutation DOM
  */
-export function verifyNoCreatedRevisions({ before, after }) {
-    const existing = collectRevisionIds(before);
+export function verifyNoCreatedRevisions({ before, after, beforeViews = null, afterViews = null }) {
     // Slicing a foreign revision around an untracked edit gives the fragments fresh ids but keeps the
     // original element, author and date; that preserves the reviewer's revision rather than creating one.
     const signature = node => `${nameOf(node)}|${node.getAttribute('w:author')}|${node.getAttribute('w:date')}`;
-    const sliceable = new Set([...existing.values()].map(signature));
+    const signaturesOf = ids => new Map([...ids].map(([id, node]) => [id, signature(node)]));
+    // Cached as plain strings: the cached map's nodes may belong to a DOM that has since been mutated.
+    let existing = beforeViews?.revisionSignatures;
+    if (!existing) {
+        existing = signaturesOf(collectRevisionIds(before));
+        if (beforeViews) beforeViews.revisionSignatures = existing;
+    }
+    const afterIds = collectRevisionIds(after);
+    if (afterViews) afterViews.revisionSignatures = signaturesOf(afterIds);
+    const sliceable = new Set(existing.values());
     const violations = [];
-    for (const [id, node] of collectRevisionIds(after)) {
+    for (const [id, node] of afterIds) {
         if (existing.has(id) || sliceable.has(signature(node))) continue;
         const name = nameOf(node);
         const author = node.getAttribute('w:author');

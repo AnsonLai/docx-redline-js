@@ -1,7 +1,9 @@
 import { NS_W } from './types.js';
 
 function localName(node) {
-    return String(node?.localName || node?.nodeName || '').replace(/^.*:/, '');
+    const local = node?.localName;
+    if (local) return local.indexOf(':') < 0 ? local : local.replace(/^.*:/, '');
+    return String(node?.nodeName || '').replace(/^.*:/, '');
 }
 
 /** Returns whether a node contributes to the selected revision view. */
@@ -24,7 +26,7 @@ export function readCanonicalRunText(run, options = {}) {
     if (!isNodeVisibleInRevisionView(run, boundary, revisionView)) return '';
     let text = '';
     const visit = node => {
-        for (const child of Array.from(node?.childNodes || [])) {
+        for (let child = node?.firstChild; child; child = child.nextSibling) {
             if (child?.nodeType !== 1 || (child.namespaceURI && child.namespaceURI !== NS_W)) continue;
             if (!isNodeVisibleInRevisionView(child, boundary, revisionView)) continue;
             const name = localName(child);

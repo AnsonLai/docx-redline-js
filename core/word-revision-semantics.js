@@ -28,12 +28,31 @@ const CONTAINER_NAMES = new Set(['body', 'tc', 'txbxContent', 'footnote', 'endno
 const WRAPPER_NAMES = new Set(['hyperlink', 'fldSimple', 'sdt', 'smartTag', 'customXml']);
 const PROPERTY_SKIP = new Set(['rPr', 'pPrChange', 'sectPr']);
 
-const localName = node => String(node?.localName || node?.nodeName || '').replace(/^.*:/, '');
+const localName = node => {
+    const local = node?.localName;
+    if (local) return local.indexOf(':') < 0 ? local : local.replace(/^.*:/, '');
+    return String(node?.nodeName || '').replace(/^.*:/, '');
+};
 const isWordElement = node => node?.nodeType === 1 && (!node.namespaceURI || node.namespaceURI === NS_W);
 const attr = (node, name) => node?.getAttribute?.(`w:${name}`) || node?.getAttribute?.(name) || '';
 
+/** Document-order w:<name> descendants of `root`; a plain walk avoids the live node list's per-call cost. */
+function descendantWordElements(root, name) {
+    const found = [];
+    if (!root) return found;
+    const stack = [];
+    for (let child = root.lastChild; child; child = child.previousSibling) stack.push(child);
+    while (stack.length) {
+        const node = stack.pop();
+        if (node.nodeType !== 1) continue;
+        if (node.namespaceURI === NS_W && node.localName === name) found.push(node);
+        for (let child = node.lastChild; child; child = child.previousSibling) stack.push(child);
+    }
+    return found;
+}
+
 function directChild(node, name) {
-    for (const child of Array.from(node?.childNodes || [])) {
+    for (let child = node?.firstChild; child; child = child.nextSibling) {
         if (isWordElement(child) && localName(child) === name) return child;
     }
     return null;
@@ -43,7 +62,7 @@ function directChild(node, name) {
 export function paragraphMarkRevision(paragraph) {
     const rPr = directChild(directChild(paragraph, 'pPr'), 'rPr');
     if (!rPr) return null;
-    for (const child of Array.from(rPr.childNodes || [])) {
+    for (let child = rPr.firstChild; child; child = child.nextSibling) {
         if (!isWordElement(child)) continue;
         const name = localName(child);
         if (name === 'ins' || name === 'moveTo') return 'ins';
@@ -129,7 +148,7 @@ function paragraphContent(paragraph, view) {
     let text = '';
     const spans = [];
     const walk = (node, wrappers) => {
-        for (const child of Array.from(node.childNodes || [])) {
+        for (let child = node.firstChild; child; child = child.nextSibling) {
             if (!isWordElement(child)) continue;
             const name = localName(child);
             if (name === 'pPr') continue;
@@ -173,7 +192,7 @@ function mergeSpans(spans) {
  */
 export function projectWordRevisionView(root, view = 'rejected') {
     if (view !== 'rejected' && view !== 'accepted') throw new Error(`Unknown revision view '${view}'.`);
-    const paragraphs = Array.from(root?.getElementsByTagNameNS?.(NS_W, 'p') || []);
+    const paragraphs = descendantWordElements(root, 'p');
     const removedMark = view === 'rejected' ? 'ins' : 'del';
     const records = [];
     const pending = new Map();
@@ -210,7 +229,7 @@ export function projectWordRevisionView(root, view = 'rejected') {
 
 /** Word adds an untracked empty paragraph after a table that ends a body. */
 function appendImplicitBodyParagraphs(root, paragraphs, records) {
-    const bodies = localName(root) === 'body' ? [root] : Array.from(root?.getElementsByTagNameNS?.(NS_W, 'body') || []);
+    const bodies = localName(root) === 'body' ? [root] : descendantWordElements(root, 'body');
     for (const body of bodies) {
         const blocks = Array.from(body.childNodes || []).filter(node => isWordElement(node) && localName(node) !== 'sectPr');
         const last = blocks[blocks.length - 1];
