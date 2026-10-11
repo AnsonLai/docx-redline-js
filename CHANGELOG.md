@@ -4,6 +4,18 @@
 
 ### Changed
 
+- **CLI contract version 9** (`list-format` operation type, capability `list-format-v1`). Integrations that do not send
+  `list-format` can keep requiring version 8.
+- **`UNSUPPORTED_LIST_CONVERSION` / `LIST_MARKER_NOT_BOUND` now point at `list-format`:** `recovery.action` is
+  `use_list_format_convert_plain` (was `apply_plain_text_or_convert_in_host`) and, when the original paragraph has no marker,
+  `recovery.suggestedOperation` carries the `list-format` request to send with the same target (for "Header" -> "C. Header":
+  `{ mode: 'convert-plain', format: 'upperLetter', strip: 'none', start: 3 }`). `listMarkers: 'literal'` is unchanged.
+- **Text-equal letter, roman and bullet header conversions are made in place:** a `redline` whose `modified` equals the plain
+  paragraph's typed-marker text (`B. Header` -> `B. Header`) now strips the marker as a tracked deletion and binds the list with a
+  tracked `w:pPrChange` in the same paragraph, like the decimal path. The previous whole-paragraph delete plus insert lost
+  `w14:paraId`, bookmarks and direct formatting and reviewed as a deleted and an inserted line; it remains only for shapes the
+  in-place conversion refuses. (It was reject-exact for plain runs but not for markers inside hyperlinks or smart tags, where the
+  Reject All verifier refuses it.)
 - **Operations that would break Reject All are refused by default:** the revision fidelity verifier now runs in
   `enforce` mode. A refused operation leaves the document unchanged and returns `REVISION_FIDELITY_VIOLATION` with a
   one-line message naming the invariant, the source paragraph (extraction index and excerpt), expected vs actual, an
@@ -19,6 +31,20 @@
 
 ### Added
 
+- **`list-format` operation, `convert-plain` mode (`list-format-v1`):** binds plain paragraphs (a target, or `target`..`targetEnd`
+  in one container) whose text starts with a typed marker (`1.`/`1)`, `A.`/`a)`, `IV.`/`iv.`, `-`/`•`) to a NEW list definition in
+  place. The marker is removed with a tracked `w:del` of exactly the marker text (`strip: 'marker'`, default) and the `w:numPr`
+  binding is a tracked `w:pPrChange`, so Reject All restores the literal marker and the unnumbered paragraph and Accept All shows
+  the list label (verified in Word: `ListFormat.ListString` after `Revisions.AcceptAll()`/`RejectAll()` for `A.`, `1.`, `I.` and a
+  `C.` start value). Each marker's value is the item's value (`startOverride` on the new `w:num`; the label keeps the typed `.`/`)`);
+  consecutive values share one list, a gap starts a new list at the typed value, body paragraphs in the range stay plain, and a
+  later `list-format` in the same batch whose first value continues the previous list joins it. `strip: 'none'` with `format`
+  (and optional `start`) binds without touching the text. Ambiguous or unsupported shapes are refused with recovery envelopes:
+  `LIST_MARKER_NOT_FOUND`, `LIST_MARKER_AMBIGUOUS` (a lone `I.`/`C.` reads as letter or roman; set `list.format`),
+  `LIST_MARKER_UNSUPPORTED` (mixed markers, `2.1.`, `(a)`, a marker inside a hyperlink/field/revision, format mismatch),
+  `LIST_FORMAT_TARGET_IS_LIST`, `LIST_FORMAT_STYLE_NUMBERED` (style-linked numbering; needs `stylesXml` on the bare runner, read from
+  the package by `openDocx`) and `PARAGRAPH_FORMAT_REVISION_CONFLICT`. Body only. Results carry `list` (`format`, `items[]` with
+  `numId`/`value`, `skipped[]`). Schema `$defs.listFormat`, `ListFormatDocumentOperation` in `index.d.ts`.
 - **`paragraph-format.numbering` binding (`paragraph-numbering-binding-v1`, no contract bump):** `properties.numbering` is
   `{ numId, level? }` (bind the paragraph to an existing list) or `null` (remove its direct list binding), recorded as a tracked
   `w:pPrChange` so Reject All restores the previous `w:numPr` exactly and Accept All shows the new one (verified in Word with

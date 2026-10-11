@@ -198,6 +198,22 @@ const bindingDocument = (middle) => `<?xml version="1.0" encoding="UTF-8" standa
 </w:document>`;
 const BINDING_TEXT = ['First clause', 'Standalone clause', 'Second clause'].join(String.fromCharCode(10));
 
+// Typed list headers as Word writes them when a user types "A." and a tab by hand (AutoFormat off): rsid and
+// w14 paragraph identity attributes, the marker in its own bold run, a w:tab after it, and a bold heading run.
+const NS_W14 = 'http://schemas.microsoft.com/office/word/2010/wordml';
+const typedHeader = (index, marker, heading, separator = 'tab') => `<w:p w14:paraId="4C1A${String(index).padStart(4, '0')}" w14:textId="77777777" w:rsidR="00A1B2C3" w:rsidRDefault="00A1B2C3"><w:pPr><w:keepNext/><w:spacing w:before="240" w:after="120"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>${marker}</w:t></w:r>${separator === 'tab' ? '<w:r><w:rPr><w:b/></w:rPr><w:tab/></w:r>' : ''}<w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">${separator === 'tab' ? '' : ' '}${heading}</w:t></w:r></w:p>`;
+const typedBody = (index, text) => `<w:p w14:paraId="4C1B${String(index).padStart(4, '0')}" w14:textId="77777777" w:rsidR="00A1B2C3" w:rsidRDefault="00A1B2C3"><w:r><w:t>${text}</w:t></w:r></w:p>`;
+const typedHeaderDocument = paragraphs => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}" xmlns:w14="${NS_W14}">
+  <w:body>
+    ${paragraphs.join('')}
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+const TAB = String.fromCharCode(9);
+const LF = String.fromCharCode(10);
+const lines = (...items) => items.join(LF);
+
 const ROMAN_HIERARCHY_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="${NS_W}">
   <w:body>
@@ -1038,6 +1054,89 @@ const WORD_TASK_CASE_DEFINITIONS = [
         expectedRejectedListStrings: ['1.', '2.', '3.'],
         packageParts: { numberingXml: BINDING_NUMBERING_XML },
         requiredElements: { pPrChange: 1, numPr: 4 }
+    },
+    {
+        name: 'legal-list-format-convert-upper-letter-headers',
+        category: 'legal',
+        task: 'convert-typed-headers-to-list',
+        sourceDocumentXml: typedHeaderDocument([
+            typedHeader(1, 'A.', 'Scope of Services'),
+            typedBody(2, 'The Contractor shall perform the services described below.'),
+            typedHeader(3, 'B.', 'Term'),
+            typedHeader(4, 'C.', 'Fees')
+        ]),
+        textUnchanged: true,
+        original: lines(`A.${TAB}Scope of Services`, 'The Contractor shall perform the services described below.', `B.${TAB}Term`, `C.${TAB}Fees`),
+        modified: lines(`A.${TAB}Scope of Services`, 'The Contractor shall perform the services described below.', `B.${TAB}Term`, `C.${TAB}Fees`),
+        batchOperations: [{ type: 'list-format', target: { exactText: `A.${TAB}Scope of Services` }, targetEnd: { exactText: `C.${TAB}Fees` }, list: { mode: 'convert-plain' } }],
+        expectedAcceptedText: lines('Scope of Services', 'The Contractor shall perform the services described below.', 'Term', 'Fees'),
+        expectedRejectedText: lines(`A.${TAB}Scope of Services`, 'The Contractor shall perform the services described below.', `B.${TAB}Term`, `C.${TAB}Fees`),
+        expectedAcceptedListStrings: ['A.', '', 'B.', 'C.'],
+        expectedRejectedListStrings: ['', '', '', ''],
+        requiredElements: { pPrChange: 3, numPr: 3, del: 3 }
+    },
+    {
+        name: 'administrative-list-format-convert-decimal-headers',
+        category: 'administrative',
+        task: 'convert-typed-headers-to-list',
+        sourceDocumentXml: typedHeaderDocument([
+            typedHeader(1, '1.', 'Purpose', 'space'),
+            typedBody(2, 'This procedure applies to every department.'),
+            typedHeader(3, '2.', 'Responsibilities', 'space'),
+            typedHeader(4, '3.', 'Records', 'space')
+        ]),
+        textUnchanged: true,
+        original: lines('1. Purpose', 'This procedure applies to every department.', '2. Responsibilities', '3. Records'),
+        modified: lines('1. Purpose', 'This procedure applies to every department.', '2. Responsibilities', '3. Records'),
+        // Separate operations in one batch continue one list through the sequence state.
+        batchOperations: [
+            { type: 'list-format', target: { exactText: '1. Purpose' }, list: { mode: 'convert-plain' } },
+            { type: 'list-format', target: { exactText: '2. Responsibilities' }, list: { mode: 'convert-plain' } },
+            { type: 'list-format', target: { exactText: '3. Records' }, list: { mode: 'convert-plain' } }
+        ],
+        expectedAcceptedText: lines('Purpose', 'This procedure applies to every department.', 'Responsibilities', 'Records'),
+        expectedRejectedText: lines('1. Purpose', 'This procedure applies to every department.', '2. Responsibilities', '3. Records'),
+        expectedAcceptedListStrings: ['1.', '', '2.', '3.'],
+        expectedRejectedListStrings: ['', '', '', ''],
+        requiredElements: { pPrChange: 3, numPr: 3, del: 3 }
+    },
+    {
+        name: 'legal-list-format-convert-upper-roman-headers',
+        category: 'legal',
+        task: 'convert-typed-headers-to-list',
+        sourceDocumentXml: typedHeaderDocument([
+            typedHeader(1, 'I.', 'Introduction'),
+            typedHeader(2, 'II.', 'Background'),
+            typedBody(3, 'The parties entered into the agreement in 2024.'),
+            typedHeader(4, 'III.', 'Analysis')
+        ]),
+        textUnchanged: true,
+        original: lines(`I.${TAB}Introduction`, `II.${TAB}Background`, 'The parties entered into the agreement in 2024.', `III.${TAB}Analysis`),
+        modified: lines(`I.${TAB}Introduction`, `II.${TAB}Background`, 'The parties entered into the agreement in 2024.', `III.${TAB}Analysis`),
+        batchOperations: [{ type: 'list-format', target: { exactText: `I.${TAB}Introduction` }, targetEnd: { exactText: `III.${TAB}Analysis` }, list: { mode: 'convert-plain', format: 'upperRoman' } }],
+        expectedAcceptedText: lines('Introduction', 'Background', 'The parties entered into the agreement in 2024.', 'Analysis'),
+        expectedRejectedText: lines(`I.${TAB}Introduction`, `II.${TAB}Background`, 'The parties entered into the agreement in 2024.', `III.${TAB}Analysis`),
+        expectedAcceptedListStrings: ['I.', 'II.', '', 'III.'],
+        expectedRejectedListStrings: ['', '', '', ''],
+        requiredElements: { pPrChange: 3, numPr: 3, del: 3 }
+    },
+    {
+        name: 'administrative-list-format-convert-letter-start-value',
+        category: 'administrative',
+        task: 'convert-typed-headers-to-list',
+        sourceDocumentXml: typedHeaderDocument([
+            typedHeader(1, 'C.', 'Reporting'),
+            typedHeader(2, 'D.', 'Audit')
+        ]),
+        textUnchanged: true,
+        original: lines(`C.${TAB}Reporting`, `D.${TAB}Audit`),
+        modified: lines(`C.${TAB}Reporting`, `D.${TAB}Audit`),
+        batchOperations: [{ type: 'list-format', target: { exactText: `C.${TAB}Reporting` }, targetEnd: { exactText: `D.${TAB}Audit` }, list: { mode: 'convert-plain' } }],
+        expectedAcceptedText: lines('Reporting', 'Audit'),
+        expectedRejectedText: lines(`C.${TAB}Reporting`, `D.${TAB}Audit`),
+        expectedAcceptedListStrings: ['C.', 'D.'],
+        expectedRejectedListStrings: ['', ''],
+        requiredElements: { pPrChange: 2, numPr: 2, del: 2 }
     }
 ];
 

@@ -50,6 +50,7 @@ function assertSyntheticClaim(testCase, structure) {
             || testCase.original.includes('\n') || testCase.modified.includes('\n'),
         'formatted-runs': () => /<(?:w:)?(?:b|i|u)(?:\s|\/|>)/.test(xml) || /(?:\*\*|\*|\+\+)/.test(testCase.modified),
         list: () => elementCount(xml, 'numPr') > 0
+            || (testCase.batchOperations || []).some(operation => operation?.type === 'list-format')
             || (testCase.operationOptions?.structuredContent === true
                 && /^\s*(?:[-+*]|\d+[.)])\s+/m.test(testCase.modified)),
         table: () => elementCount(xml, 'tbl') > 0
@@ -77,7 +78,7 @@ function syntheticTask(testCase) {
     const operationTypes = [testCase.operation, ...(testCase.batchOperations || [])]
         .map(operation => operation?.type)
         .filter(Boolean);
-    if (operationTypes.includes('list-change')) return 'list-change';
+    if (operationTypes.includes('list-change') || operationTypes.includes('list-format')) return 'list-change';
     if (operationTypes.includes('table-reconciliation')) return 'table-reconciliation';
     if (operationTypes.includes('paragraph-format') || operationTypes.includes('character-format')) return 'format';
     if (testCase.expectAtomicRollback) return 'mixed-batch';

@@ -223,6 +223,17 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 - `services/document-operation-contract.js`
   - Compatibility normalization, canonical operation kinds, author precedence,
     and stable runtime validation for document operations.
+- `services/list-format.js` and `services/list-format-mutation.js`
+  - The `list-format` operation (`convert-plain`): contract shape, the narrow
+    typed-marker grammar (letter versus roman disambiguation by sequence or an
+    explicit `format`), and the in-place DOM core. Every refusal is decided
+    before mutation; the binding reuses the `paragraph-format.numbering` path
+    (`snapshotAndAttachPPrChange` + `applyParagraphPropertiesToPPr`), the marker
+    becomes one tracked `w:del`, definitions come from
+    `allocateNumberingDefinition`, and batch continuity uses
+    `runtimeContext.listFallbackSequenceState` (an entry is reused only while
+    its `numId` is bound in the live document). Text-equal redline header
+    conversions for letters, roman numerals and bullets call the same core.
 - `services/operation-preflight.js`
   - Read-only strict target and anchor resolution, revision-policy diagnostics,
     artifact prediction, and same-paragraph conflict reporting.

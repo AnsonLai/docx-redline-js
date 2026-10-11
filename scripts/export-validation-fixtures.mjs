@@ -16,6 +16,7 @@ import {
   rejectTrackedChangesInOoxml
 } from '../services/revision-comment-management.js';
 import { WORD_TASK_CASES } from '../tests/fixtures/word-task-cases.mjs';
+import { mergeNumberingParts } from '../services/numbering-allocation.js';
 
 const { DOMParser, XMLSerializer } = await import('@xmldom/xmldom');
 configureXmlProvider({ DOMParser, XMLSerializer });
@@ -119,7 +120,7 @@ for (const testCase of cases) {
   }
 
   if (testCase.requiredNumberingFormats) {
-    const numberingXml = testCase.packageParts?.numberingXml || result.numberingXml || '';
+    const numberingXml = [testCase.packageParts?.numberingXml, result.numberingXml, ...(result.numberingXmlParts || [])].filter(Boolean).join('');
     for (const format of testCase.requiredNumberingFormats) {
       if (!numberingXml.includes(`<w:numFmt w:val="${format}"`)) {
         console.error(`FAIL ${testCase.name}: required numbering format ${format} is missing`);
@@ -163,14 +164,20 @@ for (const testCase of cases) {
     continue;
   }
 
+  // A batch returns numbering payloads as parts; merge them into the source part through the one allocator merge.
+  const batchNumberingXml = Array.isArray(result.numberingXmlParts) && result.numberingXmlParts.length > 0
+    ? mergeNumberingParts(testCase.packageParts?.numberingXml || '', result.numberingXmlParts)
+    : null;
+  const resultNumberingXml = result.numberingXml || batchNumberingXml || null;
   writeFileSync(join(outputDir, `${testCase.name}.document.xml`), result.documentXml, 'utf8');
-  if (result.numberingXml) {
-    writeFileSync(join(outputDir, `${testCase.name}.numbering.xml`), result.numberingXml, 'utf8');
+  if (resultNumberingXml) {
+    writeFileSync(join(outputDir, `${testCase.name}.numbering.xml`), resultNumberingXml, 'utf8');
   }
 
   const packageParts = {
-    numberingXml: result.numberingXml || null,
-    ...(testCase.packageParts || {})
+    numberingXml: resultNumberingXml,
+    ...(testCase.packageParts || {}),
+    ...(batchNumberingXml ? { numberingXml: batchNumberingXml } : {})
   };
   let packageEntries;
   let docx;
