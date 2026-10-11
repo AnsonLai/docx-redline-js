@@ -12,8 +12,8 @@ import {
 import { validateCoverageMetadata } from '../scripts/lib/word-coverage-metadata.mjs';
 
 const { cases, priorities } = loadCoverageCatalogue();
-assert.equal(cases.length, 125);
-assert.equal(cases.filter(item => item.lane === 'synthetic').length, 64);
+assert.equal(cases.length, 127);
+assert.equal(cases.filter(item => item.lane === 'synthetic').length, 67);
 assert.equal(cases.filter(item => item.lane === 'superdoc').length, 60);
 for (const name of [
     'administrative-paragraph-numbering-bind-plain',
@@ -84,7 +84,7 @@ const report = JSON.parse(firstReport);
 assert.equal(report.totals.cases, cases.length);
 assert.equal(report.totals.manualMissing, cases.length);
 assert.equal(report.totals.aiPreflight, 24);
-assert.equal(report.totals.syntheticWord, 64);
+assert.equal(report.totals.syntheticWord, 67);
 assert.equal(report.totals.realDocumentWord, 60);
 
 execFileSync(process.execPath, ['scripts/prepare-word-review.mjs', '--cycle=2'], {
