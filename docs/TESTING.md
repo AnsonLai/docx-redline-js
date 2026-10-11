@@ -573,6 +573,11 @@ case sidecar, and rechecked by the Word differential before opening the DOCX.
 These helpers remain under `scripts/` and `tests/`; none are shipped through the
 runtime entry point.
 
+List cases may declare `expectedAcceptedListStrings` / `expectedRejectedListStrings` (per-paragraph
+`ListFormat.ListString`) and `expectedAcceptedListGroupSizes` (per-paragraph
+`ListFormat.List.ListParagraphs.Count`, 0 for a non-list paragraph). The group sizes tell one list from two lists
+that merely read `A.` and `B.` through start values (R2).
+
 ### What the automated Word differential proves
 
 The Word process is real desktop Microsoft Word, but it is driven invisibly
