@@ -12,7 +12,7 @@ import {
 import { validateCoverageMetadata } from '../scripts/lib/word-coverage-metadata.mjs';
 
 const { cases, priorities } = loadCoverageCatalogue();
-assert.equal(cases.length, 124);
+assert.equal(cases.length, 125);
 assert.equal(cases.filter(item => item.lane === 'synthetic').length, 64);
 assert.equal(cases.filter(item => item.lane === 'superdoc').length, 60);
 for (const name of [

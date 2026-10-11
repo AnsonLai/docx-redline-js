@@ -21,6 +21,15 @@ const PRIOR_REVISION_NO_OP_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" stan
   </w:body>
 </w:document>`;
 
+const TABLE_APPEND_END_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}">
+  <w:body>
+    ${['Opening paragraph 1.', 'Opening paragraph 2.', 'Opening paragraph 3.', 'Final paragraph stays unchanged.']
+        .map(text => `<w:p><w:r><w:t>${text}</w:t></w:r></w:p>`).join('')}
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+
 const HIGH_REVISION_ID_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="${NS_W}">
   <w:body>
@@ -1001,6 +1010,23 @@ const WORD_TASK_CASE_DEFINITIONS = [
                 target: 'https://example.com/legal/filing-policy'
             }]
         }
+    },
+    {
+        name: 'legal-table-append-after-final-paragraph',
+        category: 'legal',
+        task: 'insert-table-at-document-end',
+        sourceDocumentXml: TABLE_APPEND_END_DOCUMENT,
+        original: 'Final paragraph stays unchanged.',
+        modified: 'Final paragraph stays unchanged.\n| Mountain | River | Forest |\n| --- | --- | --- |\n| Ocean | Valley | Canyon |',
+        operationOptions: { structuredContent: true },
+        // R5: Word Reject All (Revisions.RejectAll, ribbon) must restore the four source paragraphs exactly;
+        // the differential also compares the Reject All paragraph count with the source.
+        assertionMode: 'contains',
+        expectedAcceptedContains: ['Final paragraph stays unchanged.', 'Mountain', 'Forest', 'Canyon'],
+        expectedAcceptedAbsent: ['| Mountain |'],
+        expectedRejectedContains: ['Opening paragraph 1.', 'Final paragraph stays unchanged.'],
+        expectedRejectedAbsent: ['Mountain', 'Canyon'],
+        requiredElements: { tbl: 1, tr: 2, tc: 6 }
     },
     {
         name: 'legal-structured-attachment-mixed-blocks',

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 import { buildDashboardData, renderDashboardHtml } from '../scripts/generate-test-dashboard.mjs';
 
 const data = buildDashboardData();
-assert.equal(data.cases.length, 124);
+assert.equal(data.cases.length, 125);
 assert.equal(data.cases.filter(item => item.lane === 'synthetic').length, 64);
 assert.equal(data.cases.filter(item => item.lane === 'superdoc').length, 60);
 assert.equal(data.cases.filter(item => item.visualEligible).length, 107);
