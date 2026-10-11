@@ -51,6 +51,7 @@ export const OPERATION_KINDS = [
     'insert-after',
     'delete',
     'replacements',
+    'replacements-weak',
     'format',
     'paragraph-format',
     'paragraph-format-numbering',
@@ -218,6 +219,21 @@ export function generateOperation(rng, paragraphs, kind, serial = 0) {
             const occurrence = occurrenceOf(matches, match);
             return { kind, paragraphIndex: site.i, expectAccepted: [replace],
                 operation: { ...base, target: targetOf(site.q),
+                    replacements: [{ find: match[0], replace, ...(countOf(matches, match) > 1 ? { occurrence } : {}) }] } };
+        }
+        case 'replacements-weak': {
+            // Same edit as 'replacements', but targeted only by index + exactText (no paragraphId/fingerprint),
+            // preferring soft-break (w:br) paragraphs whose exactText contains a line break.
+            const softBreak = withText.filter(({ q }) => q.exactText.includes(String.fromCharCode(10)));
+            const site = softBreak.length && rng.chance(0.7) ? rng.pick(softBreak) : pickWithText();
+            const matches = site ? wordMatches(site.q.exactText) : [];
+            if (matches.length === 0) return null;
+            const match = rng.pick(matches);
+            const replace = rng.pick(NEW_WORDS);
+            if (replace === match[0]) return null;
+            const occurrence = occurrenceOf(matches, match);
+            return { kind, paragraphIndex: site.i, expectAccepted: [replace],
+                operation: { ...base, target: { index: site.i + 1, exactText: site.q.exactText },
                     replacements: [{ find: match[0], replace, ...(countOf(matches, match) > 1 ? { occurrence } : {}) }] } };
         }
         case 'format': {

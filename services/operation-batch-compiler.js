@@ -215,16 +215,24 @@ export class SourceTargetRegistry {
         }
     }
 
-    commitMutation(sourceId, removedNodes, liveNodes, operationIndex) {
+    /** The paragraph that will stand for sourceId once this mutation commits (no state change). */
+    previewSuccessor(sourceId, removedNodes, liveNodes) {
         const entry = this.entries.get(sourceId);
-        if (!entry || !Array.isArray(removedNodes) || !removedNodes.includes(entry.paragraph)) return;
+        if (!entry || !entry.paragraph) return null;
+        if (!Array.isArray(removedNodes) || !removedNodes.includes(entry.paragraph)) return entry.paragraph;
         const candidates = paragraphNodesFromMutation(liveNodes);
         const sameId = entry.paragraphId
             ? candidates.filter(paragraph => getParagraphId(paragraph) === entry.paragraphId)
             : [];
-        const successor = sameId.length === 1
+        return sameId.length === 1
             ? sameId[0]
             : (candidates.length === 1 ? candidates[0] : null);
+    }
+
+    commitMutation(sourceId, removedNodes, liveNodes, operationIndex) {
+        const entry = this.entries.get(sourceId);
+        if (!entry || !Array.isArray(removedNodes) || !removedNodes.includes(entry.paragraph)) return;
+        const successor = this.previewSuccessor(sourceId, removedNodes, liveNodes);
         if (successor) {
             entry.paragraph = successor;
             this.idsByNode.set(successor, sourceId);
@@ -320,10 +328,11 @@ export function compileOperationBatch(xmlDoc, operations = [], options = {}) {
         const compositeTextTarget = typeof operation.targetDescriptor?.text === 'string'
             && /\r|\n/.test(operation.targetDescriptor.text)
             && !operation.targetEndDescriptor
-            // A strong paragraph target with localized replacements is one paragraph whose
-            // soft line breaks (w:br) appear as "\n" in text; it still binds at batch start.
-            && !(Array.isArray(operation.replacements)
-                && (operation.targetDescriptor.paragraphId || operation.targetDescriptor.fingerprint));
+            // Localized replacements always address one paragraph (the contract refuses ranges and
+            // captures), so "\n" in the target text is a soft line break (w:br), not a paragraph
+            // boundary. Strong or weak (index + exactText) it binds at batch start; leaving it
+            // dynamic would skip replacement compilation and apply an empty "modified".
+            && !Array.isArray(operation.replacements);
         if (dynamicOccurrence || compositeTextTarget) binding.dynamic = true;
 
         if (

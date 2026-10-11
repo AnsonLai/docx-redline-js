@@ -209,6 +209,24 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
         operation = compiledValidation.operation;
     }
 
+    if (Array.isArray(operation.replacements) && !operation._localizedReplacementCompilation) {
+        // Uncompiled replacements would otherwise reach the mutation with no "modified" text and
+        // delete the paragraph; never apply them without their compiled accepted-text intent.
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: normalizeOperationError({
+                code: 'PATCH_ROUNDTRIP_MISMATCH',
+                stage: 'validation',
+                message: 'Localized replacements were not compiled against a batch-start paragraph target, so they were refused instead of applied.'
+            }, errorContext),
+            operationType: operation.operationKind,
+            authorUsed,
+            receipt: createEmptyReceipt(operationIndex, operation.operationId, authorUsed, 'refused')
+        };
+    }
+
     const resolutionCapture = {};
     let localizedChange = null;
     const savepoint = session.createSavepoint();
@@ -470,10 +488,11 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                     ...resolutionCapture
                 };
             }
-            if (operation._localizedReplacementCompilation) {
+            if (operation._localizedReplacementCompilation && operation.structuredContent !== true) {
                 // Accept-view intent: the target's accepted text must be exactly the compiled
                 // text, whatever path produced it. A tracked whole-paragraph deletion rejects
-                // back to the source, so the Reject All verifier alone cannot see it.
+                // back to the source, so the Reject All verifier alone cannot see it. Structured (Markdown)
+                // replacement text legitimately differs from its literal accepted text, so it is exempt.
                 let intentText = null;
                 if (operation.operationKind === 'restore') {
                     const restored = operationOptions._mutationLiveNodes.find(node => node?.localName === 'p');
