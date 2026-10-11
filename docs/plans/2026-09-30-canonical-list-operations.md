@@ -1,7 +1,7 @@
 # Canonical List Operations: Header-to-List Conversion and List Format Change
 
 Date: 2026-09-30
-Status: IN PROGRESS (2026-10-10): WP-0, WP-1, WP-2 done; WP-3 next. Package baseline 0.8.4+, CLI `contractVersion` 8.
+Status: IN PROGRESS (2026-10-10): WP-0 through WP-3 done; WP-4 next. Package baseline 0.8.4+, CLI `contractVersion` 8.
 
 ## Progress and hand-off (keep current; resume here)
 
@@ -10,12 +10,12 @@ Status: IN PROGRESS (2026-10-10): WP-0, WP-1, WP-2 done; WP-3 next. Package base
 | 0 | Done | `73c67e8` (+ earlier item c fix) | - |
 | 1 | Done: list diagnostics warn by default, error under `strictListConversion` (CLI agent profile / `--atomic`) or `atomic`; `listMarkers: 'literal'` opt-out; `UNKNOWN_PARAGRAPH_FORMAT_PROPERTY` warning; capability `list-conversion-diagnostics-v1` | `db10d39`, `7ab6490`; tests `tests/list_conversion_diagnostics_tests.mjs` | Promote unknown `paragraph-format` keys to an error in the next minor; one-line adjacency insertion form not covered; consumer impact: atomic batches that type `1.`/`A.` onto plain paragraphs are now refused (tell AIWordPlugin) |
 | 2 | Done: `services/numbering-allocation.js` is the single allocator and the single numbering merge for runner and facade (fidelity plan WP-5a R1-R3); `reuseSourceListNumbering` removed; facade refuses dangling numbering references it adds; `NUMBERING_ID_CONFLICT` on conflicting ids | `4718c36`, `f41bd3b`; tests `tests/numbering_allocation_tests.mjs`, matrix numbering parity in `tests/reject_roundtrip_matrix_tests.mjs` | Residual: separate bare calls without shared `numberingXml`/`numberingIdState` can still allocate the same ids (now detected, not auto-remapped) |
-| 3 | Not started | | `paragraph-format.numbering` binding with `pPrChange` |
+| 3 | Done: `paragraph-format.numbering` binds or removes existing numbering with a tracked `pPrChange`; validates `numId`/level; preserves the earliest same-author snapshot; refuses cross-author snapshot replacement; letter/roman marker starts are retained | `dc3e2d0` plus Word differential fixture follow-up; tests `tests/paragraph_format_numbering_tests.mjs`, Word task cases for bind/remove/change-level | WP-4 `list-format convert-plain` |
 | 4-7 | Not started | | See "Work packages" |
 
-Gates every WP must keep green (verified 2026-10-10 after WP-1/WP-2): `npm test` (144 suites), `check:types`,
+Gates every WP must keep green (verified 2026-10-10 after WP-3): `npm test` (145 suites), `check:types`,
 `test:isolation`, `node tests/reject_roundtrip_matrix_tests.mjs` (+ a `FUZZ_SEED=<n> MATRIX_ITERATIONS=500` run), Word
-synthetic lane 49/49 and corpus lane 60/60 (`pwsh`, redirect output to a log file; see docs/TESTING.md). The fidelity
+synthetic lane 52/52 and corpus lane 60/60 (`pwsh`, redirect output to a log file; see docs/TESTING.md). The fidelity
 verifier refuses by default, so a new list operation that breaks Reject All cannot pass these gates.
 Source: consumer report `AIWordPlugin/docs/library-issues/2026-09-30-canonical-list-operations.md`
 (with `reproduce-plain-header-conversion.mjs`). Reproductions below were re-run against this tree.
@@ -412,7 +412,7 @@ for the range.
 | 0 | **Done.** Strict-parse and start-value fix (item c); bare-XML `RECEIPT_RECONCILIATION_FAILED` fixed in `73c67e8` (see section (a) observation 2). Remaining: re-check xmldom hierarchy warnings in the consumer's environment; bare-vs-packaged parity is covered by the fidelity plan's WP-3 matrix. | Low |
 | 1 | **Done (`db10d39`).** Interim safety diagnostics: `UNSUPPORTED_LIST_CONVERSION`, `LIST_MARKER_NOT_BOUND`, `LIST_FORMAT_NOT_APPLIED`, `listMarkers: 'literal'` opt-out; closed `paragraph-format.properties` schema with unknown-key rejection; capability `list-conversion-diagnostics-v1`. Patch release. | Low-medium: unknown-key rejection could break callers that pass ignored keys; ship as warning first, error in the next minor |
 | 2 | **Done (`4718c36`).** Numbering allocator module `services/numbering-allocation.js`: `allocateNumberingDefinition` (create new abstractNum + num, copy level geometry, per-level `startOverride`, ids via `reserveNextNumberingIdPair`), `allocateNumberingForReplacement` (replacement policy, replaces `reuseSourceListNumbering`), the single merge `mergeNumberingParts`, `validateNumberingIntegrity` (numId/abstractNum/ilvl; wired into the `openDocx` validation as introduced-issues-only). No operation exposed yet; `tests/numbering_allocation_tests.mjs`, parity in the WP-3 matrix. Not yet used by an operation: `allocateNumberingDefinition` (WP-4/5 callers), batch continuity (`listFallbackSequenceState`) stays with WP-4. | Medium: continuity across a batch |
-| 3 | `paragraph-format.numbering` binding (`numId`, `level`, null) with `pPrChange`; extend `applyParagraphPropertiesToPPr`, `checkParagraphPropertiesChanged`, and `insertPPrChildInOrder` for `w:numPr` position (before `w:ind`, after `w:keepLines`/`w:pageBreakBefore` per the CT_PPr sequence); roman/letter start values (`parseMarkerStart`). | Low-medium: pPr child order is schema-sensitive and Word repairs misordered children |
+| 3 | **Done (`dc3e2d0`).** `paragraph-format.numbering` binding (`numId`, `level`, null) with tracked `pPrChange`; schema-ordered `w:numPr`; existing-definition validation; same-author earliest-snapshot preservation and cross-author conflict refusal; roman/letter start values. Word differential cases verify bind/remove/change-level through Accept All and Reject All list labels. | Low-medium: pPr child order is schema-sensitive and Word repairs misordered children |
 | 4 | `list-format` `convert-plain` with `strip: marker` (decimal, letters, roman, bullets), replacing the whole-paragraph letter fallback; Word-authored fixtures and COM lane for A./1./I.; header runs share one `numId` via the sequence state. Contract version 9 and `list-format-v1`. | High: Word fidelity, partial reject coherence, sequence continuity |
 | 5 | `list-format` `change-format` (`scope: list` then `range`), `join`; reroute the `list-change` format-change case; refusal rules (style-linked, mixed ranges). | High: splitting a list mid-sequence, nested level remap, style-linked numbering |
 | 6 | Changed-text header conversion ("1. Old" -> "1. New"): documented as `redline` + `list-format` in one batch; add the batch-compiler rule that these two kinds on one target do not conflict; remove reliance on `sameRawText`/`sameListText` for new code. | Medium |
@@ -479,9 +479,9 @@ numPr-without-`pPrChange` fix for explicit-start conversion (`f72f60a`). Consequ
 
 ### Conflicts and stale statements to resolve
 
-- WP-3 here says to extend `insertPPrChildInOrder` and `rejectPropertyChangeNode` expectations for `numPr` in `pPrChange`.
-  `cedc68a` changed `pPrChange` reject (paragraph-mark `rPr` and `sectPr` kept) and Word-matched semantics now also live in
-  `core/word-revision-semantics.js`. Re-read both before WP-3 and treat the Word-backed simulator as the oracle.
+- (Resolved in WP-3.) `numPr` is schema-ordered in the current `w:pPr`, while the original binding is retained in the
+  `w:pPrChange` snapshot. Reject/accept behavior is covered by the Word-semantics simulator and Word differential list-label
+  assertions.
 - "Whole-paragraph delete/insert must stop being used for conversions" (letter markers): still a valid design goal, but the
   current letter form is reject-exact, so the verifier will not force the change. WP-4 must justify it on identity and
   review quality; its Word verification can reuse the WP-2 COM matrix script.

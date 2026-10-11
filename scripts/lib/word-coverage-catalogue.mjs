@@ -74,8 +74,12 @@ function assertSyntheticClaim(testCase, structure) {
 }
 
 function syntheticTask(testCase) {
-    if (testCase.operation?.type === 'list-change') return 'list-change';
-    if (testCase.operation?.type === 'table-reconciliation') return 'table-reconciliation';
+    const operationTypes = [testCase.operation, ...(testCase.batchOperations || [])]
+        .map(operation => operation?.type)
+        .filter(Boolean);
+    if (operationTypes.includes('list-change')) return 'list-change';
+    if (operationTypes.includes('table-reconciliation')) return 'table-reconciliation';
+    if (operationTypes.includes('paragraph-format') || operationTypes.includes('character-format')) return 'format';
     if (testCase.expectAtomicRollback) return 'mixed-batch';
     if (testCase.expectNoOp) return 'accept-reject';
     if (testCase.task.startsWith('apply-')) return 'format';

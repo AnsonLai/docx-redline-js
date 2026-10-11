@@ -24,7 +24,8 @@ for (const testCase of WORD_TASK_CASES) {
         assert.equal(testCase.original, testCase.modified);
         assert.equal(typeof testCase.sourceDocumentXml, 'string');
     } else {
-        assert.notEqual(testCase.original, testCase.modified);
+        if (testCase.textUnchanged) assert.equal(testCase.original, testCase.modified);
+        else assert.notEqual(testCase.original, testCase.modified);
     }
     if (testCase.expectAtomicRollback) {
         assert.equal(typeof testCase.sourceDocumentXml, 'string');

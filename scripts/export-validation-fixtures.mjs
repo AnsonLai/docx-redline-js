@@ -56,7 +56,8 @@ for (const testCase of cases) {
       sourceDocumentXml,
       testCase.batchOperations,
       'Validation',
-      null,
+      // A numbering binding resolves against the source numbering part, as it does in a real package.
+      testCase.sourceNumbering ? { numberingXml: testCase.packageParts?.numberingXml } : null,
       operationOptions
     )
     : await applyOperationToDocumentXml(
@@ -228,6 +229,10 @@ for (const testCase of cases) {
     sourceText: testCase.sourceText || testCase.original,
     modifiedText: preprocessMarkdown(testCase.modified).cleanText,
     requiredNumberingFormats: testCase.requiredNumberingFormats || [],
+    ...(testCase.expectedAcceptedListStrings ? {
+      expectedAcceptedListStrings: testCase.expectedAcceptedListStrings,
+      expectedRejectedListStrings: testCase.expectedRejectedListStrings
+    } : {}),
     untouchedPartSha256
   };
   writeFileSync(join(outputDir, `${testCase.name}.expected.json`), `${JSON.stringify(expected, null, 2)}\n`, 'utf8');

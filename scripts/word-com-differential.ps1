@@ -29,17 +29,19 @@ function Get-ComparableText([string]$text, [string]$fidelity = 'exact') {
     return $text
 }
 
+# Messages go straight to stdout: Write-Output inside a function that also returns a boolean would make the
+# return value a non-empty array, and `-not` of that array is always false (failures would be silently ignored).
 function Test-ContainsAssertions([string]$text, $required, $absent, [string]$phase, [string]$name) {
     $passed = $true
     foreach ($value in @($required)) {
         if (-not $text.Contains([string]$value)) {
-            Write-Output "FAIL ${name}: ${phase} is missing expected text: $value"
+            [Console]::Out.WriteLine("FAIL ${name}: ${phase} is missing expected text: $value")
             $passed = $false
         }
     }
     foreach ($value in @($absent)) {
         if ($text.Contains([string]$value)) {
-            Write-Output "FAIL ${name}: ${phase} still contains superseded text: $value"
+            [Console]::Out.WriteLine("FAIL ${name}: ${phase} still contains superseded text: $value")
             $passed = $false
         }
     }
@@ -141,6 +143,21 @@ function Get-ScopeParagraphCount($document, [string]$scope) {
         }
     }
     return $count
+}
+
+# List membership, not just text: Range.Text never contains list labels, so a numbering binding
+# (w:numPr in or out of a w:pPrChange) is only visible through ListFormat.ListString per paragraph.
+function Test-ListStrings($document, $expectedStrings, [string]$phase, [string]$name) {
+    if ($null -eq $expectedStrings) { return $true }
+    $actual = @(foreach ($paragraph in @($document.Paragraphs)) { [string]$paragraph.Range.ListFormat.ListString })
+    $expectedList = @($expectedStrings | ForEach-Object { [string]$_ })
+    if (($actual -join '|') -ne ($expectedList -join '|')) {
+        [Console]::Out.WriteLine("FAIL ${name}: $phase list labels differ")
+        [Console]::Out.WriteLine("  expected: $($expectedList -join ' | ')")
+        [Console]::Out.WriteLine("  actual:   $($actual -join ' | ')")
+        return $false
+    }
+    return $true
 }
 
 # Use the Revisions collection, which matches the ribbon's "Accept/Reject All Changes"
@@ -319,6 +336,9 @@ try {
                     Write-Output "  actual:   $acceptedText"
                     $caseFailed = $true
                 }
+                if (-not $caseFailed -and -not (Test-ListStrings $document $expected.expectedAcceptedListStrings 'accept-all' $name)) {
+                    $caseFailed = $true
+                }
             }
         }
         catch {
@@ -349,6 +369,9 @@ try {
                     Write-Output "FAIL ${name}: reject-all mismatch"
                     Write-Output "  expected: $expectedRejected"
                     Write-Output "  actual:   $rejectedText"
+                    $caseFailed = $true
+                }
+                if (-not $caseFailed -and -not (Test-ListStrings $document $expected.expectedRejectedListStrings 'reject-all' $name)) {
                     $caseFailed = $true
                 }
                 $sourceDocxPath = Join-Path $resolvedDir "$name.source.docx"

@@ -175,6 +175,29 @@ const MIXED_STYLE_NUMBERING_XML = `<?xml version="1.0" encoding="UTF-8" standalo
   <w:num w:numId="7"><w:abstractNumId w:val="2"/></w:num>
 </w:numbering>`;
 
+const BINDING_NUMBERING_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering xmlns:w="${NS_W}">
+  <w:abstractNum w:abstractNumId="0">
+    <w:nsid w:val="5B1D0001"/><w:multiLevelType w:val="hybridMultilevel"/><w:tmpl w:val="5B1D0001"/>
+    <w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl>
+    <w:lvl w:ilvl="1"><w:start w:val="1"/><w:numFmt w:val="lowerLetter"/><w:lvlText w:val="%2."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="1440" w:hanging="360"/></w:pPr></w:lvl>
+    <w:lvl w:ilvl="2"><w:start w:val="1"/><w:numFmt w:val="lowerRoman"/><w:lvlText w:val="%3."/><w:lvlJc w:val="right"/><w:pPr><w:ind w:left="2160" w:hanging="180"/></w:pPr></w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="5"><w:abstractNumId w:val="0"/></w:num>
+</w:numbering>`;
+
+const bindingParagraph = (text, numPr) => `<w:p>${numPr ? `<w:pPr><w:numPr><w:ilvl w:val="${numPr.level}"/><w:numId w:val="${numPr.numId}"/></w:numPr></w:pPr>` : ''}<w:r><w:t>${text}</w:t></w:r></w:p>`;
+const bindingDocument = (middle) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="${NS_W}">
+  <w:body>
+    ${bindingParagraph('First clause', { numId: 5, level: 0 })}
+    ${bindingParagraph('Standalone clause', middle)}
+    ${bindingParagraph('Second clause', { numId: 5, level: 0 })}
+    <w:sectPr/>
+  </w:body>
+</w:document>`;
+const BINDING_TEXT = ['First clause', 'Standalone clause', 'Second clause'].join(String.fromCharCode(10));
+
 const ROMAN_HIERARCHY_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="${NS_W}">
   <w:body>
@@ -964,6 +987,57 @@ const WORD_TASK_CASE_DEFINITIONS = [
         expectedRejectedContains: ['Date'],
         expectedRejectedAbsent: ['ATTACHMENT 4 - JOINT AGENCY PUBLIC ANNOUNCEMENT', 'BCHD'],
         requiredElements: { tbl: 1, tr: 3, tc: 6, numPr: 2, pStyle: 2 }
+    },
+    {
+        name: 'administrative-paragraph-numbering-bind-plain',
+        category: 'administrative',
+        task: 'bind-plain-paragraph-to-list',
+        sourceDocumentXml: bindingDocument(null),
+        sourceNumbering: true,
+        textUnchanged: true,
+        original: BINDING_TEXT,
+        modified: BINDING_TEXT,
+        batchOperations: [{ type: 'paragraph-format', target: 'Standalone clause', properties: { numbering: { numId: 5, level: 0 } } }],
+        expectedAcceptedText: BINDING_TEXT,
+        expectedRejectedText: BINDING_TEXT,
+        expectedAcceptedListStrings: ['1.', '2.', '3.'],
+        expectedRejectedListStrings: ['1.', '', '2.'],
+        packageParts: { numberingXml: BINDING_NUMBERING_XML },
+        requiredElements: { pPrChange: 1, numPr: 3 }
+    },
+    {
+        name: 'legal-paragraph-numbering-remove-from-list',
+        category: 'legal',
+        task: 'remove-paragraph-from-list',
+        sourceDocumentXml: bindingDocument({ numId: 5, level: 0 }),
+        sourceNumbering: true,
+        textUnchanged: true,
+        original: BINDING_TEXT,
+        modified: BINDING_TEXT,
+        batchOperations: [{ type: 'paragraph-format', target: 'Standalone clause', properties: { numbering: null } }],
+        expectedAcceptedText: BINDING_TEXT,
+        expectedRejectedText: BINDING_TEXT,
+        expectedAcceptedListStrings: ['1.', '', '2.'],
+        expectedRejectedListStrings: ['1.', '2.', '3.'],
+        packageParts: { numberingXml: BINDING_NUMBERING_XML },
+        requiredElements: { pPrChange: 1, numPr: 3 }
+    },
+    {
+        name: 'legal-paragraph-numbering-change-level',
+        category: 'legal',
+        task: 'change-list-level-of-paragraph',
+        sourceDocumentXml: bindingDocument({ numId: 5, level: 0 }),
+        sourceNumbering: true,
+        textUnchanged: true,
+        original: BINDING_TEXT,
+        modified: BINDING_TEXT,
+        batchOperations: [{ type: 'paragraph-format', target: 'Standalone clause', properties: { numbering: { numId: 5, level: 1 } } }],
+        expectedAcceptedText: BINDING_TEXT,
+        expectedRejectedText: BINDING_TEXT,
+        expectedAcceptedListStrings: ['1.', 'a.', '2.'],
+        expectedRejectedListStrings: ['1.', '2.', '3.'],
+        packageParts: { numberingXml: BINDING_NUMBERING_XML },
+        requiredElements: { pPrChange: 1, numPr: 4 }
     }
 ];
 

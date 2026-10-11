@@ -12,9 +12,18 @@ import {
 import { validateCoverageMetadata } from '../scripts/lib/word-coverage-metadata.mjs';
 
 const { cases, priorities } = loadCoverageCatalogue();
-assert.equal(cases.length, 109);
-assert.equal(cases.filter(item => item.lane === 'synthetic').length, 49);
+assert.equal(cases.length, 112);
+assert.equal(cases.filter(item => item.lane === 'synthetic').length, 52);
 assert.equal(cases.filter(item => item.lane === 'superdoc').length, 60);
+for (const name of [
+    'administrative-paragraph-numbering-bind-plain',
+    'legal-paragraph-numbering-remove-from-list',
+    'legal-paragraph-numbering-change-level'
+]) {
+    const item = cases.find(candidate => candidate.identity === `synthetic:${name}`);
+    assert.equal(item?.metadata.task, 'format', name);
+    assert.deepEqual(item?.metadata.structures, ['list'], name);
+}
 
 const matrix = validateCoveragePriorities(cases, priorities);
 assert.equal(matrix.size, COVERAGE_TASKS.length * COVERAGE_STRUCTURES.length);
@@ -75,7 +84,7 @@ const report = JSON.parse(firstReport);
 assert.equal(report.totals.cases, cases.length);
 assert.equal(report.totals.manualMissing, cases.length);
 assert.equal(report.totals.aiPreflight, 24);
-assert.equal(report.totals.syntheticWord, 49);
+assert.equal(report.totals.syntheticWord, 52);
 assert.equal(report.totals.realDocumentWord, 60);
 
 execFileSync(process.execPath, ['scripts/prepare-word-review.mjs', '--cycle=2'], {
@@ -84,7 +93,7 @@ execFileSync(process.execPath, ['scripts/prepare-word-review.mjs', '--cycle=2'],
 });
 const review = JSON.parse(readFileSync(new URL('../tmp/word-manual-review/review-manifest-cycle-2.json', import.meta.url)));
 assert.equal(review.humanSignOff.status, 'pending');
-assert.ok(review.cases.length >= Math.ceil(49 * 0.2) + 2);
+assert.ok(review.cases.length >= Math.ceil(52 * 0.2) + 2);
 assert.ok(review.cases.every(item => Object.values(item.views).every(status => status === 'pending')));
 assert.ok(review.cases.some(item => item.lane === 'superdoc' && item.category === 'legal'));
 assert.ok(review.cases.some(item => item.lane === 'superdoc' && item.category === 'administrative'));

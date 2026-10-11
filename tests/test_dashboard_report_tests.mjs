@@ -7,10 +7,10 @@ import { fileURLToPath } from 'url';
 import { buildDashboardData, renderDashboardHtml } from '../scripts/generate-test-dashboard.mjs';
 
 const data = buildDashboardData();
-assert.equal(data.cases.length, 109);
-assert.equal(data.cases.filter(item => item.lane === 'synthetic').length, 49);
+assert.equal(data.cases.length, 112);
+assert.equal(data.cases.filter(item => item.lane === 'synthetic').length, 52);
 assert.equal(data.cases.filter(item => item.lane === 'superdoc').length, 60);
-assert.equal(data.cases.filter(item => item.visualEligible).length, 92);
+assert.equal(data.cases.filter(item => item.visualEligible).length, 95);
 assert.equal(data.priorities.emptyCellDispositions.length, 1);
 assert.ok(Array.isArray(data.lane1Cases));
 

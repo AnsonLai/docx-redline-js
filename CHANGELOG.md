@@ -19,6 +19,15 @@
 
 ### Added
 
+- **`paragraph-format.numbering` binding (`paragraph-numbering-binding-v1`, no contract bump):** `properties.numbering` is
+  `{ numId, level? }` (bind the paragraph to an existing list) or `null` (remove its direct list binding), recorded as a tracked
+  `w:pPrChange` so Reject All restores the previous `w:numPr` exactly and Accept All shows the new one (verified in Word with
+  `Document.Revisions.RejectAll()/AcceptAll()` and `ListFormat.ListString`). `w:numPr` is inserted at its CT_PPr position
+  (after `widowControl`, before `suppressLineNumbers`/`spacing`/`ind`; `ilvl` before `numId`). A binding never allocates: an unknown
+  `numId` or undefined level is refused `PARAGRAPH_NUMBERING_NOT_FOUND`. `paragraph-format` now keeps the earliest `w:pPrChange`
+  snapshot for repeated same-author edits (it used to replace it, so Reject All restored the intermediate state) and refuses to
+  overwrite another author's pending snapshot (`PARAGRAPH_FORMAT_REVISION_CONFLICT`). Letter and roman literal-marker headers
+  (`C.`, `iv.`) now convert with their start value instead of restarting at the first item.
 - **List conversion diagnostics (`list-conversion-diagnostics-v1`, no contract bump):** text edits no longer report a silent `ok`
   when they cannot create list structure. A plain paragraph whose new text starts a list marker returns the warning
   `LIST_MARKER_NOT_BOUND` (`diagnostics[]` on the operation result, `CODE: message` in `warnings`), or `UNSUPPORTED_LIST_CONVERSION`
