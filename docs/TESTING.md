@@ -523,17 +523,7 @@ To add a synthetic Word case:
    element counts checked before Word runs.
 4. Supply `expectedAcceptedText` and `expectedRejectedText` when the source is a
    multi-paragraph document or Word exposes structural separators such as table
-   row boundaries. For tracked-change scenarios the script also compares the paragraph count after
-Reject All with the source package's paragraph count and fails on a mismatch, so
-a leftover or extra paragraph mark is caught even when the text matches.
-
-Accept All and Reject All are issued through `Document.Revisions.AcceptAll()` /
-`RejectAll()` (per-range `Revisions` for header stories). Do not use
-`Document.AcceptAllRevisions()` / `RejectAllRevisions()` in COM scripts: when
-the last body paragraph has a tracked-inserted mark they can leave that mark and
-an extra empty paragraph behind, unlike the ribbon command and Word users.
-
-Exact comparison is the default.
+   row boundaries.
 5. Run `node tests/word_task_catalog_tests.mjs`, then `npm run test:word` on a
    Windows machine with desktop Word installed.
 
@@ -596,6 +586,16 @@ through COM. For each fixture, the script:
    and reads the text again; and
 6. compares both results with expectations that were not calculated by this
    library's own accept/reject implementation.
+
+Where the case has a source package the script also compares the paragraph count after
+Reject All with the source package's paragraph count and fails on a mismatch, so
+a leftover or extra paragraph mark is caught even when the text matches.
+
+Accept All and Reject All are issued through `Document.Revisions.AcceptAll()` /
+`RejectAll()` (per-range `Revisions` for header stories). Do not use
+`Document.AcceptAllRevisions()` / `RejectAllRevisions()` in COM scripts: when
+the last body paragraph has a tracked-inserted mark they can leave that mark and
+an extra empty paragraph behind, unlike the ribbon command and Word users.
 
 Exact comparison is the default. The harness removes Word's terminal paragraph
 mark, normalizes CR/LF representation, and removes the characters Word exposes
