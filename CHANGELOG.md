@@ -19,6 +19,15 @@
 
 ### Added
 
+- **List conversion diagnostics (`list-conversion-diagnostics-v1`, no contract bump):** text edits no longer report a silent `ok`
+  when they cannot create list structure. A plain paragraph whose new text starts a list marker returns the warning
+  `LIST_MARKER_NOT_BOUND` (`diagnostics[]` on the operation result, `CODE: message` in `warnings`), or `UNSUPPORTED_LIST_CONVERSION`
+  under the strict policy (`--profile agent`, `--atomic`, or `strictListConversion: true`). A list item whose retained marker asks for a
+  different kind or format than its numbering definition returns `LIST_FORMAT_NOT_APPLIED` / `UNSUPPORTED_LIST_FORMAT_CHANGE`.
+  `listMarkers: 'literal'` on an operation opts out. `paragraph-format.properties` is now a closed schema; unknown keys (such as
+  `numbering`) are still ignored but produce an `UNKNOWN_PARAGRAPH_FORMAT_PROPERTY` warning, with rejection planned for the next minor.
+  Independent of `REVISION_FIDELITY_VIOLATION`; compact CLI output keeps `diagnostics` and the error fields.
+
 - **Numbering allocator:** new `services/numbering-allocation.js` (exported from the package root): `allocateNumberingDefinition`
   (new abstractNum + num with fresh ids, copied level geometry, per-level `startOverride`), `allocateNumberingForReplacement`
   (same-kind source-list continuation or fresh allocation; tracked-deleted source paragraphs never change `numPr`),

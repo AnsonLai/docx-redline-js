@@ -144,6 +144,16 @@ for letters and roman numerals), so `C. Header` is converted but numbers from `A
 
 ## Interim safety fix (recommended, small, ship first)
 
+**Status: DONE in `db10d39` (WP-1; capability `list-conversion-diagnostics-v1`, contract version stays 8).** Implementation notes and deviations
+from the text below: strict policy means `strictListConversion: true` (CLI agent profile and `--atomic` set it) or `atomic`; plain
+`strictTargets` is always on, so it cannot select the policy. Diagnostics live in `services/list-conversion-diagnostics.js`, appear as
+`diagnostics[]` on the operation result plus a `CODE: message` string in `warnings`, and detect only a plain target whose original lacks an
+equivalent marker (numbered markers need a `.`/`)` terminator, so `7 days` is not a marker). Format-change detection compares only retained
+lines that carry a marker (inserted items are not compared: nested bullets under numbered items are a supported pattern) and covers the
+insertion-only and explicit-range heuristics, not the one-line adjacency form (no marker is requested there). `UNSUPPORTED_LIST_FORMAT_CHANGE`
+is the strict form of `LIST_FORMAT_NOT_APPLIED`. Unknown `paragraph-format` keys ship as the warning `UNKNOWN_PARAGRAPH_FORMAT_PROPERTY`
+(error planned for the next minor); the schema's `paragraphFormatProperties` is closed.
+
 Silent success is the worst property of both (a) and (b). Recommend a patch release that adds
 detection only, no new conversion behavior:
 
@@ -385,7 +395,7 @@ for the range.
 | WP | Work | Risk |
 |---|---|---|
 | 0 | **Done.** Strict-parse and start-value fix (item c); bare-XML `RECEIPT_RECONCILIATION_FAILED` fixed in `73c67e8` (see section (a) observation 2). Remaining: re-check xmldom hierarchy warnings in the consumer's environment; bare-vs-packaged parity is covered by the fidelity plan's WP-3 matrix. | Low |
-| 1 | Interim safety diagnostics: `UNSUPPORTED_LIST_CONVERSION`, `LIST_MARKER_NOT_BOUND`, `LIST_FORMAT_NOT_APPLIED`, `listMarkers: 'literal'` opt-out; closed `paragraph-format.properties` schema with unknown-key rejection; capability `list-conversion-diagnostics-v1`. Patch release. | Low-medium: unknown-key rejection could break callers that pass ignored keys; ship as warning first, error in the next minor |
+| 1 | **Done (`db10d39`).** Interim safety diagnostics: `UNSUPPORTED_LIST_CONVERSION`, `LIST_MARKER_NOT_BOUND`, `LIST_FORMAT_NOT_APPLIED`, `listMarkers: 'literal'` opt-out; closed `paragraph-format.properties` schema with unknown-key rejection; capability `list-conversion-diagnostics-v1`. Patch release. | Low-medium: unknown-key rejection could break callers that pass ignored keys; ship as warning first, error in the next minor |
 | 2 | **Done (`4718c36`).** Numbering allocator module `services/numbering-allocation.js`: `allocateNumberingDefinition` (create new abstractNum + num, copy level geometry, per-level `startOverride`, ids via `reserveNextNumberingIdPair`), `allocateNumberingForReplacement` (replacement policy, replaces `reuseSourceListNumbering`), the single merge `mergeNumberingParts`, `validateNumberingIntegrity` (numId/abstractNum/ilvl; wired into the `openDocx` validation as introduced-issues-only). No operation exposed yet; `tests/numbering_allocation_tests.mjs`, parity in the WP-3 matrix. Not yet used by an operation: `allocateNumberingDefinition` (WP-4/5 callers), batch continuity (`listFallbackSequenceState`) stays with WP-4. | Medium: continuity across a batch |
 | 3 | `paragraph-format.numbering` binding (`numId`, `level`, null) with `pPrChange`; extend `applyParagraphPropertiesToPPr`, `checkParagraphPropertiesChanged`, and `insertPPrChildInOrder` for `w:numPr` position (before `w:ind`, after `w:keepLines`/`w:pageBreakBefore` per the CT_PPr sequence); roman/letter start values (`parseMarkerStart`). | Low-medium: pPr child order is schema-sensitive and Word repairs misordered children |
 | 4 | `list-format` `convert-plain` with `strip: marker` (decimal, letters, roman, bullets), replacing the whole-paragraph letter fallback; Word-authored fixtures and COM lane for A./1./I.; header runs share one `numId` via the sequence state. Contract version 9 and `list-format-v1`. | High: Word fidelity, partial reject coherence, sequence continuity |
