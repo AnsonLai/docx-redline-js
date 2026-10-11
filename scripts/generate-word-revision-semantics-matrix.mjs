@@ -105,6 +105,15 @@ add('del-row', 'Table with a deleted row',
         row(cell(P('Existing row.')))
         + row(cell(para(delRun('Deleted row.'), { mark: mark('del') })), rev('del'))) + P('After table.'));
 
+// R5: end-of-document table append. insRow = row-level ins with inserted cell marks (library shape).
+const insRow = (text, cols = 2) => row(Array.from({ length: cols }, (_, i) => cell(para(insRun(`${text}${i + 1}`), { mark: mark('ins') }))).join(''), rev('ins'));
+add('table-append-end-trailing-ins-mark', 'Table appended after the final paragraph: inserted rows, then an empty trailing paragraph with an inserted mark (library shape)',
+    () => P('Alpha.') + P('Final paragraph.') + table(insRow('R1C') + insRow('R2C')) + para('', { mark: mark('ins') }));
+add('table-append-end-word-native', 'Table appended after the final paragraph as Word writes it: final paragraph mark inserted, inserted rows, untracked empty trailing paragraph',
+    () => P('Alpha.') + para(run('Final paragraph.'), { mark: mark('ins') }) + table(insRow('R1C') + insRow('R2C')) + P(''));
+add('table-append-end-untracked-trailing', 'Table appended after the final paragraph: inserted rows followed by an untracked empty trailing paragraph',
+    () => P('Alpha.') + P('Final paragraph.') + table(insRow('R1C') + insRow('R2C')) + P(''));
+
 const wrap = body => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="${W}" xmlns:r="${R}"><w:body>${body}</w:body></w:document>`;
 const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="${W}"><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:pPr><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:b/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:pPr><w:ind w:left="720"/></w:pPr></w:style></w:styles>`;
 const numbering = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:numbering xmlns:w="${W}"><w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="hybridMultilevel"/><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="-"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>`;
