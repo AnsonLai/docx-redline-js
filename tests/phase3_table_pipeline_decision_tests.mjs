@@ -127,5 +127,13 @@ assert.equal(invalidTable.isValid, false);
 const validTable = always.executeTableGeneration('| Name | Role |\n|---|---|\n| Ada | Reviewer |');
 assert.equal(validTable.isValid, true);
 assert.match(validTable.ooxml, /<w:tbl/);
+// Public ReconciliationPipeline table path: a redline table is a tracked block (rows carry trPr/ins) so Reject All
+// removes the whole table instead of leaving an empty one.
+const redlineTable = new ReconciliationPipeline({ generateRedlines: true, author: 'Phase 3' })
+    .executeTableGeneration('| Name | Role |\n|---|---|\n| Ada | Reviewer |');
+assert.equal(redlineTable.isValid, true);
+const redlineRows = redlineTable.ooxml.match(/<w:tr[ >][\s\S]*?<\/w:tr>/g) || [];
+assert.ok(redlineRows.length >= 2, 'header and body rows are generated');
+for (const row of redlineRows) assert.match(row, /<w:trPr>(?:(?!<\/w:trPr>)[\s\S])*<w:ins /, 'every inserted row is tracked');
 
 console.log('PASS: Phase 3 table targeting, table mode, and pipeline decision matrix');

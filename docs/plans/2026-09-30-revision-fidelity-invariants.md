@@ -102,8 +102,8 @@ Resume here. Each line says what landed, where, and what is next. Verify with `g
 and fixed three real generator defects: explicit-start/`1. Header` list conversion bound `numPr` without a
 `w:pPrChange` (`f72f60a`, `orchestration/list-structural-fallback.js` `enforceListBindingOnParagraphNodes`
 `trackPropertyChange`); text-to-table produced tracked cell text in untracked rows (`c20f33c`,
-`engine/table-mode.js` now passes `trackAsBlock: true`; `pipeline/pipeline.js:340` has the same call without it and is
-untested, so check it); and the accept-first false positives (verifier scoping, `bbb23cb`). (Historical: enforce is now the default, so this probe is no longer a separate release gate.)
+`engine/table-mode.js` now passes `trackAsBlock: true`; `pipeline/pipeline.js` `ReconciliationPipeline.executeTableGeneration` had the same call without it; it is public API and
+is now fixed and tested, pre-0.9.0 D2); and the accept-first false positives (verifier scoping, `bbb23cb`). (Historical: enforce is now the default, so this probe is no longer a separate release gate.)
 
 **Update after COM evidence (`584c83a`):** Word removes a trailing body paragraph whose inserted mark is rejected
 (or deleted mark accepted), so class 2 below was a simulator error, not a library defect. Only 4 suites still fail

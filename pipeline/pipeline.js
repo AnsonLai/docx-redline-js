@@ -340,7 +340,9 @@ export class ReconciliationPipeline {
         const tableOoxml = generateTableOoxml(tableData, {
             generateRedlines: this.generateRedlines,
             author: this.author,
-            revisionIdAllocator: this.revisionIdAllocator
+            revisionIdAllocator: this.revisionIdAllocator,
+            // Word-native inserted table: tracked rows so Reject All removes the whole table.
+            trackAsBlock: true
         });
 
         return {
