@@ -1,7 +1,8 @@
 # Canonical List Operations: Header-to-List Conversion and List Format Change
 
 Date: 2026-09-30
-Status: IN PROGRESS (2026-10-10): WP-0 through WP-4 done; WP-5 next. Package baseline 0.8.4+, CLI `contractVersion` 9.
+Status: IN PROGRESS (2026-10-10): WP-0 through WP-5 done; WP-6 next. Package baseline 0.8.4+, CLI `contractVersion` 9
+(WP-5 added capability `list-format-change-v1`, no contract bump).
 
 ## Progress and hand-off (keep current; resume here)
 
@@ -12,11 +13,12 @@ Status: IN PROGRESS (2026-10-10): WP-0 through WP-4 done; WP-5 next. Package bas
 | 2 | Done: `services/numbering-allocation.js` is the single allocator and the single numbering merge for runner and facade (fidelity plan WP-5a R1-R3); `reuseSourceListNumbering` removed; facade refuses dangling numbering references it adds; `NUMBERING_ID_CONFLICT` on conflicting ids | `4718c36`, `f41bd3b`; tests `tests/numbering_allocation_tests.mjs`, matrix numbering parity in `tests/reject_roundtrip_matrix_tests.mjs` | Residual: separate bare calls without shared `numberingXml`/`numberingIdState` can still allocate the same ids (now detected, not auto-remapped) |
 | 3 | Done: `paragraph-format.numbering` binds or removes existing numbering with a tracked `pPrChange`; validates `numId`/level; preserves the earliest same-author snapshot; refuses cross-author snapshot replacement; letter/roman marker starts are retained | `dc3e2d0` plus Word differential fixture follow-up; tests `tests/paragraph_format_numbering_tests.mjs`, Word task cases for bind/remove/change-level | WP-4 `list-format convert-plain` |
 | 4 | Done: `list-format` `convert-plain` (`strip: 'marker'` default, `'none'` with `format`/`start`), decimal/letters/roman/bullets, in place (tracked `w:del` of exactly the marker + tracked `pPrChange` via the WP-3 path); values from the markers (`startOverride`, typed `.`/`)` kept in `lvlText`); consecutive values share one numId, gaps restart at the typed value, later ops continue through `listFallbackSequenceState` (entry reused only while its numId is live in the DOM, so refused ops cannot poison it); refusals `LIST_MARKER_NOT_FOUND`/`_AMBIGUOUS`/`_UNSUPPORTED`, `LIST_FORMAT_TARGET_IS_LIST`, `LIST_FORMAT_STYLE_NUMBERED`, `PARAGRAPH_FORMAT_REVISION_CONFLICT`, `TARGET_RANGE_INVALID`; text-equal redline letter/roman/bullet conversions use the same core; WP-1 recovery is `use_list_format_convert_plain` + `suggestedOperation`; contract 9, `list-format-v1` | `1240842`, `1cd174a`; tests `tests/list_format_operation_tests.mjs`, matrix kind `list-format-convert-plain` + `typed-headers` fixture, Word cases `*-list-format-convert-*` (synthetic 56/56, corpus 60/60) | WP-5; see "WP-4 notes for WP-5/6" |
-| 5-7 | Not started | | See "Work packages" |
+| 5 | Done: `list-format` `change-format` (`scope: 'list'` default; `'range'` = target..targetEnd running to the end of the list) and `join` (`continueFrom`, compiled at batch start); a new `abstractNum`+`num` per change (source levels/geometry copied, one level redefined, `isLgl`/picture bullet/bullet symbol font dropped on a format change), every item rebound with one tracked `pPrChange`; ALL start values (carried source `startOverride`s, split continuation, `list.start`) are `w:start` on the new abstract, never `startOverride` (Word in-session Accept All quirk, see WP-5 notes); refusals `LIST_FORMAT_TARGET_NOT_LIST`, `_MIXED_RANGE`, `_STYLE_LINKED`, `_SPLIT_UNSUPPORTED`, `_DEFINITION_UNSUPPORTED`, `_JOIN_INVALID` (+ `_STYLE_NUMBERED`, `PARAGRAPH_FORMAT_REVISION_CONFLICT`), `LIST_FORMAT_UNCHANGED` warning on a no-op; `LIST_FORMAT_NOT_APPLIED`/`UNSUPPORTED_LIST_FORMAT_CHANGE` recover with `use_list_format_change_format` + `suggestedOperation`; capability `list-format-change-v1` (contract stays 9) | `564ad0e`, `579efae`, `616d317`; tests `tests/list_format_operation_tests.mjs` section 10, matrix kinds `list-format-change-format`/`list-format-join` + `adjacent-lists` fixture, Word cases `*-list-format-change-*`/`*-list-format-join-*` (synthetic 62/62, corpus 60/60) | WP-6; see "WP-5 notes for WP-6/7" |
+| 6-7 | Not started | | See "Work packages" |
 
-Gates every WP must keep green (verified 2026-10-10 after WP-4): `npm test` (146 suites), `check:types`,
+Gates every WP must keep green (verified 2026-10-10 after WP-5): `npm test` (146 suites), `check:types`,
 `test:isolation`, `node tests/reject_roundtrip_matrix_tests.mjs` (+ a `FUZZ_SEED=<n> MATRIX_ITERATIONS=500` run), Word
-synthetic lane 56/56 and corpus lane 60/60 (`pwsh`, redirect output to a log file; see docs/TESTING.md). The fidelity
+synthetic lane 62/62 and corpus lane 60/60 (`pwsh`, redirect output to a log file; see docs/TESTING.md). The fidelity
 verifier refuses by default, so a new list operation that breaks Reject All cannot pass these gates.
 Source: consumer report `AIWordPlugin/docs/library-issues/2026-09-30-canonical-list-operations.md`
 (with `reproduce-plain-header-conversion.mjs`). Reproductions below were re-run against this tree.
@@ -415,7 +417,7 @@ for the range.
 | 2 | **Done (`4718c36`).** Numbering allocator module `services/numbering-allocation.js`: `allocateNumberingDefinition` (create new abstractNum + num, copy level geometry, per-level `startOverride`, ids via `reserveNextNumberingIdPair`), `allocateNumberingForReplacement` (replacement policy, replaces `reuseSourceListNumbering`), the single merge `mergeNumberingParts`, `validateNumberingIntegrity` (numId/abstractNum/ilvl; wired into the `openDocx` validation as introduced-issues-only). No operation exposed yet; `tests/numbering_allocation_tests.mjs`, parity in the WP-3 matrix. Not yet used by an operation: `allocateNumberingDefinition` (WP-4/5 callers), batch continuity (`listFallbackSequenceState`) stays with WP-4. | Medium: continuity across a batch |
 | 3 | **Done (`dc3e2d0`).** `paragraph-format.numbering` binding (`numId`, `level`, null) with tracked `pPrChange`; schema-ordered `w:numPr`; existing-definition validation; same-author earliest-snapshot preservation and cross-author conflict refusal; roman/letter start values. Word differential cases verify bind/remove/change-level through Accept All and Reject All list labels. | Low-medium: pPr child order is schema-sensitive and Word repairs misordered children |
 | 4 | **Done (`1240842`, `1cd174a`).** `list-format` `convert-plain` with `strip: marker` (decimal, letters, roman, bullets) and `strip: none`, replacing the whole-paragraph letter fallback for text-equal conversions; Word-authored-style fixtures and COM lane for A./1./I. and a C. start value (`ListString` after Accept/Reject); header runs share one `numId` via the sequence state. Contract version 9 and `list-format-v1`. | High: Word fidelity, partial reject coherence, sequence continuity |
-| 5 | `list-format` `change-format` (`scope: list` then `range`), `join`; reroute the `list-change` format-change case; refusal rules (style-linked, mixed ranges). | High: splitting a list mid-sequence, nested level remap, style-linked numbering |
+| 5 | **Done (`564ad0e`, `579efae`, `616d317`).** `list-format` `change-format` (`scope: list`, `range`), `join`; the `list-change` format-change case is rerouted through recovery (`use_list_format_change_format` + `suggestedOperation`), not auto-applied (see WP-5 notes); refusal rules (style-linked, mixed ranges, mid-sequence splits, nested restarts, shared abstracts, instance level overrides). Word COM lane: bullet -> decimal, decimal -> upper letter, nested level, two range splits, join. Capability `list-format-change-v1`. | High: splitting a list mid-sequence, nested level remap, style-linked numbering |
 | 6 | Changed-text header conversion ("1. Old" -> "1. New"): documented as `redline` + `list-format` in one batch; add the batch-compiler rule that these two kinds on one target do not conflict; remove reliance on `sameRawText`/`sameListText` for new code. | Medium |
 | 7 | `detach` and `materializeMarker` (optional), docs, schema, `index.d.ts`, README, CHANGELOG, release notes; wrapper guidance in `docs/SKILL_AUTHORING.md` (negotiate `list-format-v1`; otherwise keep the host path). | Low |
 
@@ -451,12 +453,41 @@ Word-verification work. WP-4 and WP-5 should not merge without the COM lane resu
   keys; `commitBatchRuntimeContext` copies it to the caller's runtime context, so a bare caller that reuses one context object
   continues lists across calls (same as `numberingIdState`).
 
+### WP-5 notes for WP-6/7
+
+- Code: `services/list-format-change.js` (`changeListParagraphsFormat`, `joinListParagraphs`); dispatch `applyListRebinding` in
+  `document-operation-mutations.js` reads definitions from the source part plus the batch's pending `session.numberingXmlParts`,
+  so a later operation can change a list an earlier one allocated or rebound. `continueFrom` is compiled in
+  `operation-batch-compiler.js` (`_compiledContinueFromId`; a read, not registered as a write source).
+- Word numbering model (COM probes; module header): `w:num` instances sharing one `w:abstractNum` count as ONE list (refused
+  `shared-definition`); a level start (`w:start` or `w:startOverride`) re-applies on every restart of that level (a split that
+  must change the start of a level which restarts inside the range is refused `nested-restart`, found by simulating old vs new
+  counters); an item below an unused level implicitly starts that level at its start value (a split that starts at a nested item
+  sets the ancestors' start to their current value; Word-verified).
+- Word quirk found by the lane: after `Revisions.AcceptAll()` in a session, a level carrying a `w:startOverride` that resumes
+  after deeper items is renumbered from the override (`B., B.` instead of `C., D.`); reopening shows `C., D.`. A `w:start` on an
+  abstract used by one instance only renders correctly in both, so change-format writes every start there. convert-plain (WP-4)
+  still uses `startOverride` on single-level lists, where the quirk does not arise; WP-7 could switch it for consistency.
+- Batch compiler: `scope: 'list'` writes `pPr` on paragraphs outside the target that the compiler does not register, so another
+  operation on such a paragraph in the same batch is not reported as a conflict; it runs in order and sees the rebound paragraph
+  (a same-author `pPrChange` keeps the earliest snapshot, so Reject All stays exact). WP-6's redline + list-format rule should also
+  decide whether these out-of-target writes register as format writes.
+- Untracked (`generateRedlines: false`) rebinding outside the target is refused (`INVALID_OPERATION`, field `generateRedlines`);
+  the verifier's untracked locality check would refuse it anyway. A `target`..`targetEnd` range covering the list works.
+- Not done: the `list-change` path does not apply a format change itself (a Markdown edit mixes text and structure; WP-6's
+  redline + list-format composition is the place to offer it). Style-linked lists (heading numbering) are refused in both scopes,
+  including direct-`numPr` ranges the plan allowed, because style-bound members are invisible to the split/continuation analysis.
+  Text-box list members are refused. `join` of plain paragraphs is refused (`LIST_FORMAT_TARGET_NOT_LIST`; use
+  `paragraph-format.numbering`). `inspect` labels for the implicit-level case come from the library's own label computation and
+  were compared with Word only in the COM lane cases.
+
 ## Risks and open questions
 
 - Splitting a list (`scope: range`) changes numbering for paragraphs after the range. Decide whether
   following siblings keep their old `num` (visible renumbering restart) or are also rebound
   (touches paragraphs the caller did not name). Recommendation: keep them on the old `num` and
-  report it in the receipt; the caller can extend the range.
+  report it in the receipt; the caller can extend the range. **Resolved in WP-5:** refused instead
+  (`LIST_FORMAT_SPLIT_UNSUPPORTED` `mid-sequence`, naming `lastListParagraphIndex`); a range must run to the end of the list.
 - Reject coherence when a reviewer rejects only the marker deletion or only the `pPrChange`.
   Document; do not attempt to tie them with a shared revision id (Word does not support that).
 - Style-linked numbering (`w:numPr` in `w:style`) cannot be rebound per paragraph without
