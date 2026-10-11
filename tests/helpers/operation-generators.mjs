@@ -53,6 +53,7 @@ export const OPERATION_KINDS = [
     'replacements',
     'format',
     'paragraph-format',
+    'paragraph-format-numbering',
     'plain-to-list',
     'last-paragraph-replace'
 ];
@@ -207,6 +208,19 @@ export function generateOperation(rng, paragraphs, kind, serial = 0) {
             const site = rng.pick(indexed);
             return { kind, paragraphIndex: site.i, expectAccepted: [],
                 operation: { operationId, type: 'paragraph-format', target: targetOf(site.q), properties: rng.pick(PARAGRAPH_FORMAT_PROPERTIES) } };
+        }
+        case 'paragraph-format-numbering': {
+            // Binds a paragraph to a list the document already defines (numId/level read from inspect), rebinds a list
+            // item to another existing list/level, or removes a list item's direct binding.
+            const listed = indexed.filter(({ q }) => q.list && q.list.numId != null);
+            if (listed.length === 0) return null;
+            const source = rng.pick(listed).q.list;
+            const level = Number.isInteger(Number(source.level)) ? Number(source.level) : 0;
+            const site = rng.pick(indexed);
+            const remove = site.q.list && rng.chance(0.4);
+            return { kind, paragraphIndex: site.i, expectAccepted: [],
+                operation: { operationId, type: 'paragraph-format', target: targetOf(site.q),
+                    properties: { numbering: remove ? null : { numId: Number(source.numId), level } } } };
         }
         case 'plain-to-list': {
             const plain = withText.filter(({ q }) => !q.list && !q.inTable);

@@ -6,6 +6,7 @@
  */
 
 import { createWordElement } from '../core/word-xml.js';
+import { getCurrentChild } from '../core/current-properties.js';
 
 /**
  * Canonical OOXML run-property schema ordering.
@@ -419,7 +420,32 @@ export function checkParagraphPropertiesChanged(pPr, properties) {
         if (currentVal !== properties.style) return true;
     }
 
+    if (properties.numbering !== undefined) {
+        const current = readDirectNumbering(pPr);
+        const desired = properties.numbering;
+        if (desired === null) return current != null;
+        if (!current) return true;
+        if (current.numId !== String(Number(desired.numId))) return true;
+        if (current.level !== (Number(desired.level) || 0)) return true;
+    }
+
     return false;
+}
+
+/**
+ * Reads the paragraph's own (direct, non-snapshot) numbering binding.
+ *
+ * @param {Element|null} pPr
+ * @returns {{ numId: string, level: number }|null}
+ */
+function readDirectNumbering(pPr) {
+    const numPr = getCurrentChild(pPr, 'numPr');
+    if (!numPr) return null;
+    const read = (name) => {
+        const el = getCurrentChild(numPr, name);
+        return el ? (el.getAttribute('w:val') ?? el.getAttribute('val')) : null;
+    };
+    return { numId: String(Number(read('numId'))), level: Number(read('ilvl')) || 0 };
 }
 
 /**
@@ -490,6 +516,22 @@ export function applyParagraphPropertiesToPPr(xmlDoc, pPr, properties) {
             const pStyle = createWordElement(xmlDoc, 'w:pStyle');
             pStyle.setAttribute('w:val', properties.style);
             insertPPrChildInOrder(pPr, pStyle);
+        }
+    }
+
+    if (properties.numbering !== undefined) {
+        removeTags(['w:numPr']);
+        if (properties.numbering) {
+            // CT_PPr sequence: numPr follows widowControl and precedes suppressLineNumbers ... ind; inside
+            // CT_NumPr the order is ilvl, numId.
+            const numPr = createWordElement(xmlDoc, 'w:numPr');
+            const ilvl = createWordElement(xmlDoc, 'w:ilvl');
+            ilvl.setAttribute('w:val', String(Number(properties.numbering.level) || 0));
+            const numId = createWordElement(xmlDoc, 'w:numId');
+            numId.setAttribute('w:val', String(Number(properties.numbering.numId)));
+            numPr.appendChild(ilvl);
+            numPr.appendChild(numId);
+            insertPPrChildInOrder(pPr, numPr);
         }
     }
 }

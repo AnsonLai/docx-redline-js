@@ -6,6 +6,7 @@
  */
 
 import { validateExactReplacementRequests } from './localized-replacement-compiler.js';
+import { validateParagraphNumberingShape } from './list-conversion-diagnostics.js';
 
 const SUPPORTED_OPERATION_TYPES = new Set([
     'redline',
@@ -540,6 +541,20 @@ export function validateDocumentOperation(operation) {
                 valid: false,
                 error: { code: 'INVALID_OPERATION', message: 'Paragraph-format operations require a "properties" object.' }
             };
+        }
+        if (normalized.properties.numbering !== undefined) {
+            const shapeError = validateParagraphNumberingShape(normalized.properties.numbering);
+            if (shapeError) {
+                return {
+                    valid: false,
+                    error: {
+                        code: 'INVALID_OPERATION',
+                        message: shapeError,
+                        field: 'properties.numbering',
+                        recovery: { action: 'change_request', hint: 'Pass numbering as { "numId": <existing numId from inspect>, "level": 0 } or null.' }
+                    }
+                };
+            }
         }
     }
 

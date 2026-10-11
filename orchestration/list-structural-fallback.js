@@ -64,12 +64,47 @@ export function stripSingleLineListMarkerPrefix(text) {
     return String(candidate.contentText || '').trim();
 }
 
-function parseMarkerStart(marker, numberingStyle) {
-    if (numberingStyle !== 'decimal') return null;
-    const match = String(marker || '').trim().match(/^(\d+)\.?$/);
-    if (!match) return null;
-    const value = Number.parseInt(match[1], 10);
-    return Number.isFinite(value) && value > 0 ? value : null;
+const ROMAN_VALUES = { i: 1, v: 5, x: 10, l: 50, c: 100, d: 500, m: 1000 };
+
+function parseRomanNumeral(text) {
+    const letters = String(text || '').toLowerCase();
+    if (!/^[ivxlcdm]+$/.test(letters)) return null;
+    let total = 0;
+    for (let i = 0; i < letters.length; i++) {
+        const value = ROMAN_VALUES[letters[i]];
+        const next = ROMAN_VALUES[letters[i + 1]] || 0;
+        total += value < next ? -value : value;
+    }
+    return total;
+}
+
+/**
+ * Derives the numeric start a literal marker implies: `7.` -> 7, `C.` -> 3, `iv.` -> 4.
+ * Decimal markers keep every positive value (including 1). Letter and roman markers report only
+ * values above 1, because the default start (1) needs no override and keeps the shared-list behavior.
+ *
+ * @param {string} marker
+ * @param {string} numberingStyle
+ * @returns {number|null}
+ */
+export function parseMarkerStart(marker, numberingStyle) {
+    const text = String(marker || '').trim();
+    let value = null;
+    if (numberingStyle === 'decimal') {
+        const match = text.match(/^(\d+)\.?$/);
+        value = match ? Number.parseInt(match[1], 10) : null;
+    } else if (numberingStyle === 'lowerRoman' || numberingStyle === 'upperRoman') {
+        const match = text.match(/^([A-Za-z]+)[.)]?$/);
+        value = match ? parseRomanNumeral(match[1]) : null;
+    } else if (numberingStyle === 'lowerAlpha' || numberingStyle === 'upperAlpha') {
+        const match = text.match(/^([A-Za-z])[.)]?$/);
+        value = match ? match[1].toLowerCase().charCodeAt(0) - 96 : null;
+    } else {
+        return null;
+    }
+    if (!Number.isFinite(value) || value < 1) return null;
+    if (numberingStyle !== 'decimal' && value === 1) return null;
+    return value;
 }
 
 /**
@@ -455,6 +490,7 @@ export function buildSingleLineListStructuralFallbackPlan(options = {}) {
         numberingKey: `${modifiedCandidate.type}:${modifiedCandidate.numberingStyle}:single`,
         originalText,
         wasListParagraph: !!existingListInfo,
+        numberingStyle: modifiedCandidate.numberingStyle,
         startAt: modifiedCandidate.startAt
     };
 }

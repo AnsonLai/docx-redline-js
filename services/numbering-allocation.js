@@ -445,6 +445,46 @@ export function mergeNumberingParts(existingNumberingXml, incomingParts, options
 // ---------------------------------------------------------------------------------------------------------
 
 /**
+ * Checks that a direct paragraph binding `{ numId, level }` resolves in the document's numbering: the `w:num`
+ * exists (in the source part or among ids the current batch allocated), it has an `abstractNum`, and the level
+ * is defined by that abstract or by the `w:num`'s own `w:lvlOverride/w:lvl`. A binding is a reference, so this
+ * never allocates.
+ *
+ * @param {{ sourceNumberingXml?: string|null, usedNumIds?: Set<number> }|null|undefined} numberingIdState
+ * @param {string|number} numId
+ * @param {number} [level]
+ * @returns {{ ok: true } | { ok: false, reason: 'unknown-num'|'missing-abstract'|'undefined-level', message: string }}
+ */
+export function checkNumberingBinding(numberingIdState, numId, level = 0) {
+    const id = Number(numId);
+    const sourceXml = String(numberingIdState?.sourceNumberingXml || '');
+    const doc = sourceXml.trim() ? parseOoxml(sourceXml) : null;
+    const sourceNum = doc && !hasXmlParseError(doc)
+        ? descendants(doc, 'num').find(candidate => getElementId(candidate, ['w:numId', 'numId']) === id)
+        : null;
+    if (!sourceNum) {
+        // Ids allocated earlier in this batch exist only as pending numbering parts.
+        if (numberingIdState?.usedNumIds instanceof Set && numberingIdState.usedNumIds.has(id)) return { ok: true };
+        return {
+            ok: false,
+            reason: 'unknown-num',
+            message: `numbering.numId ${id} does not exist in the document's numbering definitions.`
+        };
+    }
+    const abstract = findAbstractForNum(doc, id);
+    if (!abstract) {
+        return { ok: false, reason: 'missing-abstract', message: `numId ${id} points at an abstractNum that does not exist.` };
+    }
+    const definesLevel = container => wordChildren(container, 'lvl')
+        .some(lvl => Number.parseInt(lvl.getAttribute('w:ilvl') ?? lvl.getAttribute('ilvl') ?? '0', 10) === level);
+    const overrideDefines = wordChildren(sourceNum, 'lvlOverride').some(override => definesLevel(override));
+    if (!definesLevel(abstract) && !overrideDefines) {
+        return { ok: false, reason: 'undefined-level', message: `numId ${id} does not define list level ${level}.` };
+    }
+    return { ok: true };
+}
+
+/**
  * Numbering integrity: every body `w:numId` (current and `pPrChange` snapshot) resolves to a `w:num`, every
  * `w:num` resolves to an `abstractNum`, every `w:ilvl` in use exists in that abstract (or in the `w:num`'s own
  * `w:lvlOverride/w:lvl`), and numbering ids are unique. `numId` 0 means "no list" and is always valid.

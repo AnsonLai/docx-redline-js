@@ -35,6 +35,8 @@ const RULES = Object.freeze({
     STRUCTURED_CONTENT_INVALID: ['request', 'request_fixable', 'change_request'],
     UNSUPPORTED_LIST_CONVERSION: ['list-conversion', 'request_fixable', 'apply_plain_text_or_convert_in_host'],
     UNSUPPORTED_LIST_FORMAT_CHANGE: ['list-conversion', 'request_fixable', 'change_list_format_in_host'],
+    PARAGRAPH_NUMBERING_NOT_FOUND: ['target-resolution', 'target_refresh_required', 'inspect_numbering'],
+    PARAGRAPH_FORMAT_REVISION_CONFLICT: ['target-safety', 'user_authorization_required', 'resolve_pending_revision'],
     UNSUPPORTED_INSERTION_AFFINITY: ['request', 'request_fixable', 'change_request'],
     EXISTING_REVISIONS: ['target-safety', 'policy_choice_required', 'set_option'],
     PART_NOT_FOUND: ['target-resolution', 'target_refresh_required', 'reinspect'],

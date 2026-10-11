@@ -156,6 +156,7 @@ assert(version.capabilities.includes('speculative-search-apply-v1'));
 assert(version.capabilities.includes('localized-change-summary-v1'));
 assert(version.capabilities.includes('revision-fidelity-v1'));
 assert(version.capabilities.includes('list-conversion-diagnostics-v1'));
+assert(version.capabilities.includes('paragraph-numbering-binding-v1'));
 assert.equal(version.contractVersion, 8, 'the interim list diagnostics are additive and do not bump the contract version');
 
 const fidelityOff = await executeCli(['apply', fileURLToPath(fixturePath), '--profile', 'agent', '--revision-fidelity', 'off', '--modified', 'x', '--target', 'y']);

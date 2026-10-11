@@ -88,14 +88,29 @@
       ]
     },
     "paragraphFormatProperties": {
-      "description": "Closed set. Unknown keys (including numbering bindings, which are not implemented) are ignored with an UNKNOWN_PARAGRAPH_FORMAT_PROPERTY warning today and will be rejected in a future minor release.",
+      "description": "Closed set. Unknown keys are ignored with an UNKNOWN_PARAGRAPH_FORMAT_PROPERTY warning today and will be rejected in a future minor release.",
       "type": "object",
       "properties": {
         "alignment": { "type": "string", "examples": ["left", "center", "right", "both"] },
         "keepNext": { "type": "boolean" },
         "keepLines": { "type": "boolean" },
         "pageBreakBefore": { "type": "boolean" },
-        "style": { "type": "string", "description": "Paragraph style id (w:pStyle)." }
+        "style": { "type": "string", "description": "Paragraph style id (w:pStyle)." },
+        "numbering": {
+          "description": "Direct list binding recorded as a tracked w:pPrChange. An object binds the paragraph to an EXISTING numId at a level; null removes the direct binding. Never allocates a list. Refused with PARAGRAPH_NUMBERING_NOT_FOUND when the numId or level is not defined.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["numId"],
+              "properties": {
+                "numId": { "oneOf": [ { "type": "integer", "minimum": 1 }, { "type": "string", "pattern": "^[1-9][0-9]*$" } ] },
+                "level": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0 }
+              },
+              "additionalProperties": false
+            }
+          ]
+        }
       },
       "additionalProperties": false
     },

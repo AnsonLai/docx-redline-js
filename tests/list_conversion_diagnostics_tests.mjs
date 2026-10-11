@@ -191,16 +191,16 @@ for (const [target, modified] of [
     const result = await apply([{
         type: 'paragraph-format',
         target: { exactText: PLAIN },
-        properties: { alignment: 'center', numbering: { numId: 2, level: 0 }, indentLeft: 720 }
+        properties: { alignment: 'center', spacingAfter: 120, indentLeft: 720 }
     }]);
     assert.equal(result.status, 'ok');
     const [diagnostic] = result.results[0].diagnostics;
     assert.equal(diagnostic.code, 'UNKNOWN_PARAGRAPH_FORMAT_PROPERTY');
     assert.equal(diagnostic.severity, 'warning');
-    assert.deepEqual(diagnostic.properties, ['numbering', 'indentLeft']);
+    assert.deepEqual(diagnostic.properties, ['spacingAfter', 'indentLeft']);
     assert.equal(result.results[0].status, 'applied', 'supported keys are still applied');
 
-    const onlyUnknown = await apply([{ type: 'paragraph-format', target: { exactText: PLAIN }, properties: { numbering: { numId: 2 } } }]);
+    const onlyUnknown = await apply([{ type: 'paragraph-format', target: { exactText: PLAIN }, properties: { spacingAfter: 120 } }]);
     assert.equal(onlyUnknown.results[0].status, 'no_change');
     assert.equal(onlyUnknown.results[0].diagnostics[0].code, 'UNKNOWN_PARAGRAPH_FORMAT_PROPERTY');
 

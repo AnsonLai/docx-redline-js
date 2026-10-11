@@ -33,6 +33,7 @@ assert.deepEqual(decimalPlan, {
     numberingKey: 'numbered:decimal:single',
     originalText: '7. Heading',
     wasListParagraph: false,
+    numberingStyle: 'decimal',
     startAt: 7
 });
 const formattedPlan = buildSingleLineListStructuralFallbackPlan({

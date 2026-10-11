@@ -10,10 +10,12 @@ import {
     detectRequestedListFormatMismatch,
     buildListFormatDiagnostic,
     findUnknownParagraphFormatKeys,
+    PARAGRAPH_FORMAT_REVISION_CONFLICT,
+    PARAGRAPH_NUMBERING_NOT_FOUND,
     buildUnknownParagraphFormatDiagnostic,
     diagnosticWarningText
 } from './list-conversion-diagnostics.js';
-import { getAllReferencedNumIdElements } from '../core/current-properties.js';
+import { getAllReferencedNumIdElements, getCurrentChild } from '../core/current-properties.js';
 import { findReconstructionParagraphRange } from '../engine/reconstruction-mapper.js';
 import { createRevisionMetadata } from '../core/types.js';
 import { containsTrackedChanges, getTrackedChangeAuthors, createWordElement, withOoxmlSourceType } from '../core/word-xml.js';
@@ -85,7 +87,7 @@ import {
     extractFirstParagraphNumId,
     buildExplicitDecimalMultilevelNumberingXml
 } from './numbering-helpers.js';
-import { allocateNumberingForReplacement } from './numbering-allocation.js';
+import { allocateNumberingForReplacement, checkNumberingBinding } from './numbering-allocation.js';
 import {
     extractReplacementNodesFromOoxml,
     normalizeBodySectionOrderStandalone
@@ -1531,7 +1533,11 @@ async function trySingleParagraphListStructuralFallback({
     const extracted = extractReplacementNodes(fallbackResult.oxml);
     let replacementNodes = extracted.replacementNodes;
     let numberingXml = extracted.numberingXml || fallbackResult?.numberingXml || null;
-    const hasExplicitStartAt = Number.isInteger(fallbackPlan?.startAt) && fallbackPlan.startAt > 0;
+    const hasPositiveStart = Number.isInteger(fallbackPlan?.startAt) && fallbackPlan.startAt > 0;
+    // Only decimal starts use the explicit multilevel-decimal definition. Letter and roman starts (`C.`, `iv.`)
+    // keep the generated definition, whose level-0 startOverride is already applied by the fallback executor.
+    const hasExplicitStartAt = hasPositiveStart && fallbackPlan?.numberingStyle === 'decimal';
+    const hasNonDecimalStart = hasPositiveStart && !hasExplicitStartAt;
     const numberingKey = fallbackResult?.listStructuralFallbackKey || fallbackPlan?.numberingKey || null;
     const numberingAction = resolveSingleLineListFallbackNumberingAction(
         fallbackPlan,
@@ -1603,7 +1609,7 @@ async function trySingleParagraphListStructuralFallback({
         );
     }
 
-    if (!hasExplicitStartAt && runtimeContext?.listFallbackSharedNumIdByKey instanceof Map) {
+    if (!hasExplicitStartAt && !hasNonDecimalStart && runtimeContext?.listFallbackSharedNumIdByKey instanceof Map) {
         const sharedNumId = numberingKey ? runtimeContext.listFallbackSharedNumIdByKey.get(numberingKey) : null;
         if (sharedNumId) {
             overwriteParagraphNumIds(replacementNodes, sharedNumId);
@@ -2792,13 +2798,59 @@ export async function applyParagraphFormatToParagraphByExactText(
     const propertyDiagnostics = unknownPropertyKeys.length > 0
         ? [buildUnknownParagraphFormatDiagnostic(unknownPropertyKeys)]
         : [];
+    if (properties?.numbering) {
+        const binding = checkNumberingBinding(
+            runtimeContext?.numberingIdState,
+            properties.numbering.numId,
+            Number(properties.numbering.level) || 0
+        );
+        if (!binding.ok) {
+            return {
+                documentXml,
+                hasChanges: false,
+                status: 'error',
+                error: {
+                    code: PARAGRAPH_NUMBERING_NOT_FOUND,
+                    message: `${binding.message} paragraph-format.numbering binds to an existing list; it never creates one.`,
+                    field: 'properties.numbering',
+                    numId: Number(properties.numbering.numId),
+                    level: Number(properties.numbering.level) || 0,
+                    reason: binding.reason,
+                    recovery: {
+                        action: 'inspect_numbering',
+                        hint: 'Inspect a paragraph already in the target list and pass its list.numId and list.level. To start a new list, use a list-change/redline operation.'
+                    }
+                }
+            };
+        }
+    }
     const hasChanges = checkParagraphPropertiesChanged(pPr, properties);
     if (!hasChanges) {
         return { documentXml, hasChanges: false, status: 'no-op', ...listDiagnosticFields(propertyDiagnostics) };
     }
 
     if (generateRedlines) {
-        snapshotAndAttachPPrChange(xmlDoc, pPr, author || getDefaultAuthor());
+        const authorUsed = author || getDefaultAuthor();
+        const pendingChange = getCurrentChild(pPr, 'pPrChange');
+        const pendingAuthor = pendingChange?.getAttribute('w:author') ?? pendingChange?.getAttribute('author') ?? '';
+        if (pendingChange && pendingAuthor !== authorUsed) {
+            return {
+                documentXml,
+                hasChanges: false,
+                status: 'error',
+                error: {
+                    code: PARAGRAPH_FORMAT_REVISION_CONFLICT,
+                    message: `Target paragraph already has a pending paragraph-property change by "${pendingAuthor || 'unattributed'}". Overwriting its snapshot would change what Reject All restores.`,
+                    pendingAuthor,
+                    recovery: {
+                        action: 'resolve_pending_revision',
+                        hint: 'Ask the user to accept or reject the existing paragraph formatting change first; this tool does not resolve revisions by other reviewers.'
+                    }
+                }
+            };
+        }
+        // A same-author pending snapshot already records the earliest "before" state; keep it.
+        if (!pendingChange) snapshotAndAttachPPrChange(xmlDoc, pPr, authorUsed);
     }
 
     applyParagraphPropertiesToPPr(xmlDoc, pPr, properties);

@@ -42,7 +42,8 @@ const CLI_CAPABILITIES = [
     'header-footer-parts-v1',
     'format-text-occurrence-v1',
     'revision-fidelity-v1',
-    'list-conversion-diagnostics-v1'
+    'list-conversion-diagnostics-v1',
+    'paragraph-numbering-binding-v1'
 ];
 const commandOptions = Object.fromEntries(CLI_COMMANDS.map(command => [command, new Set(commandOptionKeys(command))]));
 

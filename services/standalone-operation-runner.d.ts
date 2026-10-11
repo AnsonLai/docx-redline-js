@@ -180,13 +180,19 @@ export interface CharacterFormatProperties {
   fontFamily?: string | null;
 }
 
-/** Closed set. Unknown keys (including `numbering`, not implemented) are ignored with an UNKNOWN_PARAGRAPH_FORMAT_PROPERTY warning and will be rejected in a later minor release. */
+/** Closed set. Unknown keys are ignored with an UNKNOWN_PARAGRAPH_FORMAT_PROPERTY warning and will be rejected in a later minor release. */
 export interface ParagraphFormatProperties {
   alignment?: 'left' | 'center' | 'right' | 'both';
   keepNext?: boolean;
   keepLines?: boolean;
   pageBreakBefore?: boolean;
   style?: string | null;
+  /**
+   * Binds the paragraph to an EXISTING list (`numId` and `level` as reported by inspect), or `null` to remove its direct
+   * list binding. Tracked as `w:pPrChange`; refuses `PARAGRAPH_NUMBERING_NOT_FOUND` when the numId/level is not defined.
+   * Capability `paragraph-numbering-binding-v1`.
+   */
+  numbering?: { numId: number | string; level?: number } | null;
 }
 
 export interface HighlightDocumentOperation extends DocumentOperationBase {

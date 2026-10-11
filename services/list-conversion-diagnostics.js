@@ -21,10 +21,13 @@ export const UNSUPPORTED_LIST_CONVERSION = 'UNSUPPORTED_LIST_CONVERSION';
 export const LIST_FORMAT_NOT_APPLIED = 'LIST_FORMAT_NOT_APPLIED';
 export const UNSUPPORTED_LIST_FORMAT_CHANGE = 'UNSUPPORTED_LIST_FORMAT_CHANGE';
 export const UNKNOWN_PARAGRAPH_FORMAT_PROPERTY = 'UNKNOWN_PARAGRAPH_FORMAT_PROPERTY';
+export const INVALID_PARAGRAPH_NUMBERING = 'INVALID_PARAGRAPH_NUMBERING';
+export const PARAGRAPH_NUMBERING_NOT_FOUND = 'PARAGRAPH_NUMBERING_NOT_FOUND';
+export const PARAGRAPH_FORMAT_REVISION_CONFLICT = 'PARAGRAPH_FORMAT_REVISION_CONFLICT';
 
 /** Keys `paragraph-format.properties` implements today (closed set). */
 export const PARAGRAPH_FORMAT_PROPERTY_KEYS = Object.freeze([
-    'alignment', 'keepNext', 'keepLines', 'pageBreakBefore', 'style'
+    'alignment', 'keepNext', 'keepLines', 'pageBreakBefore', 'style', 'numbering'
 ]);
 
 const NUMBERING_STYLE_TO_NUM_FMT = Object.freeze({
@@ -187,6 +190,27 @@ export function buildListFormatDiagnostic(mismatch, { policy, numId, level, mark
             allowedValue: 'literal'
         }
     };
+}
+
+/**
+ * Validates the shape of `paragraph-format.properties.numbering`: `null` (remove the binding) or
+ * `{ numId: positive integer, level?: integer 0-8 }`. Returns an error message or null.
+ */
+export function validateParagraphNumberingShape(numbering) {
+    if (numbering === null) return null;
+    if (typeof numbering !== 'object' || Array.isArray(numbering)) {
+        return 'numbering must be null (remove the list binding) or an object { numId, level }.';
+    }
+    const extra = Object.keys(numbering).filter(key => key !== 'numId' && key !== 'level');
+    if (extra.length > 0) return `numbering has unsupported ${extra.length === 1 ? 'key' : 'keys'}: ${extra.join(', ')}. Use only numId and level.`;
+    const numId = numbering.numId;
+    const numIdOk = (Number.isInteger(numId) && numId >= 1) || (typeof numId === 'string' && /^[1-9]\d*$/.test(numId));
+    if (!numIdOk) return 'numbering.numId must be a positive integer (numId 0 is not a list; pass numbering: null to remove the binding).';
+    const level = numbering.level;
+    if (level !== undefined && !(Number.isInteger(level) && level >= 0 && level <= 8)) {
+        return 'numbering.level must be an integer from 0 to 8.';
+    }
+    return null;
 }
 
 /** Finds `paragraph-format.properties` keys that are not implemented. */
