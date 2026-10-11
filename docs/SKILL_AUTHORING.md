@@ -29,7 +29,9 @@ operations over stdin:
 
 Run `docx-redline version` before the first document operation. Require CLI
 contract version 9 only when the integration sends `list-format` operations
-(capability `list-format-v1`); otherwise contract version 8 suffices. Require
+(capability `list-format-v1` for `convert-plain`, plus `list-format-change-v1` for
+`change-format` or `join`; a CLI without it refuses those modes with
+`INVALID_OPERATION` field `list.mode`); otherwise contract version 8 suffices. Require
 only the capabilities the integration actually uses. Check once per stable
 runtime, fail closed when a requirement is absent, and never inspect bundles or
 ZIP parts as a fallback.

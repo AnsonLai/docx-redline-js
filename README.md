@@ -313,7 +313,8 @@ user-facing Word locations; use `humanReference`, `provision`, or
 `nearestHeading` in reports.
 
 `docx-redline version` reports contract version 9 (which adds the `list-format` operation type,
-capability `list-format-v1`) and the additive
+capability `list-format-v1`; its `change-format` and `join` modes are the additive capability
+`list-format-change-v1`) and the additive
 `command-help-v1`, `inspection-context-v1`, `bounded-inspection-v1`,
 `human-document-references-v1`, `batch-start-source-binding`,
 `recovery-envelope-v1`, `require-complete-exit`, `operations-stdin`,

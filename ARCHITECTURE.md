@@ -234,6 +234,17 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
     `runtimeContext.listFallbackSequenceState` (an entry is reused only while
     its `numId` is bound in the live document). Text-equal redline header
     conversions for letters, roman numerals and bullets call the same core.
+- `services/list-format-change.js`
+  - `list-format` `change-format` and `join`: rebind existing list items with
+    one tracked `w:pPrChange` each, never editing a shared definition.
+    `change-format` allocates a new definition through
+    `allocateNumberingDefinition` (source levels copied, one redefined, start
+    values on the new abstract); `join` reuses the earlier list's `numId`.
+    Planning models Word's counters (shared abstracts continue each other, a
+    level start re-applies on restart, deeper items start unused levels) and
+    refuses splits, joins and style-linked or instance-overridden definitions
+    it cannot reproduce exactly. Definitions are read from the source part plus
+    the batch's pending numbering parts.
 - `services/operation-preflight.js`
   - Read-only strict target and anchor resolution, revision-policy diagnostics,
     artifact prediction, and same-paragraph conflict reporting.

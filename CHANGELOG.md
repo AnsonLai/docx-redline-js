@@ -10,6 +10,10 @@
   `use_list_format_convert_plain` (was `apply_plain_text_or_convert_in_host`) and, when the original paragraph has no marker,
   `recovery.suggestedOperation` carries the `list-format` request to send with the same target (for "Header" -> "C. Header":
   `{ mode: 'convert-plain', format: 'upperLetter', strip: 'none', start: 3 }`). `listMarkers: 'literal'` is unchanged.
+- **`UNSUPPORTED_LIST_FORMAT_CHANGE` / `LIST_FORMAT_NOT_APPLIED` now point at `list-format` `change-format`:** `recovery.action`
+  is `use_list_format_change_format` (was `change_list_format_in_host`) and `recovery.suggestedOperation` carries
+  `{ type: 'list-format', list: { mode: 'change-format', format, level, scope: 'list' } }`; add a target on one item of the list and
+  send it as its own operation.
 - **Text-equal letter, roman and bullet header conversions are made in place:** a `redline` whose `modified` equals the plain
   paragraph's typed-marker text (`B. Header` -> `B. Header`) now strips the marker as a tracked deletion and binds the list with a
   tracked `w:pPrChange` in the same paragraph, like the decimal path. The previous whole-paragraph delete plus insert lost
@@ -31,6 +35,25 @@
 
 ### Added
 
+- **`list-format` `change-format` and `join` modes (`list-format-change-v1`, contract version stays 9):** `change-format` changes
+  the kind or numbering format of an existing list (`format`, `lvlText`, `start`, `level`, default the target's level). It never
+  edits the shared definition: a NEW `w:abstractNum` + `w:num` is allocated with the source levels, indentation and fonts copied
+  and one level redefined (`w:isLgl`, picture bullets and a bullet's symbol font are dropped on a format change), and each item is
+  rebound with a tracked `w:pPrChange`, so Reject All restores the original labels and Accept All shows the new ones (verified in
+  Word with `ListFormat.ListString` after `Revisions.AcceptAll()`/`RejectAll()`: bullets to `1.`, `1.` to `A.`, a nested level to
+  `(i)`, and two range splits). `scope: 'list'` (default) rebinds every live item of the list (`items[].inTarget` marks those outside
+  the target); `scope: 'range'` rebinds a `target`..`targetEnd` range that runs to the end of the list and continues its count
+  (start values on the new definition, including a split that starts at a nested item). `join` binds the target list (or a range
+  running to its end) to the `numId` of `list.continueFrom`, an item of an earlier list, so it continues that count; `continueFrom` is
+  bound at batch start. Tracked-deleted paragraphs keep their `w:numPr`; a same-author earlier `w:pPrChange` snapshot is kept;
+  later operations in a batch see definitions earlier ones allocated. Refused before any write: `LIST_FORMAT_TARGET_NOT_LIST`,
+  `LIST_FORMAT_MIXED_RANGE` (plain paragraphs, several lists, or several levels without `list.level`), `LIST_FORMAT_STYLE_LINKED`
+  (heading/list-style numbering), `LIST_FORMAT_STYLE_NUMBERED`, `LIST_FORMAT_SPLIT_UNSUPPORTED` (`mid-sequence` range,
+  `nested-restart`, `shared-definition` abstract used by another list, `interleaved` join), `LIST_FORMAT_DEFINITION_UNSUPPORTED`
+  (missing definition, `w:lvlOverride/w:lvl`, `w:lvlRestart` in a split), `LIST_FORMAT_JOIN_INVALID` and
+  `PARAGRAPH_FORMAT_REVISION_CONFLICT`; an untracked rebinding outside the target is refused; a no-op is `ok` with a
+  `LIST_FORMAT_UNCHANGED` warning. Results carry `list` (`sourceNumId`, `numId`, `items[]`, `levelStarts` or `continueFrom`).
+  An older CLI refuses the new modes with `INVALID_OPERATION` (`field: list.mode`), so negotiate the capability.
 - **`list-format` operation, `convert-plain` mode (`list-format-v1`):** binds plain paragraphs (a target, or `target`..`targetEnd`
   in one container) whose text starts with a typed marker (`1.`/`1)`, `A.`/`a)`, `IV.`/`iv.`, `-`/`•`) to a NEW list definition in
   place. The marker is removed with a tracked `w:del` of exactly the marker text (`strip: 'marker'`, default) and the `w:numPr`
