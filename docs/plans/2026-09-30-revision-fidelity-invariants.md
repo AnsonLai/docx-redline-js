@@ -1,8 +1,12 @@
 # Revision Fidelity Invariants: Turning Gap Bugs into Fail-Closed Refusals
 
 Date: 2026-09-30
-Status: SUBSTANTIALLY DONE (2026-10-10, started on 0.8.4 + `c98874d`). WP-1, 2, 3, 4, 5b, 6 landed; WP-5a waits on the
-canonical-list allocator. See "Progress and hand-off" and the Definition-of-done status directly below.
+Status: DONE except the open items below (2026-10-11, started on 0.8.4 + `c98874d`). All WPs landed, including WP-5a
+(`4718c36`). Open items: nightly matrix wiring (no CI config changed); `ACCEPT_INTENT` (now worked under
+`2026-10-11-word-plugin-reported-issues.md` as I1); numbering-part existence check; accept-first range-end scope
+(`resolvedTargetEnd` not captured); optional `planParagraphMarks` wiring into the write paths; plain redline
+reconstruction drops `w14:paraId` (found during list WP-6; a composed redline + list-format pair does not keep paragraph
+identity); re-measure verifier cost on a quiet machine. See "Progress and hand-off" and the Definition-of-done status below.
 
 Definition-of-done status (details at the end of the plan):
 - [x] `REVISION_FIDELITY_VIOLATION` documented and enforced by default (agent profile rejects `off`); regressions for each
@@ -12,9 +16,9 @@ Definition-of-done status (details at the end of the plan):
 - [~] Matrix in `npm test` on bare and packaged paths; extended lane documented in `docs/TESTING.md` but not yet wired
   into a nightly CI job (no CI config in this repo was changed).
 - [x] No descendant property reads outside `core/current-properties.js` (lint test).
-- [~] Paragraph-mark markup constructed in one module (done); numbering allocation in one function is WP-5a (done).
-- [x] `npm test`, `check:types`, `test:isolation`, Word differential (49/49) and Word corpus (60/60) pass; verifier cost
-  recorded.
+- [x] Paragraph-mark markup constructed in one module (done); numbering allocation in one function (WP-5a, `4718c36`, done).
+- [x] `npm test`, `check:types`, `test:isolation`, Word differential (64/64 synthetic) and Word corpus (60/60) pass; verifier cost
+  recorded (re-measure on a quiet machine is an open item).
 
 ## Progress and hand-off (keep this section current; newest first)
 
@@ -71,7 +75,7 @@ Resume here. Each line says what landed, where, and what is next. Verify with `g
   compare is ~8 ms per operation on a 1000-paragraph document without caching; the session caches the previous
   verified `after` projection (`session._rejectedViewCache`, keyed by DOM identity, cleared on any unverified commit)
   so a batch projects once per operation. `scripts/benchmark-operation-session.mjs` medians: off 265/277 ms vs warn
-  260 ms (within noise; a concurrent Word COM run made one sample 360 ms). Re-measure on a quiet machine before enforce.
+  260 ms (within noise; a concurrent Word COM run made one sample 360 ms). Re-measure on a quiet machine: OPEN (enforce shipped without the re-measure).
 - **Mode resolution:** explicit `verifyRevisionFidelity` option (CLI `--revision-fidelity`), else env
   `DOCX_REDLINE_REVISION_FIDELITY` (diagnostic/test lanes), else `'enforce'`. The CLI agent profile rejects `off`;
   `effectiveOptions.verifyRevisionFidelity` reports the resolved mode.
@@ -91,8 +95,7 @@ and fixed three real generator defects: explicit-start/`1. Header` list conversi
 `w:pPrChange` (`f72f60a`, `orchestration/list-structural-fallback.js` `enforceListBindingOnParagraphNodes`
 `trackPropertyChange`); text-to-table produced tracked cell text in untracked rows (`c20f33c`,
 `engine/table-mode.js` now passes `trackAsBlock: true`; `pipeline/pipeline.js:340` has the same call without it and is
-untested, so check it); and the accept-first false positives (verifier scoping, `bbb23cb`). Keep this probe as a release
-gate until enforce is the default.
+untested, so check it); and the accept-first false positives (verifier scoping, `bbb23cb`). (Historical: enforce is now the default, so this probe is no longer a separate release gate.)
 
 **Update after COM evidence (`584c83a`):** Word removes a trailing body paragraph whose inserted mark is rejected
 (or deleted mark accepted), so class 2 below was a simulator error, not a library defect. Only 4 suites still fail
@@ -158,8 +161,9 @@ Related plans (keep in step; update them in the same change when an overlapping 
 adds R1-R3; its "Cross-plan dependencies" section makes this plan's verifier the acceptance gate for `list-format` /
 `change-format` / `paragraph-format.numbering` and requires `core/current-properties.js` for property reads; its section
 (a) observation 2 was fixed by WP-5b, `73c67e8`; its id-collision residual is the same open item as WP-5a R2),
-`2026-10-01-consumer-reported-library-issues.md` (local only: `docs/plans/*` is gitignored and this file was never
-force-added; its WP-3 id-collision residual is WP-5a R2), `KNOWN_BUGS.md` (section 7 mirrors verifier limits and the
+`2026-10-11-word-plugin-reported-issues.md` (I1 adds `UNTRACKED_CREATED_REVISION` and accept-intent enforcement; R5 may extend the Word-semantics model for end-of-document table appends),
+`2026-10-01-consumer-reported-library-issues.md` (LOCAL ONLY: `docs/plans/*` is gitignored and this file was never
+force-added, so other agents cannot rely on it; its WP-3 id-collision residual is WP-5a R2), `KNOWN_BUGS.md` (section 7 mirrors verifier limits and the
 fixed gap bugs; update it when a limit is lifted),
 `completed/2026-09-05-structural-revisions-and-fidelity-oracles.md` (origin of the oracle helpers and
 the paragraph-mark model), `completed/2026-09-01-performance-and-complexity-reduction.md` (budget rules).
@@ -222,6 +226,8 @@ Non-goals:
 ## WP-1: Post-apply revision fidelity invariant (first; blocks nothing, unblocks everything)
 
 ### Design
+
+**Historical design; as built see "WP-1 implementation decisions" above.** Shipped as the enforce default (`c07c37b`); the warn-first rollout was skipped by owner decision. The `touched` scope, `intent`, O(touched) cost and once-per-batch verification below are superseded by the as-built decisions block (whole-document projection, per-operation inside the applier, reject-all on both sides).
 
 New module `services/revision-fidelity-verifier.js` (leaf service; imports only `core/` and
 `adapters/`; no `index.js`, no `node/`). Entry point:
@@ -288,6 +294,8 @@ force serialization (see Performance).
 
 ### Behavior by mode
 
+*Historical: the `'warn'` period was skipped; default is `'enforce'` (`c07c37b`), refusal disposition is `refused`, not `rolled_back`.*
+
 | Mode | Violation result |
 |---|---|
 | `atomic: true` or `strictTargets: true` | Operation fails, savepoint restored, error code `REVISION_FIDELITY_VIOLATION`, receipt `finalDisposition: 'rolled_back'` |
@@ -332,6 +340,8 @@ examples and `index.d.ts`.
 
 ### Scope and performance budget
 
+*Superseded by the as-built decisions block (whole-document projection, cached per operation, ~8 ms on 1000 paragraphs). Open: re-measure on a quiet machine.*
+
 - Touched scope = paragraphs the operation created, deleted or modified (known from the receipt's
   `revisionItems` and the savepoint diff) plus one neighbor on each side (paragraph-mark merges move
   content into the following paragraph, so the next neighbor is mandatory) plus the paragraphs whose
@@ -372,6 +382,8 @@ examples and `index.d.ts`.
 5. Performance: instrumentation assertion of zero extra serializations plus a recorded benchmark.
 
 ### Risks
+
+*Historical: mitigations (default `warn` until WP-2) were not needed; WP-2 landed and enforce shipped as the default. The cross-author risk was resolved by comparing Reject All on both sides.*
 
 - False positives from legitimate Word behavior differences (merged paragraph properties on mark
   removal). Mitigation: WP-2 pins the semantics with COM evidence before `enforce` is the default;
@@ -538,7 +550,7 @@ Known files with descendant lookups to audit (from `rg -l "getElementsByTagNameN
 vs historical vs "any", and whether a `*PrChange` child can change the answer. Put the table in the
 PR description.
 
-Tests: extend `tests/document_inspection_edge_tests.mjs` with a paragraph whose current `pPr` differs
+Tests (done in `tests/current_properties_tests.mjs`, not `document_inspection_edge_tests.mjs`): extend with a paragraph whose current `pPr` differs
 from its `pPrChange` snapshot in `numPr`, `pStyle`, `outlineLvl` and a run whose `rPrChange` holds
 different `rFonts`, asserting every migrated reader returns the current value; keep the existing
 list-targeting cases.
@@ -556,6 +568,8 @@ list-targeting cases.
 Two divergences, one rule: one implementation, two thin entry points.
 
 ### 5a. Facade vs standalone numbering
+
+**Historical design text (R1-R3 are done in `4718c36`, see the WP-5a row above); kept for the rationale.**
 
 Current: `services/standalone-operation-runner.js` and the `openDocx` facade path
 (`document/docx-document.js`, `ensureNumberingArtifactsInZip` / `mergeNumberingXmlBySchemaOrder`,
@@ -640,6 +654,8 @@ the helper is caught at the verifier, not at the consumer.
 
 ## Sequencing
 
+*Historical plan. As built: WP-1 shipped directly as enforce (`c07c37b`, owner decision), skipping the warn release; steps 2-7 all landed.*
+
 1. **WP-1 in `warn` mode** (first, small slice): verifier module, wired at both seams, regression
    corpus from the "Why now" table. Ship in a patch release as warnings. This immediately converts any
    remaining gap bug into a visible refusal candidate without risking existing consumers.
@@ -674,6 +690,11 @@ oracle correct; WP-3 makes it exhaustive; WP-4 to WP-6 remove the duplication th
   (`npm run test:word`) pass; measured verifier cost is recorded and within budget.
 
 ## Open questions
+
+Answered 2026-10-11 (original text kept):
+- `warn` option: public (`verifyRevisionFidelity`, CLI `--revision-fidelity`) plus env override `DOCX_REDLINE_REVISION_FIDELITY`.
+- Cross-author scope: the verifier compares Reject All on both sides (all authors), so no per-operation revision-id filtering; accept-first uses an accepted baseline.
+- Merged-paragraph property rule and exceptions: answered by the WP-2 COM matrix (`584c83a`, `cedc68a`).
 
 - Should `verifyRevisionFidelity: 'warn'` be a public option or an internal environment flag during
   the rollout? Recommended: public option, documented as transitional.

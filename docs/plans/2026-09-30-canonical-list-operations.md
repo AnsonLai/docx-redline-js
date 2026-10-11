@@ -43,6 +43,8 @@ cannot reach the numbering machinery.
 
 ## Current code paths
 
+**Historical (pre-WP-2): describes the tree before the numbering allocator and `list-format`.** As built: `mergeNumberingXmlBySchemaOrder` lives in `services/numbering-allocation.js` (call sites in `document/docx-document.js`); the `mergeNumberingXml` callback is removed/ignored; a conflicting id is `NUMBERING_ID_CONFLICT`, not first-writer-wins.
+
 - `services/document-operation-contract.js` accepts `list-change` but
   `getCanonicalOperationType` maps it to `redline`. There is no list-specific operation kind.
 - `services/document-operation-mutations.js`, `applyToParagraphByExactText` (around line 2038), tries in order:
@@ -97,7 +99,7 @@ Two further observations from the same run:
    the new `numId`. The decimal explicit path instead edits the same paragraph and strips the
    marker. Reject All on the letter case therefore restores the original, but the two
    representations differ and the paragraph identity (`w14:paraId`, bookmarks, direct formatting)
-   is not preserved for letters. Needs Word verification (WP-6).
+   is not preserved for letters. Word verification: done in WP-4 (`1240842`, `1cd174a`; convert-plain edits in place).
 2. Decimal text-equal conversion on a bare `<w:document>` with `generateRedlines: true` fails with
    `RECEIPT_RECONCILIATION_FAILED: Committed revision id '1000' (kind: del) was not found in
    word/document.xml` (both with and without `atomic`). With `generateRedlines: false` it works and
@@ -162,7 +164,7 @@ for letters and roman numerals), so `C. Header` is converted but numbers from `A
   `7. Header`, captures `console.warn`/`console.error`, asserts none were emitted, and asserts
   `w:startOverride w:val="7"` is produced.
 
-## Interim safety fix (recommended, small, ship first)
+## Interim safety fix (historical: shipped in WP-1, `db10d39`)
 
 **Status: DONE in `db10d39` (WP-1; capability `list-conversion-diagnostics-v1`, contract version stays 8).** Implementation notes and deviations
 from the text below: strict policy means `strictListConversion: true` (CLI agent profile and `--atomic` set it) or `atomic`; plain
@@ -171,7 +173,7 @@ from the text below: strict policy means `strictListConversion: true` (CLI agent
 equivalent marker (numbered markers need a `.`/`)` terminator, so `7 days` is not a marker). Format-change detection compares only retained
 lines that carry a marker (inserted items are not compared: nested bullets under numbered items are a supported pattern) and covers the
 insertion-only and explicit-range heuristics, not the one-line adjacency form (no marker is requested there). `UNSUPPORTED_LIST_FORMAT_CHANGE`
-is the strict form of `LIST_FORMAT_NOT_APPLIED`. Unknown `paragraph-format` keys ship as the warning `UNKNOWN_PARAGRAPH_FORMAT_PROPERTY`
+is the strict form of `LIST_FORMAT_NOT_APPLIED`. As built, the recovery actions are `use_list_format_convert_plain` / `use_list_format_change_format`, each with a `suggestedOperation` (not the "apply as plain text or convert in the host" text below). Unknown `paragraph-format` keys ship as the warning `UNKNOWN_PARAGRAPH_FORMAT_PROPERTY`
 (error planned for the next minor); the schema's `paragraphFormatProperties` is closed.
 
 Silent success is the worst property of both (a) and (b). Recommend a patch release that adds
@@ -204,7 +206,9 @@ under the strict profile, and the opt-out above.
 No `contractVersion` bump for the interim fix; add capability `list-conversion-diagnostics-v1` so the
 consumer can negotiate it.
 
-## Proposed operation contract
+## Contract as built (originally "Proposed operation contract")
+
+Deviations from the proposal below: change-format and range splits write `w:start` on the NEW abstractNum (Word in-session Accept All `startOverride` quirk, `579efae`), while convert-plain keeps `startOverride` (Word probe evidence in `257fa7b`); style-linked lists are refused in both scopes; `detach`/`materializeMarker` are not implemented (use `paragraph-format` `numbering: null`); `scope: 'range'` must run to the end of the list (`LIST_FORMAT_SPLIT_UNSUPPORTED`); `paragraph-format.numbering` validates the numId (`PARAGRAPH_NUMBERING_NOT_FOUND`); sequence continuity is solved by `listFallbackSequenceState`; integrity checks are `validateNumberingIntegrity`, wired into `openDocx`. The text below is the original design and is partly superseded.
 
 ### Option chosen: a dedicated `list-format` operation, with a thin `paragraph-format` binding
 
@@ -262,6 +266,7 @@ diverge.
 
 ### Schema and CLI contract
 
+- **Done** (WP-1..WP-7; capabilities `list-format-v1`, `list-format-change-v1`, `paragraph-numbering-binding-v1`, `list-conversion-diagnostics-v1`, contract 9). Original bullets:
 - `docs/schemas/document-operations.schema.json`: add a `list-format` branch to the operation union;
   add `numbering` to a closed `paragraph-format.properties` schema (also adds the missing
   `additionalProperties: false` that exposes silently ignored keys).
@@ -308,7 +313,7 @@ Instead never produce colliding ids for a different definition:
    continue the old count, computed from the count of preceding items of the old `num` at that
    level. Today only level 0 is overridden (`applyStartOverrideToNumberingXml`); generalize to all
    levels present in the range.
-3. `start`: express with `w:lvlOverride/w:startOverride` on the new `num` (per-instance), never by
+3. `start` (historical; as built, change-format/range write `w:start` on the new abstractNum and convert-plain keeps `startOverride`, see "Contract as built"): express with `w:lvlOverride/w:startOverride` on the new `num` (per-instance), never by
    mutating the shared abstract `w:start`. `setAbstractStartOverride` already defaults to
    false on the paragraph path; make that the only behavior for the new operation.
 4. Do not delete the old `num`/`abstractNum`. They may still be referenced by other
@@ -370,6 +375,7 @@ The report states plainly that offline inspection is not sufficient, and this re
 1. Author fixtures in desktop Word (not by this library): plain header, header with literal marker
    `A.`/`1.`/`I.`, bullet list, decimal list with a nested level, list with a Word-applied start
    override, style-linked list, and a document with no `numbering.xml`.
+   **Status:** all but the last two are covered by Word differential cases. The style-linked and no-`numbering.xml` fixtures are NOT Word-authored: style-linked refusal is covered by unit tests (`tests/list_format_operation_tests.mjs`) and the matrix; the no-numbering-part path by `tests/numbering_allocation_tests.mjs` and package tests. Word-authored versions remain open.
 2. Produce the "expected" side in Word by performing the same action by hand with Track Changes on
    (apply numbering to the paragraph; change bullet to decimal via the Define New Multilevel List
    dialog; change numbering format). Commit the resulting `document.xml` `pPr`/`pPrChange`/`numPr`
@@ -397,7 +403,9 @@ Run focused suites first (`node tests/<suite>.mjs`), then `npm test`, `npm run c
 | Operation contract/schema, unknown keys | `tests/agent_operation_contract_tests.mjs` and the schema test, plus `tests/agent_cli_tests.mjs` for `version` capabilities and exit/error shape |
 | Package: merge, missing numbering part, part order | `tests/docx_package_facade_tests.mjs`, `tests/docx_package_transaction_edge_tests.mjs` |
 | New | `tests/list_format_operation_tests.mjs` (convert-plain, change-format list/range scope, join, refusal cases, id non-collision, per-level startOverride) |
-| Interim diagnostics | new cases in `tests/error_contract_tests.mjs` for `UNSUPPORTED_LIST_CONVERSION` and the warning |
+| Interim diagnostics | `tests/list_conversion_diagnostics_tests.mjs` (`UNSUPPORTED_LIST_CONVERSION`, warnings; not `tests/error_contract_tests.mjs`) |
+| Allocator, numbering binding | `tests/numbering_allocation_tests.mjs`, `tests/paragraph_format_numbering_tests.mjs` |
+| List operations | `tests/list_format_operation_tests.mjs` (convert-plain, change-format, join, composition) |
 | Word oracle | `tests/fixtures/agentic-lists/*` Word-authored additions plus the COM lane |
 
 Fixtures: `tests/fixtures/agentic-lists/nested-lists-source.docx` already contains bullet, decimal,
@@ -420,7 +428,7 @@ for the range.
 | 3 | **Done (`dc3e2d0`).** `paragraph-format.numbering` binding (`numId`, `level`, null) with tracked `pPrChange`; schema-ordered `w:numPr`; existing-definition validation; same-author earliest-snapshot preservation and cross-author conflict refusal; roman/letter start values. Word differential cases verify bind/remove/change-level through Accept All and Reject All list labels. | Low-medium: pPr child order is schema-sensitive and Word repairs misordered children |
 | 4 | **Done (`1240842`, `1cd174a`).** `list-format` `convert-plain` with `strip: marker` (decimal, letters, roman, bullets) and `strip: none`, replacing the whole-paragraph letter fallback for text-equal conversions; Word-authored-style fixtures and COM lane for A./1./I. and a C. start value (`ListString` after Accept/Reject); header runs share one `numId` via the sequence state. Contract version 9 and `list-format-v1`. | High: Word fidelity, partial reject coherence, sequence continuity |
 | 5 | **Done (`564ad0e`, `579efae`, `616d317`).** `list-format` `change-format` (`scope: list`, `range`), `join`; the `list-change` format-change case is rerouted through recovery (`use_list_format_change_format` + `suggestedOperation`), not auto-applied (see WP-5 notes); refusal rules (style-linked, mixed ranges, mid-sequence splits, nested restarts, shared abstracts, instance level overrides). Word COM lane: bullet -> decimal, decimal -> upper letter, nested level, two range splits, join. Capability `list-format-change-v1`. | High: splitting a list mid-sequence, nested level remap, style-linked numbering |
-| 6 | **Done (`6ace2c7`, `9c3e0e2`).** Changed-text header conversion ("1. Old" -> "1. New") = `redline` + `list-format` in one batch; batch-compiler composition rule, fixed order (redline first), `LIST_FORMAT_COMPOSITION_CONFLICT` for incompatible pairs and for other writes to `scope: 'list'` rebound items; Word cases (Accept All label `1.` + new text, Reject All literal `1. Old`, plus a `3.` start value with list-format first in the batch). | Medium |
+| 6 | **Done (`6ace2c7`, `9c3e0e2`).** Changed-text header conversion ("1. Old" -> "1. New") = `redline` + `list-format` in one batch; batch-compiler composition rule, fixed order (redline first), `LIST_FORMAT_COMPOSITION_CONFLICT` for incompatible pairs and for other writes to `scope: 'list'` rebound items; Word cases (Accept All label `1.` + new text, Reject All literal `1. Old`, plus a `3.` start value with list-format first in the batch). | Medium. `sameRawText`/`sameListText` are not used by the new code. |
 | 7 | **Done (`56cc200`), `detach`/`materializeMarker` deferred.** Docs, schema, d.ts, README, CHANGELOG, release notes draft, wrapper guidance in `docs/SKILL_AUTHORING.md`. | Low |
 
 Ship WP-1 alone as the first patch; it fixes the dishonest success reports without waiting on the
@@ -446,8 +454,8 @@ Word-verification work. WP-4 and WP-5 should not merge without the COM lane resu
   custom XML or the author's own pending insertion its Reject All drops the wrapper and the verifier refuses it; convert-plain
   refuses those shapes up front (`reason: marker-shape`). Converting a marker inside the author's own `w:ins` (insert then convert
   in one session) is a candidate improvement (delete-own-insertion semantics), not done.
-- Batch compiler: `list-format` is a TEXT_WRITE kind, so a `redline` and a `list-format` on one batch-start target fail
-  `OVERLAPPING_SOURCE_TARGETS` today. WP-6 must add the explicit rule (redline first, list-format strips the marker of the
+- Batch compiler (superseded by `6ace2c7`: the composition rule is `checkListFormatComposition`, `list-rebind`, `_compiledRunAfter`, `LIST_FORMAT_COMPOSITION_CONFLICT`; see WP-6 row): `list-format` is a TEXT_WRITE kind, so a `redline` and a `list-format` on one batch-start target failed
+  `OVERLAPPING_SOURCE_TARGETS` before WP-6. WP-6 had to add the explicit rule (redline first, list-format strips the marker of the
   redlined text) instead of moving it to FORMAT_WRITE_KINDS, which would allow a text+marker write race.
 - Style-linked numbering detection needs `stylesXml` (`runtimeContext.stylesXml` or `options.stylesXml` on the bare runner; the
   facade now passes `word/styles.xml`). Without it a style-numbered paragraph is not detected on the bare path.
@@ -472,8 +480,8 @@ Word-verification work. WP-4 and WP-5 should not merge without the COM lane resu
   still uses `startOverride` on single-level lists, where the quirk does not arise; WP-7 could switch it for consistency.
 - Batch compiler: `scope: 'list'` writes `pPr` on paragraphs outside the target that the compiler does not register, so another
   operation on such a paragraph in the same batch is not reported as a conflict; it runs in order and sees the rebound paragraph
-  (a same-author `pPrChange` keeps the earliest snapshot, so Reject All stays exact). WP-6's redline + list-format rule should also
-  decide whether these out-of-target writes register as format writes.
+  (a same-author `pPrChange` keeps the earliest snapshot, so Reject All stays exact). Superseded by `6ace2c7`: WP-6 registers these
+  out-of-target writes (`rebindSourceIds`); another write there fails `list-rebind` unless it is a compatible redline.
 - Untracked (`generateRedlines: false`) rebinding outside the target is refused (`INVALID_OPERATION`, field `generateRedlines`);
   the verifier's untracked locality check would refuse it anyway. A `target`..`targetEnd` range covering the list works.
 - Not done: the `list-change` path does not apply a format change itself (a Markdown edit mixes text and structure; WP-6's
@@ -526,23 +534,26 @@ Word-verification work. WP-4 and WP-5 should not merge without the COM lane resu
 
 ## Risks and open questions
 
+Status 2026-10-11: items marked **Resolved** are settled; the rest are open.
+
 - Splitting a list (`scope: range`) changes numbering for paragraphs after the range. Decide whether
   following siblings keep their old `num` (visible renumbering restart) or are also rebound
   (touches paragraphs the caller did not name). Recommendation: keep them on the old `num` and
   report it in the receipt; the caller can extend the range. **Resolved in WP-5:** refused instead
   (`LIST_FORMAT_SPLIT_UNSUPPORTED` `mid-sequence`, naming `lastListParagraphIndex`); a range must run to the end of the list.
 - Reject coherence when a reviewer rejects only the marker deletion or only the `pPrChange`.
-  Document; do not attempt to tie them with a shared revision id (Word does not support that).
+  Document; do not attempt to tie them with a shared revision id (Word does not support that). **Resolved (WP-4):** documented and tested, not tied.
 - Style-linked numbering (`w:numPr` in `w:style`) cannot be rebound per paragraph without
-  overriding the style; first release refuses it.
+  overriding the style; first release refuses it. **Resolved:** refused in both scopes (`LIST_FORMAT_STYLE_LINKED`, `LIST_FORMAT_STYLE_NUMBERED`); no Word-authored style-linked fixture yet (open).
 - Headers/footers and comments parts have their own `document.xml`-adjacent content (see the
-  2026-09-29 plan). First release is body-only; reject `part` targets with an explicit error.
+  2026-09-29 plan). First release is body-only; reject `part` targets with an explicit error. **Resolved:** body-only; `part` targets are refused.
 - Shared in-flight work: `services/document-inspection.js` and the paragraph-mark/list reject paths
   are being edited elsewhere. WP-3 onward touches `rejectPropertyChangeNode` expectations; sequence
-  after that work lands.
+  after that work lands. **Resolved:** that work landed (fidelity plan); no longer a constraint.
 - Whether `list-format` should auto-detect `strip` from the text or require it. Recommendation: auto
   for exact `^\s*marker[.)]?\s` matches of the declared `format`, otherwise leave text alone
-  and say so in the receipt.
+  and say so in the receipt. **Resolved (WP-4):** `strip: 'marker'` is the default and auto-detects the marker; `strip: 'none'` opts out.
+- Still open: unknown `paragraph-format` keys become an error in the next minor; converting a marker inside the author's own `w:ins` is refused (`marker-shape`), not handled; xmldom parse noise in the consumer environment is unconfirmed; Word-authored style-linked and no-numbering-part fixtures do not exist.
 
 ## Cross-plan dependencies (added 2026-10-10, updated 2026-10-11)
 
@@ -558,12 +569,11 @@ numPr-without-`pPrChange` fix for explicit-start conversion (`f72f60a`). Consequ
    cannot ship silently. This replaces "Reject All yields
    canonical-equal `document.xml`" as an ad hoc property check in the Test plan. Untracked (`generateRedlines: false`)
    operations are skipped by the verifier.
-2. **Allocator requirements (WP-2 here; R1-R3 satisfied by `4718c36`).** The allocator must satisfy: R1, tracked-deleted source paragraphs never change
+2. **Allocator requirements (WP-2 here; R1-R3 satisfied by `4718c36`; `reuseSourceListNumbering` replaced by allocator policy).** The allocator must satisfy: R1, tracked-deleted source paragraphs never change
    `numPr` (verifier invariant `REJECT_NUMBERING_REFS`, not a convention; already true of same-kind reuse); R2, the runner
    and the `openDocx` facade call one allocator function with the same arguments and neither carries its own merge; R3, the
    same-kind reuse heuristic `reuseSourceListNumbering` (`services/numbering-helpers.js`, call site
-   `services/document-operation-mutations.js`) is replaced by allocator policy. Keep it and
-   `tests/facade_list_numbering_tests.mjs` until then.
+   `services/document-operation-mutations.js`) was replaced by allocator policy in `4718c36`; `tests/facade_list_numbering_tests.mjs` still guards the behavior.
 3. **Reading properties.** Any new code that reads `numPr`, `pStyle`, `outlineLvl` or other paragraph/run properties must use
    `core/current-properties.js` (`getCurrentNumIdElements` etc.), never raw `w:pPr` descendants, which include `w:pPrChange`
    snapshots. `tests/current_properties_usage_tests.mjs` lints this. This closes the historical-`numPr` inspection
@@ -592,8 +602,7 @@ numPr-without-`pPrChange` fix for explicit-start conversion (`f72f60a`). Consequ
   `w:pPrChange` snapshot. Reject/accept behavior is covered by the Word-semantics simulator and Word differential list-label
   assertions.
 - "Whole-paragraph delete/insert must stop being used for conversions" (letter markers): still a valid design goal, but the
-  current letter form is reject-exact, so the verifier will not force the change. WP-4 must justify it on identity and
-  review quality; its Word verification can reuse the WP-2 COM matrix script.
+  current letter form is reject-exact, so the verifier will not force the change. **Resolved by `1240842` (WP-4):** convert-plain edits in place, justified on identity and review quality, with Word lane cases.
 - (Resolved) The fidelity plan's bare `1. Header` row now records the `73c67e8` fix.
 - The "Interim safety fix" diagnostics are independent of the verifier modes; do not conflate `LIST_MARKER_NOT_BOUND` and
   friends with `REVISION_FIDELITY_VIOLATION`.

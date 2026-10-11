@@ -211,9 +211,11 @@ source (`services/revision-fidelity-verifier.js`). A violation fails closed with
 
 - The default mode is `enforce` (refuse). `verifyRevisionFidelity: 'warn'` applies and reports instead; `'off'` is for
   diagnosis only and the CLI agent profile rejects it (`--revision-fidelity`, capability `revision-fidelity-v1`).
-- Untracked operations (`generateRedlines: false`) are not verified.
-- Accept All intent and neighbor checks (`ACCEPT_INTENT`, `ACCEPT_NEIGHBORS`) and the numbering-part existence check are not
-  implemented; `REJECT_NUMBERING_REFS` only compares restored `numId`/`ilvl` with the source.
+- Untracked operations (`generateRedlines: false`) skip the Reject All invariants. Since `d045e7e`, `ACCEPT_NEIGHBORS` covers
+  untracked single-target operations (tracked operations are covered by the Reject All invariants).
+- Still open: `ACCEPT_INTENT` (worked under `2026-10-11-word-plugin-reported-issues.md` as I1), the numbering-part existence
+  check (`REJECT_NUMBERING_REFS` only compares restored `numId`/`ilvl` with the source), and range-end scope for accept-first
+  baselines (`resolvedTargetEnd` is not captured).
 
 ### Fixed gap bugs (do not re-report)
 
@@ -224,6 +226,7 @@ source (`services/revision-fidelity-verifier.js`). A violation fails closed with
 | Text-to-table redline put tracked cell text in untracked rows, so Reject All kept the table | `c20f33c` | `engine/table-mode.js`; `pipeline/pipeline.js:~340` has the same call without `trackAsBlock` and is untested. |
 | Library Reject/Accept differed from Word for cell paragraph marks, deleted tables, and `pPrChange` paragraph marks | `cedc68a` | `tests/word_revision_semantics_tests.mjs` |
 | Numbering helpers and inspection read `numPr`/`pStyle` from `w:pPrChange` snapshots as current | `1a3eeb6`..`1f89ae0` | `core/current-properties.js` plus usage lint |
+| Lettered/roman whole-paragraph delete plus insert conversion lost `w14:paraId` and bookmarks | `1240842` | `list-format` `convert-plain` edits in place (tracked marker deletion plus `pPrChange`). |
 
 ### Still open
 
@@ -232,5 +235,3 @@ source (`services/revision-fidelity-verifier.js`). A violation fails closed with
   parts through `mergeNumberingParts` / `ensureNumberingArtifactsInZip` (the single merge, used by `openDocx`) throws
   `NUMBERING_ID_CONFLICT` when an incoming id exists with different content. Bare callers must pass `numberingXml` (or a shared
   `numberingIdState`) to every call; no automatic remap of already-written paragraphs is attempted.
-- Lettered and roman marker conversion still uses whole-paragraph delete plus insert (loses `w14:paraId` and bookmarks). It is
-  reject-exact, so the verifier accepts it. Tracked in `2026-09-30-canonical-list-operations.md`.
