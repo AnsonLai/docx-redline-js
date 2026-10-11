@@ -68,7 +68,7 @@ const allowlisted = (fixture, kind, path) => allowlist.find(entry =>
 
 async function runBare(entries, operation, options = {}) {
     const documentXml = partText(entries, 'word/document.xml');
-    const result = await applyOperationsToDocumentXml(documentXml, [operation], AUTHOR, {
+    const result = await applyOperationsToDocumentXml(documentXml, Array.isArray(operation) ? operation : [operation], AUTHOR, {
         numberingXml: partText(entries, 'word/numbering.xml'),
         stylesXml: partText(entries, 'word/styles.xml')
     }, options);
@@ -78,7 +78,7 @@ async function runBare(entries, operation, options = {}) {
 }
 
 async function runPackaged(bytes, operation, options = {}) {
-    const result = await openDocx(bytes).applyOperations([operation], { author: AUTHOR, ...options });
+    const result = await openDocx(bytes).applyOperations(Array.isArray(operation) ? operation : [operation], { author: AUTHOR, ...options });
     const output = result.status === 'error' ? null : result.toUint8Array();
     const outputEntries = output ? unzipDocx(output) : null;
     return {

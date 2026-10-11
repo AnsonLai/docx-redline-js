@@ -13,6 +13,8 @@ import { validateRedlineOoxml } from '../core/redline-validation.js';
 import { rejectTrackedChangesInOoxml, acceptTrackedChangesInOoxml } from '../services/revision-comment-management.js';
 import { parseTypedListMarker, resolveMarkerFormat } from '../services/list-format.js';
 import { executeCli } from '../node/cli.js';
+import { compileOperationBatch } from '../services/operation-batch-compiler.js';
+import { buildOperationDependencyPlan } from '../services/batch-operation-orchestrator.js';
 
 /**
  * Canonical list operations WP-4: `list-format` `convert-plain`. Every end-to-end case runs with default options,
@@ -386,7 +388,7 @@ for (const [label, paragraphs, operation, code, action, extra] of [
     assert.equal(innerError(crossing).code, 'TARGET_RANGE_INVALID');
     const twice = await bare(documentOf(p('A. Body')), [
         { type: 'list-format', target: { exactText: 'A. Body' }, list: { mode: 'convert-plain' } },
-        { type: 'redline', target: { exactText: 'A. Body' }, modified: 'A. Body text' }
+        { type: 'list-format', target: { exactText: 'A. Body' }, list: { mode: 'convert-plain', format: 'upperLetter' } }
     ]);
     assert.equal(twice.status, 'error');
     assert.equal(twice.conflicts?.[0]?.code || innerError(twice).code, 'OVERLAPPING_SOURCE_TARGETS');
@@ -729,15 +731,26 @@ const levelOf = (numberingXml, numId, ilvl) => {
     assert.ok(unchanged.results[0].warnings.some(warning => warning.startsWith('LIST_FORMAT_UNCHANGED: ')));
 }
 {
-    // (g) Batch: a second change-format on a list the first one already rebound reads the batch's own definition;
-    // the earliest snapshot is kept, so Reject All still restores the source binding.
+    // (g) Two change-formats of one list in ONE batch are refused at compile time (WP-6: scope "list" registers every
+    // rebound item as a write). Sent as two applies, the second reads the first one's definition and the earliest
+    // snapshot is kept, so Reject All still restores the source binding.
     const source = documentOf(li('Top one', 2), li('Sub a', 2, 1), li('Top two', 2));
-    const result = await bare(source, [
+    const batched = await bare(source, [
         { type: 'list-format', target: { exactText: 'Top one' }, list: { mode: 'change-format', format: 'upperRoman' } },
         { type: 'list-format', target: { exactText: 'Sub a' }, list: { mode: 'change-format', format: 'bullet' } }
     ], listContext);
-    assert.equal(result.status, 'ok', JSON.stringify(innerError(result) || null));
-    const [first, second] = result.results.map(item => item.list);
+    assert.equal(batched.status, 'error');
+    assert.equal(batched.error.code, 'LIST_FORMAT_COMPOSITION_CONFLICT');
+    assert.equal(batched.error.reason, 'list-rebind');
+    assert.equal(batched.documentXml, source);
+    const firstApply = await bare(source, [{ type: 'list-format', target: { exactText: 'Top one' }, list: { mode: 'change-format', format: 'upperRoman' } }], listContext);
+    assert.equal(firstApply.status, 'ok', JSON.stringify(innerError(firstApply) || null));
+    const secondApply = await bare(firstApply.documentXml, [{ type: 'list-format', target: { exactText: 'Sub a' }, list: { mode: 'change-format', format: 'bullet' } }], {
+        context: { numberingXml: resultNumbering(firstApply), stylesXml: LIST_STYLES }
+    });
+    assert.equal(secondApply.status, 'ok', JSON.stringify(innerError(secondApply) || null));
+    const result = { documentXml: secondApply.documentXml, numberingXmlParts: [...firstApply.numberingXmlParts, ...secondApply.numberingXmlParts] };
+    const [first, second] = [firstApply.results[0].list, secondApply.results[0].list];
     assert.equal(second.sourceNumId, first.numId, 'the second operation starts from the first one\'s definition');
     const numberingXml = resultNumbering(result);
     assert.equal(attr(el(levelOf(numberingXml, second.numId, 0), 'numFmt')[0], 'val'), 'upperRoman', 'the first change is kept');
@@ -783,6 +796,143 @@ const levelOf = (numberingXml, numId, ilvl) => {
     const joinedAccepted = labelsOf((await openDocx(joined.toUint8Array()).resolveRevisions('accept', { allAuthors: true })).toUint8Array());
     assert.ok(joinedAccepted.filter(([text]) => text.startsWith('Step')).every(([, label]) => label === before[0][1]), 'joined items take the continued list\'s format');
     assert.deepEqual(labelsOf((await openDocx(joined.toUint8Array()).resolveRevisions('reject', { allAuthors: true })).toUint8Array()), before);
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// 11. WP-6 composition: a redline and a list-format on one paragraph in one batch. Compiler rule first, then the
+//     changed-text header recipe ("1. Old" -> "1. New" = redline the text + list-format convert-plain) end to end.
+// ---------------------------------------------------------------------------------------------------------
+{
+    const compile = (documentXml, operations) => compileOperationBatch(parse(documentXml), operations);
+    const header = documentOf(p('1. Old heading'), p('Body text.'));
+    const redline = (modified, extra = {}) => ({ type: 'redline', target: { exactText: '1. Old heading' }, modified, ...extra });
+    const convert = { type: 'list-format', target: { exactText: '1. Old heading' }, list: { mode: 'convert-plain' } };
+
+    // Compatible pair, either batch order: no conflict, and the list-format is ordered after the redline.
+    for (const operations of [[redline('1. New heading'), convert], [convert, redline('1. New heading')]]) {
+        const compilation = compile(header, operations);
+        assert.deepEqual(compilation.conflicts, []);
+        const listIndex = operations.indexOf(convert);
+        assert.deepEqual(compilation.compiledOperations[listIndex]._compiledRunAfter, [1 - listIndex]);
+        assert.deepEqual(compilation.bindings[listIndex].composedWith, [2 - listIndex]);
+        const plan = buildOperationDependencyPlan(compilation.compiledOperations);
+        assert.deepEqual(plan.scheduled.map(item => item.index), [1 - listIndex, listIndex], 'redline first');
+    }
+    // Localized replacements compile to the same desired text and compose too.
+    assert.deepEqual(compile(header, [{ type: 'redline', target: { exactText: '1. Old heading' }, replacements: [{ find: 'Old', replace: 'New' }] }, convert]).conflicts, []);
+
+    // Incompatible pairs: one clear code with a reason, nothing compiled to run.
+    for (const [label, other, reason] of [
+        ['marker changed', redline('2. New heading'), 'marker-changed'],
+        ['marker removed', redline('New heading'), 'marker-changed'],
+        ['marker spacing changed', redline('1.  New heading'), 'marker-changed'],
+        ['text unchanged', redline('1. Old heading'), 'redline-unchanged'],
+        ['multi-paragraph redline', redline('1. New heading\nSecond paragraph'), 'redline-shape'],
+        ['ranged redline', redline('1. New heading', { targetEnd: { exactText: 'Body text.' } }), 'redline-shape'],
+        ['list-change is structural', { type: 'list-change', target: { exactText: '1. Old heading' }, modified: '1. New heading' }, 'redline-shape']
+    ]) {
+        const compilation = compile(header, [other, convert]);
+        const conflict = compilation.conflicts.find(item => item.code === 'LIST_FORMAT_COMPOSITION_CONFLICT');
+        assert.ok(conflict, `${label}: ${JSON.stringify(compilation.conflicts)}`);
+        assert.equal(conflict.reason, reason, label);
+        assert.equal(conflict.recovery.action, 'split_text_and_list_changes', label);
+        assert.ok(conflict.recovery.hint, label);
+    }
+    const added = compile(documentOf(p('Header')), [
+        { type: 'redline', target: { exactText: 'Header' }, modified: 'A. Header' },
+        { type: 'list-format', target: { exactText: 'Header' }, list: { mode: 'convert-plain', format: 'upperLetter', strip: 'none' } }
+    ]).conflicts[0];
+    assert.deepEqual([added.code, added.reason, added.sourceMarker, added.modifiedMarker], ['LIST_FORMAT_COMPOSITION_CONFLICT', 'marker-changed', null, 'A. ']);
+    // Other kinds keep the existing rules: a third writer, or list-format with a formatting write.
+    assert.equal(compile(header, [redline('1. New heading'), convert, { type: 'paragraph-format', target: { exactText: '1. Old heading' }, properties: { keepNext: true } }]).conflicts[0].code, 'OVERLAPPING_SOURCE_TARGETS');
+    assert.equal(compile(header, [convert, { type: 'paragraph-format', target: { exactText: '1. Old heading' }, properties: { keepNext: true } }]).conflicts[0].code, 'REVISION_ORDER_CONFLICT');
+
+    // scope "list" registers every live item it rebinds as a write of the operation (fail closed).
+    const listed = documentOf(li('Bullet one', 1), li('Bullet two', 1), li('Bullet three', 1), p('After.'));
+    const changeList = { type: 'list-format', target: { exactText: 'Bullet one' }, list: { mode: 'change-format', format: 'decimal' } };
+    const otherItem = parse(listed);
+    const formatOther = { type: 'paragraph-format', target: { exactText: 'Bullet three' }, properties: { keepNext: true } };
+    const rebindConflict = compileOperationBatch(otherItem, [changeList, formatOther]).conflicts[0];
+    assert.deepEqual([rebindConflict.code, rebindConflict.reason, rebindConflict.operationIndexes, rebindConflict.rebindingOperationIndexes], ['LIST_FORMAT_COMPOSITION_CONFLICT', 'list-rebind', [1, 2], [1]]);
+    assert.equal(compile(listed, [changeList, { type: 'list-format', target: { exactText: 'Bullet three' }, list: { mode: 'change-format', format: 'upperRoman' } }]).conflicts[0].reason, 'list-rebind');
+    assert.equal(compile(listed, [changeList, { type: 'highlight', target: { exactText: 'Bullet two' }, textToHighlight: 'two' }]).conflicts[0].reason, 'list-rebind');
+    assert.deepEqual(compile(listed, [changeList, { type: 'comment', target: { exactText: 'Bullet two' }, textToComment: 'two', commentContent: 'Note' }]).conflicts, [], 'a comment is not a write');
+    assert.deepEqual(compile(listed, [formatOther, { ...changeList, list: { ...changeList.list, scope: 'range' }, targetEnd: { exactText: 'Bullet three' } }]).conflicts.map(item => item.code), ['REVISION_ORDER_CONFLICT'], 'scope "range" registers only its range');
+    assert.deepEqual(compile(listed, [changeList, { type: 'paragraph-format', target: { exactText: 'After.' }, properties: { keepNext: true } }]).conflicts, [], 'paragraphs outside the list are free');
+    const textOther = compile(listed, [changeList, { type: 'redline', target: { exactText: 'Bullet three' }, modified: 'Bullet third' }]);
+    assert.deepEqual(textOther.conflicts, [], 'a single-paragraph redline of a rebound item composes');
+    assert.deepEqual(textOther.compiledOperations[0]._compiledRunAfter, [1]);
+    assert.equal(compile(listed, [changeList, { type: 'redline', target: { exactText: 'Bullet three' }, modified: '1. Bullet third' }]).conflicts[0].reason, 'marker-changed');
+}
+{
+    // Changed-text header, bare runner: Accept All shows the bound list with the new text, Reject All the literal
+    // "1. Old heading" without numbering; both batch orders produce the same document structure.
+    const source = documentOf(p('1. Old heading', { id: '1A2B3C4D' }), p('Body text.'), p('2. Payment', { id: '1A2B3C4E' }));
+    const operations = [
+        { type: 'redline', target: { exactText: '1. Old heading' }, modified: '1. New heading' },
+        { type: 'list-format', target: { exactText: '1. Old heading' }, targetEnd: { exactText: '2. Payment' }, list: { mode: 'convert-plain' } }
+    ];
+    const shapes = [];
+    for (const ordered of [operations, [...operations].reverse()]) {
+        const result = await bare(source, ordered);
+        assert.equal(result.status, 'ok', JSON.stringify(innerError(result) || null));
+        assert.deepEqual(result.results.map(item => item.status), ['applied', 'applied']);
+        const listIndex = ordered.findIndex(operation => operation.type === 'list-format');
+        assert.deepEqual(result.executionOrder, [2 - listIndex, listIndex + 1], 'the redline runs first');
+        const { accepted, rejected } = views(result.documentXml);
+        const numId = result.results[listIndex].list.items[0].numId;
+        assert.deepEqual(accepted.map(record => [record.text, record.numId]), [['New heading', numId], ['Body text.', null], ['Payment', numId]]);
+        assert.deepEqual(rejected.map(record => [record.text, record.numId]), [['1. Old heading', null], ['Body text.', null], ['2. Payment', null]]);
+        // (The redline's reconstruction rewrites the paragraph element and drops w14:paraId, as a lone redline does.)
+        assert.deepEqual(validateRedlineOoxml(result.documentXml).issues || [], []);
+        shapes.push(result.documentXml.replace(/w:date="[^"]*"/g, '').replace(/w:id="\d+"/g, ''));
+    }
+    assert.equal(shapes[0], shapes[1], 'batch order does not change the output');
+
+    // Refused composition fails before mutation, atomically or not.
+    for (const atomic of [false, true]) {
+        const refused = await bare(source, [{ ...operations[0], modified: '3. New heading' }, operations[1]], { options: { atomic } });
+        assert.equal(refused.status, 'error');
+        assert.equal(refused.error.code, 'LIST_FORMAT_COMPOSITION_CONFLICT');
+        assert.equal(refused.documentXml, source);
+    }
+
+    // change-format scope "list" with a redline of another item of the list.
+    const listed = documentOf(li('Bullet one', 1), li('Bullet two', 1), li('Bullet three', 1));
+    const changed = await bare(listed, [
+        { type: 'list-format', target: { exactText: 'Bullet one' }, list: { mode: 'change-format', format: 'decimal' } },
+        { type: 'redline', target: { exactText: 'Bullet three' }, modified: 'Bullet third' }
+    ], listContext);
+    assert.equal(changed.status, 'ok', JSON.stringify(innerError(changed) || null));
+    assert.deepEqual(changed.executionOrder, [2, 1]);
+    const changedViews = views(changed.documentXml);
+    const newNumId = changed.results[0].list.numId;
+    assert.deepEqual(changedViews.accepted.map(record => [record.text, record.numId]), [['Bullet one', newNumId], ['Bullet two', newNumId], ['Bullet third', newNumId]]);
+    assert.deepEqual(changedViews.rejected.map(record => [record.text, record.numId]), [['Bullet one', '1'], ['Bullet two', '1'], ['Bullet three', '1']]);
+}
+{
+    // Changed-text header, packaged openDocx path: inspect labels after Accept All / Reject All.
+    const bytes = buildDocx([p('1. Old heading'), p('Body text.'), p('2. Payment')].join(''));
+    const before = labelsOf(bytes);
+    const result = await openDocx(bytes).applyOperations([
+        { type: 'list-format', target: { exactText: '1. Old heading' }, targetEnd: { exactText: '2. Payment' }, list: { mode: 'convert-plain' } },
+        { type: 'redline', target: { exactText: '1. Old heading' }, replacements: [{ find: 'Old', replace: 'New' }] }
+    ], { author: AUTHOR });
+    assert.equal(result.status, 'ok', JSON.stringify(innerError(result) || null));
+    const output = result.toUint8Array();
+    const accepted = await openDocx(output).resolveRevisions('accept', { allAuthors: true });
+    assert.deepEqual(labelsOf(accepted.toUint8Array()), [['New heading', '1.'], ['Body text.', null], ['Payment', '2.']]);
+    const rejected = await openDocx(output).resolveRevisions('reject', { allAuthors: true });
+    assert.deepEqual(labelsOf(rejected.toUint8Array()), before);
+    assert.deepEqual(before, [['1. Old heading', null], ['Body text.', null], ['2. Payment', null]]);
+
+    const refused = await openDocx(bytes).applyOperations([
+        { type: 'redline', target: { exactText: '1. Old heading' }, modified: 'New heading' },
+        { type: 'list-format', target: { exactText: '1. Old heading' }, list: { mode: 'convert-plain' } }
+    ], { author: AUTHOR });
+    assert.equal(refused.status, 'error');
+    assert.equal(refused.written, false);
+    assert.equal(innerError(refused).code, 'LIST_FORMAT_COMPOSITION_CONFLICT');
 }
 
 console.log('PASS: list-format operation');

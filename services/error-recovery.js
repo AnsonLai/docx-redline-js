@@ -61,6 +61,7 @@ const RULES = Object.freeze({
     OVERLAPPING_SOURCE_TARGETS: ['batch-compilation', 'source_conflict', 'consolidate_operations'],
     OVERLAPPING_TEXT_EDITS: ['batch-compilation', 'source_conflict', 'consolidate_operations'],
     REVISION_ORDER_CONFLICT: ['batch-compilation', 'source_conflict', 'split_or_consolidate_operations'],
+    LIST_FORMAT_COMPOSITION_CONFLICT: ['batch-compilation', 'source_conflict', 'split_text_and_list_changes'],
     TARGET_CONSUMED_BY_OPERATION: ['batch-execution', 'source_conflict', 'use_created_content_dependency'],
     CAPTURE_FANOUT_CONFLICT: ['batch-compilation', 'source_conflict', 'split_or_chain_capture_consumers'],
     DUPLICATE_CAPTURE_KEY: ['batch-compilation', 'request_fixable', 'rename_capture'],

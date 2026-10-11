@@ -276,10 +276,14 @@ export interface ListFormatJoinRequest {
  * Binds plain paragraphs (target, or target..targetEnd in one container) to a NEW list definition in place. The
  * binding is a tracked `w:pPrChange`; the stripped marker is a tracked `w:del`. Each typed marker's value is the
  * item's value, so Accept All renders the labels the text showed. Body only (no `part`); text changes belong in a
- * separate `redline`. Refusals: LIST_MARKER_NOT_FOUND, LIST_MARKER_AMBIGUOUS, LIST_MARKER_UNSUPPORTED,
+ * separate single-paragraph `redline` of the same paragraph that keeps the typed marker exactly: the batch compiler
+ * lets that pair share one batch and runs the redline first ("1. Old" -> "1. New": redline the text, convert-plain
+ * strips "1. "); other pairs fail LIST_FORMAT_COMPOSITION_CONFLICT. Refusals: LIST_MARKER_NOT_FOUND, LIST_MARKER_AMBIGUOUS, LIST_MARKER_UNSUPPORTED,
  * LIST_FORMAT_TARGET_IS_LIST, LIST_FORMAT_STYLE_NUMBERED, PARAGRAPH_FORMAT_REVISION_CONFLICT.
  *
- * `change-format` / `join` (`list-format-change-v1`) rebind existing list items with tracked `w:pPrChange`s.
+ * `change-format` / `join` (`list-format-change-v1`) rebind existing list items with tracked `w:pPrChange`s. With
+ * `scope: 'list'` every rebound item counts as a write of the operation in the batch compiler: only a single-paragraph
+ * `redline` per item composes with it (LIST_FORMAT_COMPOSITION_CONFLICT `reason: list-rebind` otherwise).
  * Refusals: LIST_FORMAT_TARGET_NOT_LIST, LIST_FORMAT_MIXED_RANGE, LIST_FORMAT_STYLE_LINKED, LIST_FORMAT_STYLE_NUMBERED,
  * LIST_FORMAT_SPLIT_UNSUPPORTED, LIST_FORMAT_DEFINITION_UNSUPPORTED, LIST_FORMAT_JOIN_INVALID,
  * PARAGRAPH_FORMAT_REVISION_CONFLICT; a no-op is `ok` with a LIST_FORMAT_UNCHANGED warning.
@@ -543,10 +547,15 @@ export interface OperationPreflightItemResult {
 }
 
 export interface OperationConflict {
-  code: 'OVERLAPPING_SOURCE_TARGETS' | 'OVERLAPPING_TEXT_EDITS' | 'REVISION_ORDER_CONFLICT' | 'CAPTURE_FANOUT_CONFLICT' | string;
+  code: 'OVERLAPPING_SOURCE_TARGETS' | 'OVERLAPPING_TEXT_EDITS' | 'REVISION_ORDER_CONFLICT' | 'LIST_FORMAT_COMPOSITION_CONFLICT' | 'CAPTURE_FANOUT_CONFLICT' | string;
   message: string;
   operationIndexes: number[];
   target: ResolvedDocumentTarget;
+  /** LIST_FORMAT_COMPOSITION_CONFLICT: why the redline and the list-format do not compose. */
+  reason?: 'marker-changed' | 'redline-unchanged' | 'redline-shape' | 'list-rebind' | string;
+  sourceMarker?: string | null;
+  modifiedMarker?: string | null;
+  rebindingOperationIndexes?: number[];
   recoveryVersion?: number;
   category?: string;
   recovery?: RedlineError['recovery'];

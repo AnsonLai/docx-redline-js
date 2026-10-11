@@ -10,11 +10,81 @@ import {
     validateDocumentOperation
 } from './document-operation-contract.js';
 import { compileExactReplacements } from './localized-replacement-compiler.js';
+import { getParagraphListInfo } from '../core/list-targeting.js';
+import { parseTypedListMarker } from './list-format.js';
+import { isTrackedDeletedParagraph } from './numbering-helpers.js';
 
-// list-format strips typed markers (a text write) and binds numPr (a pPr write); until WP-6 defines how a
-// redline and a list-format on one target compose, it conflicts with every other text or format write there.
+// list-format strips typed markers (a text write) and binds numPr (a pPr write). On its own target it conflicts with
+// every other text or format write except one compatible single-paragraph redline (`checkListFormatComposition`).
 const TEXT_WRITE_KINDS = new Set(['redline', 'restore', 'rejected-insert', 'list-format']);
 const FORMAT_WRITE_KINDS = new Set(['highlight', 'format', 'paragraph-format']);
+const WORD_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+export const LIST_FORMAT_COMPOSITION_CONFLICT = 'LIST_FORMAT_COMPOSITION_CONFLICT';
+const COMPOSABLE_REDLINE_TYPES = new Set(['redline', 'replace']);
+
+/**
+ * The typed-marker prefix of a paragraph text as list-format reads it: the exact text a convert-plain strip removes
+ * ("1. ", "A. ", "- "), `unsupported:<marker>` for a marker shape list-format refuses, or null for no marker.
+ */
+function typedMarkerKey(text) {
+    const value = String(text ?? '');
+    const parsed = parseTypedListMarker(value);
+    if (!parsed) return null;
+    if (parsed.unsupported) return `unsupported:${parsed.marker}`;
+    return value.slice(0, parsed.prefixLength);
+}
+
+/**
+ * Rule for one `redline` and one `list-format` writing the same batch-start paragraph (the list-format targets it, or
+ * rebinds it through `scope: 'list'`). They compose when the redline changes only the paragraph's text after its typed
+ * marker and the list-format owns the marker and numbering: e.g. "1. Old" -> "1. New" as a redline plus
+ * `convert-plain`. Execution order is fixed: the redline runs first (its target binds at batch start), then the
+ * list-format strips the unchanged marker from the redlined paragraph. Returns null when compatible, else a reason.
+ */
+function checkListFormatComposition(redline, sourceText) {
+    const operation = redline.operation;
+    if (!COMPOSABLE_REDLINE_TYPES.has(operation?.type ?? 'redline')
+        || operation.targetEnd != null || operation.targetEndRef != null
+        || operation.anchor != null || operation.structuredContent === true || operation.part != null
+        || operation.target?.revisionView === 'rejected'
+        || typeof operation.modified !== 'string' || /[\r\n]/.test(operation.modified)) {
+        return {
+            reason: 'redline-shape',
+            hint: 'Pair a list-format only with a single-paragraph redline or replace of that paragraph: modified without line breaks, no targetEnd, anchor, part or structuredContent.'
+        };
+    }
+    if (operation.modified === sourceText) {
+        return {
+            reason: 'redline-unchanged',
+            hint: 'The redline does not change the text; drop it and send only the list-format.'
+        };
+    }
+    const before = typedMarkerKey(sourceText);
+    const after = typedMarkerKey(operation.modified);
+    if (before !== after) {
+        return {
+            reason: 'marker-changed',
+            sourceMarker: before,
+            modifiedMarker: after,
+            hint: 'The redline adds, removes or changes the typed marker. Keep the marker text exactly as it is (the list-format strips it), and express a new label through list-format (strip "none" with format/start, or change-format).'
+        };
+    }
+    return null;
+}
+
+/** Live body paragraphs a `scope: 'list'` change-format/join rebinds outside its named target. */
+function listScopeRebindParagraphs(xmlDoc, registry, binding, operation) {
+    const mode = operation.list?.mode;
+    if (mode !== 'change-format' && mode !== 'join') return [];
+    if ((operation.list?.scope || 'list') !== 'list') return [];
+    const targets = binding.sourceIds.map(sourceId => registry.entries.get(sourceId)?.paragraph).filter(Boolean);
+    const info = targets.map(paragraph => getParagraphListInfo(paragraph)).find(Boolean);
+    if (!info) return [];
+    return Array.from(xmlDoc.getElementsByTagNameNS(WORD_NS, 'p')).filter(paragraph => {
+        if (targets.includes(paragraph) || isTrackedDeletedParagraph(paragraph)) return false;
+        return getParagraphListInfo(paragraph)?.numId === info.numId;
+    });
+}
 
 function normalizedError(error) {
     const details = {};
@@ -202,17 +272,19 @@ function resolveDescriptor(xmlDoc, descriptor, kind, strictTargets, metadataIndi
     };
 }
 
-function buildConflict(code, message, bindings, target, action) {
+function buildConflict(code, message, bindings, target, action, details = {}, hint = null) {
     return {
         code,
         message,
         operationIndexes: bindings.map(binding => binding.index).sort((a, b) => a - b),
         target,
+        ...details,
         recovery: {
             action,
             sameArgumentsSafe: false,
             requiresReinspection: false,
-            requiresUserAuthorization: false
+            requiresUserAuthorization: false,
+            ...(hint ? { hint } : {})
         }
     };
 }
@@ -412,17 +484,84 @@ export function compileOperationBatch(xmlDoc, operations = [], options = {}) {
     }
 
     const bySource = new Map();
+    const rebindsBySource = new Map();
     for (const binding of bindings) {
         if (binding.error || binding.dynamic) continue;
         for (const sourceId of binding.sourceIds) {
             if (!bySource.has(sourceId)) bySource.set(sourceId, []);
             bySource.get(sourceId).push(binding);
         }
+        // A scope "list" change-format/join writes pPr on every live item of the target's list, so those items are
+        // registered as format writes of the operation: another write to them must compose or is refused.
+        if (binding.operationKind === 'list-format') {
+            const operation = compiledOperations[binding.index - 1];
+            for (const paragraph of listScopeRebindParagraphs(xmlDoc, registry, binding, operation)) {
+                const sourceId = registry.register(paragraph, metadataIndices.accepted.byParagraph.get(paragraph) || {});
+                if (binding.sourceIds.includes(sourceId)) continue;
+                (binding.rebindSourceIds ||= []).push(sourceId);
+                if (!bySource.has(sourceId)) bySource.set(sourceId, []);
+                if (!rebindsBySource.has(sourceId)) rebindsBySource.set(sourceId, []);
+                rebindsBySource.get(sourceId).push(binding);
+            }
+        }
     }
 
     const conflicts = [];
     const conflictKeys = new Set();
-    for (const [sourceId, sourceBindings] of bySource) {
+    const pushConflict = (key, conflict) => {
+        if (conflictKeys.has(key)) return;
+        conflictKeys.add(key);
+        conflicts.push(conflict);
+    };
+    for (const [sourceId, targetBindings] of bySource) {
+        const rebinds = rebindsBySource.get(sourceId) || [];
+        const writers = [...targetBindings, ...rebinds]
+            .filter(binding => TEXT_WRITE_KINDS.has(binding.operationKind) || FORMAT_WRITE_KINDS.has(binding.operationKind));
+        const listFormats = writers.filter(binding => binding.operationKind === 'list-format');
+        const others = writers.filter(binding => binding.operationKind !== 'list-format');
+        if (listFormats.length === 1 && others.length === 1 && others[0].operationKind === 'redline') {
+            const [listFormat] = listFormats;
+            const [redline] = others;
+            const describedSource = registry.describe(sourceId);
+            const incompatible = checkListFormatComposition(
+                { operation: compiledOperations[redline.index - 1] },
+                redline.resolvedTarget?.text ?? describedSource?.text ?? ''
+            );
+            if (incompatible) {
+                const affected = [redline, listFormat];
+                pushConflict(`list:${affected.map(binding => binding.index).sort().join(',')}`, buildConflict(
+                    LIST_FORMAT_COMPOSITION_CONFLICT,
+                    `Operations ${affected.map(binding => binding.index).sort((a, b) => a - b).join(', ')} combine a redline and a list-format on the same paragraph in a way that does not compose (${incompatible.reason}).`,
+                    affected,
+                    describedSource,
+                    'split_text_and_list_changes',
+                    { reason: incompatible.reason, ...(incompatible.sourceMarker !== undefined ? { sourceMarker: incompatible.sourceMarker, modifiedMarker: incompatible.modifiedMarker } : {}) },
+                    incompatible.hint
+                ));
+                continue;
+            }
+            // Deterministic order: the list-format runs after the redline, whatever the batch order.
+            const compiledListFormat = compiledOperations[listFormat.index - 1];
+            const runAfter = new Set(compiledListFormat._compiledRunAfter || []);
+            runAfter.add(redline.index - 1);
+            compiledListFormat._compiledRunAfter = [...runAfter].sort((a, b) => a - b);
+            listFormat.composedWith = [...new Set([...(listFormat.composedWith || []), redline.index])];
+            redline.composedWith = [...new Set([...(redline.composedWith || []), listFormat.index])];
+            continue;
+        }
+        if (rebinds.length > 0 && writers.length > 1) {
+            pushConflict(`rebind:${writers.map(binding => binding.index).sort().join(',')}`, buildConflict(
+                LIST_FORMAT_COMPOSITION_CONFLICT,
+                `Operation ${rebinds.map(binding => binding.index).join(', ')} (list-format, scope "list") rebinds this list item, and operations ${writers.filter(binding => !rebinds.includes(binding)).map(binding => binding.index).join(', ')} also write it.`,
+                writers,
+                registry.describe(sourceId),
+                'split_text_and_list_changes',
+                { reason: 'list-rebind', rebindingOperationIndexes: rebinds.map(binding => binding.index) },
+                'A list-format with scope "list" rewrites every item of the list; in the same batch only one single-paragraph redline per item can compose with it. Send the other change in a separate apply, or use scope "range".'
+            ));
+            continue;
+        }
+        const sourceBindings = targetBindings;
         const textWrites = sourceBindings.filter(binding => TEXT_WRITE_KINDS.has(binding.operationKind));
         const formatWrites = sourceBindings.filter(binding => FORMAT_WRITE_KINDS.has(binding.operationKind));
         if (textWrites.length > 1) {

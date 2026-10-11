@@ -127,6 +127,18 @@ export function buildOperationDependencyPlan(operations = []) {
         }
     }
 
+    // Compiler-fixed order: a list-format composed with a redline on the same paragraph runs after that redline.
+    for (let i = 0; i < list.length; i++) {
+        const runAfter = Array.isArray(list[i]?._compiledRunAfter) ? list[i]._compiledRunAfter : [];
+        for (const producerIndex of runAfter) {
+            if (!Number.isInteger(producerIndex) || producerIndex < 0 || producerIndex >= list.length || producerIndex === i) continue;
+            if (dependencies[i].has(producerIndex)) continue;
+            dependencies[i].add(producerIndex);
+            dependents[producerIndex].add(i);
+            inDegrees[i]++;
+        }
+    }
+
     for (const [captureRef, consumers] of mutatingCaptureConsumers) {
         if (consumers.length < 2) continue;
         const selectors = consumers.map(consumer => consumer.select);

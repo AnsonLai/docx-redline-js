@@ -1305,6 +1305,51 @@ const WORD_TASK_CASE_DEFINITIONS = [
         expectedRejectedListStrings: ['1.', '2.', '', '1.', '2.'],
         packageParts: { numberingXml: CHANGE_NUMBERING_XML },
         requiredElements: { pPrChange: 2, numPr: 6 }
+    },
+    {
+        // WP-6 recipe: a changed-text header is a redline of the text after the marker plus a list-format on the same
+        // paragraph in one batch; the redline runs first, the list-format strips the unchanged marker.
+        name: 'legal-list-format-redline-changed-header',
+        category: 'legal',
+        task: 'convert-typed-headers-to-list',
+        sourceDocumentXml: typedHeaderDocument([
+            typedHeader(1, '1.', 'Old Terms', 'space'),
+            typedBody(2, 'These terms apply to every order.'),
+            typedHeader(3, '2.', 'Fees', 'space')
+        ]),
+        original: lines('1. Old Terms', 'These terms apply to every order.', '2. Fees'),
+        modified: lines('1. New Terms', 'These terms apply to every order.', '2. Fees'),
+        batchOperations: [
+            { type: 'redline', target: { exactText: '1. Old Terms' }, modified: '1. New Terms' },
+            { type: 'list-format', target: { exactText: '1. Old Terms' }, targetEnd: { exactText: '2. Fees' }, list: { mode: 'convert-plain' } }
+        ],
+        expectedAcceptedText: lines('New Terms', 'These terms apply to every order.', 'Fees'),
+        expectedRejectedText: lines('1. Old Terms', 'These terms apply to every order.', '2. Fees'),
+        expectedAcceptedListStrings: ['1.', '', '2.'],
+        expectedRejectedListStrings: ['', '', ''],
+        requiredElements: { pPrChange: 2, numPr: 2, del: 3, ins: 1 }
+    },
+    {
+        // The same recipe with a typed start value (startOverride 3) and the list-format listed first in the batch.
+        name: 'administrative-list-format-redline-changed-header-start-value',
+        category: 'administrative',
+        task: 'convert-typed-headers-to-list',
+        sourceDocumentXml: typedHeaderDocument([
+            typedHeader(1, '3.', 'Reporting'),
+            typedBody(2, 'Reports are filed every quarter.'),
+            typedHeader(3, '4.', 'Audit')
+        ]),
+        original: lines(`3.${TAB}Reporting`, 'Reports are filed every quarter.', `4.${TAB}Audit`),
+        modified: lines(`3.${TAB}Quarterly reporting`, 'Reports are filed every quarter.', `4.${TAB}Audit`),
+        batchOperations: [
+            { type: 'list-format', target: { exactText: `3.${TAB}Reporting` }, targetEnd: { exactText: `4.${TAB}Audit` }, list: { mode: 'convert-plain' } },
+            { type: 'redline', target: { exactText: `3.${TAB}Reporting` }, replacements: [{ find: 'Reporting', replace: 'Quarterly reporting' }] }
+        ],
+        expectedAcceptedText: lines('Quarterly reporting', 'Reports are filed every quarter.', 'Audit'),
+        expectedRejectedText: lines(`3.${TAB}Reporting`, 'Reports are filed every quarter.', `4.${TAB}Audit`),
+        expectedAcceptedListStrings: ['3.', '', '4.'],
+        expectedRejectedListStrings: ['', '', ''],
+        requiredElements: { pPrChange: 2, numPr: 2, del: 2, ins: 1 }
     }
 ];
 

@@ -58,6 +58,7 @@ export const OPERATION_KINDS = [
     'list-format-convert-plain',
     'list-format-change-format',
     'list-format-join',
+    'list-format-redline-compose',
     'last-paragraph-replace'
 ];
 
@@ -133,7 +134,9 @@ const listItemLines = (rng, count) => Array.from({ length: count }, (_, i) => `$
 /**
  * Builds one operation of `kind`, or null when the fixture offers no valid site for it.
  *
- * @returns {null | { kind: string, operation: object, expectAccepted: string[], paragraphIndex: number }}
+ * `operation` is one operation, or an array of operations applied as one batch (composed kinds).
+ *
+ * @returns {null | { kind: string, operation: object | object[], expectAccepted: string[], paragraphIndex: number }}
  */
 export function generateOperation(rng, paragraphs, kind, serial = 0) {
     const n = paragraphs.length;
@@ -309,6 +312,46 @@ export function generateOperation(rng, paragraphs, kind, serial = 0) {
             return { kind, paragraphIndex: site.i, expectAccepted: [],
                 operation: { operationId, type: 'list-format', target: targetOf(site.q),
                     list: { mode: 'join', continueFrom: targetOf(from.q), ...(rng.chance(0.3) ? { scope: 'range' } : {}) } } };
+        }
+        case 'list-format-redline-compose': {
+            // WP-6: a redline and a list-format on one paragraph in one batch (either order). Either a typed header whose
+            // text after the marker changes (redline) and which becomes a list item (convert-plain), or a whole-list
+            // change-format plus a word swap in another item of that list.
+            const typed = withText
+                .filter(({ q }) => !q.list && !q.inTable)
+                .map(entry => ({ ...entry, marker: typedMarker(entry.q.exactText) }))
+                .filter(entry => entry.marker);
+            const listed = withText.filter(({ q }) => q.list && q.list.numId != null && !typedMarker(q.exactText));
+            const useHeader = typed.length > 0 && (listed.length === 0 || rng.chance(0.6));
+            let redline;
+            let listFormat;
+            let expectAccepted;
+            let paragraphIndex;
+            if (useHeader) {
+                const site = rng.pick(typed);
+                const swap = swapOneWord(rng, site.marker.rest);
+                if (!swap) return null;
+                const prefix = site.q.exactText.slice(0, site.q.exactText.length - site.marker.rest.length);
+                redline = { ...base, operationId: `${operationId}-text`, target: targetOf(site.q), modified: `${prefix}${swap.modified}` };
+                listFormat = { operationId: `${operationId}-list`, type: 'list-format', target: targetOf(site.q),
+                    list: { mode: 'convert-plain', ...(site.marker.format ? { format: site.marker.format } : {}) } };
+                expectAccepted = [swap.modified];
+                paragraphIndex = site.i;
+            } else {
+                if (listed.length === 0) return null;
+                const item = rng.pick(listed);
+                const swap = swapOneWord(rng, item.q.exactText);
+                if (!swap) return null;
+                const sameList = indexed.filter(({ q }) => q.list && String(q.list.numId) === String(item.q.list.numId));
+                const site = rng.pick(sameList);
+                const level = Number.isInteger(Number(site.q.list.level)) ? Number(site.q.list.level) : 0;
+                const format = rng.pick(LIST_FORMATS.filter(entry => entry !== site.q.list.format));
+                redline = { ...base, operationId: `${operationId}-text`, target: targetOf(item.q), modified: swap.modified };
+                listFormat = { operationId: `${operationId}-list`, type: 'list-format', target: targetOf(site.q), list: { mode: 'change-format', format, level } };
+                expectAccepted = [swap.replacement];
+                paragraphIndex = item.i;
+            }
+            return { kind, paragraphIndex, expectAccepted, operation: rng.chance(0.5) ? [redline, listFormat] : [listFormat, redline] };
         }
         case 'last-paragraph-replace': {
             let index = n - 1;

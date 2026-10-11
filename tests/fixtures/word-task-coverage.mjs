@@ -55,6 +55,8 @@ export const WORD_TASK_COVERAGE = Object.freeze({
     'administrative-list-format-change-range-continues-count': coverage('list-change', ['list']),
     'legal-list-format-change-range-from-nested-item': coverage('list-change', ['list']),
     'legal-list-format-join-adjacent-lists': coverage('list-change', ['list']),
+    'legal-list-format-redline-changed-header': coverage('list-change', ['list']),
+    'administrative-list-format-redline-changed-header-start-value': coverage('list-change', ['list', 'tab-break']),
     'legal-suppressed-heading-to-bullet-list': coverage('list-change', ['list', 'formatted-runs'], AI_REVIEWED),
     'administrative-table-reconciliation-cell-update': coverage('table-reconciliation', ['table'], AI_REVIEWED),
     'legal-table-reconciliation-row-insertion': coverage('table-reconciliation', ['table'], AI_REVIEWED),
