@@ -237,8 +237,8 @@ package.
 ### Expand weak list and table cells with structural operations
 
 The list/table expansion was driven directly by the task-by-structure matrix;
-it did not add more plain replacement cases. The current catalogue contains 124
-Word cases: 64 synthetic fixtures and 60 reviewed real-document scenarios. The
+it did not add more plain replacement cases. The current catalogue contains 125
+Word cases: 65 synthetic fixtures and 60 reviewed real-document scenarios. The
 `List Change × List` cell now contains 27 cases; the
 `Table Reconciliation × Table` cell contains 11 cases.
 

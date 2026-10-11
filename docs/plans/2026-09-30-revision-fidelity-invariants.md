@@ -53,6 +53,14 @@ Resume here. Each line says what landed, where, and what is next. Verify with `g
   Word corpus lane 60/60 with the structural check (86 vs 86). Known trade-off: when Markdown drops a non-empty
   paragraph of a multi-paragraph cell, its text is tracked-deleted but the paragraph shell stays, so Accept All leaves an
   empty paragraph there (Reject All exact). Stale fixtures numbered 42-47 in `tmp/superdoc-word-fixtures` are leftovers.
+- **R5 end-of-document table append (2026-10-11):** the plugin's reported "extra paragraph + 1 revision" after Reject All reproduces
+  only with `Document.RejectAllRevisions()`; `Revisions.RejectAll()` and the ribbon give the source's 7 paragraphs. Word's own COM
+  authoring (TrackRevisions on, `Tables.Add` at the end) marks the *existing final paragraph's* mark as inserted, writes inserted
+  rows and leaves an untracked empty trailing paragraph; it survives both APIs. The library keeps the final paragraph and adds a
+  tracked-inserted trailing one (fine under `Revisions.RejectAll`). Word adds an untracked empty paragraph to any body that ends
+  with a table (matrix `table-append-end-no-trailing-paragraph`: Reject 3 paragraphs, Accept 7, both views +1), modelled in
+  `core/word-revision-semantics.js`. Defect fixed: a pretty-printed body (whitespace before `w:sectPr`) got no trailing paragraph
+  (differential 5 vs 4). Matrix is 31 cases; synthetic differential 65/65.
 - Scratch helpers (not committed): `%TEMP%\claude\wordcount.ps1` (source vs Reject All paragraph counts) and
   `wordui.ps1` (compares the four Reject All entry points).
 

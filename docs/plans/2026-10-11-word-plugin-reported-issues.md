@@ -19,7 +19,7 @@ Related plans: `2026-09-30-revision-fidelity-invariants.md` (verifier, Word lane
 | R3 | `2026-10-02-weak-target-soft-break-deletion.md` | **Fixed (I1.3-4)**: `compositeTextTarget` in `services/operation-batch-compiler.js` made a weak target whose `exactText` has `
 ` (a `w:br`) dynamic, so replacements were never compiled and an empty `modified` was applied. Replacements now always bind at batch start; the applier refuses any localized result whose accepted text differs from the compiled text (`PATCH_ROUNDTRIP_MISMATCH`). Reproducer exits 1. | Plugin moves it to `completed/` after upgrading |
 | R4 | `2026-10-02-generate-redlines-false-cross-author-insertion.md` | **Fixed (I1.1-2)**: `engine/surgical-diff-application.js` `processInsert` passed a flipped `generateNestedRevision` flag; the new `UNTRACKED_CREATED_REVISION` invariant refuses any untracked output with new revision ids. Reproducer exits 1. | Plugin moves it to `completed/` after upgrading |
-| R5 | `2026-10-01-word-reject-table-append-paragraph.md` | Unverified on this tree; Word reported an extra empty paragraph and one leftover revision after `Revisions.RejectAll()` for an end-of-document table append. Our simulator and library reject say 7 paragraphs, so if Word still disagrees our Word-semantics model has a gap. | I3 |
+| R5 | `2026-10-01-word-reject-table-append-paragraph.md` | Verified in Word 16.0.20430 on this tree: the plugin exporter's package leaves 7 paragraphs and 0 revisions under `Revisions.RejectAll()` and the ribbon command; the reported 8 paragraphs + 1 revision reproduce only with `Document.RejectAllRevisions()` (Word API quirk with a tracked-inserted last mark; Word's own tracked end-table append survives both). A real adjacent defect was found and fixed: pretty-printed bodies (whitespace before `w:sectPr`) got no trailing paragraph (differential 5 vs 4). | **Done (I3)**. Plugin: use `Document.Revisions.RejectAll()` / the ribbon command in its Word oracle, not `RejectAllRevisions()`. |
 | R6 | `2026-10-02-word-existing-comments-delta-transport.md` | Consumer transport incident, resolved in the plugin; no library defect. | Plugin moves it to `completed/` |
 
 ## Why two of these escaped the new safety net
@@ -64,7 +64,17 @@ Separate `redline` operations that convert continuing markers (`A.` then `B.`) i
 same sequence state as `list-format`. Test with the reproducer's Word-authored fixture and a Word ListString check
 (Accept All shows `A.`, `B.`; inserting an item between would renumber).
 
-### I3. Word Reject All after an end-of-document table append (R5) — investigate
+### I3. Word Reject All after an end-of-document table append (R5) — done
+
+**Result (2026-10-11):** Word 16.0.20430 agrees with the library on this tree for the plugin's package: `Revisions.RejectAll()` and the
+ribbon give 7 paragraphs, 0 revisions, 0 tables; `Document.RejectAllRevisions()` gives 8 paragraphs + 1 revision (the documented API
+quirk for a tracked-inserted last mark; Word's own COM-authored tracked end-table append, whose *final paragraph's* mark is the
+inserted one, survives both). Found and fixed a real neighbour: a pretty-printed body got no trailing paragraph (differential
+5 vs 4). Matrix cases `table-append-end-*` (4), simulator rule "body ends with a table => implicit untracked paragraph", regression in
+`tests/table_append_fidelity_tests.mjs`, Word differential case `legal-table-append-after-final-paragraph` (65/65). Commits: matrix shapes (`test: pin Word Reject/Accept All for end-of-document table append shapes`), fix `0835f58`
+(the generator hunk in `services/document-operation-mutations.js` landed inside R2's `be539d5`), then the differential case.
+
+Original task:
 
 Re-run the plugin's exporter (`2026-10-01-word-reject-table-append-paragraph-export.mjs`) against this tree and check in
 Word with `Document.Revisions.RejectAll()`: paragraph count and `Revisions.Count`. If Word still leaves an extra paragraph or

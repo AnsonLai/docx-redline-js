@@ -125,6 +125,7 @@
 
 ### Fixed
 
+- **Separate list conversions in one batch continue one list:** two `redline` operations that turned non-adjacent headers into continuing markers (`A. Header`, `B. Header`) each allocated their own numbering instance, so Word showed `A.`, `B.` (start values) but as two lists, and a later item inserted between them would not renumber. The structural list fallback now uses the batch sequence state `list-format convert-plain` uses: same kind, format and level with a continuing value reuses the previous operation's live `numId` (a `redline` and a `convert-plain` of the same format join one list too); a gap (`A.` then `C.`) or a different format allocates a new instance. Ids still come from `services/numbering-allocation.js`. (Reported against 0.8.4.)
 - **Weak-target localized replacements no longer delete soft-break paragraphs:** a `replacements` edit targeted only by `index` + `exactText` (no `paragraphId`/`fingerprint`) in a paragraph containing `<w:br/>` returned `ok` but tracked the whole paragraph as deleted and inserted nothing, because the batch compiler treated the line break in `exactText` as a multi-paragraph target and skipped replacement compilation. Localized replacements now always bind at batch start, so weak and strong targets behave identically. Every localized replacement also has its accepted result checked against the compiled text before commit (`PATCH_ROUNDTRIP_MISMATCH`, nothing applied), and uncompiled replacements are refused rather than applied.
 - **Reconstruction keeps wrappers and deleted placeholders:** a text edit in a paragraph with a `w:fldSimple` no longer drops the field (Reject All lost its result text); a deleted manual break, tab or inline object is a tracked deletion instead of disappearing; and converting a paragraph to a list keeps hyperlink and content-control containers around the deleted runs, so Reject All keeps the text inside its link. Found by the reject-roundtrip matrix.
 - **Punctuation edits stay surgical:** leading and trailing punctuation are separate diff tokens and unchanged substantive words anchor the re-diff, so "agents and attorneys" -> "agents, attorneys, accountants and other professional advisors" marks only " and" -> "," and the appended items.
@@ -138,6 +139,14 @@
   `!(generateRedlines && ...)`, which is true whenever `generateRedlines` is false, so an inserted word was wrapped in a new tracked
   `w:ins` (`applyRedlineToOxml` and `applyOperationsToDocumentXml`; `redline`/`replace`, `modified`/`replacements`). It now writes
   plain runs, like `merge-same-author`, and leaves other authors' revisions intact (a foreign insertion is sliced around the edit).
+- **Table appended after the final paragraph of a pretty-printed document keeps its tracked trailing paragraph:** a whitespace
+  text node between the last paragraph and `w:sectPr` made the retained-paragraph table append believe the table did not end
+  the body, so the body ended with a table and Word added an untracked empty paragraph that Reject All left behind (plugin
+  report R5; Word differential 5 vs 4 paragraphs). The append now skips non-element nodes when deciding. The Word-semantics
+  simulator (and therefore the post-apply verifier) counts the untracked paragraph Word supplies after a body-final table, so
+  the old output is refused with `REVISION_FIDELITY_VIOLATION`. Documents without whitespace between blocks (the plugin's
+  own) were already correct on `Revisions.RejectAll()` and the ribbon; `Document.RejectAllRevisions()` still leaves the
+  tracked-inserted last mark behind (a Word API quirk, see the fidelity plan).
 
 ## 0.8.4
 
