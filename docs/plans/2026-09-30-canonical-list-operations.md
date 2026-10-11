@@ -1,7 +1,7 @@
 # Canonical List Operations: Header-to-List Conversion and List Format Change
 
 Date: 2026-09-30
-Status: IN PROGRESS (2026-10-10): WP-0 through WP-3 done; WP-4 next. Package baseline 0.8.4+, CLI `contractVersion` 8.
+Status: IN PROGRESS (2026-10-10): WP-0 through WP-4 done; WP-5 next. Package baseline 0.8.4+, CLI `contractVersion` 9.
 
 ## Progress and hand-off (keep current; resume here)
 
@@ -11,11 +11,12 @@ Status: IN PROGRESS (2026-10-10): WP-0 through WP-3 done; WP-4 next. Package bas
 | 1 | Done: list diagnostics warn by default, error under `strictListConversion` (CLI agent profile / `--atomic`) or `atomic`; `listMarkers: 'literal'` opt-out; `UNKNOWN_PARAGRAPH_FORMAT_PROPERTY` warning; capability `list-conversion-diagnostics-v1` | `db10d39`, `7ab6490`; tests `tests/list_conversion_diagnostics_tests.mjs` | Promote unknown `paragraph-format` keys to an error in the next minor; one-line adjacency insertion form not covered; consumer impact: atomic batches that type `1.`/`A.` onto plain paragraphs are now refused (tell AIWordPlugin) |
 | 2 | Done: `services/numbering-allocation.js` is the single allocator and the single numbering merge for runner and facade (fidelity plan WP-5a R1-R3); `reuseSourceListNumbering` removed; facade refuses dangling numbering references it adds; `NUMBERING_ID_CONFLICT` on conflicting ids | `4718c36`, `f41bd3b`; tests `tests/numbering_allocation_tests.mjs`, matrix numbering parity in `tests/reject_roundtrip_matrix_tests.mjs` | Residual: separate bare calls without shared `numberingXml`/`numberingIdState` can still allocate the same ids (now detected, not auto-remapped) |
 | 3 | Done: `paragraph-format.numbering` binds or removes existing numbering with a tracked `pPrChange`; validates `numId`/level; preserves the earliest same-author snapshot; refuses cross-author snapshot replacement; letter/roman marker starts are retained | `dc3e2d0` plus Word differential fixture follow-up; tests `tests/paragraph_format_numbering_tests.mjs`, Word task cases for bind/remove/change-level | WP-4 `list-format convert-plain` |
-| 4-7 | Not started | | See "Work packages" |
+| 4 | Done: `list-format` `convert-plain` (`strip: 'marker'` default, `'none'` with `format`/`start`), decimal/letters/roman/bullets, in place (tracked `w:del` of exactly the marker + tracked `pPrChange` via the WP-3 path); values from the markers (`startOverride`, typed `.`/`)` kept in `lvlText`); consecutive values share one numId, gaps restart at the typed value, later ops continue through `listFallbackSequenceState` (entry reused only while its numId is live in the DOM, so refused ops cannot poison it); refusals `LIST_MARKER_NOT_FOUND`/`_AMBIGUOUS`/`_UNSUPPORTED`, `LIST_FORMAT_TARGET_IS_LIST`, `LIST_FORMAT_STYLE_NUMBERED`, `PARAGRAPH_FORMAT_REVISION_CONFLICT`, `TARGET_RANGE_INVALID`; text-equal redline letter/roman/bullet conversions use the same core; WP-1 recovery is `use_list_format_convert_plain` + `suggestedOperation`; contract 9, `list-format-v1` | `1240842`, `1cd174a`; tests `tests/list_format_operation_tests.mjs`, matrix kind `list-format-convert-plain` + `typed-headers` fixture, Word cases `*-list-format-convert-*` (synthetic 56/56, corpus 60/60) | WP-5; see "WP-4 notes for WP-5/6" |
+| 5-7 | Not started | | See "Work packages" |
 
-Gates every WP must keep green (verified 2026-10-10 after WP-3): `npm test` (145 suites), `check:types`,
+Gates every WP must keep green (verified 2026-10-10 after WP-4): `npm test` (146 suites), `check:types`,
 `test:isolation`, `node tests/reject_roundtrip_matrix_tests.mjs` (+ a `FUZZ_SEED=<n> MATRIX_ITERATIONS=500` run), Word
-synthetic lane 52/52 and corpus lane 60/60 (`pwsh`, redirect output to a log file; see docs/TESTING.md). The fidelity
+synthetic lane 56/56 and corpus lane 60/60 (`pwsh`, redirect output to a log file; see docs/TESTING.md). The fidelity
 verifier refuses by default, so a new list operation that breaks Reject All cannot pass these gates.
 Source: consumer report `AIWordPlugin/docs/library-issues/2026-09-30-canonical-list-operations.md`
 (with `reproduce-plain-header-conversion.mjs`). Reproductions below were re-run against this tree.
@@ -413,13 +414,42 @@ for the range.
 | 1 | **Done (`db10d39`).** Interim safety diagnostics: `UNSUPPORTED_LIST_CONVERSION`, `LIST_MARKER_NOT_BOUND`, `LIST_FORMAT_NOT_APPLIED`, `listMarkers: 'literal'` opt-out; closed `paragraph-format.properties` schema with unknown-key rejection; capability `list-conversion-diagnostics-v1`. Patch release. | Low-medium: unknown-key rejection could break callers that pass ignored keys; ship as warning first, error in the next minor |
 | 2 | **Done (`4718c36`).** Numbering allocator module `services/numbering-allocation.js`: `allocateNumberingDefinition` (create new abstractNum + num, copy level geometry, per-level `startOverride`, ids via `reserveNextNumberingIdPair`), `allocateNumberingForReplacement` (replacement policy, replaces `reuseSourceListNumbering`), the single merge `mergeNumberingParts`, `validateNumberingIntegrity` (numId/abstractNum/ilvl; wired into the `openDocx` validation as introduced-issues-only). No operation exposed yet; `tests/numbering_allocation_tests.mjs`, parity in the WP-3 matrix. Not yet used by an operation: `allocateNumberingDefinition` (WP-4/5 callers), batch continuity (`listFallbackSequenceState`) stays with WP-4. | Medium: continuity across a batch |
 | 3 | **Done (`dc3e2d0`).** `paragraph-format.numbering` binding (`numId`, `level`, null) with tracked `pPrChange`; schema-ordered `w:numPr`; existing-definition validation; same-author earliest-snapshot preservation and cross-author conflict refusal; roman/letter start values. Word differential cases verify bind/remove/change-level through Accept All and Reject All list labels. | Low-medium: pPr child order is schema-sensitive and Word repairs misordered children |
-| 4 | `list-format` `convert-plain` with `strip: marker` (decimal, letters, roman, bullets), replacing the whole-paragraph letter fallback; Word-authored fixtures and COM lane for A./1./I.; header runs share one `numId` via the sequence state. Contract version 9 and `list-format-v1`. | High: Word fidelity, partial reject coherence, sequence continuity |
+| 4 | **Done (`1240842`, `1cd174a`).** `list-format` `convert-plain` with `strip: marker` (decimal, letters, roman, bullets) and `strip: none`, replacing the whole-paragraph letter fallback for text-equal conversions; Word-authored-style fixtures and COM lane for A./1./I. and a C. start value (`ListString` after Accept/Reject); header runs share one `numId` via the sequence state. Contract version 9 and `list-format-v1`. | High: Word fidelity, partial reject coherence, sequence continuity |
 | 5 | `list-format` `change-format` (`scope: list` then `range`), `join`; reroute the `list-change` format-change case; refusal rules (style-linked, mixed ranges). | High: splitting a list mid-sequence, nested level remap, style-linked numbering |
 | 6 | Changed-text header conversion ("1. Old" -> "1. New"): documented as `redline` + `list-format` in one batch; add the batch-compiler rule that these two kinds on one target do not conflict; remove reliance on `sameRawText`/`sameListText` for new code. | Medium |
 | 7 | `detach` and `materializeMarker` (optional), docs, schema, `index.d.ts`, README, CHANGELOG, release notes; wrapper guidance in `docs/SKILL_AUTHORING.md` (negotiate `list-format-v1`; otherwise keep the host path). | Low |
 
 Ship WP-1 alone as the first patch; it fixes the dishonest success reports without waiting on the
 Word-verification work. WP-4 and WP-5 should not merge without the COM lane results attached.
+
+### WP-4 notes for WP-5/6
+
+- Code: `services/list-format.js` (contract shape, marker grammar, level spec, sequence key) and
+  `services/list-format-mutation.js` (`convertPlainParagraphsToList`: plan every refusal first, then mutate). Dispatch is
+  `applyListFormatToParagraphByExactText` in `document-operation-mutations.js`; its `resolveOperationParagraphRange` is the
+  restore-style range resolver (compiled source ids, refs, end descriptor) and should be reused by `change-format`.
+- `validateListFormatShape` rejects `scope`, `continueFrom`, `lvlText`, `materializeMarker` and modes other than `convert-plain`
+  with `INVALID_OPERATION` naming the field; WP-5 relaxes it per mode. `list.start` is refused with `strip: 'marker'`.
+- Allocation: one `allocateNumberingDefinition` call per list group with only the target level redefined (other levels default
+  decimal, indent 720*(n+1)/hanging 360; no source geometry because convert-plain has no source list). `change-format` must pass
+  `sourceNumberingXml`/`sourceNumId` to keep geometry.
+- Letter vs roman: a lone `I.`/`C.`/`D.` is refused `LIST_MARKER_AMBIGUOUS` unless `format` is given or the run's values are
+  consecutive under exactly one reading (`C., D.` letters; `I., II.` roman). The text-equal redline route passes the format the
+  legacy parser inferred (single letters are letters there), so it never hits the ambiguity refusal.
+- Reject coherence: rejecting only the marker deletion leaves literal marker plus label (valid OOXML, tested); rejecting only the
+  `pPrChange` leaves the stripped text unnumbered. Documented, not tied together.
+- Finding: the legacy whole-paragraph fallback was reject-exact only for plain runs. With the marker in a hyperlink, smart tag,
+  custom XML or the author's own pending insertion its Reject All drops the wrapper and the verifier refuses it; convert-plain
+  refuses those shapes up front (`reason: marker-shape`). Converting a marker inside the author's own `w:ins` (insert then convert
+  in one session) is a candidate improvement (delete-own-insertion semantics), not done.
+- Batch compiler: `list-format` is a TEXT_WRITE kind, so a `redline` and a `list-format` on one batch-start target fail
+  `OVERLAPPING_SOURCE_TARGETS` today. WP-6 must add the explicit rule (redline first, list-format strips the marker of the
+  redlined text) instead of moving it to FORMAT_WRITE_KINDS, which would allow a text+marker write race.
+- Style-linked numbering detection needs `stylesXml` (`runtimeContext.stylesXml` or `options.stylesXml` on the bare runner; the
+  facade now passes `word/styles.xml`). Without it a style-numbered paragraph is not detected on the bare path.
+- Sequence state lives in `runtimeContext.listFallbackSequenceState.explicitByNumberingKey` under `list-format:<fmt>:<lvl>:<punct>`
+  keys; `commitBatchRuntimeContext` copies it to the caller's runtime context, so a bare caller that reuses one context object
+  continues lists across calls (same as `numberingIdState`).
 
 ## Risks and open questions
 
