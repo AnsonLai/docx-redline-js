@@ -967,7 +967,7 @@ directly into `word/document.xml`.
 1. Call `configureXmlProvider` first in Node.js.
 2. `applyRedlineToOxml` is async.
 3. Paragraph APIs expect paragraph-level OOXML, not full `word/document.xml` in all cases.
-4. List operations may return `numberingXml` that must be merged into package parts. When `word/numbering.xml` already exists, pass `mergeNumberingXmlBySchemaOrder` to `ensureNumberingArtifactsInZip`; without a merge callback the helper replaces the prior payload.
+4. List operations may return `numberingXml` that must be merged into package parts. `ensureNumberingArtifactsInZip` always merges them into an existing `word/numbering.xml` (the former `mergeNumberingXml` option is ignored); a conflicting id fails with `NUMBERING_ID_CONFLICT`, so pass `numberingXml` or a shared `numberingIdState` to every call.
    That replacement behavior is deprecated and will become an error in the next major version.
 5. `useNativeApi: true` means standalone mode cannot fully handle that operation path.
 6. `deleteCommentsByAuthorInOoxml` removes definitions and linked anchors only when they are present in the same OOXML payload. In a real `.docx`, `word/comments.xml` and `word/document.xml` are separate parts and must both be updated by the package integration layer.
