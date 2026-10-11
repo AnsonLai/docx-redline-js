@@ -132,6 +132,7 @@
 
 ### Internal
 
+- **Revision fidelity verifier cost cut from about +39% to about +8% per batch:** each verified operation's projections (accepted and rejected views, revision-id signatures, numbering references) are reused as the next operation's baseline, numbering definitions are parsed once per part, and the revision-view projection no longer builds live node lists. No check was weakened.
 - **One paragraph-mark revision helper:** `engine/paragraph-mark-revisions.js` is now the only module that constructs a tracked paragraph mark (`w:ins`/`w:del` under `w:pPr/w:rPr`): `markParagraphInserted`, `markParagraphDeleted`, `setParagraphPropertiesMarkRevision`, `restoreParagraphMarkInserted`, string builders `paragraphMarkRevisionXml` / `paragraphMarkPPrXml`, and `planParagraphMarks` (asserts the Reject All paragraph-count invariants). Document-level shortcuts, list generation, reconstruction, text-to-table and generated tables use it, and `tests/paragraph_mark_single_site_tests.mjs` fails on any other construction site. Output is unchanged except that a new mark `rPr` is placed before `sectPr`/`pPrChange`, an existing mark is replaced rather than duplicated, and the empty-modified shortcut's deleted-mark receipt kind is `del` (was `structural`).
 
 ### Fixed
