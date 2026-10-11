@@ -191,4 +191,20 @@ for (const separator of ['\n', '\n\n']) {
     assert.deepEqual(cellsOf(resolve(tracked, acceptTrackedChangesInOoxml)), CELLS);
 }
 
+// R5 / Word differential: a pretty-printed body has a whitespace text node between the final paragraph and
+// w:sectPr. The append must still recognise the end of the body and supply the tracked-inserted trailing
+// paragraph; otherwise the body ends with a table and Word's Reject All leaves an extra empty paragraph.
+{
+    const prettyXml = SOURCE_XML
+        .replace('<w:body>', '<w:body>\n    ')
+        .replace(/<\/w:p>/g, '</w:p>\n    ');
+    assert.ok(prettyXml.includes('</w:p>\n    <w:sectPr/>'), 'fixture has whitespace before sectPr');
+    const tracked = await run(prettyXml, {
+        target: { index: 7, exactText: FINAL }, targetRef: 'P7', modified: `${FINAL}\n${TABLE}`
+    });
+    assertRejectRestoresSource(tracked, 'pretty-printed body');
+    assertParagraphMarkAccounting(tracked, 'pretty-printed body');
+    assert.deepEqual(cellsOf(resolve(tracked, acceptTrackedChangesInOoxml)), CELLS);
+}
+
 console.log('PASS: table append fidelity regression tests');

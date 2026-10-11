@@ -1,7 +1,7 @@
 {
   "wordVersion": "16.0",
   "wordBuild": "16.0.20430",
-  "generatedAt": "2026-10-11T08:54:50Z",
+  "generatedAt": "2026-10-11T08:57:56Z",
   "cases": [
     {
       "name": "ins-mark-mid-plain",
@@ -1524,6 +1524,88 @@
       "name": "table-append-end-untracked-trailing",
       "description": "Table appended after the final paragraph: inserted rows followed by an untracked empty trailing paragraph",
       "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">Alpha.</w:t></w:r></w:p><w:p><w:r><w:t xml:space=\"preserve\">Final paragraph.</w:t></w:r></w:p><w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4000\"/></w:tblGrid><w:tr><w:trPr><w:ins w:id=\"104\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:trPr><w:tc><w:tcPr><w:tcW w:w=\"4000\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:rPr><w:ins w:id=\"101\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t xml:space=\"preserve\">R1C1</w:t></w:r></w:ins></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4000\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:rPr><w:ins w:id=\"103\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"102\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t xml:space=\"preserve\">R1C2</w:t></w:r></w:ins></w:p></w:tc></w:tr><w:tr><w:trPr><w:ins w:id=\"109\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:trPr><w:tc><w:tcPr><w:tcW w:w=\"4000\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:rPr><w:ins w:id=\"106\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"105\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t xml:space=\"preserve\">R2C1</w:t></w:r></w:ins></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4000\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:rPr><w:ins w:id=\"108\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"107\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t xml:space=\"preserve\">R2C2</w:t></w:r></w:ins></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:t xml:space=\"preserve\"></w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "revisionsBefore": 1,
+      "reject": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Final paragraph.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "accept": [
+        {
+          "text": "Alpha.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "Final paragraph.",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        },
+        {
+          "text": "R1C1",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": true
+        },
+        {
+          "text": "R1C2",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": true
+        },
+        {
+          "text": "R2C1",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": true
+        },
+        {
+          "text": "R2C2",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": true
+        },
+        {
+          "text": "",
+          "style": "Normal",
+          "listType": 0,
+          "listString": "",
+          "inTable": false
+        }
+      ],
+      "rejectXmlParagraphs": 3,
+      "acceptXmlParagraphs": 7
+    },
+    {
+      "name": "table-append-end-no-trailing-paragraph",
+      "description": "Table appended at the very end with no paragraph after it: Word supplies an untracked empty paragraph (the pretty-printed-body defect shape)",
+      "bodyXml": "<w:p><w:r><w:t xml:space=\"preserve\">Alpha.</w:t></w:r></w:p><w:p><w:r><w:t xml:space=\"preserve\">Final paragraph.</w:t></w:r></w:p><w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4000\"/></w:tblGrid><w:tr><w:trPr><w:ins w:id=\"104\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:trPr><w:tc><w:tcPr><w:tcW w:w=\"4000\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:rPr><w:ins w:id=\"101\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"100\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t xml:space=\"preserve\">R1C1</w:t></w:r></w:ins></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4000\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:rPr><w:ins w:id=\"103\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"102\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t xml:space=\"preserve\">R1C2</w:t></w:r></w:ins></w:p></w:tc></w:tr><w:tr><w:trPr><w:ins w:id=\"109\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:trPr><w:tc><w:tcPr><w:tcW w:w=\"4000\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:rPr><w:ins w:id=\"106\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"105\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t xml:space=\"preserve\">R2C1</w:t></w:r></w:ins></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4000\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:rPr><w:ins w:id=\"108\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"107\" w:author=\"A\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t xml:space=\"preserve\">R2C2</w:t></w:r></w:ins></w:p></w:tc></w:tr></w:tbl><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
       "revisionsBefore": 1,
       "reject": [
         {

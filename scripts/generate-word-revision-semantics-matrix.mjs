@@ -113,6 +113,8 @@ add('table-append-end-word-native', 'Table appended after the final paragraph as
     () => P('Alpha.') + para(run('Final paragraph.'), { mark: mark('ins') }) + table(insRow('R1C') + insRow('R2C')) + P(''));
 add('table-append-end-untracked-trailing', 'Table appended after the final paragraph: inserted rows followed by an untracked empty trailing paragraph',
     () => P('Alpha.') + P('Final paragraph.') + table(insRow('R1C') + insRow('R2C')) + P(''));
+add('table-append-end-no-trailing-paragraph', 'Table appended at the very end with no paragraph after it: Word supplies an untracked empty paragraph (the pretty-printed-body defect shape)',
+    () => P('Alpha.') + P('Final paragraph.') + table(insRow('R1C') + insRow('R2C')));
 
 const wrap = body => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="${W}" xmlns:r="${R}"><w:body>${body}</w:body></w:document>`;
 const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="${W}"><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:pPr><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:b/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:pPr><w:ind w:left="720"/></w:pPr></w:style></w:styles>`;

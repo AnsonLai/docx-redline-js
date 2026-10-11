@@ -52,10 +52,11 @@ const invariantOf = (before, after) => {
     assert.deepEqual(wordRevisionParagraphTexts(deleted, 'rejected'), ['Agone', 'B']);
     // The last mark of a container survives even when tracked.
     const lastInCell = doc(`<w:tbl><w:tr><w:tc>${p(run('cell'), insMark)}</w:tc></w:tr></w:tbl>`);
-    assert.deepEqual(wordRevisionParagraphTexts(lastInCell, 'rejected'), ['cell']);
+    // A body ending with a table gets Word's implicit untracked trailing paragraph.
+    assert.deepEqual(wordRevisionParagraphTexts(lastInCell, 'rejected'), ['cell', '']);
     // Inserted rows vanish on Reject; deleted rows on Accept.
     const rows = doc(`<w:tbl><w:tr><w:trPr><w:ins ${META}/></w:trPr><w:tc>${p(insRun('row'))}</w:tc></w:tr><w:tr><w:tc>${p(run('kept'))}</w:tc></w:tr></w:tbl>`);
-    assert.deepEqual(wordRevisionParagraphTexts(rows, 'rejected'), ['kept']);
+    assert.deepEqual(wordRevisionParagraphTexts(rows, 'rejected'), ['kept', '']);
     // pPrChange restores the historical properties on Reject.
     const changed = doc(p(run('Item'), `<w:pStyle w:val="Heading1"/><w:pPrChange ${META}><w:pPr>${numPr(4)}</w:pPr></w:pPrChange>`));
     const [rejected] = projectWordRevisionView(changed, 'rejected');

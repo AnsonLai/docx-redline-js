@@ -16,6 +16,10 @@ import { readCanonicalRunText } from './paragraph-text.js';
  *   - w:ins/moveTo content is removed on Reject, w:del/moveFrom restored; Accept is
  *     the converse. Rows whose w:trPr carries w:ins (Reject) or w:del (Accept) vanish.
  *   - Reject restores the w:pPrChange snapshot as the paragraph's properties.
+ *   - a w:body whose last block is a table gets one untracked empty paragraph from Word on
+ *     open (a body must end with a paragraph). It is not a revision, so it survives Reject and
+ *     Accept alike: such a body counts one extra paragraph in both views even when Reject
+ *     removes the whole table (Word 16 COM evidence, R5).
  *
  * Shared by the post-apply fidelity verifier and the reject/accept tests.
  */
@@ -200,7 +204,19 @@ export function projectWordRevisionView(root, view = 'rejected') {
         records.push(finishRecord(carried.paragraph, carried, view, container, carried.sourceIndex));
     }
     records.sort((a, b) => a.sourceIndex - b.sourceIndex);
+    appendImplicitBodyParagraphs(root, paragraphs, records);
     return records;
+}
+
+/** Word adds an untracked empty paragraph after a table that ends a body. */
+function appendImplicitBodyParagraphs(root, paragraphs, records) {
+    const bodies = localName(root) === 'body' ? [root] : Array.from(root?.getElementsByTagNameNS?.(NS_W, 'body') || []);
+    for (const body of bodies) {
+        const blocks = Array.from(body.childNodes || []).filter(node => isWordElement(node) && localName(node) !== 'sectPr');
+        const last = blocks[blocks.length - 1];
+        if (!last || localName(last) !== 'tbl') continue;
+        records.push({ text: '', props: '', numPr: null, wrappers: [], container: 'body', sourceIndex: paragraphs.length, implicit: true });
+    }
 }
 
 function finishRecord(paragraph, content, view, container, sourceIndex) {

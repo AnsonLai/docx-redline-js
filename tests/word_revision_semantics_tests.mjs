@@ -20,7 +20,12 @@ const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const dir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'word-revision-semantics');
 const expectations = JSON.parse(readFileSync(join(dir, 'expectations.json'), 'utf8'));
 
-const KNOWN_DIVERGENCES = {};
+const KNOWN_DIVERGENCES = {
+    // Word adds an untracked empty paragraph after a table that ends the body; the library resolver
+    // (which resolves revisions only) does not invent it. The simulator models it, and the apply-time
+    // verifier plus the table-append generator keep a tracked paragraph after any appended final table.
+    'table-append-end-no-trailing-paragraph': { library: true }
+};
 
 const wordParagraphs = list => (Array.isArray(list) ? list : [list]).map(p => ({
     text: String(p.text).replace(/\f/g, ''),
