@@ -116,7 +116,7 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
                     if (diffs[k][0] === 0) break;
                 }
                 if (pairReplacements && generateRedlines && hasInsert) {
-                    pendingReplacementEvent = createReplacementRevisionEvent(author, xmlDoc);
+                    pendingReplacementEvent = createReplacementRevisionEvent(author, xmlDoc, { deferReceipt: true });
                 }
             }
             let offset = 0;
@@ -418,6 +418,7 @@ function appendTextToCurrent(
                         const id = replacementEvent.usedDeletionId
                             ? createRevisionMetadata(author, xmlDoc, 'del').id
                             : replacementEvent.deletionId;
+                        if (!replacementEvent.usedDeletionId) replacementEvent.recordUsed?.('del');
                         replacementEvent.usedDeletionId = true;
                         metadata = { id, author: replacementEvent.author, date: replacementEvent.date };
                     }
@@ -462,6 +463,7 @@ function appendTextToCurrent(
                     const id = replacementEvent.usedDeletionId
                         ? createRevisionMetadata(author, xmlDoc, 'del').id
                         : replacementEvent.deletionId;
+                    if (!replacementEvent.usedDeletionId) replacementEvent.recordUsed?.('del');
                     replacementEvent.usedDeletionId = true;
                     metadata = {
                         id,
@@ -482,6 +484,7 @@ function appendTextToCurrent(
                     const id = replacementEvent.usedInsertionId
                         ? createRevisionMetadata(author, xmlDoc, 'ins').id
                         : replacementEvent.insertionId;
+                    if (!replacementEvent.usedInsertionId) replacementEvent.recordUsed?.('ins');
                     replacementEvent.usedInsertionId = true;
                     metadata = {
                         id,

@@ -329,9 +329,10 @@ export function createRevisionMetadata(author, allocatorOrNode = null, kind = nu
  *
  * @param {string} [author]
  * @param {RevisionIdAllocator|Document|Element|null} [allocatorOrNode=null]
+ * @param {{ deferReceipt?: boolean }} [options] - Defer receipt recording to `event.recordUsed(kind)`.
  * @returns {ReplacementRevisionEvent}
  */
-export function createReplacementRevisionEvent(author, allocatorOrNode = null) {
+export function createReplacementRevisionEvent(author, allocatorOrNode = null, { deferReceipt = false } = {}) {
     const resolvedAuthor = typeof author === 'string' && author.trim()
         ? author.trim()
         : getDefaultAuthor();
@@ -342,7 +343,7 @@ export function createReplacementRevisionEvent(author, allocatorOrNode = null) {
     const deletionId = allocator.next();
     const insertionId = allocator.next();
 
-    if (allocator._receiptCollector) {
+    if (allocator._receiptCollector && !deferReceipt) {
         allocator._receiptCollector.recordRevision(deletionId, 'del');
         allocator._receiptCollector.recordRevision(insertionId, 'ins');
     }
@@ -351,7 +352,12 @@ export function createReplacementRevisionEvent(author, allocatorOrNode = null) {
         deletionId,
         insertionId,
         author: resolvedAuthor,
-        date
+        date,
+        // With deferReceipt the caller records an id only once it is actually written to the document, so an id
+        // the diff never emits (a deletion of paragraph breaks only has no run to carry it) never reaches a receipt.
+        recordUsed: deferReceipt
+            ? kind => allocator._receiptCollector?.recordRevision(kind === 'del' ? deletionId : insertionId, kind)
+            : null
     };
 }
 

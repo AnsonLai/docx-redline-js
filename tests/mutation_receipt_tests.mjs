@@ -4,6 +4,9 @@ import {
     applyOperationsToDocumentXml,
     applyOperationToDocumentXml
 } from '../services/standalone-operation-runner.js';
+import { openDocx } from '../index.js';
+import { unzipDocx } from '../document/zip-archive.js';
+import { buildMatrixFixtures } from './helpers/reject-roundtrip-fixtures.mjs';
 import {
     reconcileReceiptsAgainstOutput
 } from '../services/receipt-collector.js';
@@ -343,6 +346,40 @@ const sampleDocXml = `<w:document xmlns:w="${W}"><w:body><w:p><w:r><w:t>First pa
     assert.equal(reconciliation.valid, false);
     assert.equal(reconciliation.error.code, 'RECEIPT_RECONCILIATION_FAILED');
     assert.ok(reconciliation.error.message.includes('999999'));
+}
+
+// 5. A range replacement over empty paragraphs (the diff deletes only paragraph breaks) must not commit the
+// paired-replacement deletion id it never wrote: receipts reconcile against the output (G1), bare and packaged.
+{
+    const fixture = buildMatrixFixtures().find(item => item.name === 'empty-list-items');
+    const rangeOperation = {
+        operationId: 'range-empty',
+        type: 'redline',
+        target: { paragraphId: null, fingerprint: 'fnv1a32:ae211393', exactText: '' },
+        targetEnd: { paragraphId: null, fingerprint: 'fnv1a32:7e9f636e', exactText: '' },
+        modified: 'Replacement line beta 1'
+    };
+    const entries = unzipDocx(fixture.bytes);
+    const decoder = new TextDecoder();
+    const bare = await applyOperationsToDocumentXml(
+        decoder.decode(entries.get('word/document.xml')), [rangeOperation], 'Author',
+        { numberingXml: decoder.decode(entries.get('word/numbering.xml')) }, fixture.options
+    );
+    assert.notEqual(bare.status, 'error', JSON.stringify(bare.error));
+    assert.equal(bare.hasChanges, true);
+    const packaged = await openDocx(fixture.bytes).applyOperations([rangeOperation], { author: 'Author', ...fixture.options });
+    assert.notEqual(packaged.status, 'error', JSON.stringify(packaged.error));
+    for (const [label, run] of [['bare', bare], ['packaged', packaged]]) {
+        const documentXml = label === 'bare'
+            ? run.documentXml
+            : decoder.decode(unzipDocx(run.toUint8Array()).get('word/document.xml'));
+        assert.ok(run.receipts.length > 0, `${label}: expected receipts`);
+        for (const receipt of run.receipts) {
+            for (const item of receipt.revisionItems) {
+                assert.ok(documentXml.includes(`w:id="${item.id}"`), `${label}: receipt revision ${item.id} (${item.kind}) missing from output`);
+            }
+        }
+    }
 }
 
 console.log('All MutationReceipt tests passed successfully.');
