@@ -28,13 +28,24 @@ operations over stdin:
 ## Runtime negotiation
 
 Run `docx-redline version` before the first document operation. Require CLI
-contract version 9 only when the integration sends `list-format` operations
-(capability `list-format-v1` for `convert-plain`, plus `list-format-change-v1` for
-`change-format` or `join`; a CLI without it refuses those modes with
-`INVALID_OPERATION` field `list.mode`); otherwise contract version 8 suffices. Require
+contract version 9 only when the integration sends `list-format` operations (see
+List structure); otherwise contract version 8 suffices. Require
 only the capabilities the integration actually uses. Check once per stable
 runtime, fail closed when a requirement is absent, and never inspect bundles or
 ZIP parts as a fallback.
+
+### List structure (optional)
+
+Keep list structure out of an ordinary editing prompt. A wrapper that converts typed headers, changes a list's
+format, or joins lists:
+
+- negotiates `list-format-v1` (`convert-plain`) and, only if used, `list-format-change-v1` (`change-format`,
+  `join`);
+- without the capability keeps its host path, never a `redline` or `list-change` that retypes markers (that
+  warns, or fails under the agent profile, and binds nothing);
+- follows `use_list_format_*` recovery by sending `recovery.suggestedOperation` with the inspected target;
+- sends a changed-text header (`1. Old` -> `1. New`) as a marker-preserving `redline` plus a `list-format` of that
+  paragraph in one batch, and splits them on `LIST_FORMAT_COMPOSITION_CONFLICT`.
 
 Do not expose negotiated but unused capabilities as choices in the editing
 prompt. `command-help-v1`, restore shortcuts, speculative apply, and localized
@@ -142,7 +153,7 @@ locations a document user can follow. Keep the exact machine target internally.
 
 ## Generation checklist
 
-- Exact tested release, contract 8, and the minimum capability set are pinned.
+- Exact tested release, contract 8 (9 only with `list-format`), and the minimum capability set are pinned.
 - Runtime compatibility is checked once.
 - The first ordinary command is focused extraction.
 - Apply uses the inspected target with `modified` or localized `replacements`.

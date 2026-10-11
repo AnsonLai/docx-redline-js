@@ -441,6 +441,55 @@ for it. For a complete `word/document.xml`, prefer
 `applyOperationToDocumentXml(...)` so replacement nodes and numbering artifacts
 are imported at the correct scope.
 
+### List operations (`list-format`)
+
+Text edits never create or restyle list structure. Typed markers such as `1.` or `A.` stay literal text, and a
+`list-change` that retypes markers keeps the old numbering (it warns `LIST_FORMAT_NOT_APPLIED`, or fails
+`UNSUPPORTED_LIST_FORMAT_CHANGE` under the strict policy, with a `list-format` request in `recovery.suggestedOperation`).
+Structure changes use the `list-format` operation. Every mode records each paragraph's previous `w:numPr` in a tracked
+`w:pPrChange`, so Reject All restores the original labels exactly and Accept All shows the new ones. The shared numbering
+definitions in `numbering.xml` are never edited in place. The CLI advertises `list-format-v1` (contract version 9) for
+`convert-plain` and `list-format-change-v1` for `change-format` and `join`.
+
+```js
+const doc = openDocx(bytes);
+const result = await doc.applyOperations([
+  // Typed headers "A. Scope" .. "C. Fees" become a real A./B./C. list. Each marker is a tracked deletion, and body
+  // paragraphs in the range stay plain. A typed start value ("C.") is kept.
+  { type: 'list-format', target: { exactText: 'A. Scope' }, targetEnd: { exactText: 'C. Fees' },
+    list: { mode: 'convert-plain' } },
+  // Bullets become 1., 2., 3. A new definition copies the list's levels and indentation.
+  { type: 'list-format', target: { exactText: 'Photo identification' },
+    list: { mode: 'change-format', format: 'decimal' } },
+  // A later list continues an earlier one (1. 2. / 1. 2. becomes 1. 2. / 3. 4.).
+  { type: 'list-format', target: { exactText: 'Confidentiality' },
+    list: { mode: 'join', continueFrom: { exactText: 'Termination' } } }
+], { author: 'Editor' });
+```
+
+A changed-text header (`1. Old Terms` -> `1. New Terms`) takes two operations on the same paragraph in one batch: a
+`redline` of the text that keeps the typed marker exactly, and a `list-format` that converts the paragraph. The batch
+compiler allows this pair and always runs the redline first, whatever the batch order. The list-format then strips the
+unchanged marker. Accept All shows label `1.` with `New Terms`, and Reject All shows the literal `1. Old Terms`:
+
+```js
+await doc.applyOperations([
+  { type: 'redline', target: { exactText: '1. Old Terms' }, replacements: [{ find: 'Old', replace: 'New' }] },
+  { type: 'list-format', target: { exactText: '1. Old Terms' }, list: { mode: 'convert-plain' } }
+], { author: 'Editor' });
+```
+
+A redline in that pair that adds, removes or changes the marker is refused before anything is written, with
+`LIST_FORMAT_COMPOSITION_CONFLICT` (`reason: 'marker-changed'`). So is a redline that spans paragraphs or leaves the text
+unchanged. To give a paragraph without a typed marker a label, use `strip: 'none'` with `format` (and `start`). A
+`change-format` or `join` with `scope: 'list'` (the default) also writes every other item of the list. In the same batch,
+each of those items accepts only a single-paragraph `redline`; any other write to them fails with
+`LIST_FORMAT_COMPOSITION_CONFLICT` (`reason: 'list-rebind'`).
+Style-linked lists (heading numbering), mid-list splits, and markers inside hyperlinks or fields are refused with a
+recovery envelope. They are not approximated. Removing a list binding is `paragraph-format` with `properties.numbering:
+null`. A `list-format` `detach` mode is not available yet. See the
+[knowledge base](docs/AGENT_KNOWLEDGE_BASE.md#operation-model-choose-by-output-shape) for every mode, field and refusal.
+
 ### Planning large mixed-content insertions
 
 For an attachment or schedule containing several kinds of content, use
@@ -560,8 +609,9 @@ identities. Independent edits therefore do not need to be manually sorted when
 an earlier structural rewrite changes later paragraph indexes or fingerprints.
 Targets that deliberately refer to uniquely created paragraph text are compiled
 into an internal capture dependency. True overlap is not guessed: incompatible
-writes to one source fail before mutation with `OVERLAPPING_SOURCE_TARGETS` or
-`REVISION_ORDER_CONFLICT`, and mutating capture fan-out without distinct
+writes to one source fail before mutation with `OVERLAPPING_SOURCE_TARGETS`,
+`REVISION_ORDER_CONFLICT` or `LIST_FORMAT_COMPOSITION_CONFLICT` (the one composed pair, a
+marker-preserving `redline` plus a `list-format`, runs redline first), and mutating capture fan-out without distinct
 selectors fails with `CAPTURE_FANOUT_CONFLICT`.
 
 Threaded replies use a comment operation with no body target:

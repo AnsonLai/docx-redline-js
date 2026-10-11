@@ -30,7 +30,9 @@
   explanation and a retry instruction; `violations[]`, `invariants` and `recovery.retryGuidance` carry the same detail for
   agents, the message is also sent to `onWarn`, and compact CLI output keeps it. Opt out per call with
   `verifyRevisionFidelity: 'warn'` (apply and warn) or `'off'` (diagnosis). CLI: `--revision-fidelity <enforce|warn|off>`,
-  shown in `effectiveOptions`; the agent profile rejects `off`. Capability `revision-fidelity-v1`.
+  shown in `effectiveOptions`; the agent profile rejects `off`. Capability `revision-fidelity-v1`. A single-target untracked
+  operation (`generateRedlines: false`) is also refused when it changes a paragraph outside its target in the Accept All or
+  Reject All view (invariant `ACCEPT_NEIGHBORS`).
 - **`ensureNumberingArtifactsInZip` always merges numbering, and refuses id conflicts:** the optional `mergeNumberingXml`
   callback is ignored (the single merge is `mergeNumberingParts` in `services/numbering-allocation.js`), an existing
   `numbering.xml` is no longer replaced when no callback is given, and an incoming `w:abstractNum` / `w:num` whose id exists with
@@ -118,6 +120,8 @@
 
 ### Fixed
 
+- **Reconstruction keeps wrappers and deleted placeholders:** a text edit in a paragraph with a `w:fldSimple` no longer drops the field (Reject All lost its result text); a deleted manual break, tab or inline object is a tracked deletion instead of disappearing; and converting a paragraph to a list keeps hyperlink and content-control containers around the deleted runs, so Reject All keeps the text inside its link. Found by the reject-roundtrip matrix.
+- **Punctuation edits stay surgical:** leading and trailing punctuation are separate diff tokens and unchanged substantive words anchor the re-diff, so "agents and attorneys" -> "agents, attorneys, accountants and other professional advisors" marks only " and" -> "," and the appended items.
 - **Table reconciliation keeps untouched cell paragraphs:** editing one cell of a Markdown table reconciliation collapsed a multi-paragraph cell (for example `LS` plus a trailing empty paragraph) to one paragraph, untracked, so Reject All lost a paragraph. Cells whose only difference is trailing empty paragraphs are now unchanged, and a modified multi-paragraph cell is reconciled paragraph by paragraph (inserted paragraphs carry tracked marks).
 - **Text-to-table redlines insert tracked table rows:** a paragraph range converted to a Markdown table carried tracked cell text but untracked rows, so Reject All left an empty table behind. Rows now carry `w:trPr/w:ins` and tracked cell paragraph marks like other inserted tables.
 - **Explicit-start list conversion is reversible with Reject All:** converting a `1. Header` paragraph to a list bound `numPr` without recording a `w:pPrChange`, so rejecting the tracked deletion of the marker left a numbered item. The binding now records the original paragraph properties (empty `<w:pPr/>` when none) in a receipted `w:pPrChange`.
