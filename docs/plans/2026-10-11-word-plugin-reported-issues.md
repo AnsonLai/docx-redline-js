@@ -3,9 +3,9 @@
 Date: 2026-10-11
 Status: DONE (2026-10-11). R1-R5 resolved on this tree: the R1-R4 reproducers exit 1; R5 verified in Word (the reported
 symptom comes from `Document.RejectAllRevisions()`; a neighbouring pretty-printed-body defect was fixed). Final gates:
-`npm test` 146/146, `check:types`, `test:isolation`, Word synthetic 67/67, Word corpus 60/60. Open follow-ups: text-changed
-header conversion with direct `keepNext`/spacing (`REJECT_PARAGRAPH_PROPS`, see I2); plain redline reconstruction drops
-`w14:paraId` (fidelity plan); the plugin should switch its Word oracle to `Revisions.RejectAll()` and move reports to
+`npm test` 146/146, `check:types`, `test:isolation`, Word synthetic 67/67, Word corpus 60/60. Both library follow-ups are closed
+pre-0.9.0 (A1 and A2, `0d0bd2d`: plain redline keeps `w14:paraId`; text-changed header conversion with direct
+`keepNext`/spacing no longer refused). Remaining on the plugin side: it should switch its Word oracle to `Revisions.RejectAll()` and move reports to
 `completed/` after upgrading. Baseline: `master` after the 2026-09-30 fidelity and list plans (unreleased 0.9.0, contract 9).
 Source: `AIWordPlugin/docs/library-issues/` (open reports as of 2026-10-02, against installed 0.8.4). Each report has a
 portable reproducer that exits 0 while the defect reproduces and 1 once fixed. To run one against this working tree, copy

@@ -40,14 +40,15 @@
   its target would not read as `modified`. `REJECT_NUMBERING_REFS` also refuses a numId that the output binds or Reject All restores
   (including inside `w:pPrChange`) when the source did not already use it and no `w:num` -> `w:abstractNum` -> `w:lvl` defines it in the
   numbering available to the operation. Accept-first range targets now use the exact accepted scope.
-- **Fixed: a `targetEnd` given as a compact handle (`paragraphId` + `fingerprint`, no numeric `index`) was silently ignored** for a
-  plain `redline`, so only the first paragraph of the range was replaced and the rest stayed in the accepted text. The range is now
-  resolved from the end handle; a range that crosses a table or other container boundary is refused `TARGET_RANGE_INVALID`.
 - **`ensureNumberingArtifactsInZip` always merges numbering, and refuses id conflicts:** the optional `mergeNumberingXml`
   callback is ignored (the single merge is `mergeNumberingParts` in `services/numbering-allocation.js`), an existing
   `numbering.xml` is no longer replaced when no callback is given, and an incoming `w:abstractNum` / `w:num` whose id exists with
   different content throws `NUMBERING_ID_CONFLICT` instead of silently binding new paragraphs to another list. `openDocx` also
   rejects output that introduces a dangling `numId`, `abstractNumId` or `ilvl` (`NUMBERING_*` issues).
+- **Receipt kinds:** a whole paragraph deleted by an empty `modified` reports its deleted paragraph mark with receipt kind `del`
+  (was `structural`); the explicit `1. Header` list conversion now receipts its `w:pPrChange`.
+- **`paragraph-format` keeps the earliest same-author `w:pPrChange` snapshot** and refuses to overwrite another author's pending
+  snapshot (`PARAGRAPH_FORMAT_REVISION_CONFLICT`); see Added.
 
 ### Added
 
@@ -135,6 +136,9 @@
 
 ### Fixed
 
+- **A `targetEnd` given as a compact handle (`paragraphId` + `fingerprint`, no numeric `index`) was silently ignored** for a
+  plain `redline`, so only the first paragraph of the range was replaced and the rest stayed in the accepted text. The range is now
+  resolved from the end handle; a range that crosses a table or other container boundary is refused `TARGET_RANGE_INVALID`.
 - **Range replace over empty paragraphs no longer fails receipt reconciliation:** a replacement whose diff deletes only paragraph
   breaks recorded a paired deletion revision id in the receipt that was never written, so the operation was refused with
   `RECEIPT_RECONCILIATION_FAILED`. Paired replacement ids are now recorded only when written. The reject-roundtrip matrix

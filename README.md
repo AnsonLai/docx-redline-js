@@ -21,9 +21,12 @@ Converts AI-generated or programmatic text/markdown edits into valid Office Open
 - Package plumbing helpers for numbering.xml, comments.xml, content types, and relationships
 - Zero host dependencies: works in Node.js, browsers, Deno, and similar JS runtimes with DOM parsing support
 
-## What's New in 0.8.x
+## What's New in 0.9.0 (unreleased) and 0.8.x
 
-The current release is 0.8.4. The CLI contract remains version 8 throughout the 0.8 line.
+The current published release is 0.8.4 (`package.json` still reads 0.8.4). The unreleased 0.9.0 line moves the CLI
+contract to version 9 and adds the `list-format` operation, `paragraph-format` numbering binding and a Reject All
+revision fidelity verifier that refuses by default; see the draft [0.9.0 release notes](./docs/releases/0.9.0.md) and
+the CHANGELOG "Unreleased" section. The CLI contract was version 8 throughout the 0.8 line.
 
 - **0.8.0, universal document facade:** `openDocx` and `DocxDocument` are exported from the primary entry point and work
   on `Uint8Array` input in any JavaScript runtime. ZIP handling uses `fflate` and SHA-256 is pure JavaScript, so there are no
@@ -314,7 +317,8 @@ user-facing Word locations; use `humanReference`, `provision`, or
 
 `docx-redline version` reports contract version 9 (which adds the `list-format` operation type,
 capability `list-format-v1`; its `change-format` and `join` modes are the additive capability
-`list-format-change-v1`) and the additive
+`list-format-change-v1`; further 0.9.0 additions are `revision-fidelity-v1`,
+`list-conversion-diagnostics-v1` and `paragraph-numbering-binding-v1`, none of which is published yet) and the additive
 `command-help-v1`, `inspection-context-v1`, `bounded-inspection-v1`,
 `human-document-references-v1`, `batch-start-source-binding`,
 `recovery-envelope-v1`, `require-complete-exit`, `operations-stdin`,

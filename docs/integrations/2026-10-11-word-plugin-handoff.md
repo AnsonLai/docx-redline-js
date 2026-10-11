@@ -2,7 +2,7 @@
 
 Audience: an AI agent or developer working on the Word add-in that consumes `@ansonlai/docx-redline-js`.
 Source of truth: `CHANGELOG.md` "Unreleased" and `docs/AGENT_KNOWLEDGE_BASE.md` in this repo. These changes are on
-`master` and **not yet published**; they will ship as 0.9.0 (draft notes: `docs/releases/0.9.0.md`). Until then, depend on
+`master` and **not yet published**; they will ship as 0.9.0 (release notes: `docs/releases/0.9.0.md`). Until then, depend on
 a pinned git commit or a local `file:` link.
 
 ## What changed, in one paragraph
@@ -21,7 +21,7 @@ canonical, Word-verified operations. Several old silent successes are now warnin
    - `error.recovery.action` = `narrow_or_change_operation`; `error.recovery.retryGuidance[]` has one retry instruction per
      invariant; `recovery.reportIfNarrowRetryFails` says to report, not to disable the check.
    - Invariants: `REJECT_PARAGRAPH_COUNT`, `REJECT_PARAGRAPH_TEXT`, `REJECT_PARAGRAPH_PROPS`, `REJECT_NUMBERING_REFS`,
-     `REJECT_WRAPPERS`, `ACCEPT_INTENT` (plain-text `redline`: Accept All of the target must equal `modified`), and `ACCEPT_NEIGHBORS` (untracked edits that changed paragraphs outside their target), and
+     `REJECT_WRAPPERS`, `ACCEPT_INTENT` (plain-text `redline`: Accept All of the target must equal `modified`), `ACCEPT_NEIGHBORS` (untracked edits that changed paragraphs outside their target) and
      `UNTRACKED_CREATED_REVISION` (an untracked edit that wrote a revision id the source lacked).
    - Option `verifyRevisionFidelity: 'enforce' | 'warn' | 'off'` (CLI `--revision-fidelity`). Keep the default. `'warn'`
      applies and puts the same text in `warnings`; never ship `'off'`. The CLI agent profile rejects `off`.
@@ -41,11 +41,14 @@ canonical, Word-verified operations. Several old silent successes are now warnin
 5. **`list-format` scope conflicts.** A `list-format` with `scope: 'list'` counts as a write to every list item it rebinds;
    another write to one of those items in the same batch fails with `LIST_FORMAT_COMPOSITION_CONFLICT`. Send it in a
    separate apply, or use `scope: 'range'`.
-6. **Small result changes:** receipt revision kind for some generated paragraph marks is now `ins`/`del` (was
-   `structural`); unknown `paragraph-format.properties` keys are now rejected with `INVALID_OPERATION`
+6. **Small result changes:** the deleted paragraph mark of an empty-`modified` whole-paragraph delete is receipted as
+   `del` (was `structural`); unknown `paragraph-format.properties` keys are now rejected with `INVALID_OPERATION`
    (`field: properties.<key>`, recovery `change_request`); the 0.8.x warning `UNKNOWN_PARAGRAPH_FORMAT_PROPERTY` no longer
    fires. Send only `alignment`, `keepNext`, `keepLines`, `pageBreakBefore`, `style`, `numbering`.
-7. **CLI contract version is 9.** If the add-in shells out to the CLI and only uses existing operations, requiring 8 still
+7. **Range targets.** A `targetEnd` given as a compact handle (`paragraphId` + `fingerprint`) is now honored (0.8.x
+   silently ignored it for a plain `redline` and replaced only the first paragraph; remove any workaround). A range that
+   crosses a table or other container boundary is refused `TARGET_RANGE_INVALID`.
+8. **CLI contract version is 9.** If the add-in shells out to the CLI and only uses existing operations, requiring 8 still
    works.
 
 ## 2. Can now move off the host path (new operations)
@@ -87,8 +90,8 @@ text-box lists, joining plain paragraphs.
     `TRACKING_POLICY_MISMATCH` guard can stay as defense in depth.
   - `2026-10-02-separate-list-operations-restart-numbering.md`: fixed (`be539d5`); separate conversions with continuing
     markers in one batch share one list (Word `ListFormat.List.ListParagraphs.Count` confirms one list, not just labels).
-    Known limit: a text-changed header conversion of a paragraph with direct `keepNext`/spacing is refused
-    (`REJECT_PARAGRAPH_PROPS`); use `redline` + `list-format convert-plain` instead.
+    The former limit (text-changed conversion of a paragraph with direct `keepNext`/spacing refused
+    `REJECT_PARAGRAPH_PROPS`) is fixed (`0d0bd2d`).
   - `2026-10-01-word-reject-table-append-paragraph.md`: on this tree Word's ribbon Reject All and
     `Document.Revisions.RejectAll()` give exactly the 7 source paragraphs and 0 revisions; the extra paragraph and
     leftover revision appear only with `Document.RejectAllRevisions()` (see section 5). The add-in's Word oracle
@@ -96,12 +99,20 @@ text-box lists, joining plain paragraphs.
     `$document.Revisions.AcceptAll()`/`$document.Revisions.RejectAll()` and re-run. A real neighbouring defect (pretty-printed bodies) was fixed in
     `0835f58`.
   - `2026-09-30-canonical-list-operations.md`: superseded by `list-format` (section 2).
+- A plain `redline` keeps `w14:paraId` / `w14:textId` (`0d0bd2d`), and a text-changed header conversion with direct
+  `keepNext`/spacing is no longer refused (see the `2026-10-02-separate-list...` item above).
 - Any workaround in the add-in for these can be removed after upgrading; keep tests for them. Move each report to
   `completed/` once its reproducer exits 1 against the installed package.
 
+## 3b. Known limitations (deferred, not blocking)
+
+`list-format` `detach`/`materializeMarker`; a marker inside the author's own pending insertion; with `slice-cross-author`,
+range replace or plain-to-list of another author's inserted paragraph fails late with `PATCH_ROUNDTRIP_MISMATCH` (nothing
+applied); bare-XML numbering id collisions are detected, not remapped. The verifier adds roughly 30-40% per batch.
+
 ## 4. Suggested work for the add-in agent
 
-1. Upgrade the dependency to the pinned commit (or 0.9.0 when published); remove the `mergeNumberingXml` argument.
+1. Upgrade the dependency to the pinned commit (or 0.9.0 when published); remove the `mergeNumberingXml` argument; send only supported `paragraph-format` keys.
 2. Add handling for `REVISION_FIDELITY_VIOLATION` (log `error.message`; for agent retries use
    `error.recovery.retryGuidance`; surface to the user if a narrower retry also fails).
 3. Update `recovery.action` switches for the two renamed actions; prefer `recovery.suggestedOperation` when present.

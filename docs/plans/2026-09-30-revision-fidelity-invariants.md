@@ -2,7 +2,7 @@
 
 Date: 2026-09-30
 Status: DONE except the open items below (2026-10-11, started on 0.8.4 + `c98874d`). All WPs landed, including WP-5a
-(`4718c36`). Open items: nightly matrix wiring (no CI config changed); `ACCEPT_INTENT`, numbering-part existence and accept-first range-end scope are DONE (2026-10-11, pre-0.9.0 plan B1-B3); `planParagraphMarks` wiring into the write paths (deferred, aspirational, owner decision 2026-10-11); verifier cost re-measured 2026-10-11 (about +38% per batch, over the 10% budget; optimisation deferred, aspirational, owner decision 2026-10-11). See "Progress and hand-off" and the Definition-of-done status below.
+(`4718c36`). Open items: nightly matrix wiring is DONE (`matrix-extended` job, pre-0.9.0 plan E1); `ACCEPT_INTENT`, numbering-part existence and accept-first range-end scope are DONE (2026-10-11, pre-0.9.0 plan B1-B3); `planParagraphMarks` wiring into the write paths (deferred, aspirational, owner decision 2026-10-11); verifier cost re-measured 2026-10-11 (about +38% per batch, over the 10% budget; optimisation deferred, aspirational, owner decision 2026-10-11). See "Progress and hand-off" and the Definition-of-done status below.
 
 Definition-of-done status (details at the end of the plan):
 - [x] `REVISION_FIDELITY_VIOLATION` documented and enforced by default (agent profile rejects `off`); regressions for each
