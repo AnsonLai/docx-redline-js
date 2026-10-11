@@ -214,6 +214,27 @@ const TAB = String.fromCharCode(9);
 const LF = String.fromCharCode(10);
 const lines = (...items) => items.join(LF);
 
+// Existing lists for list-format change-format / join (WP-5), as Word writes them: one abstractNum per list
+// (nsid/tmpl, hybridMultilevel, nine levels), w14 paragraph ids, the bullet as U+2022 in Symbol-free text.
+const changeLvl = (ilvl, numFmt, lvlText) => `<w:lvl w:ilvl="${ilvl}" w:tplc="04090019"><w:start w:val="1"/><w:numFmt w:val="${numFmt}"/><w:lvlText w:val="${lvlText}"/><w:lvlJc w:val="${numFmt === 'lowerRoman' ? 'right' : 'left'}"/><w:pPr><w:ind w:left="${720 * (ilvl + 1)}" w:hanging="${numFmt === 'lowerRoman' ? 180 : 360}"/></w:pPr>${numFmt === 'bullet' ? '<w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:hint="default"/></w:rPr>' : ''}</w:lvl>`;
+const changeAbstract = (id, formats) => `<w:abstractNum w:abstractNumId="${id}" w15:restartNumberingAfterBreak="0"><w:nsid w:val="6C2E00${String(id).padStart(2, '0')}"/><w:multiLevelType w:val="hybridMultilevel"/><w:tmpl w:val="5E0C00${String(id).padStart(2, '0')}"/>${
+    Array.from({ length: 9 }, (_, ilvl) => {
+        const [numFmt, lvlText] = formats[ilvl] || (formats[0][0] === 'bullet' ? ['bullet', '•'] : [['decimal', 'lowerLetter', 'lowerRoman'][ilvl % 3], `%${ilvl + 1}.`]);
+        return changeLvl(ilvl, numFmt, lvlText);
+    }).join('')}</w:abstractNum>`;
+const CHANGE_NUMBERING_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering xmlns:w="${NS_W}" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="w15">
+  ${changeAbstract(0, [['bullet', '•'], ['bullet', 'o']])}
+  ${changeAbstract(1, [['decimal', '%1.'], ['lowerLetter', '%2.'], ['lowerRoman', '%3.']])}
+  ${changeAbstract(2, [['decimal', '%1.'], ['lowerLetter', '%2.'], ['lowerRoman', '%3.']])}
+  <w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>
+  <w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num>
+  <w:num w:numId="3"><w:abstractNumId w:val="2"/></w:num>
+</w:numbering>`;
+const changeItem = (index, text, numId, ilvl = 0) => `<w:p w14:paraId="5D2C${String(index).padStart(4, '0')}" w14:textId="77777777" w:rsidR="00B2C3D4" w:rsidRDefault="00B2C3D4"><w:pPr><w:numPr><w:ilvl w:val="${ilvl}"/><w:numId w:val="${numId}"/></w:numPr></w:pPr><w:r><w:t>${text}</w:t></w:r></w:p>`;
+const changeBody = (index, text) => `<w:p w14:paraId="5D2D${String(index).padStart(4, '0')}" w14:textId="77777777" w:rsidR="00B2C3D4" w:rsidRDefault="00B2C3D4"><w:r><w:t>${text}</w:t></w:r></w:p>`;
+const changeDocument = paragraphs => typedHeaderDocument(paragraphs);
+
 const ROMAN_HIERARCHY_DOCUMENT = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="${NS_W}">
   <w:body>
@@ -1137,6 +1158,153 @@ const WORD_TASK_CASE_DEFINITIONS = [
         expectedAcceptedListStrings: ['C.', 'D.'],
         expectedRejectedListStrings: ['', ''],
         requiredElements: { pPrChange: 2, numPr: 2, del: 2 }
+    },
+    {
+        name: 'administrative-list-format-change-bullets-to-decimal',
+        category: 'administrative',
+        task: 'change-list-format',
+        sourceDocumentXml: changeDocument([
+            changeBody(1, 'Bring the following documents:'),
+            changeItem(2, 'Photo identification', 1),
+            changeItem(3, 'Proof of address', 1),
+            changeItem(4, 'Completed application form', 1)
+        ]),
+        sourceNumbering: true,
+        textUnchanged: true,
+        original: lines('Bring the following documents:', 'Photo identification', 'Proof of address', 'Completed application form'),
+        modified: lines('Bring the following documents:', 'Photo identification', 'Proof of address', 'Completed application form'),
+        batchOperations: [{ type: 'list-format', target: { exactText: 'Proof of address' }, list: { mode: 'change-format', format: 'decimal' } }],
+        expectedAcceptedText: lines('Bring the following documents:', 'Photo identification', 'Proof of address', 'Completed application form'),
+        expectedRejectedText: lines('Bring the following documents:', 'Photo identification', 'Proof of address', 'Completed application form'),
+        expectedAcceptedListStrings: ['', '1.', '2.', '3.'],
+        expectedRejectedListStrings: ['', '•', '•', '•'],
+        requiredNumberingFormats: ['decimal'],
+        packageParts: { numberingXml: CHANGE_NUMBERING_XML },
+        requiredElements: { pPrChange: 3, numPr: 6 }
+    },
+    {
+        name: 'legal-list-format-change-decimal-to-upper-letter',
+        category: 'legal',
+        task: 'change-list-format',
+        sourceDocumentXml: changeDocument([
+            changeItem(1, 'Definitions', 2),
+            changeItem(2, 'Services', 2),
+            changeItem(3, 'Fees', 2),
+            changeBody(4, 'The schedules form part of this agreement.')
+        ]),
+        sourceNumbering: true,
+        textUnchanged: true,
+        original: lines('Definitions', 'Services', 'Fees', 'The schedules form part of this agreement.'),
+        modified: lines('Definitions', 'Services', 'Fees', 'The schedules form part of this agreement.'),
+        batchOperations: [{ type: 'list-format', target: { exactText: 'Definitions' }, list: { mode: 'change-format', format: 'upperLetter', scope: 'list' } }],
+        expectedAcceptedText: lines('Definitions', 'Services', 'Fees', 'The schedules form part of this agreement.'),
+        expectedRejectedText: lines('Definitions', 'Services', 'Fees', 'The schedules form part of this agreement.'),
+        expectedAcceptedListStrings: ['A.', 'B.', 'C.', ''],
+        expectedRejectedListStrings: ['1.', '2.', '3.', ''],
+        requiredNumberingFormats: ['upperLetter'],
+        packageParts: { numberingXml: CHANGE_NUMBERING_XML },
+        requiredElements: { pPrChange: 3, numPr: 6 }
+    },
+    {
+        name: 'legal-list-format-change-nested-level',
+        category: 'legal',
+        task: 'change-list-format',
+        sourceDocumentXml: changeDocument([
+            changeItem(1, 'Obligations of the Supplier', 2),
+            changeItem(2, 'deliver the goods', 2, 1),
+            changeItem(3, 'maintain insurance', 2, 1),
+            changeItem(4, 'Obligations of the Customer', 2),
+            changeItem(5, 'pay the invoices', 2, 1)
+        ]),
+        sourceNumbering: true,
+        textUnchanged: true,
+        original: lines('Obligations of the Supplier', 'deliver the goods', 'maintain insurance', 'Obligations of the Customer', 'pay the invoices'),
+        modified: lines('Obligations of the Supplier', 'deliver the goods', 'maintain insurance', 'Obligations of the Customer', 'pay the invoices'),
+        // The nested level becomes (i), (ii); the top level keeps 1., 2.
+        batchOperations: [{ type: 'list-format', target: { exactText: 'maintain insurance' }, list: { mode: 'change-format', format: 'lowerRoman', lvlText: '(%2)' } }],
+        expectedAcceptedText: lines('Obligations of the Supplier', 'deliver the goods', 'maintain insurance', 'Obligations of the Customer', 'pay the invoices'),
+        expectedRejectedText: lines('Obligations of the Supplier', 'deliver the goods', 'maintain insurance', 'Obligations of the Customer', 'pay the invoices'),
+        expectedAcceptedListStrings: ['1.', '(i)', '(ii)', '2.', '(i)'],
+        expectedRejectedListStrings: ['1.', 'a.', 'b.', '2.', 'a.'],
+        requiredNumberingFormats: ['lowerRoman'],
+        packageParts: { numberingXml: CHANGE_NUMBERING_XML },
+        requiredElements: { pPrChange: 5, numPr: 10 }
+    },
+    {
+        name: 'administrative-list-format-change-range-continues-count',
+        category: 'administrative',
+        task: 'change-list-format',
+        sourceDocumentXml: changeDocument([
+            changeItem(1, 'Submit the request', 2),
+            changeItem(2, 'Await the review', 2),
+            changeItem(3, 'technical review', 2, 1),
+            changeItem(4, 'budget review', 2, 1),
+            changeItem(5, 'Receive the decision', 2),
+            changeItem(6, 'File the decision', 2)
+        ]),
+        sourceNumbering: true,
+        textUnchanged: true,
+        original: lines('Submit the request', 'Await the review', 'technical review', 'budget review', 'Receive the decision', 'File the decision'),
+        modified: lines('Submit the request', 'Await the review', 'technical review', 'budget review', 'Receive the decision', 'File the decision'),
+        // A split at a top-level item: the new instance continues the count with a startOverride (B., then C., D.);
+        // the nested items inside the range restart as usual.
+        batchOperations: [{ type: 'list-format', target: { exactText: 'Await the review' }, targetEnd: { exactText: 'File the decision' }, list: { mode: 'change-format', format: 'upperLetter', level: 0, scope: 'range' } }],
+        expectedAcceptedText: lines('Submit the request', 'Await the review', 'technical review', 'budget review', 'Receive the decision', 'File the decision'),
+        expectedRejectedText: lines('Submit the request', 'Await the review', 'technical review', 'budget review', 'Receive the decision', 'File the decision'),
+        expectedAcceptedListStrings: ['1.', 'B.', 'a.', 'b.', 'C.', 'D.'],
+        expectedRejectedListStrings: ['1.', '2.', 'a.', 'b.', '3.', '4.'],
+        requiredNumberingFormats: ['upperLetter'],
+        packageParts: { numberingXml: CHANGE_NUMBERING_XML },
+        requiredElements: { pPrChange: 5, numPr: 11 }
+    },
+    {
+        name: 'legal-list-format-change-range-from-nested-item',
+        category: 'legal',
+        task: 'change-list-format',
+        sourceDocumentXml: changeDocument([
+            changeItem(1, 'Scope', 2),
+            changeItem(2, 'Services', 2),
+            changeItem(3, 'design services', 2, 1),
+            changeItem(4, 'build services', 2, 1),
+            changeItem(5, 'Fees', 2),
+            changeItem(6, 'Term', 2)
+        ]),
+        sourceNumbering: true,
+        textUnchanged: true,
+        original: lines('Scope', 'Services', 'design services', 'build services', 'Fees', 'Term'),
+        modified: lines('Scope', 'Services', 'design services', 'build services', 'Fees', 'Term'),
+        // A split that starts at a nested item: level 0 is implicitly in use at 2 and level 1 continues at b.
+        batchOperations: [{ type: 'list-format', target: { exactText: 'build services' }, targetEnd: { exactText: 'Term' }, list: { mode: 'change-format', format: 'upperLetter', level: 0, scope: 'range' } }],
+        expectedAcceptedText: lines('Scope', 'Services', 'design services', 'build services', 'Fees', 'Term'),
+        expectedRejectedText: lines('Scope', 'Services', 'design services', 'build services', 'Fees', 'Term'),
+        expectedAcceptedListStrings: ['1.', '2.', 'a.', 'b.', 'C.', 'D.'],
+        expectedRejectedListStrings: ['1.', '2.', 'a.', 'b.', '3.', '4.'],
+        requiredNumberingFormats: ['upperLetter'],
+        packageParts: { numberingXml: CHANGE_NUMBERING_XML },
+        requiredElements: { pPrChange: 3, numPr: 9 }
+    },
+    {
+        name: 'legal-list-format-join-adjacent-lists',
+        category: 'legal',
+        task: 'join-adjacent-lists',
+        sourceDocumentXml: changeDocument([
+            changeItem(1, 'Term', 2),
+            changeItem(2, 'Termination', 2),
+            changeBody(3, 'The following clauses survive termination.'),
+            changeItem(4, 'Confidentiality', 3),
+            changeItem(5, 'Governing law', 3)
+        ]),
+        sourceNumbering: true,
+        textUnchanged: true,
+        original: lines('Term', 'Termination', 'The following clauses survive termination.', 'Confidentiality', 'Governing law'),
+        modified: lines('Term', 'Termination', 'The following clauses survive termination.', 'Confidentiality', 'Governing law'),
+        batchOperations: [{ type: 'list-format', target: { exactText: 'Confidentiality' }, list: { mode: 'join', continueFrom: { exactText: 'Termination' } } }],
+        expectedAcceptedText: lines('Term', 'Termination', 'The following clauses survive termination.', 'Confidentiality', 'Governing law'),
+        expectedRejectedText: lines('Term', 'Termination', 'The following clauses survive termination.', 'Confidentiality', 'Governing law'),
+        expectedAcceptedListStrings: ['1.', '2.', '', '3.', '4.'],
+        expectedRejectedListStrings: ['1.', '2.', '', '1.', '2.'],
+        packageParts: { numberingXml: CHANGE_NUMBERING_XML },
+        requiredElements: { pPrChange: 2, numPr: 6 }
     }
 ];
 

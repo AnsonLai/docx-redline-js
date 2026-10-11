@@ -571,8 +571,8 @@ const levelOf = (numberingXml, numId, ilvl) => {
     assert.deepEqual(numPrRecords(views(acceptTrackedChangesInOoxml(result.documentXml, { allAuthors: true }).oxml).accepted), numPrRecords(accepted));
 }
 {
-    // (b) decimal -> upperLetter keeps the level text; isLgl (forces arabic numbers) is dropped; start becomes a
-    // per-instance startOverride and the source num's own startOverride is carried over.
+    // (b) decimal -> upperLetter keeps the level text; isLgl (forces arabic numbers) is dropped; the source num's own
+    // startOverride and list.start become the start of the NEW abstractNum's level (never a shared definition).
     const source = documentOf(li('Legal one', 3), li('Legal two', 3), li('Restarted one', 4), li('Restarted two', 4));
     const result = await bare(source, [
         { type: 'list-format', target: { exactText: 'Legal one' }, list: { mode: 'change-format', format: 'upperLetter' } },
@@ -583,12 +583,12 @@ const levelOf = (numberingXml, numId, ilvl) => {
     const numberingXml = resultNumbering(result);
     const legalLevel = levelOf(numberingXml, legal.numId, 0);
     assert.deepEqual([attr(el(legalLevel, 'numFmt')[0], 'val'), attr(el(legalLevel, 'lvlText')[0], 'val'), el(legalLevel, 'isLgl').length], ['upperLetter', '%1)', 0]);
-    assert.deepEqual(restarted.startOverrides, { 0: 5 }, 'the source instance restart value is carried over');
-    assert.equal(definitionOf(numberingXml, restarted.numId).startOverride, '5');
+    assert.deepEqual(restarted.levelStarts, { 0: 5 }, 'the source instance restart value is carried over');
+    assert.deepEqual([definitionOf(numberingXml, restarted.numId).start, definitionOf(numberingXml, restarted.numId).startOverride], ['5', null]);
     const withStart = await bare(source, [{ type: 'list-format', target: { exactText: 'Legal two' }, list: { mode: 'change-format', start: 3 } }], listContext);
     assert.equal(withStart.status, 'ok', JSON.stringify(innerError(withStart) || null));
-    assert.equal(definitionOf(resultNumbering(withStart), withStart.results[0].list.numId).startOverride, '3');
-    assert.equal(definitionOf(resultNumbering(withStart), withStart.results[0].list.numId).start, '1', 'the abstract start is never mutated');
+    assert.equal(definitionOf(resultNumbering(withStart), withStart.results[0].list.numId).start, '3');
+    assert.equal(canonicalNumberingDefinition(resultNumbering(withStart), 3), canonicalNumberingDefinition(LISTS, 3), 'the source definition is never mutated');
     assert.equal(levelOf(resultNumbering(withStart), withStart.results[0].list.numId, 0).getElementsByTagNameNS(W, 'isLgl').length, 1, 'start-only change keeps the format');
 }
 {
@@ -612,13 +612,14 @@ const levelOf = (numberingXml, numId, ilvl) => {
 }
 {
     // (d) scope "range" splits the list at the range, which must run to the end of the list; the new instance
-    // continues the count with per-level startOverrides (here 3 for level 0, 2 for level 1).
+    // continues the count with per-level start values on the new definition (level 0 in use at 2, level 1 at b).
     const source = documentOf(li('Item one', 2), li('Item two', 2), li('Item two a', 2, 1), li('Item two b', 2, 1), li('Item three', 2), li('Item four', 2));
     const suffix = await bare(source, [{ type: 'list-format', target: { exactText: 'Item two b' }, targetEnd: { exactText: 'Item four' }, list: { mode: 'change-format', format: 'upperLetter', level: 0, scope: 'range' } }], listContext);
     assert.equal(suffix.status, 'ok', JSON.stringify(innerError(suffix) || null));
     const { list } = suffix.results[0];
     assert.deepEqual(list.items.map(item => item.paragraphIndex), [4, 5, 6]);
-    assert.deepEqual(list.startOverrides, { 0: 2, 1: 2 }, 'level 0 is implicitly in use at its current value 2; level 1 continues at b');
+    assert.deepEqual(list.levelStarts, { 0: 2, 1: 2 }, 'level 0 is implicitly in use at its current value 2; level 1 continues at b');
+    assert.equal(definitionOf(resultNumbering(suffix), list.numId).startOverride, null, 'no per-instance override (Word renumbers those after Accept All)');
     const { accepted, rejected } = views(suffix.documentXml);
     assert.deepEqual(accepted.map(record => record.numId === list.numId), [false, false, false, true, true, true]);
     assert.deepEqual(numPrRecords(rejected), numPrRecords(views(source).accepted));
@@ -641,7 +642,7 @@ const levelOf = (numberingXml, numId, ilvl) => {
     // Starting at a top-level item is exact.
     const topLevel = await bare(nested, [{ type: 'list-format', target: { exactText: 'Item two' }, targetEnd: { exactText: 'Item two a' }, list: { mode: 'change-format', format: 'upperRoman', level: 1, scope: 'range' } }], listContext);
     assert.equal(topLevel.status, 'ok', JSON.stringify(innerError(topLevel) || null));
-    assert.deepEqual(topLevel.results[0].list.startOverrides, { 0: 2 });
+    assert.deepEqual(topLevel.results[0].list.levelStarts, { 0: 2 });
 }
 {
     // (e) join: the later list continues the earlier one; levels kept; nothing allocated.

@@ -256,7 +256,7 @@ export interface ListFormatChangeFormatRequest {
   format?: ListNumberFormat;
   /** Level text: numbered `%1`..`%9` with the level's own placeholder (`"%1."`, `"(%2)"`); bullet: the bullet character. */
   lvlText?: string;
-  /** Restart value of the level as a `w:startOverride` on the new instance; scope `'list'` only. */
+  /** Restart value of the level (the new definition's `w:start`); scope `'list'` only. */
   start?: number;
   /** The level to redefine; default: the one level the target paragraphs use. */
   level?: number;
@@ -315,8 +315,8 @@ export interface ListFormatRebindResult {
   format?: ListNumberFormat;
   level?: number;
   lvlText?: string;
-  /** change-format: per-level `w:startOverride` values on the new instance. */
-  startOverrides?: Record<string, number>;
+  /** change-format: per-level `w:start` values of the new definition (carried restarts, split continuation, `start`). */
+  levelStarts?: Record<string, number>;
   continueFrom?: { paragraphIndex: number | null; numId: string };
   items: Array<{ paragraphIndex: number | null; paragraphId: string | null; level: number; numId: string; sourceNumId: string; inTarget: boolean }>;
   /** Tracked-deleted paragraphs in the range keep their binding. */

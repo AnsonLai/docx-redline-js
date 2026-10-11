@@ -7,7 +7,7 @@
  * - `change-format` allocates a NEW `w:abstractNum` + `w:num` (copying the source definition's levels and geometry,
  *   with only the requested level redefined) and rebinds the paragraphs to it with one tracked `w:pPrChange` each.
  *   `scope: 'list'` rebinds every live paragraph of the source `numId`; `scope: 'range'` rebinds only the target range,
- *   which must run to the end of the list, with per-level `w:startOverride` values so the count continues.
+ *   which must run to the end of the list, with per-level start values so the count continues.
  * - `join` rebinds the paragraphs of one list to the `numId` of an earlier list (`continueFrom`), so they continue
  *   its count. Nothing is allocated.
  *
@@ -16,7 +16,7 @@
  *
  * Everything is refused in a planning pass before any mutation when the result is not exactly predictable from the
  * Word numbering model (verified with Word: `w:num` instances sharing one `w:abstractNum` continue each other's count,
- * a level `w:startOverride` applies again on every restart of that level, and an item below an unused level
+ * a level start (`w:start` or `w:startOverride`) applies again on every restart of that level, and an item below an unused level
  * implicitly starts that level). Current properties are read only through `core/current-properties.js`; no
  * paragraph-mark revision is created (a rebinding is a property change).
  */
@@ -439,7 +439,7 @@ export function changeListParagraphsFormat(xmlDoc, paragraphs, request, context 
         const mismatch = actual.findIndex((values, index) => JSON.stringify(values) !== JSON.stringify(expected[index]));
         if (mismatch >= 0) {
             return refusal(LIST_FORMAT_SPLIT_UNSUPPORTED,
-                `scope "range" cannot continue the count of numId ${range.numId} exactly: a level whose start must be overridden restarts inside the range (paragraph ${plan.rebind[mismatch].paragraphIndex ?? '?'}), and Word applies a start override again on every restart.`,
+                `scope "range" cannot continue the count of numId ${range.numId} exactly: a level whose start must change restarts inside the range (paragraph ${plan.rebind[mismatch].paragraphIndex ?? '?'}), and Word applies a level start again on every restart.`,
                 { reason: 'nested-restart', numId: range.numId, paragraphIndex: plan.rebind[mismatch].paragraphIndex },
                 { action: 'extend_range_or_use_list_scope', hint: 'Start the range at a top-level item of the list, or use scope "list".' });
         }
@@ -457,23 +457,30 @@ export function changeListParagraphsFormat(xmlDoc, paragraphs, request, context 
     const pending = checkPendingSnapshots(plan.rebind, { author, generateRedlines });
     if (!pending.ok) return pending;
 
-    const startOverrides = {};
+    // Start values (the source instance's own w:startOverride values, a split's continuation values, list.start) are
+    // written as the w:start of the NEW abstractNum's levels. That abstractNum is used by the new instance only, so
+    // nothing shared changes. Verified in Word: after Revisions.AcceptAll() in a session, a level carrying a
+    // w:startOverride that resumes after deeper items is renumbered from the override again (labels B., B. instead of
+    // C., D.; correct only after reopening), while a level w:start renders C., D. in both.
+    const levelStarts = {};
     for (const [ilvl, start] of startNew) {
-        if (start !== abstractStart(ilvl)) startOverrides[ilvl] = start;
+        if (start !== abstractStart(ilvl)) levelStarts[ilvl] = start;
     }
+    const redefinitions = new Map(Object.entries(levelStarts).map(([ilvl, start]) => [Number(ilvl), { ilvl: Number(ilvl), start }]));
+    redefinitions.set(level, {
+        ...(redefinitions.get(level) || {}),
+        ilvl: level,
+        numFmt,
+        lvlText,
+        ...(numFmt !== source.numFmt ? { dropChildren: kindChange && !isBulletFormat(numFmt) ? ['isLgl', 'lvlPicBulletId', 'legacy'] : ['isLgl'] } : {}),
+        ...(kindChange && !isBulletFormat(numFmt) ? { dropRunFonts: true } : {})
+    });
     const numberingIdState = numberingIdStateOf(context.runtimeContext, context);
     const allocated = allocateNumberingDefinition({
         numberingIdState,
         sourceNumberingXml: context.numberingXml,
         sourceNumId: range.numId,
-        levels: [{
-            ilvl: level,
-            numFmt,
-            lvlText,
-            ...(numFmt !== source.numFmt ? { dropChildren: kindChange && !isBulletFormat(numFmt) ? ['isLgl', 'lvlPicBulletId', 'legacy'] : ['isLgl'] } : {}),
-            ...(kindChange && !isBulletFormat(numFmt) ? { dropRunFonts: true } : {})
-        }],
-        startOverrides
+        levels: [...redefinitions.values()]
     });
     if (!allocated) {
         return refusal('NUMBERING_ID_EXHAUSTED', 'No numbering ids are available for a new list definition.', {}, { action: 'report_library_failure' });
@@ -489,7 +496,7 @@ export function changeListParagraphsFormat(xmlDoc, paragraphs, request, context 
         lvlText,
         sourceNumId: range.numId,
         numId: String(allocated.numId),
-        startOverrides,
+        levelStarts,
         items: plan.rebind.map(item => ({ paragraph: item.paragraph, paragraphIndex: item.paragraphIndex, level: item.ilvl, numId: item.numId, sourceNumId: range.numId, inTarget: item.inTarget })),
         skipped: range.skipped,
         numberingXml: mergeNumberingParts('', [allocated.numberingXml]),

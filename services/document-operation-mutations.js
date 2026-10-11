@@ -3167,7 +3167,7 @@ function applyListRebinding(xmlDoc, paragraphs, request, ctx) {
             sourceNumId: outcome.sourceNumId,
             numId: outcome.numId,
             ...(outcome.mode === 'change-format'
-                ? { format: outcome.format, level: outcome.level, lvlText: outcome.lvlText, startOverrides: outcome.startOverrides }
+                ? { format: outcome.format, level: outcome.level, lvlText: outcome.lvlText, levelStarts: outcome.levelStarts }
                 : { continueFrom: outcome.continueFrom }),
             items: outcome.items.map(item => ({
                 paragraphIndex: item.paragraphIndex,
