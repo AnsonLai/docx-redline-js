@@ -17,7 +17,7 @@ Related plans: `2026-09-30-revision-fidelity-invariants.md` (verifier, Word lane
 | R1 | `2026-09-30-canonical-list-operations.md` | **Fixed by design**: `list-format` convert-plain / change-format / join (list plan WP-4/5) and redline + list-format composition (WP-6). The reproducer now gets an explicit refusal instead of a silent `ok` (atomic batch -> `UNSUPPORTED_LIST_CONVERSION` with `suggestedOperation`). | Plugin moves it to `completed/` after upgrading |
 | R2 | `2026-10-02-separate-list-operations-restart-numbering.md` (0.8.4 regression) | **Partly fixed**: labels are now `A.`, `B.` (start values), but the two headers are still separate `w:num` instances (`numId 7`, `11`). | I2 |
 | R3 | `2026-10-02-weak-target-soft-break-deletion.md` | **Reproduces**: weak target (index + exactText) on a `<w:br/>` paragraph tracks the whole paragraph as deleted, `ok`. | I1 |
-| R4 | `2026-10-02-generate-redlines-false-cross-author-insertion.md` | **Reproduces**: `generateRedlines: false` + `slice-cross-author` still creates a tracked `w:ins`. | I1 |
+| R4 | `2026-10-02-generate-redlines-false-cross-author-insertion.md` | **Fixed (I1.1-2)**: `engine/surgical-diff-application.js` `processInsert` passed a flipped `generateNestedRevision` flag; the new `UNTRACKED_CREATED_REVISION` invariant refuses any untracked output with new revision ids. Reproducer exits 1. | Plugin moves it to `completed/` after upgrading |
 | R5 | `2026-10-01-word-reject-table-append-paragraph.md` | Unverified on this tree; Word reported an extra empty paragraph and one leftover revision after `Revisions.RejectAll()` for an end-of-document table append. Our simulator and library reject say 7 paragraphs, so if Word still disagrees our Word-semantics model has a gap. | I3 |
 | R6 | `2026-10-02-word-existing-comments-delta-transport.md` | Consumer transport incident, resolved in the plugin; no library defect. | Plugin moves it to `completed/` |
 
@@ -36,6 +36,10 @@ unwanted tracked insertion) both reject back to the source, so they pass. Two mi
 ## Work items (easiest first)
 
 ### I1. Untracked edits stay untracked; weak targets never delete (R4, R3) — easy/medium
+
+Status: items 1-2 (R4) done (`processInsert` flag fix in `engine/surgical-diff-application.js`; `UNTRACKED_CREATED_REVISION` in the
+verifier, wired in the applier; tests in `tests/revision_fidelity_verifier_tests.mjs`, untracked variants in the reject-roundtrip
+matrix). Items 3-4 (R3) open.
 
 1. R4: find where the surgical (`slice-cross-author`) path ignores `generateRedlines: false` (start at
    `engine/surgical-mode.js` / `surgical-*` and how `options.generateRedlines` reaches them from

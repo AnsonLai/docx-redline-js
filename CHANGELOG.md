@@ -114,6 +114,11 @@
   `revisionFidelityViolations`. The Word-semantics simulator is `core/word-revision-semantics.js`, validated against
   recorded Word 16 Reject All / Accept All results (`tests/fixtures/word-revision-semantics/expectations.json`).
 
+- **`UNTRACKED_CREATED_REVISION` invariant:** an operation with `generateRedlines: false` is refused (default `enforce`) when its
+  output contains a revision id (`w:ins`, `w:del`, moves, `*PrChange`, paragraph-mark and row revisions) that the source did not
+  have. A foreign revision sliced around the edit keeps its element, author and date and is not counted. It reports as
+  `REVISION_FIDELITY_VIOLATION` with `violations[].invariant: 'UNTRACKED_CREATED_REVISION'`, also for range targets.
+
 ### Internal
 
 - **One paragraph-mark revision helper:** `engine/paragraph-mark-revisions.js` is now the only module that constructs a tracked paragraph mark (`w:ins`/`w:del` under `w:pPr/w:rPr`): `markParagraphInserted`, `markParagraphDeleted`, `setParagraphPropertiesMarkRevision`, `restoreParagraphMarkInserted`, string builders `paragraphMarkRevisionXml` / `paragraphMarkPPrXml`, and `planParagraphMarks` (asserts the Reject All paragraph-count invariants). Document-level shortcuts, list generation, reconstruction, text-to-table and generated tables use it, and `tests/paragraph_mark_single_site_tests.mjs` fails on any other construction site. Output is unchanged except that a new mark `rPr` is placed before `sectPr`/`pPrChange`, an existing mark is replaced rather than duplicated, and the empty-modified shortcut's deleted-mark receipt kind is `del` (was `structural`).
@@ -128,6 +133,10 @@
 - **Reject/Accept All match Word for table cells and `pPrChange`:** rejecting an inserted paragraph mark keeps the cell's last paragraph (empty) instead of dropping it, accepting a fully deleted sole-paragraph table removes the table, and rejecting a `pPrChange` keeps the paragraph-mark `rPr` and `sectPr` instead of discarding them.
 - **Property readers ignore `pPrChange`/`rPrChange` snapshots:** a new `core/current-properties.js` accessor reads only direct `w:pPr`/`w:rPr` children, so a tracked property change no longer makes its historical `numPr`, `pStyle`, `outlineLvl` or `b`/`i` look current. Markdown export, numbering-context detection, list-numbering reuse/overwrite, list-shape checks and captured-entity kind now use it; a usage test fails on new descendant property lookups.
 - **Explicit `1. Header` list conversion works on a bare `document.xml`:** with no numbering part the batch had no numbering id state, so the conversion aborted after recording tracked deletions in the receipt and failed with `RECEIPT_RECONCILIATION_FAILED`. The bare runner now always seeds numbering ids as `openDocx` does, and an aborted conversion no longer records receipt revisions.
+- **`generateRedlines: false` stays untracked under `slice-cross-author`:** the surgical insert computed its nested-revision flag as
+  `!(generateRedlines && ...)`, which is true whenever `generateRedlines` is false, so an inserted word was wrapped in a new tracked
+  `w:ins` (`applyRedlineToOxml` and `applyOperationsToDocumentXml`; `redline`/`replace`, `modified`/`replacements`). It now writes
+  plain runs, like `merge-same-author`, and leaves other authors' revisions intact (a foreign insertion is sliced around the edit).
 
 ## 0.8.4
 

@@ -21,7 +21,8 @@ canonical, Word-verified operations. Several old silent successes are now warnin
    - `error.recovery.action` = `narrow_or_change_operation`; `error.recovery.retryGuidance[]` has one retry instruction per
      invariant; `recovery.reportIfNarrowRetryFails` says to report, not to disable the check.
    - Invariants: `REJECT_PARAGRAPH_COUNT`, `REJECT_PARAGRAPH_TEXT`, `REJECT_PARAGRAPH_PROPS`, `REJECT_NUMBERING_REFS`,
-     `REJECT_WRAPPERS`, and `ACCEPT_NEIGHBORS` (untracked edits that changed paragraphs outside their target).
+     `REJECT_WRAPPERS`, and `ACCEPT_NEIGHBORS` (untracked edits that changed paragraphs outside their target), and
+     `UNTRACKED_CREATED_REVISION` (an untracked edit that wrote a revision id the source lacked).
    - Option `verifyRevisionFidelity: 'enforce' | 'warn' | 'off'` (CLI `--revision-fidelity`). Keep the default. `'warn'`
      applies and puts the same text in `warnings`; never ship `'off'`. The CLI agent profile rejects `off`.
 2. **Typed list markers on plain paragraphs are no longer a silent `ok`.** `"Header"` -> `"A. Header"` now returns warning
