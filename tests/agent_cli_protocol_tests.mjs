@@ -23,7 +23,7 @@ try {
     const input = path.join(directory, 'input.docx');
     await writeFile(input, fixture);
     const version = await executeCli(['version']);
-    assert.equal(version.contractVersion, 8);
+    assert.equal(version.contractVersion, 9);
     assert(version.capabilities.includes('operations-stdin'));
     assert(version.capabilities.includes('agent-safety-profile-v2'));
     assert(version.capabilities.includes('deduplicated-cli-receipts'));

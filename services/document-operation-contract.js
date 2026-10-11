@@ -7,6 +7,7 @@
 
 import { validateExactReplacementRequests } from './localized-replacement-compiler.js';
 import { validateParagraphNumberingShape } from './list-conversion-diagnostics.js';
+import { validateListFormatShape } from './list-format.js';
 
 const SUPPORTED_OPERATION_TYPES = new Set([
     'redline',
@@ -14,6 +15,7 @@ const SUPPORTED_OPERATION_TYPES = new Set([
     'format',
     'character-format',
     'paragraph-format',
+    'list-format',
     'list-change',
     'table-reconciliation',
     'insert',
@@ -56,6 +58,7 @@ export function getCanonicalOperationType(operation) {
     if (type === 'restore') return 'restore';
     if (type === 'comment' || type === 'comment_reply' || type === 'comment_resolve' || type === 'highlight') return type;
     if (type === 'paragraph-format') return 'paragraph-format';
+    if (type === 'list-format') return 'list-format';
     if (type === 'character-format' || (type === 'format' && (operation?.textToFormat != null || operation?.properties != null))) return 'format';
     return 'redline';
 }
@@ -555,6 +558,43 @@ export function validateDocumentOperation(operation) {
                     }
                 };
             }
+        }
+    }
+
+    if (normalized.operationKind === 'list-format') {
+        const shapeError = validateListFormatShape(normalized.list);
+        if (shapeError) {
+            return {
+                valid: false,
+                error: {
+                    code: 'INVALID_OPERATION',
+                    message: shapeError.message,
+                    field: shapeError.field,
+                    recovery: {
+                        action: 'change_request',
+                        hint: 'Pass list as { "mode": "convert-plain" } (optional format, kind, level, strip "marker" | "none", start with strip "none").'
+                    }
+                }
+            };
+        }
+        if (operation.modified !== undefined || operation.replacements !== undefined) {
+            return {
+                valid: false,
+                error: {
+                    code: 'INVALID_OPERATION',
+                    message: 'list-format changes list structure only; express text changes as a separate redline operation.',
+                    field: operation.modified !== undefined ? 'modified' : 'replacements'
+                }
+            };
+        }
+        if (target.captureRef || target.occurrence != null || target.revisionView !== 'accepted') {
+            return {
+                valid: false,
+                error: {
+                    code: 'INVALID_OPERATION',
+                    message: 'list-format v1 targets batch-start accepted-view paragraphs without captures or target occurrence.'
+                }
+            };
         }
     }
 

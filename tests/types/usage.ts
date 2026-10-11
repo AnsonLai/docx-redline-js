@@ -61,6 +61,12 @@ const operations: DocumentOperation[] = [
     target: { paragraphId: '1A2B3C4D' },
     modified: 'Restored paragraph',
     author: 'Reviewer'
+  },
+  {
+    type: 'list-format',
+    target: { paragraphId: '1A2B3C4D', exactText: 'A. Scope' },
+    targetEnd: { exactText: 'C. Term' },
+    list: { mode: 'convert-plain', format: 'upperLetter', strip: 'marker' }
   }
 ];
 

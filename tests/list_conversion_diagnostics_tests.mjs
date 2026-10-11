@@ -73,7 +73,7 @@ assert.equal(sourceNumbering.format, 'bullet');
     assert.equal(error.code, 'UNSUPPORTED_LIST_CONVERSION');
     assert.equal(error.stage, 'list-conversion');
     assert.equal(error.category, 'request_fixable');
-    assert.equal(error.recovery.action, 'apply_plain_text_or_convert_in_host');
+    assert.equal(error.recovery.action, 'use_list_format_convert_plain');
     assert.equal(error.recovery.sameArgumentsSafe, false);
     assert.equal(error.recovery.field, 'listMarkers');
     assert.equal(error.listMarker, '1.');
@@ -210,7 +210,7 @@ for (const [target, modified] of [
 
 // Recovery metadata for the new codes.
 for (const [code, action] of [
-    ['UNSUPPORTED_LIST_CONVERSION', 'apply_plain_text_or_convert_in_host'],
+    ['UNSUPPORTED_LIST_CONVERSION', 'use_list_format_convert_plain'],
     ['UNSUPPORTED_LIST_FORMAT_CHANGE', 'change_list_format_in_host']
 ]) {
     const normalized = normalizeErrorWithRecovery({ code, message: 'm' });
@@ -242,7 +242,7 @@ try {
     assert.equal(error.listMarker, 'A.');
     assert.deepEqual(error.requestedList, { kind: 'numbered', format: 'upperLetter' });
     assert.equal(error.targetExcerpt, PLAIN);
-    assert.equal(error.recovery.action, 'apply_plain_text_or_convert_in_host');
+    assert.equal(error.recovery.action, 'use_list_format_convert_plain');
     assert.equal(refused.completion, false);
 
     await writeFile(operationsFile, JSON.stringify([{ type: 'redline', target: { exactText: PLAIN }, modified: `A. ${PLAIN}`, listMarkers: 'literal' }]));

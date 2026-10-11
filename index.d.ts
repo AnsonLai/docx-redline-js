@@ -31,6 +31,9 @@ export type {
   HighlightDocumentOperation,
   InsertionAffinity,
   ListConversionDiagnostic,
+  ListFormatDocumentOperation,
+  ListFormatRequest,
+  ListFormatResult,
   LocalizedReplacement,
   LocalizedReplacementChange,
   OperationConflict,
@@ -55,6 +58,11 @@ export interface RedlineError {
     | 'UNSUPPORTED_INSERTION_AFFINITY'
     | 'UNSUPPORTED_LIST_CONVERSION'
     | 'UNSUPPORTED_LIST_FORMAT_CHANGE'
+    | 'LIST_MARKER_NOT_FOUND'
+    | 'LIST_MARKER_AMBIGUOUS'
+    | 'LIST_MARKER_UNSUPPORTED'
+    | 'LIST_FORMAT_TARGET_IS_LIST'
+    | 'LIST_FORMAT_STYLE_NUMBERED'
     | 'UNSAFE_PARAGRAPH_BOUNDARY'
     | 'FOREIGN_PARAGRAPH_MARK_DELETION'
     | 'RESTORATION_STATE_REQUIRED'

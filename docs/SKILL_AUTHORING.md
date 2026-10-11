@@ -28,7 +28,9 @@ operations over stdin:
 ## Runtime negotiation
 
 Run `docx-redline version` before the first document operation. Require CLI
-contract version 8 and only the capabilities the integration actually uses. Check once per stable
+contract version 9 only when the integration sends `list-format` operations
+(capability `list-format-v1`); otherwise contract version 8 suffices. Require
+only the capabilities the integration actually uses. Check once per stable
 runtime, fail closed when a requirement is absent, and never inspect bundles or
 ZIP parts as a fallback.
 

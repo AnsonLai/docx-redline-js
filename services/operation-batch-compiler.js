@@ -11,7 +11,9 @@ import {
 } from './document-operation-contract.js';
 import { compileExactReplacements } from './localized-replacement-compiler.js';
 
-const TEXT_WRITE_KINDS = new Set(['redline', 'restore', 'rejected-insert']);
+// list-format strips typed markers (a text write) and binds numPr (a pPr write); until WP-6 defines how a
+// redline and a list-format on one target compose, it conflicts with every other text or format write there.
+const TEXT_WRITE_KINDS = new Set(['redline', 'restore', 'rejected-insert', 'list-format']);
 const FORMAT_WRITE_KINDS = new Set(['highlight', 'format', 'paragraph-format']);
 
 function normalizedError(error) {

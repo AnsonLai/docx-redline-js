@@ -90,7 +90,7 @@ const listConversion = normalizeErrorWithRecovery({
 });
 assert.equal(listConversion.stage, 'list-conversion');
 assert.equal(listConversion.category, 'request_fixable');
-assert.equal(listConversion.recovery.action, 'apply_plain_text_or_convert_in_host');
+assert.equal(listConversion.recovery.action, 'use_list_format_convert_plain');
 assert.equal(listConversion.recovery.sameArgumentsSafe, false);
 assert.equal(listConversion.listMarker, 'A.');
 assert.notEqual(listConversion.code, 'REVISION_FIDELITY_VIOLATION');
@@ -139,7 +139,7 @@ assert.equal(conflictingResult.retryPlan.base, 'original');
 assert.equal(conflictingResult.retryPlan.replayWholeBatch, true);
 
 const version = await executeCli(['version']);
-assert.equal(version.contractVersion, 8);
+assert.equal(version.contractVersion, 9);
 assert(version.capabilities.includes('batch-start-source-binding'));
 assert(version.capabilities.includes('recovery-envelope-v1'));
 assert(version.capabilities.includes('require-complete-exit'));
@@ -157,7 +157,8 @@ assert(version.capabilities.includes('localized-change-summary-v1'));
 assert(version.capabilities.includes('revision-fidelity-v1'));
 assert(version.capabilities.includes('list-conversion-diagnostics-v1'));
 assert(version.capabilities.includes('paragraph-numbering-binding-v1'));
-assert.equal(version.contractVersion, 8, 'the interim list diagnostics are additive and do not bump the contract version');
+assert(version.capabilities.includes('list-format-v1'));
+assert.equal(version.contractVersion, 9, 'the list-format operation type bumps the contract version (the interim diagnostics did not)');
 
 const fidelityOff = await executeCli(['apply', fileURLToPath(fixturePath), '--profile', 'agent', '--revision-fidelity', 'off', '--modified', 'x', '--target', 'y']);
 assert.equal(fidelityOff.error.code, 'INVALID_PROFILE', 'the agent profile cannot disable Reject All verification');

@@ -38,6 +38,7 @@ function normalizedError(error, context = {}) {
 }
 
 function operationNeedsNumbering(operation) {
+    if (operation.operationKind === 'list-format') return true;
     if (operation.operationKind !== 'redline' || typeof operation.modified !== 'string') return false;
     return operation.modified.split(/\r?\n/).some(line => /^\s*(?:[-+*]|\d+[.)])\s+/.test(line));
 }

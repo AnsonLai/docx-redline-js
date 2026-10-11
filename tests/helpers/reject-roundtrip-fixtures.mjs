@@ -77,6 +77,19 @@ export const SYNTHETIC_BODIES = {
         decimal(run('Numbered three'), 1),
         p(run('Outro after the lists.'))
     ],
+    'typed-headers': [
+        p(run('A. Scope of the agreement')),
+        p(run('Body text that explains the scope.')),
+        p(run('B. ', '<w:b/>') + run('Term and termination', '<w:b/>')),
+        p(`<w:r>${t('C.')}<w:tab/>${t('Fees and charges')}</w:r>`),
+        p(run('1. Numbered heading one')),
+        p(run('2) Numbered heading two')),
+        p(run('IV. Roman heading four')),
+        p(run('- Dash bullet heading')),
+        p(link('rIdMatrixLink1', 'D. ') + run('Linked marker heading')),
+        tbl([[p(run('a. Cell heading')), p(run('b. Second cell heading'))]]),
+        p(run('Closing paragraph without a marker.'))
+    ],
     'last-body-paragraph': [
         p(run('First clause of the agreement.')),
         p(''),

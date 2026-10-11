@@ -114,6 +114,20 @@
       },
       "additionalProperties": false
     },
+    "listFormat": {
+      "description": "list-format-v1 (CLI contract version 9). convert-plain binds plain paragraphs to a NEW list definition in place: the binding is a tracked w:pPrChange and, with strip \"marker\" (default), the typed marker (A. / 1. / 1) / iv. / - ) is removed with a tracked deletion; Reject All restores the literal marker and the unnumbered paragraph. Each marker's value is the item's start value; consecutive values share one list, and a later convert-plain in the same batch whose first value continues the previous one joins that list. Refusals: LIST_MARKER_NOT_FOUND, LIST_MARKER_AMBIGUOUS (single roman-looking letter such as I. or C.; set format), LIST_MARKER_UNSUPPORTED (mixed markers, multi-level 2.1., (a), marker not in plain runs, format mismatch), LIST_FORMAT_TARGET_IS_LIST, LIST_FORMAT_STYLE_NUMBERED, PARAGRAPH_FORMAT_REVISION_CONFLICT. Body only (no part).",
+      "type": "object",
+      "required": ["mode"],
+      "properties": {
+        "mode": { "const": "convert-plain" },
+        "kind": { "enum": ["bullet", "numbered"] },
+        "format": { "enum": ["decimal", "upperLetter", "lowerLetter", "upperRoman", "lowerRoman", "bullet"], "description": "Required with strip \"none\"; with strip \"marker\" it must match the typed markers and disambiguates letters from roman numerals." },
+        "level": { "type": "integer", "minimum": 0, "maximum": 8, "default": 0 },
+        "strip": { "enum": ["marker", "none"], "default": "marker", "description": "marker: remove the typed marker (tracked). none: keep the text and only bind." },
+        "start": { "type": "integer", "minimum": 1, "maximum": 32767, "description": "strip \"none\" only; defaults to continuing the batch's previous list of the same format, else 1. With strip \"marker\" the start is the typed marker's value." }
+      },
+      "additionalProperties": false
+    },
     "base": {
       "type": "object",
       "required": ["type", "target"],
@@ -186,6 +200,9 @@
         },
         {
           "allOf": [ { "$ref": "#/$defs/base" }, { "type": "object", "required": ["textToFormat", "properties"], "properties": { "type": { "enum": ["format", "character-format"] }, "textToFormat": { "type": "string", "minLength": 1 }, "textOccurrence": { "type": "integer", "minimum": 1, "default": 1 }, "properties": { "type": "object" }, "formattingRevisionPolicy": { "enum": ["always", "coalesce-own-insertion"] } } } ]
+        },
+        {
+          "allOf": [ { "$ref": "#/$defs/base" }, { "type": "object", "required": ["list"], "not": { "anyOf": [ { "required": ["part"] }, { "required": ["modified"] }, { "required": ["replacements"] } ] }, "properties": { "type": { "const": "list-format" }, "list": { "$ref": "#/$defs/listFormat" }, "targetEnd": { "$ref": "#/$defs/target" }, "targetEndRef": { "type": ["integer", "string", "null"] } } } ]
         },
         {
           "allOf": [ { "$ref": "#/$defs/base" }, { "type": "object", "required": ["properties"], "properties": { "type": { "const": "paragraph-format" }, "properties": { "$ref": "#/$defs/paragraphFormatProperties" } } } ]

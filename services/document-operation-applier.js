@@ -16,6 +16,7 @@ import {
     applyFormattingToParagraphByExactText,
     applyHighlightToParagraphByExactText,
     applyParagraphFormatToParagraphByExactText,
+    applyListFormatToParagraphByExactText,
     insertIntoRejectedDeletedText,
     restoreDeletedParagraphByExactText,
     applyToParagraphByExactText
@@ -345,6 +346,17 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                 operation.properties,
                 authorUsed,
                 operation.targetRef,
+                runtimeContext,
+                operationOptions
+            );
+        } else if (operation.operationKind === 'list-format') {
+            result = await applyListFormatToParagraphByExactText(
+                documentXml,
+                operation.target,
+                operation.list,
+                authorUsed,
+                operation.targetRef,
+                operation.targetEndRef,
                 runtimeContext,
                 operationOptions
             );

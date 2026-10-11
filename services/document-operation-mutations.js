@@ -88,6 +88,8 @@ import {
     buildExplicitDecimalMultilevelNumberingXml
 } from './numbering-helpers.js';
 import { allocateNumberingForReplacement, checkNumberingBinding } from './numbering-allocation.js';
+import { convertPlainParagraphsToList } from './list-format-mutation.js';
+import { normalizeListFormatRequest } from './list-format.js';
 import {
     extractReplacementNodesFromOoxml,
     normalizeBodySectionOrderStandalone
@@ -1492,6 +1494,77 @@ async function tryExplicitDecimalHeaderListConversion({
     };
 }
 
+const FALLBACK_STYLE_TO_LIST_FORMAT = Object.freeze({
+    upperAlpha: 'upperLetter',
+    lowerAlpha: 'lowerLetter',
+    upperRoman: 'upperRoman',
+    lowerRoman: 'lowerRoman',
+    bullet: 'bullet'
+});
+
+/**
+ * Text-equal marker conversion ("A. Header" -> "A. Header") of a plain paragraph, done in place through the
+ * list-format convert-plain core: the typed marker becomes a tracked deletion and the binding a tracked pPrChange
+ * in the same paragraph. This replaces the whole-paragraph delete/insert for letters, roman numerals and bullets,
+ * which lost w14:paraId, bookmarks and direct formatting and reviewed as one deleted and one inserted line. Shapes
+ * the core refuses (marker inside a hyperlink, field or revision; changed marker punctuation) keep the structural
+ * fallback below, which is still reject-exact.
+ */
+function tryInPlaceMarkerListConversion({
+    xmlDoc,
+    serializer,
+    documentXml,
+    operationSession,
+    targetParagraph,
+    currentParagraphText,
+    modifiedText,
+    author,
+    runtimeContext,
+    revisionIdAllocator,
+    generateRedlines = true,
+    onInfo = () => { },
+    options = {}
+}) {
+    if (!targetParagraph || getParagraphListInfo(targetParagraph)) return null;
+    if (normalizeWhitespaceForTargeting(currentParagraphText) !== normalizeWhitespaceForTargeting(modifiedText)) return null;
+    const plan = buildSingleLineListStructuralFallbackPlan({
+        oxml: serializer.serializeToString(targetParagraph),
+        originalText: currentParagraphText,
+        modifiedText,
+        allowExistingList: false
+    });
+    const format = plan ? FALLBACK_STYLE_TO_LIST_FORMAT[plan.numberingStyle] : null;
+    if (!format) return null;
+    const allParagraphs = getDocumentParagraphNodes(xmlDoc);
+    const conversion = convertPlainParagraphsToList(xmlDoc, [targetParagraph], normalizeListFormatRequest({
+        mode: 'convert-plain',
+        format,
+        strip: 'marker'
+    }), {
+        author: author || getDefaultAuthor(),
+        generateRedlines,
+        revisionIdAllocator,
+        runtimeContext,
+        stylesXml: runtimeContext?.stylesXml || options.stylesXml || null,
+        numberingXml: runtimeContext?.numberingXml || options.numberingXml || null,
+        paragraphIndexOf: paragraph => allParagraphs.indexOf(paragraph) + 1
+    });
+    if (!conversion.ok) {
+        onInfo(`[List] In-place marker conversion declined (${conversion.error.code}); using the structural fallback.`);
+        return null;
+    }
+    onInfo(`[List] Converted typed ${format} marker in place (numId ${conversion.items[0].numId}).`);
+    ensureParagraphIdsOnImportedNode(targetParagraph, operationSession);
+    options?._mutationLiveNodes?.push(targetParagraph);
+    for (const numId of conversion.allocatedNumIds) operationSession?.receiptCollector?.recordNumbering(numId);
+    normalizeBodySectionOrder(xmlDoc);
+    return {
+        documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
+        hasChanges: true,
+        numberingXml: conversion.numberingXml
+    };
+}
+
 async function trySingleParagraphListStructuralFallback({
     xmlDoc,
     serializer,
@@ -2231,6 +2304,23 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         });
         if (explicitHeaderListConversion) return explicitHeaderListConversion;
 
+        const inPlaceConversion = tryInPlaceMarkerListConversion({
+            xmlDoc,
+            serializer,
+            documentXml,
+            operationSession,
+            targetParagraph,
+            currentParagraphText,
+            modifiedText: effectiveModifiedText,
+            author,
+            runtimeContext,
+            revisionIdAllocator,
+            generateRedlines,
+            onInfo,
+            options
+        });
+        if (inPlaceConversion) return inPlaceConversion;
+
         const listFallback = await trySingleParagraphListStructuralFallback({
             xmlDoc,
             serializer,
@@ -2863,5 +2953,132 @@ export async function applyParagraphFormatToParagraphByExactText(
         hasChanges: true,
         status: 'ok',
         ...listDiagnosticFields(propertyDiagnostics)
+    };
+}
+
+/**
+ * Resolves an operation's target range (target plus optional targetEnd) to paragraphs in document order, the
+ * same way restore does: batch-compiled source ids first, then legacy refs, then an end descriptor.
+ */
+function resolveOperationParagraphRange(xmlDoc, targetText, targetRef, targetEndRef, opType, runtimeContext, options) {
+    const resolved = resolveTargetParagraph(xmlDoc, targetText, targetRef, opType, runtimeContext, options);
+    if (resolved?.error || !resolved?.paragraph) {
+        return { error: resolved?.error || { code: 'TARGET_NOT_FOUND', message: 'Target paragraph not found.' } };
+    }
+    const first = resolved.paragraph;
+    const hasEnd = options._compiledSourceEndId || targetEndRef != null || options.targetEndDescriptor;
+    if (!hasEnd) return { paragraphs: [first] };
+    let paragraphs = null;
+    if (options._compiledSourceEndId || options.targetEndDescriptor) {
+        const endResolved = resolveTargetParagraph(
+            xmlDoc,
+            options.targetEndDescriptor?.text || '',
+            options._compiledSourceEndId ? targetEndRef : (options.targetEndDescriptor?.index ?? targetEndRef),
+            opType,
+            runtimeContext,
+            {
+                ...options,
+                ...(options.targetEndDescriptor ? { targetDescriptor: options.targetEndDescriptor } : {}),
+                _compiledSourceId: options._compiledSourceEndId || null,
+                _resolutionCapture: null
+            }
+        );
+        if (endResolved?.error) return { error: endResolved.error };
+        const all = endResolved?.paragraph ? getDocumentParagraphNodes(xmlDoc) : [];
+        const startIndex = all.indexOf(first);
+        const endIndex = all.indexOf(endResolved?.paragraph);
+        paragraphs = startIndex >= 0 && endIndex >= startIndex ? all.slice(startIndex, endIndex + 1) : null;
+    } else {
+        paragraphs = resolveParagraphRangeByRefs(xmlDoc, targetRef, targetEndRef, {
+            opType,
+            targetRefSnapshot: runtimeContext?.targetRefSnapshot || null,
+            onInfo: options.onInfo,
+            onWarn: options.onWarn
+        });
+    }
+    if (!Array.isArray(paragraphs) || paragraphs.length === 0 || paragraphs[0] !== first) {
+        return { error: { code: 'TARGET_RANGE_INVALID', message: 'targetEnd must resolve to the target paragraph or a paragraph after it.' } };
+    }
+    return { paragraphs };
+}
+
+/**
+ * `list-format` (`convert-plain`): binds plain paragraphs to a new list in place; see services/list-format-mutation.js.
+ */
+export async function applyListFormatToParagraphByExactText(
+    documentXml,
+    targetText,
+    list,
+    author,
+    targetRef = null,
+    targetEndRef = null,
+    runtimeContext = null,
+    options = {}
+) {
+    const generateRedlines = options.generateRedlines !== false;
+    const onInfo = typeof options?.onInfo === 'function' ? options.onInfo : () => { };
+    const onWarn = typeof options?.onWarn === 'function' ? options.onWarn : () => { };
+    const { serializer, xmlDoc, operationSession } = resolveMutationDocument(documentXml, options);
+    if (!xmlDoc) {
+        return { documentXml, hasChanges: false, status: 'error', error: { code: 'PARSE_ERROR', message: 'Could not parse document OOXML.' } };
+    }
+    const revisionIdAllocator = operationSession?.revisionIdAllocator || prepareRevisionAllocator(xmlDoc, options);
+    const range = resolveOperationParagraphRange(xmlDoc, targetText, targetRef, targetEndRef, 'list-format', runtimeContext, {
+        ...options,
+        onInfo,
+        onWarn
+    });
+    if (range.error) return { documentXml, hasChanges: false, status: 'error', error: range.error };
+    const paragraphs = range.paragraphs;
+    if (paragraphs.some(paragraph => paragraph.parentNode !== paragraphs[0].parentNode)) {
+        return {
+            documentXml,
+            hasChanges: false,
+            status: 'error',
+            error: {
+                code: 'TARGET_RANGE_INVALID',
+                message: 'A list-format range must stay inside one container (the body, or one table cell).'
+            }
+        };
+    }
+    const allParagraphs = getDocumentParagraphNodes(xmlDoc);
+    const conversion = convertPlainParagraphsToList(xmlDoc, paragraphs, normalizeListFormatRequest(list), {
+        author: author || getDefaultAuthor(),
+        generateRedlines,
+        revisionIdAllocator,
+        runtimeContext,
+        stylesXml: runtimeContext?.stylesXml || options.stylesXml || null,
+        numberingXml: runtimeContext?.numberingXml || options.numberingXml || null,
+        paragraphIndexOf: paragraph => allParagraphs.indexOf(paragraph) + 1
+    });
+    if (!conversion.ok) return { documentXml, hasChanges: false, status: 'error', error: conversion.error };
+
+    for (const item of conversion.items) {
+        ensureParagraphIdsOnImportedNode(item.paragraph, operationSession);
+        options?._mutationLiveNodes?.push(item.paragraph);
+    }
+    for (const numId of conversion.allocatedNumIds) operationSession?.receiptCollector?.recordNumbering(numId);
+    normalizeBodySectionOrder(xmlDoc);
+    onInfo(`[List] list-format convert-plain bound ${conversion.items.length} paragraph(s) as ${conversion.format} (numId ${[...new Set(conversion.items.map(item => item.numId))].join(', ')}).`);
+
+    return {
+        documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
+        hasChanges: true,
+        status: 'ok',
+        numberingXml: conversion.numberingXml,
+        list: {
+            mode: 'convert-plain',
+            format: conversion.format,
+            level: conversion.level,
+            strip: conversion.strip,
+            items: conversion.items.map(item => ({
+                paragraphIndex: item.paragraphIndex,
+                paragraphId: getParagraphId(item.paragraph),
+                marker: item.marker,
+                value: item.value,
+                numId: item.numId
+            })),
+            skipped: conversion.skipped.map(item => ({ paragraphIndex: item.paragraphIndex, reason: item.reason }))
+        }
     };
 }

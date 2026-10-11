@@ -464,6 +464,7 @@ export async function applyOperationsToDocumentXml(documentXml, operations, auth
                 ...(result.resolvedTarget ? { resolvedTarget: result.resolvedTarget } : {}),
                 ...(result.resolvedAnchor ? { resolvedAnchor: result.resolvedAnchor } : {}),
                 ...(result.change ? { change: result.change } : {}),
+                ...(result.list && !isError ? { list: result.list } : {}),
                 ...(result.operationType === 'comment_resolve' && !isError
                     ? { resolved: result.resolved, threadRootId: result.threadRootId, commentIds: result.commentIds }
                     : {}),

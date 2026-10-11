@@ -12,7 +12,7 @@ import { localizedReplacementOffsets } from '../services/localized-replacement-c
 import { buildCliHelp, CLI_COMMANDS, commandOptionKeys } from './cli-help.js';
 
 const suffixes = { apply: 'redlined', accept: 'accepted', reject: 'rejected', 'delete-comments': 'comments-removed' };
-const CLI_CONTRACT_VERSION = 8;
+const CLI_CONTRACT_VERSION = 9;
 const DEFAULT_INSPECTION_LIMIT = 20;
 const INSPECTION_SOFT_BYTE_LIMIT = 48 * 1024;
 const CLI_CAPABILITIES = [
@@ -43,7 +43,8 @@ const CLI_CAPABILITIES = [
     'format-text-occurrence-v1',
     'revision-fidelity-v1',
     'list-conversion-diagnostics-v1',
-    'paragraph-numbering-binding-v1'
+    'paragraph-numbering-binding-v1',
+    'list-format-v1'
 ];
 const commandOptions = Object.fromEntries(CLI_COMMANDS.map(command => [command, new Set(commandOptionKeys(command))]));
 

@@ -72,7 +72,7 @@ for (const heading of [
     assert(skillAuthoring.includes(heading), `skill authoring omitted ${heading}`);
 }
 for (const capability of [
-    'contract version 8',
+    'contract version 9',
     'agent-safety-profile-v2',
     'recovery-envelope-v1',
     'localized-replacements-v1'

@@ -66,7 +66,14 @@ export interface ListConversionDiagnostic {
   operationIndex?: number;
   /** Rejected `paragraph-format.properties` keys (UNKNOWN_PARAGRAPH_FORMAT_PROPERTY). */
   properties?: string[];
-  recovery?: { action: string; hint?: string; field?: string; allowedValue?: string };
+  recovery?: {
+    action: string;
+    hint?: string;
+    field?: string;
+    allowedValue?: string;
+    /** LIST_MARKER_NOT_BOUND / UNSUPPORTED_LIST_CONVERSION: the list-format operation to send (add the same target). */
+    suggestedOperation?: { type: 'list-format'; list: ListFormatRequest };
+  };
 }
 
 export interface DocumentOperationBase {
@@ -215,6 +222,45 @@ export interface ParagraphFormatDocumentOperation extends DocumentOperationBase 
   properties: ParagraphFormatProperties;
 }
 
+/** `list-format` request (`list-format-v1`, CLI contract version 9). Only `convert-plain` is available. */
+export interface ListFormatRequest {
+  mode: 'convert-plain';
+  kind?: 'bullet' | 'numbered';
+  /** Required with `strip: 'none'`; with `strip: 'marker'` it must match the typed markers (and disambiguates `I.`/`C.`). */
+  format?: 'decimal' | 'upperLetter' | 'lowerLetter' | 'upperRoman' | 'lowerRoman' | 'bullet';
+  /** 0-8, default 0. */
+  level?: number;
+  /** `'marker'` (default) removes the typed marker as a tracked deletion; `'none'` keeps the text and only binds. */
+  strip?: 'marker' | 'none';
+  /** `strip: 'none'` only. Defaults to continuing the batch's previous converted list of the same format, else 1. */
+  start?: number;
+}
+
+/**
+ * Binds plain paragraphs (target, or target..targetEnd in one container) to a NEW list definition in place. The
+ * binding is a tracked `w:pPrChange`; the stripped marker is a tracked `w:del`. Each typed marker's value is the
+ * item's value, so Accept All renders the labels the text showed. Body only (no `part`); text changes belong in a
+ * separate `redline`. Refusals: LIST_MARKER_NOT_FOUND, LIST_MARKER_AMBIGUOUS, LIST_MARKER_UNSUPPORTED,
+ * LIST_FORMAT_TARGET_IS_LIST, LIST_FORMAT_STYLE_NUMBERED, PARAGRAPH_FORMAT_REVISION_CONFLICT.
+ */
+export interface ListFormatDocumentOperation extends Omit<DocumentOperationBase, 'part'> {
+  type: 'list-format';
+  list: ListFormatRequest;
+  targetEnd?: ParagraphTargetDescriptor;
+  targetEndRef?: number | string | null;
+}
+
+/** What a `list-format` operation bound (`result.list`). */
+export interface ListFormatResult {
+  mode: 'convert-plain';
+  format: 'decimal' | 'upperLetter' | 'lowerLetter' | 'upperRoman' | 'lowerRoman' | 'bullet';
+  level: number;
+  strip: 'marker' | 'none';
+  items: Array<{ paragraphIndex: number; paragraphId: string | null; marker: string | null; value: number | null; numId: string }>;
+  /** Paragraphs of the range left as they were: empty, or (strip 'marker') body text without a marker. */
+  skipped: Array<{ paragraphIndex: number; reason: 'empty' | 'no-marker' }>;
+}
+
 export type DocumentOperation =
   | RedlineDocumentOperation
   | RestoreDocumentOperation
@@ -224,7 +270,8 @@ export type DocumentOperation =
   | CommentResolveDocumentOperation
   | HighlightDocumentOperation
   | CharacterFormatDocumentOperation
-  | ParagraphFormatDocumentOperation;
+  | ParagraphFormatDocumentOperation
+  | ListFormatDocumentOperation;
 
 export interface ResolvedDocumentTarget {
   index: number;
@@ -344,19 +391,21 @@ export interface DocumentOperationResult {
   diagnostics?: ListConversionDiagnostic[];
   status?: RedlineStatus;
   error?: RedlineError;
-  operationType: 'redline' | 'comment' | 'comment_reply' | 'comment_resolve' | 'highlight' | 'format' | 'paragraph-format';
+  operationType: 'redline' | 'comment' | 'comment_reply' | 'comment_resolve' | 'highlight' | 'format' | 'paragraph-format' | 'list-format';
   authorUsed: string;
   resolvedBy?: string;
   resolvedTarget?: ResolvedDocumentTarget;
   resolvedAnchor?: ResolvedCommentAnchor;
   receipt?: MutationReceipt;
   change?: LocalizedReplacementChange;
+  /** `list-format` operations: what was bound. */
+  list?: ListFormatResult;
 }
 
 export interface BatchOperationItemResult {
   index: number;
   type: string;
-  operationType: 'redline' | 'comment' | 'comment_reply' | 'comment_resolve' | 'highlight' | 'format' | 'paragraph-format';
+  operationType: 'redline' | 'comment' | 'comment_reply' | 'comment_resolve' | 'highlight' | 'format' | 'paragraph-format' | 'list-format';
   status: 'applied' | 'no_change' | 'error';
   authorUsed: string;
   resolvedBy?: string;
@@ -367,6 +416,8 @@ export interface BatchOperationItemResult {
   error?: RedlineError;
   receipt?: MutationReceipt;
   change?: LocalizedReplacementChange;
+  /** `list-format` operations: what was bound. */
+  list?: ListFormatResult;
 }
 
 export interface DocumentOperationBatchResult {
@@ -402,7 +453,7 @@ export interface MutationRetryPlan {
 export interface OperationPreflightItemResult {
   index: number;
   type: string;
-  operationType: 'redline' | 'comment' | 'comment_reply' | 'comment_resolve' | 'highlight' | 'format' | 'paragraph-format';
+  operationType: 'redline' | 'comment' | 'comment_reply' | 'comment_resolve' | 'highlight' | 'format' | 'paragraph-format' | 'list-format';
   status: 'ready' | 'deferred' | 'error';
   authorUsed: string;
   resolvedBy?: string;

@@ -55,8 +55,27 @@ export const OPERATION_KINDS = [
     'paragraph-format',
     'paragraph-format-numbering',
     'plain-to-list',
+    'list-format-convert-plain',
     'last-paragraph-replace'
 ];
+
+// Typed header markers, read from inspected text with a regex of our own (not the library's grammar).
+const TYPED_MARKER = /^(?:(\d{1,3})|([A-Za-z]))([.)])[ \t]+(\S[\s\S]*)$|^([-•])[ \t]+(\S[\s\S]*)$/;
+const ROMAN_LETTERS = new Set(['I', 'V', 'X', 'L', 'C', 'D', 'M', 'i', 'v', 'x', 'l', 'c', 'd', 'm']);
+function typedMarker(text) {
+    const match = TYPED_MARKER.exec(String(text || ''));
+    if (!match) return null;
+    if (match[5]) return { family: 'bullet', rest: match[6] };
+    if (match[1]) return { family: `decimal${match[3]}`, rest: match[4] };
+    const letter = match[2];
+    const upper = letter === letter.toUpperCase();
+    return {
+        family: `${upper ? 'upper' : 'lower'}Letter${match[3]}`,
+        rest: match[4],
+        // A lone roman-looking letter is ambiguous by design; state the format so the case exercises a conversion.
+        format: ROMAN_LETTERS.has(letter) ? (upper ? 'upperLetter' : 'lowerLetter') : null
+    };
+}
 
 const targetOf = paragraph => ({
     paragraphId: paragraph.paragraphId,
@@ -231,6 +250,28 @@ export function generateOperation(rng, paragraphs, kind, serial = 0) {
             return { kind, paragraphIndex: site.i, expectAccepted: items,
                 operation: { ...base, target: targetOf(site.q),
                     modified: items.map((item, i) => (ordered ? `${i + 1}. ${item}` : `- ${item}`)).join('\n') } };
+        }
+        case 'list-format-convert-plain': {
+            // Plain paragraphs whose text starts with a typed marker; sometimes a run of same-family headers.
+            const typed = indexed
+                .filter(({ q }) => !q.list && q.exactText)
+                .map(entry => ({ ...entry, marker: typedMarker(entry.q.exactText) }))
+                .filter(entry => entry.marker);
+            if (typed.length === 0) return null;
+            const start = rng.pick(typed);
+            let end = start;
+            if (rng.chance(0.4)) {
+                const later = typed.filter(entry => entry.i > start.i && entry.i - start.i <= 4
+                    && entry.marker.family === start.marker.family
+                    && Boolean(entry.q.inTable) === Boolean(start.q.inTable)
+                    && JSON.stringify(entry.q.table || null) === JSON.stringify(start.q.table || null));
+                if (later.length > 0) end = rng.pick(later);
+            }
+            const span = typed.filter(entry => entry.i >= start.i && entry.i <= end.i);
+            const list = { mode: 'convert-plain', ...(start.marker.format ? { format: start.marker.format } : {}) };
+            return { kind, paragraphIndex: start.i, expectAccepted: span.map(entry => entry.marker.rest),
+                operation: { operationId, type: 'list-format', target: targetOf(start.q),
+                    ...(end !== start ? { targetEnd: targetOf(end.q) } : {}), list } };
         }
         case 'last-paragraph-replace': {
             let index = n - 1;

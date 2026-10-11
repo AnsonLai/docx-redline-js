@@ -339,6 +339,9 @@ export class DocxDocument {
             if (COMMENT_OPERATION_TYPES.has(operation.type)) {
                 return refuse({ code: 'COMMENT_IN_HEADER_FOOTER', message: `Operation ${i + 1}: Word does not support comments in headers or footers.`, operationIndex: i + 1 });
             }
+            if (operation.type === 'list-format') {
+                return refuse({ code: 'INVALID_OPERATION', field: 'part', message: `Operation ${i + 1}: list-format is body-only in list-format-v1; headers and footers are not supported.`, operationIndex: i + 1 });
+            }
             const resolved = resolvePartSelector(parts, operation.part);
             if (resolved.error) return refuse({ ...resolved.error, message: `Operation ${i + 1}: ${resolved.error.message}`, operationIndex: i + 1 });
             const { part: _selector, ...rest } = operation;
@@ -582,6 +585,8 @@ export class DocxDocument {
 
             const context = {
                 numberingIdState: createDynamicNumberingIdState(text(working, 'word/numbering.xml') || undefined),
+                // list-format refuses paragraphs numbered through their style (style-linked numbering).
+                stylesXml: text(working, 'word/styles.xml'),
                 commentsXml: text(working, 'word/comments.xml'),
                 commentsExtendedXml: text(working, 'word/commentsExtended.xml')
             };

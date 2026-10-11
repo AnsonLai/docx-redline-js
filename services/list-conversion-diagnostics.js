@@ -15,6 +15,7 @@
 
 import { parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { parseListItem } from '../pipeline/list-markers.js';
+import { parseTypedListMarker } from './list-format.js';
 
 export const LIST_MARKER_NOT_BOUND = 'LIST_MARKER_NOT_BOUND';
 export const UNSUPPORTED_LIST_CONVERSION = 'UNSUPPORTED_LIST_CONVERSION';
@@ -97,13 +98,31 @@ export function detectUnboundListMarker({ originalText, modifiedText, targetIsLi
     return requested;
 }
 
+/**
+ * The `list-format` operation that performs the conversion a text edit could not: bind the paragraph as a list
+ * item in the requested format starting at the typed value, leaving the (unmarked) text alone. Only offered when
+ * the original paragraph has no marker of its own, because `strip: "none"` would keep that marker as text.
+ */
+function suggestedListFormatOperation(requested, originalHasMarker) {
+    if (originalHasMarker) return null;
+    const format = requested.numFmt === 'bullet' ? 'bullet' : requested.numFmt;
+    const list = { mode: 'convert-plain', format, strip: 'none' };
+    if (format !== 'bullet') {
+        const parsed = parseTypedListMarker(`${requested.marker} x`);
+        const value = parsed?.candidates?.find(candidate => candidate.format === format)?.value;
+        if (Number.isInteger(value) && value > 1) list.start = value;
+    }
+    return { type: 'list-format', list };
+}
+
 /** Builds the structured diagnostic (warning or error payload) for an unbound marker. */
 export function buildUnboundListMarkerDiagnostic(requested, { policy, targetText, operationIndex } = {}) {
     const isError = policy === 'error';
     const code = isError ? UNSUPPORTED_LIST_CONVERSION : LIST_MARKER_NOT_BOUND;
     const message = isError
-        ? `Converting a plain paragraph to a list item is not supported by text edits: the new text begins with the list marker "${requested.marker}", which would be written as literal text with no list binding. Apply it as plain text (listMarkers: "literal") or convert the paragraph in the host.`
-        : `Modified text begins with the list marker "${requested.marker}", but the marker was written as literal text; no list binding was created.`;
+        ? `Converting a plain paragraph to a list item is not supported by text edits: the new text begins with the list marker "${requested.marker}", which would be written as literal text with no list binding. Use a list-format convert-plain operation on the paragraph (capability list-format-v1), or pass listMarkers: "literal" to keep the marker as text.`
+        : `Modified text begins with the list marker "${requested.marker}", but the marker was written as literal text; no list binding was created. A list-format convert-plain operation creates the list binding.`;
+    const suggestedOperation = suggestedListFormatOperation(requested, !!parseLiteralListMarker(targetText));
     return {
         code,
         severity: isError ? 'error' : 'warning',
@@ -113,8 +132,11 @@ export function buildUnboundListMarkerDiagnostic(requested, { policy, targetText
         ...(targetText ? { targetExcerpt: excerpt(targetText) } : {}),
         ...(Number.isInteger(operationIndex) ? { operationIndex } : {}),
         recovery: {
-            action: 'apply_plain_text_or_convert_in_host',
-            hint: 'Pass listMarkers: "literal" to write the marker as text intentionally, or convert the paragraph to a list item in the host.',
+            action: 'use_list_format_convert_plain',
+            hint: suggestedOperation
+                ? 'Keep the paragraph text as it is and send a list-format operation on the same target (recovery.suggestedOperation plus your target), or pass listMarkers: "literal" to write the marker as text intentionally.'
+                : 'Edit the text with a redline that starts with the typed marker, then convert it with a list-format convert-plain operation (strip: "marker"), or pass listMarkers: "literal" to write the marker as text intentionally.',
+            ...(suggestedOperation ? { suggestedOperation } : {}),
             field: 'listMarkers',
             allowedValue: 'literal'
         }
