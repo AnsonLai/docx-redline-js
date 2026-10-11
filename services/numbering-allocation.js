@@ -192,7 +192,7 @@ function valOfIlvl(element) {
  *   numberingIdState: object,
  *   sourceNumberingXml?: string|null,
  *   sourceNumId?: number|string|null,
- *   levels?: Array<{ ilvl: number, numFmt?: string, lvlText?: string, start?: number }>,
+ *   levels?: Array<{ ilvl: number, numFmt?: string, lvlText?: string, start?: number, dropChildren?: string[], dropRunFonts?: boolean }>,
  *   startOverrides?: Record<number|string, number>
  * }} params
  * @returns {{ numId: number, abstractNumId: number, numberingXml: string }|null} `null` when no ids can be reserved
@@ -230,6 +230,17 @@ export function allocateNumberingDefinition(params) {
             if (redefinition.numFmt != null) setLvlChildVal(doc, lvl, 'numFmt', redefinition.numFmt);
             if (redefinition.lvlText != null) setLvlChildVal(doc, lvl, 'lvlText', redefinition.lvlText);
             if (redefinition.start != null) setLvlChildVal(doc, lvl, 'start', redefinition.start);
+            // A format change must not keep children that override the new format (w:isLgl forces arabic numbers,
+            // w:lvlPicBulletId a picture bullet) or the bullet's symbol font (digits in Symbol/Wingdings).
+            for (const name of redefinition.dropChildren || []) {
+                for (const child of wordChildren(lvl, name)) lvl.removeChild(child);
+            }
+            if (redefinition.dropRunFonts) {
+                for (const rPr of wordChildren(lvl, 'rPr')) {
+                    for (const fonts of wordChildren(rPr, 'rFonts')) rPr.removeChild(fonts);
+                    if (!Array.from(rPr.childNodes || []).some(child => child.nodeType === 1)) lvl.removeChild(rPr);
+                }
+            }
         }
         abstract.appendChild(lvl);
     }

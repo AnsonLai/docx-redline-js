@@ -96,7 +96,7 @@ assert.equal(listConversion.listMarker, 'A.');
 assert.notEqual(listConversion.code, 'REVISION_FIDELITY_VIOLATION');
 const listFormatChange = normalizeErrorWithRecovery({ code: 'UNSUPPORTED_LIST_FORMAT_CHANGE', message: 'The list keeps its source format.' });
 assert.equal(listFormatChange.stage, 'list-conversion');
-assert.equal(listFormatChange.recovery.action, 'change_list_format_in_host');
+assert.equal(listFormatChange.recovery.action, 'use_list_format_change_format');
 
 const unsafeBoundary = normalizeErrorWithRecovery({
     code: 'SECTION_BREAK_PARAGRAPH',

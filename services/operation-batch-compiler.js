@@ -348,6 +348,28 @@ export function compileOperationBatch(xmlDoc, operations = [], options = {}) {
                     binding.sourceIds = [...new Set(binding.sourceIds)];
                     binding.resolvedTargetEnd = end.metadata;
                 }
+
+                // list-format join reads (never writes) the paragraph it continues; bind it at batch start too.
+                if (operation.operationKind === 'list-format' && operation.list?.continueFrom && typeof operation.list.continueFrom === 'object') {
+                    let continueFrom;
+                    try {
+                        continueFrom = resolveDescriptor(
+                            xmlDoc,
+                            normalizeTargetDescriptor(operation.list.continueFrom, null, 'accepted'),
+                            operation.operationKind,
+                            strictTargets,
+                            metadataIndices,
+                            {
+                                onInfo: options.onInfo,
+                                onWarn: warning => binding.warnings.push(String(warning))
+                            }
+                        );
+                    } catch (error) {
+                        throw Object.assign(error instanceof Error ? error : new Error(String(error)), { field: 'list.continueFrom' });
+                    }
+                    compiled._compiledContinueFromId = registry.register(continueFrom.paragraph, continueFrom.metadata);
+                    binding.resolvedContinueFrom = continueFrom.metadata;
+                }
             } catch (error) {
                 binding.error = normalizedError(error);
             }

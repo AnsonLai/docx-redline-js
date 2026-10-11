@@ -87,9 +87,10 @@ import {
     extractFirstParagraphNumId,
     buildExplicitDecimalMultilevelNumberingXml
 } from './numbering-helpers.js';
-import { allocateNumberingForReplacement, checkNumberingBinding } from './numbering-allocation.js';
+import { allocateNumberingForReplacement, checkNumberingBinding, mergeNumberingParts } from './numbering-allocation.js';
 import { convertPlainParagraphsToList } from './list-format-mutation.js';
-import { normalizeListFormatRequest } from './list-format.js';
+import { changeListParagraphsFormat, joinListParagraphs } from './list-format-change.js';
+import { LIST_FORMAT_UNCHANGED, normalizeListFormatRequest } from './list-format.js';
 import {
     extractReplacementNodesFromOoxml,
     normalizeBodySectionOrderStandalone
@@ -3042,7 +3043,17 @@ export async function applyListFormatToParagraphByExactText(
         };
     }
     const allParagraphs = getDocumentParagraphNodes(xmlDoc);
-    const conversion = convertPlainParagraphsToList(xmlDoc, paragraphs, normalizeListFormatRequest(list), {
+    const request = normalizeListFormatRequest(list);
+    if (request.mode === 'change-format' || request.mode === 'join') {
+        return applyListRebinding(xmlDoc, paragraphs, request, {
+            documentXml, serializer, operationSession, runtimeContext, options, author, generateRedlines, onInfo, onWarn,
+            paragraphIndexOf: paragraph => {
+                const index = allParagraphs.indexOf(paragraph);
+                return index >= 0 ? index + 1 : null;
+            }
+        });
+    }
+    const conversion = convertPlainParagraphsToList(xmlDoc, paragraphs, request, {
         author: author || getDefaultAuthor(),
         generateRedlines,
         revisionIdAllocator,
@@ -3079,6 +3090,94 @@ export async function applyListFormatToParagraphByExactText(
                 numId: item.numId
             })),
             skipped: conversion.skipped.map(item => ({ paragraphIndex: item.paragraphIndex, reason: item.reason }))
+        }
+    };
+}
+
+/**
+ * `list-format` `change-format` / `join`: rebinds existing list items (see services/list-format-change.js). The
+ * definitions are read from the source numbering part plus the parts earlier operations of this batch allocated,
+ * so a later operation can change a list an earlier one created or rebound.
+ */
+function applyListRebinding(xmlDoc, paragraphs, request, ctx) {
+    const { documentXml, serializer, operationSession, runtimeContext, options, author, generateRedlines, onInfo, paragraphIndexOf } = ctx;
+    const refused = error => ({ documentXml, hasChanges: false, status: 'error', error });
+    const sourceNumberingXml = runtimeContext?.numberingIdState?.sourceNumberingXml
+        || runtimeContext?.numberingXml
+        || options.numberingXml
+        || '';
+    const pendingParts = Array.isArray(operationSession?.numberingXmlParts) ? operationSession.numberingXmlParts : [];
+    const numberingXml = pendingParts.length > 0 ? mergeNumberingParts(sourceNumberingXml, pendingParts) : sourceNumberingXml;
+    const shared = {
+        author: author || getDefaultAuthor(),
+        generateRedlines,
+        runtimeContext,
+        stylesXml: runtimeContext?.stylesXml || options.stylesXml || null,
+        numberingXml,
+        paragraphIndexOf
+    };
+
+    let outcome;
+    if (request.mode === 'join') {
+        const descriptor = options.continueFromDescriptor || null;
+        const resolved = descriptor
+            ? resolveTargetParagraph(xmlDoc, descriptor.text || '', descriptor.index ?? null, 'list-format', runtimeContext, {
+                ...options,
+                targetDescriptor: descriptor,
+                _compiledSourceId: options._compiledContinueFromId || null,
+                _compiledResolvedBy: null,
+                _resolutionCapture: null
+            })
+            : null;
+        if (!resolved?.paragraph) {
+            return refused({
+                code: resolved?.error?.code || 'TARGET_NOT_FOUND',
+                message: `list.continueFrom: ${resolved?.error?.message || 'paragraph not found.'}`,
+                field: 'list.continueFrom'
+            });
+        }
+        outcome = joinListParagraphs(xmlDoc, paragraphs, resolved.paragraph, request, shared);
+    } else {
+        outcome = changeListParagraphsFormat(xmlDoc, paragraphs, request, shared);
+    }
+    if (!outcome.ok) return refused(outcome.error);
+    if (outcome.unchanged) {
+        const warning = `${LIST_FORMAT_UNCHANGED}: ${outcome.message}`;
+        ctx.onWarn?.(warning);
+        return { documentXml, hasChanges: false, status: 'ok', warnings: [warning] };
+    }
+
+    for (const item of outcome.items) {
+        ensureParagraphIdsOnImportedNode(item.paragraph, operationSession);
+        options?._mutationLiveNodes?.push(item.paragraph);
+    }
+    for (const numId of outcome.allocatedNumIds) operationSession?.receiptCollector?.recordNumbering(numId);
+    normalizeBodySectionOrder(xmlDoc);
+    const outside = outcome.items.filter(item => !item.inTarget).length;
+    onInfo(`[List] list-format ${outcome.mode} (${outcome.scope}) rebound ${outcome.items.length} paragraph(s) from numId ${outcome.sourceNumId} to numId ${outcome.numId}${outside ? ` (${outside} outside the target range)` : ''}.`);
+
+    return {
+        documentXml: completedDocumentXml(xmlDoc, serializer, documentXml, operationSession),
+        hasChanges: true,
+        status: 'ok',
+        numberingXml: outcome.numberingXml,
+        list: {
+            mode: outcome.mode,
+            scope: outcome.scope,
+            sourceNumId: outcome.sourceNumId,
+            numId: outcome.numId,
+            ...(outcome.mode === 'change-format'
+                ? { format: outcome.format, level: outcome.level, lvlText: outcome.lvlText, startOverrides: outcome.startOverrides }
+                : { continueFrom: outcome.continueFrom }),
+            items: outcome.items.map(item => ({
+                paragraphIndex: item.paragraphIndex,
+                paragraphId: getParagraphId(item.paragraph),
+                level: item.level,
+                numId: item.numId,
+                sourceNumId: item.sourceNumId,
+                inTarget: item.inTarget
+            })),
+            skipped: outcome.skipped.map(item => ({ paragraphIndex: item.paragraphIndex, reason: item.reason }))
         }
     };
 }

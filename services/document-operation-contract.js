@@ -572,7 +572,7 @@ export function validateDocumentOperation(operation) {
                     field: shapeError.field,
                     recovery: {
                         action: 'change_request',
-                        hint: 'Pass list as { "mode": "convert-plain" } (optional format, kind, level, strip "marker" | "none", start with strip "none").'
+                        hint: 'Pass list as { "mode": "convert-plain" } (optional format, kind, level, strip "marker" | "none", start with strip "none"), { "mode": "change-format", "format": ... } (optional kind, lvlText, start, level, scope "list" | "range") or { "mode": "join", "continueFrom": { "paragraphId": ... } } (optional scope).'
                     }
                 }
             };

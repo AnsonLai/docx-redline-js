@@ -195,19 +195,26 @@ export function buildListFormatDiagnostic(mismatch, { policy, numId, level, mark
     const isError = policy === 'error';
     const code = isError ? UNSUPPORTED_LIST_FORMAT_CHANGE : LIST_FORMAT_NOT_APPLIED;
     const describe = (kind, format) => (kind === 'bullet' ? 'a bullet list' : `a numbered list${format ? ` (${format})` : ''}`);
-    const requestedText = describe(mismatch.requested.kind, mismatch.requested.numFmt || mismatch.requested.format);
+    const requestedFormat = mismatch.requested.kind === 'bullet' ? 'bullet' : (mismatch.requested.numFmt || mismatch.requested.format);
+    const requestedText = describe(mismatch.requested.kind, requestedFormat);
     const sourceText = describe(mismatch.source.kind, mismatch.source.numFmt);
+    const suggestedOperation = COMPARABLE_NUM_FMTS.has(requestedFormat)
+        ? { type: 'list-format', list: { mode: 'change-format', format: requestedFormat, level: Number(level) || 0, scope: 'list' } }
+        : null;
     return {
         code,
         severity: isError ? 'error' : 'warning',
-        message: `${isError ? 'Changing the list format is not supported by text edits' : 'The requested list format was not applied'}: the list item keeps its source numbering definition (numId ${numId}, ${sourceText}); the edit asked for ${requestedText}${marker ? ` ("${marker}")` : ''}.`,
-        requestedList: { kind: mismatch.requested.kind, format: mismatch.requested.numFmt || mismatch.requested.format },
+        message: `${isError ? 'Changing the list format is not supported by text edits' : 'The requested list format was not applied'}: the list item keeps its source numbering definition (numId ${numId}, ${sourceText}); the edit asked for ${requestedText}${marker ? ` ("${marker}")` : ''}. A list-format change-format operation changes the list's format (capability list-format-change-v1).`,
+        requestedList: { kind: mismatch.requested.kind, format: requestedFormat },
         sourceList: { numId: String(numId), level: Number(level) || 0, kind: mismatch.source.kind, format: mismatch.source.numFmt },
         ...(targetText ? { targetExcerpt: excerpt(targetText) } : {}),
         ...(Number.isInteger(operationIndex) ? { operationIndex } : {}),
         recovery: {
-            action: 'change_list_format_in_host',
-            hint: 'Text edits cannot change a list\'s kind or numbering format. Keep the existing format, change it in the host, or pass listMarkers: "literal" to accept the current result.',
+            action: 'use_list_format_change_format',
+            hint: suggestedOperation
+                ? 'Text edits cannot change a list\'s kind or numbering format. Send recovery.suggestedOperation with a target on one item of the list as its own operation (scope "list" rebinds every item; scope "range" only a range that runs to the end of the list). Make any text edit in a separate redline without the new markers, targeting a different paragraph or a separate call. Or pass listMarkers: "literal" to accept the current result.'
+                : 'Text edits cannot change a list\'s kind or numbering format. Use a list-format change-format operation, or pass listMarkers: "literal" to accept the current result.',
+            ...(suggestedOperation ? { suggestedOperation } : {}),
             field: 'listMarkers',
             allowedValue: 'literal'
         }

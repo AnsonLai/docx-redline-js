@@ -56,8 +56,12 @@ export const OPERATION_KINDS = [
     'paragraph-format-numbering',
     'plain-to-list',
     'list-format-convert-plain',
+    'list-format-change-format',
+    'list-format-join',
     'last-paragraph-replace'
 ];
+
+const LIST_FORMATS = ['decimal', 'upperLetter', 'lowerLetter', 'upperRoman', 'lowerRoman', 'bullet'];
 
 // Typed header markers, read from inspected text with a regex of our own (not the library's grammar).
 const TYPED_MARKER = /^(?:(\d{1,3})|([A-Za-z]))([.)])[ \t]+(\S[\s\S]*)$|^([-•])[ \t]+(\S[\s\S]*)$/;
@@ -272,6 +276,39 @@ export function generateOperation(rng, paragraphs, kind, serial = 0) {
             return { kind, paragraphIndex: start.i, expectAccepted: span.map(entry => entry.marker.rest),
                 operation: { operationId, type: 'list-format', target: targetOf(start.q),
                     ...(end !== start ? { targetEnd: targetOf(end.q) } : {}), list } };
+        }
+        case 'list-format-change-format': {
+            // A list item; the whole list (scope list) or the range from it to the list's last item in the same
+            // container (scope range), redefined at the item's level to another format.
+            const listed = indexed.filter(({ q }) => q.list && q.list.numId != null);
+            if (listed.length === 0) return null;
+            const site = rng.pick(listed);
+            const level = Number.isInteger(Number(site.q.list.level)) ? Number(site.q.list.level) : 0;
+            const format = rng.pick(LIST_FORMATS.filter(item => item !== site.q.list.format));
+            const sameList = listed.filter(({ q }) => String(q.list.numId) === String(site.q.list.numId));
+            const last = sameList[sameList.length - 1];
+            const sameContainer = Boolean(last.q.inTable) === Boolean(site.q.inTable)
+                && JSON.stringify(last.q.table || null) === JSON.stringify(site.q.table || null);
+            const range = rng.chance(0.4) && sameContainer && last.i >= site.i;
+            return { kind, paragraphIndex: site.i, expectAccepted: [],
+                operation: { operationId, type: 'list-format', target: targetOf(site.q),
+                    ...(range && last.i > site.i ? { targetEnd: targetOf(last.q) } : {}),
+                    list: { mode: 'change-format', format, level, ...(range ? { scope: 'range' } : {}) } } };
+        }
+        case 'list-format-join': {
+            // A later list continues an earlier, different list.
+            const listed = indexed.filter(({ q }) => q.list && q.list.numId != null);
+            const pairs = [];
+            for (const a of listed) {
+                for (const b of listed) {
+                    if (b.i > a.i && String(b.q.list.numId) !== String(a.q.list.numId)) pairs.push([a, b]);
+                }
+            }
+            if (pairs.length === 0) return null;
+            const [from, site] = rng.pick(pairs);
+            return { kind, paragraphIndex: site.i, expectAccepted: [],
+                operation: { operationId, type: 'list-format', target: targetOf(site.q),
+                    list: { mode: 'join', continueFrom: targetOf(from.q), ...(rng.chance(0.3) ? { scope: 'range' } : {}) } } };
         }
         case 'last-paragraph-replace': {
             let index = n - 1;

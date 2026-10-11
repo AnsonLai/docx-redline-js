@@ -61,7 +61,7 @@ const excerpt = (text, limit = 80) => {
 const localName = node => String(node?.localName || node?.nodeName || '').replace(/^.*:/, '');
 const readVal = element => element?.getAttribute?.('w:val') ?? element?.getAttribute?.('val') ?? null;
 
-function refusal(code, message, extra = {}, recovery = null) {
+export function refusal(code, message, extra = {}, recovery = null) {
     return { ok: false, error: { code, message, ...extra, ...(recovery ? { recovery } : {}) } };
 }
 
@@ -69,7 +69,7 @@ function refusal(code, message, extra = {}, recovery = null) {
 // Style-linked numbering
 // ---------------------------------------------------------------------------------------------------------
 
-function parseStyles(stylesXml) {
+export function parseStyles(stylesXml) {
     const text = String(stylesXml || '');
     if (!text.trim()) return null;
     const parsed = parseOoxmlSafe(text, 'application/xml');
@@ -80,7 +80,7 @@ function parseStyles(stylesXml) {
  * The numId a paragraph style (or its `w:basedOn` ancestors) binds, or null. A paragraph that is numbered by its
  * style is already a list item; converting it would stack a second binding over the style's list.
  */
-function styleNumbering(stylesDoc, styleId) {
+export function styleNumbering(stylesDoc, styleId) {
     if (!stylesDoc) return null;
     const styles = Array.from(stylesDoc.getElementsByTagNameNS('*', 'style'))
         .filter(style => (style.getAttribute('w:type') ?? style.getAttribute('type')) === 'paragraph');
@@ -184,7 +184,7 @@ function sequenceMapOf(runtimeContext) {
     return state.explicitByNumberingKey;
 }
 
-function numberingIdStateOf(runtimeContext, options) {
+export function numberingIdStateOf(runtimeContext, options) {
     if (runtimeContext?.numberingIdState) return runtimeContext.numberingIdState;
     const state = createDynamicNumberingIdState(runtimeContext?.numberingXml || options?.numberingXml || undefined);
     if (runtimeContext && typeof runtimeContext === 'object') runtimeContext.numberingIdState = state;

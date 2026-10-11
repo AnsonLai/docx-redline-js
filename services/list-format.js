@@ -9,20 +9,38 @@
  *
  * The grammar is deliberately narrow: anything it cannot classify exactly is refused with a recovery-enveloped
  * code rather than guessed (single roman-looking letters, mixed families, multi-level `2.1.`, `(a)`).
+ *
+ * `change-format` and `join` (WP-5, capability `list-format-change-v1`) rebind existing list items; their DOM core is
+ * `services/list-format-change.js`. This module validates their shape (`scope`, `lvlText`, `continueFrom`).
  */
 
-export const LIST_FORMAT_MODES = Object.freeze(['convert-plain']);
+export const LIST_FORMAT_MODES = Object.freeze(['convert-plain', 'change-format', 'join']);
 export const LIST_FORMAT_FORMATS = Object.freeze(['decimal', 'upperLetter', 'lowerLetter', 'upperRoman', 'lowerRoman', 'bullet']);
 export const LIST_FORMAT_STRIP_VALUES = Object.freeze(['marker', 'none']);
-const LIST_KEYS = Object.freeze(['mode', 'kind', 'format', 'start', 'level', 'strip']);
-/** Keys of the planned contract that later work packages implement (change-format, join, detach). */
-const LATER_KEYS = Object.freeze(['lvlText', 'continueFrom', 'scope', 'materializeMarker']);
+export const LIST_FORMAT_SCOPES = Object.freeze(['list', 'range']);
+/** Keys each mode accepts (`list-format-v1`: convert-plain; `list-format-change-v1`: change-format and join). */
+const MODE_KEYS = Object.freeze({
+    'convert-plain': Object.freeze(['mode', 'kind', 'format', 'start', 'level', 'strip']),
+    'change-format': Object.freeze(['mode', 'kind', 'format', 'lvlText', 'start', 'level', 'scope']),
+    join: Object.freeze(['mode', 'continueFrom', 'scope'])
+});
+/** Keys of the planned contract that a later work package implements (detach). */
+const LATER_KEYS = Object.freeze(['materializeMarker']);
+const ALL_KEYS = new Set([...Object.values(MODE_KEYS).flat(), ...LATER_KEYS]);
 
 export const LIST_MARKER_NOT_FOUND = 'LIST_MARKER_NOT_FOUND';
 export const LIST_MARKER_AMBIGUOUS = 'LIST_MARKER_AMBIGUOUS';
 export const LIST_MARKER_UNSUPPORTED = 'LIST_MARKER_UNSUPPORTED';
 export const LIST_FORMAT_TARGET_IS_LIST = 'LIST_FORMAT_TARGET_IS_LIST';
 export const LIST_FORMAT_STYLE_NUMBERED = 'LIST_FORMAT_STYLE_NUMBERED';
+// change-format and join (list-format-change-v1)
+export const LIST_FORMAT_TARGET_NOT_LIST = 'LIST_FORMAT_TARGET_NOT_LIST';
+export const LIST_FORMAT_MIXED_RANGE = 'LIST_FORMAT_MIXED_RANGE';
+export const LIST_FORMAT_STYLE_LINKED = 'LIST_FORMAT_STYLE_LINKED';
+export const LIST_FORMAT_SPLIT_UNSUPPORTED = 'LIST_FORMAT_SPLIT_UNSUPPORTED';
+export const LIST_FORMAT_DEFINITION_UNSUPPORTED = 'LIST_FORMAT_DEFINITION_UNSUPPORTED';
+export const LIST_FORMAT_JOIN_INVALID = 'LIST_FORMAT_JOIN_INVALID';
+export const LIST_FORMAT_UNCHANGED = 'LIST_FORMAT_UNCHANGED';
 
 const BULLET_CHARS = '•\\-*–·▪◦';
 const SPACE = '[ \\t\\u00a0]';
@@ -37,30 +55,99 @@ function isRecord(value) {
     return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
-/** Validates `operation.list` for `list-format`. Returns an error message (with `field`) or null. */
-export function validateListFormatShape(list) {
-    if (!isRecord(list)) return { message: 'list-format operations require a "list" object.', field: 'list' };
-    const later = Object.keys(list).filter(key => LATER_KEYS.includes(key));
-    if (later.length > 0) {
-        return { message: `list.${later[0]} is not supported by list-format-v1 (convert-plain only).`, field: `list.${later[0]}` };
-    }
-    const unknown = Object.keys(list).filter(key => !LIST_KEYS.includes(key));
-    if (unknown.length > 0) return { message: `list has unsupported ${unknown.length === 1 ? 'key' : 'keys'}: ${unknown.join(', ')}.`, field: `list.${unknown[0]}` };
-    if (list.mode !== 'convert-plain') {
-        return { message: 'list.mode must be "convert-plain" (change-format, join and detach are not available in list-format-v1).', field: 'list.mode' };
-    }
+const fieldError = (message, field) => ({ message, field });
+
+function validateFormatAndKind(list) {
     if (list.format != null && !LIST_FORMAT_FORMATS.includes(list.format)) {
-        return { message: `list.format must be one of: ${LIST_FORMAT_FORMATS.join(', ')}.`, field: 'list.format' };
+        return fieldError(`list.format must be one of: ${LIST_FORMAT_FORMATS.join(', ')}.`, 'list.format');
     }
     if (list.kind != null && list.kind !== 'bullet' && list.kind !== 'numbered') {
-        return { message: 'list.kind must be "bullet" or "numbered".', field: 'list.kind' };
+        return fieldError('list.kind must be "bullet" or "numbered".', 'list.kind');
     }
     if (list.kind != null && list.format != null && (list.kind === 'bullet') !== (list.format === 'bullet')) {
-        return { message: `list.kind "${list.kind}" contradicts list.format "${list.format}".`, field: 'list.kind' };
+        return fieldError(`list.kind "${list.kind}" contradicts list.format "${list.format}".`, 'list.kind');
     }
     if (list.level != null && !(Number.isInteger(list.level) && list.level >= 0 && list.level <= 8)) {
-        return { message: 'list.level must be an integer from 0 to 8.', field: 'list.level' };
+        return fieldError('list.level must be an integer from 0 to 8.', 'list.level');
     }
+    return null;
+}
+
+/**
+ * Checks a `w:lvlText` value. Numbered levels use `%1`..`%9` placeholders and, once the level is known, must contain
+ * their own placeholder and no deeper one; bullet levels are one to four literal characters. Returns a message or null.
+ */
+export function validateLevelText(lvlText, { bullet = false, level = null } = {}) {
+    if (typeof lvlText !== 'string' || lvlText.length < 1 || lvlText.length > 32) return 'list.lvlText must be a string of 1 to 32 characters.';
+    const placeholders = lvlText.match(/%./g) || [];
+    if (bullet) {
+        if (lvlText.includes('%') || lvlText.length > 4) return 'A bullet list.lvlText is the bullet itself: 1 to 4 characters without % placeholders.';
+        return null;
+    }
+    if (placeholders.length === 0) return 'A numbered list.lvlText needs a %1..%9 placeholder (for example "%1." or "(%1)").';
+    if (placeholders.some(item => !/^%[1-9]$/.test(item))) return 'list.lvlText placeholders must be %1 to %9.';
+    if (level != null) {
+        if (!placeholders.includes(`%${level + 1}`)) return `list.lvlText for level ${level} must contain its own placeholder %${level + 1}.`;
+        if (placeholders.some(item => Number(item.slice(1)) > level + 1)) return `list.lvlText for level ${level} cannot reference a deeper level than %${level + 1}.`;
+    }
+    return null;
+}
+
+function validateContinueFrom(target) {
+    if (!isRecord(target)) {
+        return fieldError('join needs list.continueFrom: a paragraph target { paragraphId, fingerprint?, exactText? } of an item of the list to continue.', 'list.continueFrom');
+    }
+    const strong = ['paragraphId', 'fingerprint', 'exactText', 'text'].some(key => typeof target[key] === 'string' && target[key].trim());
+    if (!strong) return fieldError('list.continueFrom needs paragraphId, fingerprint or exactText.', 'list.continueFrom');
+    if (target.captureRef != null || target.occurrence != null || (target.revisionView != null && target.revisionView !== 'accepted')) {
+        return fieldError('list.continueFrom targets a batch-start accepted-view paragraph (no captureRef, occurrence or rejected view).', 'list.continueFrom');
+    }
+    return null;
+}
+
+/** Validates `operation.list` for `list-format`. Returns an error message (with `field`) or null. */
+export function validateListFormatShape(list) {
+    if (!isRecord(list)) return fieldError('list-format operations require a "list" object.', 'list');
+    const unknown = Object.keys(list).filter(key => !ALL_KEYS.has(key));
+    if (unknown.length > 0) return fieldError(`list has unsupported ${unknown.length === 1 ? 'key' : 'keys'}: ${unknown.join(', ')}.`, `list.${unknown[0]}`);
+    const later = Object.keys(list).filter(key => LATER_KEYS.includes(key));
+    if (later.length > 0) return fieldError(`list.${later[0]} is not supported yet (detach is a later release).`, `list.${later[0]}`);
+    if (!LIST_FORMAT_MODES.includes(list.mode)) {
+        return fieldError(`list.mode must be one of: ${LIST_FORMAT_MODES.join(', ')} (detach is not available yet).`, 'list.mode');
+    }
+    const foreign = Object.keys(list).filter(key => !MODE_KEYS[list.mode].includes(key));
+    if (foreign.length > 0) {
+        return fieldError(`list.${foreign[0]} does not apply to mode "${list.mode}" (it accepts: ${MODE_KEYS[list.mode].filter(key => key !== 'mode').join(', ')}).`, `list.${foreign[0]}`);
+    }
+    if (list.scope != null && !LIST_FORMAT_SCOPES.includes(list.scope)) {
+        return fieldError('list.scope must be "list" (every paragraph of the target\'s list) or "range" (only the target range).', 'list.scope');
+    }
+    const shapeError = validateFormatAndKind(list);
+    if (shapeError) return shapeError;
+
+    if (list.mode === 'join') return validateContinueFrom(list.continueFrom);
+
+    if (list.mode === 'change-format') {
+        if (list.format == null && list.kind == null && list.lvlText == null && list.start == null) {
+            return fieldError('change-format needs at least one of list.format, list.kind, list.lvlText or list.start.', 'list.format');
+        }
+        if (list.kind === 'numbered' && list.format == null) {
+            return fieldError('kind "numbered" does not say which numbering format; pass list.format (decimal, upperLetter, lowerLetter, upperRoman or lowerRoman).', 'list.format');
+        }
+        if (list.lvlText != null) {
+            const bullet = (list.format ?? (list.kind === 'bullet' ? 'bullet' : null)) === 'bullet';
+            const message = validateLevelText(list.lvlText, { bullet, level: Number.isInteger(list.level) ? list.level : null });
+            if (message) return fieldError(message, 'list.lvlText');
+        }
+        if (list.start != null) {
+            if (!(Number.isInteger(list.start) && list.start >= 1 && list.start <= 32767)) return fieldError('list.start must be an integer from 1 to 32767.', 'list.start');
+            if (list.scope === 'range') {
+                return fieldError('scope "range" continues the source count across the split; list.start applies to scope "list" only.', 'list.start');
+            }
+        }
+        return null;
+    }
+
     if (list.strip != null && !LIST_FORMAT_STRIP_VALUES.includes(list.strip)) {
         return { message: 'list.strip must be "marker" or "none".', field: 'list.strip' };
     }
@@ -87,8 +174,13 @@ export function normalizeListFormatRequest(list) {
         format,
         kind: format ? (format === 'bullet' ? 'bullet' : 'numbered') : (list.kind || null),
         level: Number.isInteger(list.level) ? list.level : 0,
+        // change-format: null means "the level the target paragraphs use".
+        explicitLevel: Number.isInteger(list.level) ? list.level : null,
         strip: list.strip || 'marker',
-        start: Number.isInteger(list.start) ? list.start : null
+        start: Number.isInteger(list.start) ? list.start : null,
+        lvlText: typeof list.lvlText === 'string' ? list.lvlText : null,
+        scope: list.scope || 'list',
+        continueFrom: list.continueFrom ?? null
     };
 }
 

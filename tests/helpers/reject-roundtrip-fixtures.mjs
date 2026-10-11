@@ -24,6 +24,8 @@ const run = (text, rPr = '') => `<w:r>${rPr ? `<w:rPr>${rPr}</w:rPr>` : ''}${t(t
 const p = (inner, pPr = '') => `<w:p>${pPr ? `<w:pPr>${pPr}</w:pPr>` : ''}${inner}</w:p>`;
 const bullet = (inner, ilvl = 0) => p(inner, `<w:numPr><w:ilvl w:val="${ilvl}"/><w:numId w:val="1"/></w:numPr>`);
 const decimal = (inner, ilvl = 0) => p(inner, `<w:numPr><w:ilvl w:val="${ilvl}"/><w:numId w:val="2"/></w:numPr>`);
+// numId 3: the template's legal-style decimal list (level 1 label "%1.%2.").
+const legal = (inner, ilvl = 0) => p(inner, `<w:numPr><w:ilvl w:val="${ilvl}"/><w:numId w:val="3"/></w:numPr>`);
 const link = (rid, text) => `<w:hyperlink r:id="${rid}" w:history="1"><w:r><w:rPr><w:rStyle w:val="Hyperlink"/></w:rPr>${t(text)}</w:r></w:hyperlink>`;
 const ins = (id, author, inner) => `<w:ins ${META(id, author)}>${inner}</w:ins>`;
 const del = (id, author, text) => `<w:del ${META(id, author)}><w:r><w:delText xml:space="preserve">${text}</w:delText></w:r></w:del>`;
@@ -89,6 +91,24 @@ export const SYNTHETIC_BODIES = {
         p(link('rIdMatrixLink1', 'D. ') + run('Linked marker heading')),
         tbl([[p(run('a. Cell heading')), p(run('b. Second cell heading'))]]),
         p(run('Closing paragraph without a marker.'))
+    ],
+    // change-format / join (WP-5): adjacent lists of three definitions, nested levels, a body paragraph between
+    // items, a list item another reviewer deleted, and a list inside a table cell.
+    'adjacent-lists': [
+        p(run('Intro before the lists.')),
+        decimal(run('Decimal step one')),
+        decimal(run('Decimal step two')),
+        decimal(run('Decimal step two detail'), 1),
+        p(run('Body text between the items.')),
+        decimal(run('Decimal step three')),
+        legal(run('Legal clause one')),
+        legal(run('Legal clause one point one'), 1),
+        legal(run('Legal clause two')),
+        p(del(951, 'Bob Reviewer', 'Removed legal clause'), `<w:numPr><w:ilvl w:val="0"/><w:numId w:val="3"/></w:numPr><w:rPr><w:del ${META(950, 'Bob Reviewer')}/></w:rPr>`),
+        bullet(run('Bullet after the lists')),
+        bullet(run('Bullet nested after the lists'), 1),
+        tbl([[bullet(run('Bullet in a cell')), bullet(run('Second bullet in a cell'))]]),
+        p(run('Outro after the lists.'))
     ],
     'last-body-paragraph': [
         p(run('First clause of the agreement.')),

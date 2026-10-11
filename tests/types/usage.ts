@@ -67,6 +67,16 @@ const operations: DocumentOperation[] = [
     target: { paragraphId: '1A2B3C4D', exactText: 'A. Scope' },
     targetEnd: { exactText: 'C. Term' },
     list: { mode: 'convert-plain', format: 'upperLetter', strip: 'marker' }
+  },
+  {
+    type: 'list-format',
+    target: { paragraphId: '1A2B3C4D' },
+    list: { mode: 'change-format', format: 'upperRoman', lvlText: '%1)', level: 0, scope: 'list' }
+  },
+  {
+    type: 'list-format',
+    target: { paragraphId: '2B3C4D5E' },
+    list: { mode: 'join', continueFrom: { paragraphId: '1A2B3C4D' }, scope: 'range' }
   }
 ];
 

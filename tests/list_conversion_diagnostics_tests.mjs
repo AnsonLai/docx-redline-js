@@ -143,7 +143,7 @@ for (const [target, modified] of [
     assert.equal(diagnostic.severity, 'warning');
     assert.deepEqual(diagnostic.requestedList, { kind: 'numbered', format: 'decimal' });
     assert.deepEqual(diagnostic.sourceList, { numId: '1', level: 0, kind: 'bullet', format: 'bullet' });
-    assert.equal(diagnostic.recovery.action, 'change_list_format_in_host');
+    assert.equal(diagnostic.recovery.action, 'use_list_format_change_format');
     assert.ok(result.results[0].warnings.some(warning => warning.startsWith('LIST_FORMAT_NOT_APPLIED: ')));
     const kept = openDocx(result.toBuffer()).inspect({}).paragraphs.find(p => p.text === BULLET);
     assert.equal(kept.list.numId, '1', 'the paragraph still uses the bullet definition');
@@ -153,9 +153,16 @@ for (const [target, modified] of [
     assert.equal(strict.status, 'error');
     const error = strict.results[0].error;
     assert.equal(error.code, 'UNSUPPORTED_LIST_FORMAT_CHANGE');
-    assert.equal(error.recovery.action, 'change_list_format_in_host');
+    assert.equal(error.recovery.action, 'use_list_format_change_format');
     assert.deepEqual(error.sourceList, diagnostic.sourceList);
     assert.deepEqual(strict.toBuffer(), fixture);
+    // WP-5: the recovery names the list-format change-format request; following it (with a target) changes the list.
+    assert.deepEqual(error.recovery.suggestedOperation, { type: 'list-format', list: { mode: 'change-format', format: 'decimal', level: 0, scope: 'list' } });
+    const followed = await apply([{ ...error.recovery.suggestedOperation, target: { exactText: BULLET } }], { atomic: true });
+    assert.equal(followed.status, 'ok', JSON.stringify(followed.results?.[0]?.error || followed.error || null));
+    const changed = openDocx(followed.toBuffer()).inspect({}).paragraphs.find(p => p.text === BULLET);
+    assert.equal(changed.list.format, 'decimal');
+    assert.notEqual(changed.list.numId, '1', 'a new definition, never the shared one edited in place');
 
     const literal = await apply([{ ...operation, listMarkers: 'literal' }], { atomic: true });
     assert.equal(literal.status, 'ok');
@@ -211,7 +218,7 @@ for (const [target, modified] of [
 // Recovery metadata for the new codes.
 for (const [code, action] of [
     ['UNSUPPORTED_LIST_CONVERSION', 'use_list_format_convert_plain'],
-    ['UNSUPPORTED_LIST_FORMAT_CHANGE', 'change_list_format_in_host']
+    ['UNSUPPORTED_LIST_FORMAT_CHANGE', 'use_list_format_change_format']
 ]) {
     const normalized = normalizeErrorWithRecovery({ code, message: 'm' });
     assert.equal(normalized.stage, 'list-conversion');

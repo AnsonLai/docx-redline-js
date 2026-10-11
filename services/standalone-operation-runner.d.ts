@@ -71,7 +71,10 @@ export interface ListConversionDiagnostic {
     hint?: string;
     field?: string;
     allowedValue?: string;
-    /** LIST_MARKER_NOT_BOUND / UNSUPPORTED_LIST_CONVERSION: the list-format operation to send (add the same target). */
+    /**
+     * The list-format operation to send (add a target): convert-plain for LIST_MARKER_NOT_BOUND /
+     * UNSUPPORTED_LIST_CONVERSION, change-format (scope "list") for LIST_FORMAT_NOT_APPLIED / UNSUPPORTED_LIST_FORMAT_CHANGE.
+     */
     suggestedOperation?: { type: 'list-format'; list: ListFormatRequest };
   };
 }
@@ -222,8 +225,13 @@ export interface ParagraphFormatDocumentOperation extends DocumentOperationBase 
   properties: ParagraphFormatProperties;
 }
 
-/** `list-format` request (`list-format-v1`, CLI contract version 9). Only `convert-plain` is available. */
-export interface ListFormatRequest {
+export type ListNumberFormat = 'decimal' | 'upperLetter' | 'lowerLetter' | 'upperRoman' | 'lowerRoman' | 'bullet';
+
+/** `list-format` request. `convert-plain`: `list-format-v1` (CLI contract version 9); `change-format` and `join`: `list-format-change-v1`. */
+export type ListFormatRequest = ListFormatConvertPlainRequest | ListFormatChangeFormatRequest | ListFormatJoinRequest;
+
+/** `convert-plain` (`list-format-v1`): bind plain paragraphs to a NEW list. */
+export interface ListFormatConvertPlainRequest {
   mode: 'convert-plain';
   kind?: 'bullet' | 'numbered';
   /** Required with `strip: 'none'`; with `strip: 'marker'` it must match the typed markers (and disambiguates `I.`/`C.`). */
@@ -237,11 +245,44 @@ export interface ListFormatRequest {
 }
 
 /**
+ * `change-format` (`list-format-change-v1`): change the numbering format of the target's list. Allocates a NEW
+ * definition (copying the source levels and geometry, one level redefined) and rebinds the items with tracked
+ * `w:pPrChange`s; the shared definition is never edited, so Reject All restores the original labels.
+ */
+export interface ListFormatChangeFormatRequest {
+  mode: 'change-format';
+  kind?: 'bullet' | 'numbered';
+  /** The new format of the level (`kind: 'numbered'` alone is refused: name the format). */
+  format?: ListNumberFormat;
+  /** Level text: numbered `%1`..`%9` with the level's own placeholder (`"%1."`, `"(%2)"`); bullet: the bullet character. */
+  lvlText?: string;
+  /** Restart value of the level as a `w:startOverride` on the new instance; scope `'list'` only. */
+  start?: number;
+  /** The level to redefine; default: the one level the target paragraphs use. */
+  level?: number;
+  /** `'list'` (default): every live item of the list; `'range'`: the target range, which must run to the end of the list. */
+  scope?: 'list' | 'range';
+}
+
+/** `join` (`list-format-change-v1`): the target list (or a range running to its end) continues an earlier list. */
+export interface ListFormatJoinRequest {
+  mode: 'join';
+  /** An item of the earlier list to continue; bound at batch start like `target`. */
+  continueFrom: ParagraphTargetDescriptor;
+  scope?: 'list' | 'range';
+}
+
+/**
  * Binds plain paragraphs (target, or target..targetEnd in one container) to a NEW list definition in place. The
  * binding is a tracked `w:pPrChange`; the stripped marker is a tracked `w:del`. Each typed marker's value is the
  * item's value, so Accept All renders the labels the text showed. Body only (no `part`); text changes belong in a
  * separate `redline`. Refusals: LIST_MARKER_NOT_FOUND, LIST_MARKER_AMBIGUOUS, LIST_MARKER_UNSUPPORTED,
  * LIST_FORMAT_TARGET_IS_LIST, LIST_FORMAT_STYLE_NUMBERED, PARAGRAPH_FORMAT_REVISION_CONFLICT.
+ *
+ * `change-format` / `join` (`list-format-change-v1`) rebind existing list items with tracked `w:pPrChange`s.
+ * Refusals: LIST_FORMAT_TARGET_NOT_LIST, LIST_FORMAT_MIXED_RANGE, LIST_FORMAT_STYLE_LINKED, LIST_FORMAT_STYLE_NUMBERED,
+ * LIST_FORMAT_SPLIT_UNSUPPORTED, LIST_FORMAT_DEFINITION_UNSUPPORTED, LIST_FORMAT_JOIN_INVALID,
+ * PARAGRAPH_FORMAT_REVISION_CONFLICT; a no-op is `ok` with a LIST_FORMAT_UNCHANGED warning.
  */
 export interface ListFormatDocumentOperation extends Omit<DocumentOperationBase, 'part'> {
   type: 'list-format';
@@ -250,8 +291,11 @@ export interface ListFormatDocumentOperation extends Omit<DocumentOperationBase,
   targetEndRef?: number | string | null;
 }
 
-/** What a `list-format` operation bound (`result.list`). */
-export interface ListFormatResult {
+/** What a `list-format` operation bound or rebound (`result.list`). */
+export type ListFormatResult = ListFormatConvertPlainResult | ListFormatRebindResult;
+
+/** `convert-plain` result. */
+export interface ListFormatConvertPlainResult {
   mode: 'convert-plain';
   format: 'decimal' | 'upperLetter' | 'lowerLetter' | 'upperRoman' | 'lowerRoman' | 'bullet';
   level: number;
@@ -259,6 +303,24 @@ export interface ListFormatResult {
   items: Array<{ paragraphIndex: number; paragraphId: string | null; marker: string | null; value: number | null; numId: string }>;
   /** Paragraphs of the range left as they were: empty, or (strip 'marker') body text without a marker. */
   skipped: Array<{ paragraphIndex: number; reason: 'empty' | 'no-marker' }>;
+}
+
+/** `change-format` / `join` result: every paragraph rebound (scope `'list'` includes items outside the target). */
+export interface ListFormatRebindResult {
+  mode: 'change-format' | 'join';
+  scope: 'list' | 'range';
+  sourceNumId: string;
+  /** change-format: the newly allocated numId; join: the continued list's numId. */
+  numId: string;
+  format?: ListNumberFormat;
+  level?: number;
+  lvlText?: string;
+  /** change-format: per-level `w:startOverride` values on the new instance. */
+  startOverrides?: Record<string, number>;
+  continueFrom?: { paragraphIndex: number | null; numId: string };
+  items: Array<{ paragraphIndex: number | null; paragraphId: string | null; level: number; numId: string; sourceNumId: string; inTarget: boolean }>;
+  /** Tracked-deleted paragraphs in the range keep their binding. */
+  skipped: Array<{ paragraphIndex: number | null; reason: 'tracked-deleted' }>;
 }
 
 export type DocumentOperation =

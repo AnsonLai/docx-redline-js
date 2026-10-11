@@ -7,7 +7,7 @@ import { parseOoxmlSafe, createSerializer } from '../adapters/xml-adapter.js';
 import { unzipDocx, zipDocx } from '../document/zip-archive.js';
 import { applyOperationsToDocumentXml } from '../services/standalone-operation-runner.js';
 import { validateDocumentOperation } from '../services/document-operation-contract.js';
-import { mergeNumberingParts, validateNumberingIntegrity } from '../services/numbering-allocation.js';
+import { canonicalNumberingDefinition, mergeNumberingParts, validateNumberingIntegrity } from '../services/numbering-allocation.js';
 import { projectWordRevisionView } from '../core/word-revision-semantics.js';
 import { validateRedlineOoxml } from '../core/redline-validation.js';
 import { rejectTrackedChangesInOoxml, acceptTrackedChangesInOoxml } from '../services/revision-comment-management.js';
@@ -72,11 +72,28 @@ function definitionOf(numberingXml, numId, ilvl = 0) {
     assert.equal(ok({ mode: 'convert-plain', format: 'upperRoman', level: 2, strip: 'marker' }).valid, true);
     assert.equal(ok({ mode: 'convert-plain', format: 'decimal', strip: 'none', start: 4 }).valid, true);
     assert.equal(ok({ mode: 'convert-plain', kind: 'bullet', strip: 'none' }).valid, true);
+    assert.equal(ok({ mode: 'change-format', format: 'decimal' }).valid, true);
+    assert.equal(ok({ mode: 'change-format', kind: 'bullet', scope: 'range' }).valid, true);
+    assert.equal(ok({ mode: 'change-format', format: 'upperLetter', lvlText: '(%2)', level: 1, start: 3 }).valid, true);
+    assert.equal(ok({ mode: 'join', continueFrom: { paragraphId: '1A2B3C4D' } }).valid, true);
+    assert.equal(ok({ mode: 'join', continueFrom: { exactText: 'Item' }, scope: 'range' }).valid, true);
     for (const [label, list, field] of [
         ['missing list', undefined, 'list'],
-        ['change-format is WP-5', { mode: 'change-format', format: 'decimal' }, 'list.mode'],
-        ['join is WP-5', { mode: 'join' }, 'list.mode'],
-        ['scope is WP-5', { mode: 'convert-plain', scope: 'list' }, 'list.scope'],
+        ['detach is later', { mode: 'detach' }, 'list.mode'],
+        ['materializeMarker is later', { mode: 'convert-plain', materializeMarker: true }, 'list.materializeMarker'],
+        ['scope is not a convert-plain key', { mode: 'convert-plain', scope: 'list' }, 'list.scope'],
+        ['strip is not a change-format key', { mode: 'change-format', format: 'decimal', strip: 'none' }, 'list.strip'],
+        ['change-format needs something to change', { mode: 'change-format' }, 'list.format'],
+        ['numbered kind needs a format', { mode: 'change-format', kind: 'numbered' }, 'list.format'],
+        ['bad scope', { mode: 'change-format', format: 'decimal', scope: 'document' }, 'list.scope'],
+        ['lvlText without placeholder', { mode: 'change-format', format: 'decimal', lvlText: 'x.' }, 'list.lvlText'],
+        ['lvlText missing own level', { mode: 'change-format', format: 'decimal', level: 1, lvlText: '%1.' }, 'list.lvlText'],
+        ['bullet lvlText with placeholder', { mode: 'change-format', format: 'bullet', lvlText: '%1' }, 'list.lvlText'],
+        ['start with scope range', { mode: 'change-format', format: 'decimal', scope: 'range', start: 2 }, 'list.start'],
+        ['join needs continueFrom', { mode: 'join' }, 'list.continueFrom'],
+        ['join continueFrom needs a strong target', { mode: 'join', continueFrom: {} }, 'list.continueFrom'],
+        ['join continueFrom capture', { mode: 'join', continueFrom: { exactText: 'x', captureRef: 'c' } }, 'list.continueFrom'],
+        ['join takes no format', { mode: 'join', continueFrom: { exactText: 'x' }, format: 'decimal' }, 'list.format'],
         ['unknown key', { mode: 'convert-plain', colour: 'red' }, 'list.colour'],
         ['bad format', { mode: 'convert-plain', format: 'upperAlpha' }, 'list.format'],
         ['kind contradicts format', { mode: 'convert-plain', kind: 'bullet', format: 'decimal' }, 'list.kind'],
@@ -98,13 +115,15 @@ function definitionOf(numberingXml, numId, ilvl = 0) {
     assert.equal(capture.valid, false);
 
     const schema = JSON.parse(readFileSync(new URL('../docs/schemas/document-operations.schema.json', import.meta.url), 'utf8'));
-    assert.deepEqual(schema.$defs.listFormat.properties.mode, { const: 'convert-plain' });
+    assert.deepEqual(schema.$defs.listFormat.properties.mode, { enum: ['convert-plain', 'change-format', 'join'] });
     assert.ok(schema.$defs.operation.oneOf.some(branch => JSON.stringify(branch).includes('"const":"list-format"')));
     assert.equal(schema.$defs.listFormat.additionalProperties, false);
+    for (const key of ['lvlText', 'scope', 'continueFrom']) assert.ok(schema.$defs.listFormat.properties[key], `schema documents list.${key}`);
 
     const version = await executeCli(['version']);
-    assert.equal(version.contractVersion, 9);
+    assert.equal(version.contractVersion, 9, 'change-format and join are additive modes of list-format: a capability, not a contract bump');
     assert.ok(version.capabilities.includes('list-format-v1'));
+    assert.ok(version.capabilities.includes('list-format-change-v1'));
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -486,6 +505,283 @@ const labelsOf = bytes => openDocx(bytes).inspect({}).paragraphs.map(item => [it
     const definition = definitionOf(mergeNumberingParts('', followed.numberingXmlParts), followed.results[0].list.items[0].numId);
     assert.deepEqual([definition.numFmt, definition.startOverride], ['upperLetter', '3']);
     assert.equal(views(followed.documentXml).accepted[0].text, 'Header');
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// 10. WP-5 change-format and join. Fixture numbering: every case runs with the Reject All verifier on.
+// ---------------------------------------------------------------------------------------------------------
+const lv = (ilvl, numFmt, lvlText, extra = '') => `<w:lvl w:ilvl="${ilvl}"><w:start w:val="1"/><w:numFmt w:val="${numFmt}"/>${extra}<w:lvlText w:val="${lvlText}"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="${720 * (ilvl + 1)}" w:hanging="360"/></w:pPr>${numFmt === 'bullet' ? '<w:rPr><w:rFonts w:ascii="Symbol" w:hAnsi="Symbol" w:hint="default"/></w:rPr>' : ''}</w:lvl>`;
+const abstractNum = (id, levels, extra = '') => `<w:abstractNum w:abstractNumId="${id}"><w:nsid w:val="0000AB${String(id).padStart(2, '0')}"/><w:multiLevelType w:val="hybridMultilevel"/>${extra}${levels.join('')}</w:abstractNum>`;
+const numEl = (numId, abstractId, overrides = '') => `<w:num w:numId="${numId}"><w:abstractNumId w:val="${abstractId}"/>${overrides}</w:num>`;
+const LISTS = `<w:numbering xmlns:w="${W}">${[
+    abstractNum(10, [lv(0, 'bullet', ''), lv(1, 'bullet', 'o')]),
+    abstractNum(11, [lv(0, 'decimal', '%1.'), lv(1, 'lowerLetter', '%2.'), lv(2, 'lowerRoman', '%3.')]),
+    abstractNum(12, [lv(0, 'decimal', '%1)', '<w:isLgl/>')]),
+    abstractNum(13, [lv(0, 'decimal', '%1.')]),
+    abstractNum(14, [lv(0, 'decimal', '%1.')]),
+    abstractNum(15, [lv(0, 'decimal', '%1.').replace('<w:numFmt', '<w:pStyle w:val="ListNumber"/><w:numFmt')]),
+    abstractNum(16, [lv(0, 'decimal', '%1.')]),
+    abstractNum(17, [lv(0, 'decimal', '%1.'), lv(1, 'lowerLetter', '%2.', '<w:lvlRestart w:val="0"/>')]),
+    abstractNum(18, [lv(0, 'decimal', '%1.')])
+].join('')}${[
+    numEl(1, 10), numEl(2, 11), numEl(3, 12), numEl(4, 13, '<w:lvlOverride w:ilvl="0"><w:startOverride w:val="5"/></w:lvlOverride>'),
+    numEl(5, 14), numEl(6, 14), numEl(7, 15), numEl(8, 16, `<w:lvlOverride w:ilvl="0">${lv(0, 'upperRoman', '%1.')}</w:lvlOverride>`), numEl(9, 17),
+    numEl(11, 18)
+].join('')}</w:numbering>`;
+const LIST_STYLES = `<w:styles xmlns:w="${W}"><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="Clause"><w:name w:val="Clause"/><w:pPr><w:numPr><w:numId w:val="11"/></w:numPr></w:pPr></w:style></w:styles>`;
+const li = (text, numId, ilvl = 0, extraPPr = '') => p(text, { pPr: `<w:numPr><w:ilvl w:val="${ilvl}"/><w:numId w:val="${numId}"/></w:numPr>${extraPPr}` });
+const listContext = { context: { numberingXml: LISTS, stylesXml: LIST_STYLES } };
+const numPrRecords = records => records.map(record => [record.text, record.numId, record.ilvl]);
+const resultNumbering = result => mergeNumberingParts(LISTS, result.numberingXmlParts);
+const levelOf = (numberingXml, numId, ilvl) => {
+    const doc = parse(numberingXml);
+    const num = el(doc, 'num').find(node => attr(node, 'numId') === String(numId));
+    const abstract = el(doc, 'abstractNum').find(node => attr(node, 'abstractNumId') === attr(el(num, 'abstractNumId')[0], 'val'));
+    return el(abstract, 'lvl').find(node => attr(node, 'ilvl') === String(ilvl));
+};
+{
+    // (a) bullet -> decimal, scope "list" (default): every live item of numId 1 is rebound to ONE new definition with a
+    // tracked pPrChange; the shared definition is never edited; Reject All restores numId 1 exactly, Accept All the new one.
+    const source = documentOf(p('Intro.'), li('Bullet one', 1), li('Bullet two', 1), li('Bullet nested', 1, 1), li('Bullet three', 1), p('Outro.'), li('Other list', 2));
+    const result = await bare(source, [{ type: 'list-format', target: { exactText: 'Bullet two' }, list: { mode: 'change-format', format: 'decimal' } }], listContext);
+    assert.equal(result.status, 'ok', JSON.stringify(innerError(result) || null));
+    const { list } = result.results[0];
+    assert.equal(list.mode, 'change-format');
+    assert.equal(list.scope, 'list');
+    assert.equal(list.sourceNumId, '1');
+    assert.deepEqual([list.format, list.level, list.lvlText], ['decimal', 0, '%1.']);
+    assert.deepEqual(list.items.map(item => [item.paragraphIndex, item.level, item.inTarget]), [[2, 0, false], [3, 0, true], [4, 1, false], [5, 0, false]]);
+    assert.ok(Number(list.numId) > 11, 'a fresh numId');
+    const before = views(source).accepted;
+    const { accepted, rejected } = views(result.documentXml);
+    assert.deepEqual(numPrRecords(rejected), numPrRecords(before), 'Reject All restores every numPr exactly');
+    assert.deepEqual(numPrRecords(accepted), numPrRecords(before).map(([text, numId, ilvl]) => [text, numId === '1' ? list.numId : numId, ilvl]), 'Accept All binds the new list, levels kept');
+    assert.equal(el(parse(result.documentXml), 'pPrChange').length, 4);
+    const numberingXml = resultNumbering(result);
+    const level0 = levelOf(numberingXml, list.numId, 0);
+    assert.equal(attr(el(level0, 'numFmt')[0], 'val'), 'decimal');
+    assert.equal(el(level0, 'rFonts').length, 0, 'the bullet symbol font is not kept for digits');
+    assert.equal(attr(el(level0, 'ind')[0], 'left'), '720', 'level geometry is copied');
+    const level1 = levelOf(numberingXml, list.numId, 1);
+    assert.deepEqual([attr(el(level1, 'numFmt')[0], 'val'), attr(el(level1, 'lvlText')[0], 'val'), el(level1, 'rFonts').length], ['bullet', 'o', 1], 'other levels are copied unchanged');
+    assert.equal(canonicalNumberingDefinition(numberingXml, 1), canonicalNumberingDefinition(LISTS, 1), 'the source definition is untouched');
+    assert.deepEqual(validateNumberingIntegrity(result.documentXml, numberingXml), []);
+    // The library's own Reject All / Accept All transforms agree.
+    assert.deepEqual(numPrRecords(views(rejectTrackedChangesInOoxml(result.documentXml, { allAuthors: true }).oxml).accepted), numPrRecords(before));
+    assert.deepEqual(numPrRecords(views(acceptTrackedChangesInOoxml(result.documentXml, { allAuthors: true }).oxml).accepted), numPrRecords(accepted));
+}
+{
+    // (b) decimal -> upperLetter keeps the level text; isLgl (forces arabic numbers) is dropped; start becomes a
+    // per-instance startOverride and the source num's own startOverride is carried over.
+    const source = documentOf(li('Legal one', 3), li('Legal two', 3), li('Restarted one', 4), li('Restarted two', 4));
+    const result = await bare(source, [
+        { type: 'list-format', target: { exactText: 'Legal one' }, list: { mode: 'change-format', format: 'upperLetter' } },
+        { type: 'list-format', target: { exactText: 'Restarted one' }, list: { mode: 'change-format', format: 'lowerRoman' } }
+    ], listContext);
+    assert.equal(result.status, 'ok', JSON.stringify(innerError(result) || null));
+    const [legal, restarted] = result.results.map(item => item.list);
+    const numberingXml = resultNumbering(result);
+    const legalLevel = levelOf(numberingXml, legal.numId, 0);
+    assert.deepEqual([attr(el(legalLevel, 'numFmt')[0], 'val'), attr(el(legalLevel, 'lvlText')[0], 'val'), el(legalLevel, 'isLgl').length], ['upperLetter', '%1)', 0]);
+    assert.deepEqual(restarted.startOverrides, { 0: 5 }, 'the source instance restart value is carried over');
+    assert.equal(definitionOf(numberingXml, restarted.numId).startOverride, '5');
+    const withStart = await bare(source, [{ type: 'list-format', target: { exactText: 'Legal two' }, list: { mode: 'change-format', start: 3 } }], listContext);
+    assert.equal(withStart.status, 'ok', JSON.stringify(innerError(withStart) || null));
+    assert.equal(definitionOf(resultNumbering(withStart), withStart.results[0].list.numId).startOverride, '3');
+    assert.equal(definitionOf(resultNumbering(withStart), withStart.results[0].list.numId).start, '1', 'the abstract start is never mutated');
+    assert.equal(levelOf(resultNumbering(withStart), withStart.results[0].list.numId, 0).getElementsByTagNameNS(W, 'isLgl').length, 1, 'start-only change keeps the format');
+}
+{
+    // (c) nested level: the target's level is redefined, the other levels are copied, every item keeps its level.
+    const source = documentOf(li('Top one', 2), li('Sub a', 2, 1), li('Sub b', 2, 1), li('Top two', 2), li('Sub c', 2, 1));
+    const result = await bare(source, [{ type: 'list-format', target: { exactText: 'Sub b' }, list: { mode: 'change-format', format: 'upperRoman', lvlText: '(%2)' } }], listContext);
+    assert.equal(result.status, 'ok', JSON.stringify(innerError(result) || null));
+    const { list } = result.results[0];
+    assert.equal(list.level, 1);
+    const numberingXml = resultNumbering(result);
+    assert.deepEqual([attr(el(levelOf(numberingXml, list.numId, 1), 'numFmt')[0], 'val'), attr(el(levelOf(numberingXml, list.numId, 1), 'lvlText')[0], 'val')], ['upperRoman', '(%2)']);
+    assert.equal(attr(el(levelOf(numberingXml, list.numId, 0), 'numFmt')[0], 'val'), 'decimal');
+    assert.deepEqual(numPrRecords(views(result.documentXml).rejected), numPrRecords(views(source).accepted));
+    // A mixed-level target without list.level is refused with the levels to choose from; list.level resolves it.
+    const mixed = await bare(source, [{ type: 'list-format', target: { exactText: 'Top one' }, targetEnd: { exactText: 'Sub a' }, list: { mode: 'change-format', format: 'upperLetter' } }], listContext);
+    assert.equal(innerError(mixed).code, 'LIST_FORMAT_MIXED_RANGE');
+    assert.equal(innerError(mixed).reason, 'levels');
+    assert.deepEqual(innerError(mixed).recovery.allowedValues, [0, 1]);
+    const chosen = await bare(source, [{ type: 'list-format', target: { exactText: 'Top one' }, targetEnd: { exactText: 'Sub a' }, list: { mode: 'change-format', format: 'upperLetter', level: 0 } }], listContext);
+    assert.equal(chosen.status, 'ok', JSON.stringify(innerError(chosen) || null));
+}
+{
+    // (d) scope "range" splits the list at the range, which must run to the end of the list; the new instance
+    // continues the count with per-level startOverrides (here 3 for level 0, 2 for level 1).
+    const source = documentOf(li('Item one', 2), li('Item two', 2), li('Item two a', 2, 1), li('Item two b', 2, 1), li('Item three', 2), li('Item four', 2));
+    const suffix = await bare(source, [{ type: 'list-format', target: { exactText: 'Item two b' }, targetEnd: { exactText: 'Item four' }, list: { mode: 'change-format', format: 'upperLetter', level: 0, scope: 'range' } }], listContext);
+    assert.equal(suffix.status, 'ok', JSON.stringify(innerError(suffix) || null));
+    const { list } = suffix.results[0];
+    assert.deepEqual(list.items.map(item => item.paragraphIndex), [4, 5, 6]);
+    assert.deepEqual(list.startOverrides, { 0: 2, 1: 2 }, 'level 0 is implicitly in use at its current value 2; level 1 continues at b');
+    const { accepted, rejected } = views(suffix.documentXml);
+    assert.deepEqual(accepted.map(record => record.numId === list.numId), [false, false, false, true, true, true]);
+    assert.deepEqual(numPrRecords(rejected), numPrRecords(views(source).accepted));
+    // Mid-sequence: later items would stay on the old list and renumber. Refused, naming the last item.
+    const middle = await bare(source, [{ type: 'list-format', target: { exactText: 'Item two' }, targetEnd: { exactText: 'Item three' }, list: { mode: 'change-format', format: 'upperLetter', level: 0, scope: 'range' } }], listContext);
+    const error = innerError(middle);
+    assert.equal(error.code, 'LIST_FORMAT_SPLIT_UNSUPPORTED');
+    assert.equal(error.reason, 'mid-sequence');
+    assert.deepEqual(error.followingParagraphIndexes, [6]);
+    assert.equal(error.lastListParagraphIndex, 6);
+    assert.equal(error.recovery.action, 'extend_range_or_use_list_scope');
+    assert.equal(middle.documentXml, source);
+    // A level whose start must be overridden and that restarts inside the range cannot be continued exactly.
+    const restart = await bare(source, [{ type: 'list-format', target: { exactText: 'Item two b' }, targetEnd: { exactText: 'Item four' }, list: { mode: 'change-format', format: 'upperLetter', level: 1, scope: 'range' } }], listContext);
+    assert.equal(restart.status, 'ok', 'level 1 does not occur again after the restart, so the count is still exact');
+    const nested = documentOf(li('Item one', 2), li('Item one a', 2, 1), li('Item one b', 2, 1), li('Item two', 2), li('Item two a', 2, 1));
+    const refusedNested = await bare(nested, [{ type: 'list-format', target: { exactText: 'Item one b' }, targetEnd: { exactText: 'Item two a' }, list: { mode: 'change-format', format: 'upperRoman', level: 1, scope: 'range' } }], listContext);
+    assert.equal(innerError(refusedNested).code, 'LIST_FORMAT_SPLIT_UNSUPPORTED');
+    assert.equal(innerError(refusedNested).reason, 'nested-restart');
+    // Starting at a top-level item is exact.
+    const topLevel = await bare(nested, [{ type: 'list-format', target: { exactText: 'Item two' }, targetEnd: { exactText: 'Item two a' }, list: { mode: 'change-format', format: 'upperRoman', level: 1, scope: 'range' } }], listContext);
+    assert.equal(topLevel.status, 'ok', JSON.stringify(innerError(topLevel) || null));
+    assert.deepEqual(topLevel.results[0].list.startOverrides, { 0: 2 });
+}
+{
+    // (e) join: the later list continues the earlier one; levels kept; nothing allocated.
+    const source = documentOf(li('First list one', 2), li('First list two', 2), p('Between the lists.'), li('Second list one', 3), li('Second list two', 3));
+    const result = await bare(source, [{ type: 'list-format', target: { exactText: 'Second list one' }, list: { mode: 'join', continueFrom: { exactText: 'First list two' } } }], listContext);
+    assert.equal(result.status, 'ok', JSON.stringify(innerError(result) || null));
+    const { list } = result.results[0];
+    assert.deepEqual([list.mode, list.sourceNumId, list.numId, list.continueFrom.paragraphIndex], ['join', '3', '2', 2]);
+    assert.equal(result.numberingXmlParts.length, 0);
+    const { accepted, rejected } = views(result.documentXml);
+    assert.deepEqual(accepted.map(record => record.numId), ['2', '2', null, '2', '2']);
+    assert.deepEqual(numPrRecords(rejected), numPrRecords(views(source).accepted));
+    // Same list: nothing to do (ok, no change, warning).
+    const same = await bare(source, [{ type: 'list-format', target: { exactText: 'First list two' }, list: { mode: 'join', continueFrom: { exactText: 'First list one' } } }], listContext);
+    assert.equal(same.status, 'ok');
+    assert.equal(same.hasChanges, false);
+    assert.ok(same.results[0].warnings.some(warning => warning.startsWith('LIST_FORMAT_UNCHANGED: ')));
+    for (const [label, documentXml, operation, code, reason] of [
+        ['continueFrom after the target', source, { target: { exactText: 'First list one' }, list: { mode: 'join', continueFrom: { exactText: 'Second list one' } } }, 'LIST_FORMAT_JOIN_INVALID', 'after-target'],
+        ['continueFrom is not a list item', source, { target: { exactText: 'Second list one' }, list: { mode: 'join', continueFrom: { exactText: 'Between the lists.' } } }, 'LIST_FORMAT_JOIN_INVALID', 'not-a-list'],
+        ['continued list has later items', documentOf(li('First one', 2), li('Second one', 3), li('First two', 2)), { target: { exactText: 'Second one' }, list: { mode: 'join', continueFrom: { exactText: 'First one' } } }, 'LIST_FORMAT_SPLIT_UNSUPPORTED', 'interleaved'],
+        ['joined range mid-sequence', source, { target: { exactText: 'Second list one' }, list: { mode: 'join', continueFrom: { exactText: 'First list one' }, scope: 'range' } }, 'LIST_FORMAT_SPLIT_UNSUPPORTED', 'mid-sequence'],
+        ['continueFrom not found', source, { target: { exactText: 'Second list one' }, list: { mode: 'join', continueFrom: { exactText: 'No such paragraph' } } }, 'TARGET_NOT_FOUND', undefined]
+    ]) {
+        const refused = await bare(documentXml, [{ type: 'list-format', ...operation }], listContext);
+        assert.equal(refused.status, 'error', label);
+        const error = innerError(refused);
+        assert.equal(error.code, code, `${label}: ${error.code} ${error.message}`);
+        assert.equal(error.reason, reason, label);
+        assert.equal(refused.documentXml, documentXml, `${label}: nothing written`);
+    }
+    // A joined suffix range is allowed: the earlier items of the second list keep their numbering.
+    const suffix = await bare(source, [{ type: 'list-format', target: { exactText: 'Second list two' }, list: { mode: 'join', continueFrom: { exactText: 'First list one' }, scope: 'range' } }], listContext);
+    assert.equal(suffix.status, 'ok', JSON.stringify(innerError(suffix) || null));
+    assert.deepEqual(views(suffix.documentXml).accepted.map(record => record.numId), ['2', '2', null, '3', '2']);
+}
+{
+    // (f) Refusals: recovery-enveloped, nothing written.
+    const deletedMark = `<w:rPr><w:del w:id="70" w:author="Other" w:date="2026-01-01T00:00:00Z"/></w:rPr>`;
+    for (const [label, paragraphs, operation, code, reason, action] of [
+        ['plain target', [p('Plain paragraph'), li('Item', 2)], { target: { exactText: 'Plain paragraph' }, list: { mode: 'change-format', format: 'upperLetter' } }, 'LIST_FORMAT_TARGET_NOT_LIST', undefined, 'use_list_format_convert_plain'],
+        ['list and non-list paragraphs', [li('Item', 2), p('Body text'), li('Item two', 2)], { target: { exactText: 'Item' }, targetEnd: { exactText: 'Item two' }, list: { mode: 'change-format', format: 'upperLetter' } }, 'LIST_FORMAT_MIXED_RANGE', 'non-list', 'narrow_range'],
+        ['two lists in one range', [li('Item', 2), li('Other item', 3)], { target: { exactText: 'Item' }, targetEnd: { exactText: 'Other item' }, list: { mode: 'change-format', format: 'upperLetter' } }, 'LIST_FORMAT_MIXED_RANGE', 'several-lists', 'narrow_range'],
+        ['style-linked level', [li('Styled', 7)], { target: { exactText: 'Styled' }, list: { mode: 'change-format', format: 'upperLetter' } }, 'LIST_FORMAT_STYLE_LINKED', undefined, 'convert_in_host'],
+        ['a paragraph style binds the list', [li('Clause direct', 11)], { target: { exactText: 'Clause direct' }, list: { mode: 'change-format', format: 'upperLetter' } }, 'LIST_FORMAT_STYLE_LINKED', undefined, 'convert_in_host'],
+        ['numbered through its style only', [p('Clause by style', { pPr: '<w:pStyle w:val="Clause"/>' })], { target: { exactText: 'Clause by style' }, list: { mode: 'change-format', format: 'upperLetter' } }, 'LIST_FORMAT_STYLE_NUMBERED', undefined, 'convert_in_host'],
+        ['shared abstract definition', [li('Shared one', 5), li('Shared two', 6)], { target: { exactText: 'Shared one' }, list: { mode: 'change-format', format: 'upperLetter' } }, 'LIST_FORMAT_SPLIT_UNSUPPORTED', 'shared-definition', 'convert_in_host'],
+        ['instance level override', [li('Overridden', 8)], { target: { exactText: 'Overridden' }, list: { mode: 'change-format', format: 'upperLetter' } }, 'LIST_FORMAT_DEFINITION_UNSUPPORTED', 'level-override', 'convert_in_host'],
+        ['lvlRestart in a split', [li('Restart one', 9), li('Restart one a', 9, 1), li('Restart two', 9)], { target: { exactText: 'Restart two' }, list: { mode: 'change-format', format: 'upperLetter', scope: 'range' } }, 'LIST_FORMAT_DEFINITION_UNSUPPORTED', 'level-restart', 'extend_range_or_use_list_scope'],
+        ['undefined numId', [li('Dangling', 42)], { target: { exactText: 'Dangling' }, list: { mode: 'change-format', format: 'upperLetter' } }, 'LIST_FORMAT_DEFINITION_UNSUPPORTED', 'missing', 'inspect_numbering'],
+        ['bullet text on a numbered format', [li('Item', 2)], { target: { exactText: 'Item' }, list: { mode: 'change-format', lvlText: '*' } }, 'INVALID_OPERATION', undefined, 'change_request'],
+        ['another author pending pPrChange outside the target', [li('Item', 2), li('Item two', 2, 0, '<w:pPrChange w:id="9" w:author="Other" w:date="2026-01-01T00:00:00Z"><w:pPr/></w:pPrChange>')], { target: { exactText: 'Item' }, list: { mode: 'change-format', format: 'upperLetter' } }, 'PARAGRAPH_FORMAT_REVISION_CONFLICT', undefined, 'resolve_pending_revision']
+    ]) {
+        const source = documentOf(...paragraphs);
+        const result = await bare(source, [{ type: 'list-format', ...operation }], listContext);
+        assert.equal(result.status, 'error', label);
+        const error = innerError(result);
+        assert.equal(error.code, code, `${label}: ${error.code} ${error.message}`);
+        assert.equal(error.reason, reason, label);
+        assert.equal(error.recovery?.action, action, label);
+        assert.equal(error.recovery.sameArgumentsSafe, false, label);
+        assert.equal(result.documentXml, source, `${label}: nothing written`);
+        assert.equal(result.numberingXmlParts.length, 0, label);
+    }
+    // R1: a tracked-deleted list paragraph keeps its numPr (scope list skips it; in a range it is reported).
+    const source = documentOf(li('Kept one', 2), p('Deleted item', { pPr: `<w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr>${deletedMark}` }), li('Kept two', 2));
+    const result = await bare(source, [{ type: 'list-format', target: { exactText: 'Kept one' }, targetEnd: { exactText: 'Kept two' }, list: { mode: 'change-format', format: 'upperLetter' } }], listContext);
+    assert.equal(result.status, 'ok', JSON.stringify(innerError(result) || null));
+    assert.deepEqual(result.results[0].list.skipped, [{ paragraphIndex: 2, reason: 'tracked-deleted' }]);
+    const deleted = el(parse(result.documentXml), 'p')[1];
+    assert.equal(el(deleted, 'pPrChange').length, 0);
+    assert.equal(attr(el(deleted, 'numId')[0], 'val'), '2', 'the deleted paragraph keeps numId 2');
+    // Same-author earlier snapshot (the paragraph was bound earlier by the same author) is kept: Reject All returns to
+    // the unnumbered state, not to the intermediate list.
+    const earlier = documentOf(li('Bound earlier', 2, 0, `<w:pPrChange w:id="9" w:author="${AUTHOR}" w:date="2026-01-01T00:00:00Z"><w:pPr/></w:pPrChange>`), li('Item two', 2));
+    const kept = await bare(earlier, [{ type: 'list-format', target: { exactText: 'Item two' }, list: { mode: 'change-format', format: 'upperLetter' } }], listContext);
+    assert.equal(kept.status, 'ok', JSON.stringify(innerError(kept) || null));
+    assert.deepEqual(views(kept.documentXml).rejected.map(record => record.numId), [null, '2']);
+    assert.equal(el(parse(kept.documentXml), 'pPrChange').length, 2);
+    // Unchanged: the list already has the requested format.
+    const unchanged = await bare(documentOf(li('Item', 2)), [{ type: 'list-format', target: { exactText: 'Item' }, list: { mode: 'change-format', format: 'decimal' } }], listContext);
+    assert.equal(unchanged.status, 'ok');
+    assert.equal(unchanged.hasChanges, false);
+    assert.ok(unchanged.results[0].warnings.some(warning => warning.startsWith('LIST_FORMAT_UNCHANGED: ')));
+}
+{
+    // (g) Batch: a second change-format on a list the first one already rebound reads the batch's own definition;
+    // the earliest snapshot is kept, so Reject All still restores the source binding.
+    const source = documentOf(li('Top one', 2), li('Sub a', 2, 1), li('Top two', 2));
+    const result = await bare(source, [
+        { type: 'list-format', target: { exactText: 'Top one' }, list: { mode: 'change-format', format: 'upperRoman' } },
+        { type: 'list-format', target: { exactText: 'Sub a' }, list: { mode: 'change-format', format: 'bullet' } }
+    ], listContext);
+    assert.equal(result.status, 'ok', JSON.stringify(innerError(result) || null));
+    const [first, second] = result.results.map(item => item.list);
+    assert.equal(second.sourceNumId, first.numId, 'the second operation starts from the first one\'s definition');
+    const numberingXml = resultNumbering(result);
+    assert.equal(attr(el(levelOf(numberingXml, second.numId, 0), 'numFmt')[0], 'val'), 'upperRoman', 'the first change is kept');
+    assert.deepEqual([attr(el(levelOf(numberingXml, second.numId, 1), 'numFmt')[0], 'val'), attr(el(levelOf(numberingXml, second.numId, 1), 'lvlText')[0], 'val')], ['bullet', '•']);
+    assert.equal(el(parse(result.documentXml), 'pPrChange').length, 3);
+    assert.deepEqual(numPrRecords(views(result.documentXml).rejected), numPrRecords(views(source).accepted));
+    assert.deepEqual(validateNumberingIntegrity(result.documentXml, numberingXml), []);
+    // generateRedlines: false rebinds directly, but only inside the target: an untracked edit has no Reject All.
+    const outside = await bare(source, [{ type: 'list-format', target: { exactText: 'Top one' }, list: { mode: 'change-format', format: 'upperRoman' }, generateRedlines: false }], listContext);
+    assert.equal(innerError(outside).code, 'INVALID_OPERATION');
+    assert.equal(innerError(outside).field, 'generateRedlines');
+    const direct = await bare(source, [{ type: 'list-format', target: { exactText: 'Top one' }, targetEnd: { exactText: 'Top two' }, list: { mode: 'change-format', format: 'upperRoman', level: 0 }, generateRedlines: false }], listContext);
+    assert.equal(direct.status, 'ok', JSON.stringify(innerError(direct) || null));
+    assert.equal(el(parse(direct.documentXml), 'pPrChange').length, 0);
+    assert.ok(views(direct.documentXml).rejected.every(record => record.numId === direct.results[0].list.numId));
+}
+{
+    // (h) Packaged openDocx path (Word-authored template numbering): labels after Accept All / Reject All.
+    const listItem = (text, numId, ilvl = 0) => p(text, { pPr: `<w:numPr><w:ilvl w:val="${ilvl}"/><w:numId w:val="${numId}"/></w:numPr>` });
+    const bytes = buildDocx([listItem('Bullet alpha', 1), listItem('Bullet beta', 1), p('Between.'), listItem('Step one', 2), listItem('Step two', 2), p('Gap.'), listItem('Step three', 2)].join(''));
+    const before = labelsOf(bytes);
+    const result = await openDocx(bytes).applyOperations([
+        { type: 'list-format', target: { exactText: 'Bullet beta' }, list: { mode: 'change-format', format: 'decimal' } },
+        { type: 'list-format', target: { exactText: 'Step one' }, list: { mode: 'change-format', format: 'upperLetter' } }
+    ], { author: AUTHOR });
+    assert.equal(result.status, 'ok', JSON.stringify(innerError(result) || null));
+    const output = result.toUint8Array();
+    const entries = unzipDocx(output);
+    const numberingXml = dec.decode(entries.get('word/numbering.xml'));
+    const sourceNumbering = dec.decode(unzipDocx(bytes).get('word/numbering.xml'));
+    for (const numId of [1, 2]) assert.equal(canonicalNumberingDefinition(numberingXml, numId), canonicalNumberingDefinition(sourceNumbering, numId), `numId ${numId} is untouched`);
+    assert.deepEqual(validateNumberingIntegrity(dec.decode(entries.get('word/document.xml')), numberingXml), []);
+    const accepted = await openDocx(output).resolveRevisions('accept', { allAuthors: true });
+    const acceptedLabels = labelsOf(accepted.toUint8Array());
+    assert.deepEqual(acceptedLabels.map(([text]) => text), before.map(([text]) => text));
+    assert.deepEqual(acceptedLabels.filter(([text]) => text.startsWith('Step')).map(([, label]) => label), ['A.', 'B.', 'C.'], 'Accept All shows the new labels');
+    assert.deepEqual(acceptedLabels.filter(([text]) => text.startsWith('Bullet')).map(([, label]) => label), ['1.', '2.']);
+    const rejected = await openDocx(output).resolveRevisions('reject', { allAuthors: true });
+    assert.deepEqual(labelsOf(rejected.toUint8Array()), before, 'Reject All restores the original labels');
+
+    const joined = await openDocx(bytes).applyOperations([{ type: 'list-format', target: { exactText: 'Step one' }, list: { mode: 'join', continueFrom: { exactText: 'Bullet beta' } } }], { author: AUTHOR });
+    assert.equal(joined.status, 'ok', JSON.stringify(innerError(joined) || null));
+    const joinedAccepted = labelsOf((await openDocx(joined.toUint8Array()).resolveRevisions('accept', { allAuthors: true })).toUint8Array());
+    assert.ok(joinedAccepted.filter(([text]) => text.startsWith('Step')).every(([, label]) => label === before[0][1]), 'joined items take the continued list\'s format');
+    assert.deepEqual(labelsOf((await openDocx(joined.toUint8Array()).resolveRevisions('reject', { allAuthors: true })).toUint8Array()), before);
 }
 
 console.log('PASS: list-format operation');

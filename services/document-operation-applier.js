@@ -1,6 +1,7 @@
 import { getDefaultAuthor } from '../adapters/config.js';
 import {
     normalizeDocumentOperation,
+    normalizeTargetDescriptor,
     resolveDocumentOperationAuthor,
     validateDocumentOperation
 } from './document-operation-contract.js';
@@ -239,6 +240,12 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
         targetEndDescriptor: operation.targetEndDescriptor,
         _compiledSourceId: operation._compiledSourceId || null,
         _compiledSourceEndId: operation._compiledSourceEndId || null,
+        ...(operation.operationKind === 'list-format' && operation.list?.continueFrom && typeof operation.list.continueFrom === 'object'
+            ? {
+                continueFromDescriptor: normalizeTargetDescriptor(operation.list.continueFrom, null, 'accepted'),
+                _compiledContinueFromId: operation._compiledContinueFromId || null
+            }
+            : {}),
         _compiledResolvedBy: operation._compiledResolvedBy || null,
         _sourceTargetRegistry: session.sourceTargetRegistry || null,
         _resolutionCapture: resolutionCapture,
