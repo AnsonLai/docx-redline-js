@@ -258,6 +258,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
         ...(operation.existingRevisions ? { existingRevisions: operation.existingRevisions } : {}),
         structuredContent: typeof operation.structuredContent === 'boolean' ? operation.structuredContent : (options.structuredContent !== false),
         explicitStructuredContent: operation.structuredContent === true,
+        plainTextContent: operation.structuredContent === false || (operation.structuredContent == null && options.structuredContent === false),
         ...(operation._localizedReplacementCompilation && operation.structuredContent !== true ? { literalTextEdit: true } : {}),
         pairReplacements: typeof operation.pairReplacements === 'boolean' ? operation.pairReplacements : (options.pairReplacements !== false),
         ...(operation.insertionAffinity ? { insertionAffinity: operation.insertionAffinity } : {}),

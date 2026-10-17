@@ -12,6 +12,7 @@ or an installed plugin bundle to infer public behavior.
 | Build or update an agent skill/tool wrapper | [Skill Authoring Contract](docs/SKILL_AUTHORING.md), then [README wrapper example](README.md#example-agent-session-wrapper-development-only) |
 | Change paragraph/range reconciliation | `index.js` → `engine/oxml-engine.js` → selected `engine/*-mode.js` |
 | Change complete-document operations | `document/docx-document.js` → `services/standalone-operation-runner.js` → `services/document-operation-*.js` |
+| Change the Word add-in surface (body Flat OPC, Word-aware tokens) | `word/index.js` → `word/flat-opc-body.js`, `word/export-identity.js` |
 | Change DOCX ZIP or CLI behavior | `document/zip-archive.js`, `node/index.js`, `node/docx-document.js`, `node/cli.js` |
 | Choose or add tests | Closest `tests/*.mjs`, then [Testing Guide](docs/TESTING.md) |
 | Understand ownership/dependencies | [Architecture](ARCHITECTURE.md) |

@@ -4,7 +4,7 @@
 
 import { parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { getDefaultAuthor } from '../adapters/config.js';
-import { containsTrackedChanges, getTrackedChangeAuthors } from '../core/word-xml.js';
+import { containsTrackedChanges, getTrackedChangeAuthors, resolveExistingRevisionsPolicy } from '../core/word-xml.js';
 import { NS_W } from '../core/types.js';
 import { extractCanonicalParagraphText } from '../core/paragraph-text.js';
 import {
@@ -274,9 +274,9 @@ export function preflightOperations(documentXml, operations, author, options = {
             const anchorFound = anchor == null
                 || (anchorResolution ? anchorResolution.found : paragraphText.includes(anchor));
             const hasRevisions = containsTrackedChanges(paragraph);
-            const existingPolicy = operation.existingRevisions
+            const existingPolicy = resolveExistingRevisionsPolicy(operation.existingRevisions
                 || options.existingRevisions
-                || 'merge-same-author';
+                || 'merge-same-author', paragraph, authorUsed);
             const deletingWholeParagraph = operation.operationKind === 'redline' && operation.modified === '';
             const commentIds = deletingWholeParagraph ? getCommentIdsInParagraph(paragraph) : [];
 

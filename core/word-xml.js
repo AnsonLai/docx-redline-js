@@ -116,3 +116,23 @@ export function withOoxmlSourceType(result) {
     }
     return { ...result, sourceType: classifyOoxmlSourceType(result.oxml) };
 }
+
+/**
+ * Resolves `existingRevisions: 'auto'` for one target. A target without tracked
+ * changes, or whose changes are all by `author`, merges same-author history;
+ * any other or unattributed reviewer's change selects 'slice-cross-author',
+ * which preserves that history. Other policies are returned unchanged.
+ * @param {string|null|undefined} policy
+ * @param {Node} node - target paragraph, scope element or document
+ * @param {string} author
+ * @returns {string|null|undefined}
+ */
+export function resolveExistingRevisionsPolicy(policy, node, author) {
+    if (policy !== 'auto') return policy;
+    if (!node || !containsTrackedChanges(node)) return 'merge-same-author';
+    const own = String(author || '').trim().toLowerCase();
+    const authors = getTrackedChangeAuthors(node);
+    return authors.length > 0 && authors.every(name => name.trim().toLowerCase() === own)
+        ? 'merge-same-author'
+        : 'slice-cross-author';
+}

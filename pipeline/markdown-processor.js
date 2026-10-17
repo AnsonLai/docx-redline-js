@@ -35,7 +35,10 @@ const MARKDOWN_PATTERNS = [
     { regex: /\*\*\+\+(.+?)\+\+\*\*/, format: { bold: true, underline: true } },
     // Bold: **text** or __text__
     { regex: /\*\*(.+?)\*\*/, format: { bold: true } },
-    { regex: /__(.+?)__/, format: { bold: true } },
+    // Underscore delimiters follow CommonMark flanking rules: not intraword, not part of a
+    // longer underscore run, and never around whitespace. So signature lines ("_____")
+    // and snake_case identifiers stay literal text.
+    { regex: /(?<![A-Za-z0-9_])__(?=[^_\s])(.+?)(?<=[^_\s])__(?![A-Za-z0-9_])/, format: { bold: true } },
     // Underline: ++text++
     { regex: /\+\+(.+?)\+\+/, format: { underline: true } },
     // Strikethrough: ~~text~~ or ~text~
@@ -43,7 +46,7 @@ const MARKDOWN_PATTERNS = [
     { regex: /~(.+?)~/, format: { strikethrough: true } },
     // Italic: *text* or _text_ (using lookahead only for compatibility)
     { regex: /\*(?!\*)(.+?)\*(?!\*)/, format: { italic: true } },
-    { regex: /_(?!_)(.+?)_(?!_)/, format: { italic: true } }
+    { regex: /(?<![A-Za-z0-9_])_(?=[^_\s])(.+?)(?<=[^_\s])_(?![A-Za-z0-9_])/, format: { italic: true } }
 ];
 
 /**

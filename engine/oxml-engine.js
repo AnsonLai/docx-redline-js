@@ -28,7 +28,7 @@ import { applySurgicalMode } from './surgical-mode.js';
 import { applyReconstructionMode } from './reconstruction-mode.js';
 import { applyTableReconciliation, applyTextToTableTransformation } from './table-mode.js';
 import { getDefaultAuthor } from '../adapters/config.js';
-import { containsTrackedChanges, getTrackedChangeAuthors, withOoxmlSourceType } from '../core/word-xml.js';
+import { containsTrackedChanges, getTrackedChangeAuthors, resolveExistingRevisionsPolicy, withOoxmlSourceType } from '../core/word-xml.js';
 import { clonePropertiesWithoutRevisionHistory } from '../core/revision-cloning.js';
 import {
     NS_W,
@@ -122,7 +122,7 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
     const operationWarnings = [];
     let normalizedExistingRevisions = false;
     let preservedInsertedParagraphMark = null;
-    const existingRevisionsPolicy = options.existingRevisions || 'merge-same-author';
+    let existingRevisionsPolicy = options.existingRevisions || 'merge-same-author';
     const keepNormalizedNoOp = existingRevisionsPolicy === 'accept-all-first-keep-normalized';
     const finalize = result => {
         const withStatus = { ...result };
@@ -171,6 +171,10 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
     const parsed = parseOoxmlSafe(inputOoxml, 'text/xml');
     parseWarnings = parsed.warnings;
     let xmlDoc = parsed.doc;
+    if (existingRevisionsPolicy === 'auto') {
+        existingRevisionsPolicy = resolveExistingRevisionsPolicy('auto', xmlDoc, author);
+        options = { ...options, existingRevisions: existingRevisionsPolicy };
+    }
 
     const parseError = xmlDoc ? getXmlParseError(xmlDoc) : null;
     if (parsed.error || parseError) {
@@ -379,7 +383,13 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
             sanitizedText = structuredAnalysis.normalizedMarkdown;
         }
     }
-    const { cleanText: cleanModifiedText, formatHints } = preprocessMarkdown(sanitizedText);
+    // A caller's structuredContent: false is the documented plain-text contract:
+    // inline Markdown markers (`__`, `_`, `**`) stay literal text. Internal calls
+    // that pass structuredContent: false still want inline Markdown, so only the
+    // operation applier sets this flag.
+    const { cleanText: cleanModifiedText, formatHints } = options.plainTextContent === true
+        ? { cleanText: sanitizedText, formatHints: [] }
+        : preprocessMarkdown(sanitizedText);
 
     const { existingFormatHints, textSpans, paragraphs } = extractFormattingFromOoxml(xmlDoc);
     const hasLiteralTextChanges = existingRevisionsPolicy === 'slice-cross-author'

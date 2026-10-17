@@ -67,19 +67,20 @@ ambiguous. They remain available unchanged; see the [0.7.0 release notes](./docs
 
 ## Repository Layout
 
-The package exposes three levels of API:
+The package exposes four levels of API:
 
 | Level | Entry point | Use it for |
 |---|---|---|
 | Host-independent OOXML API | `index.js` | Paragraph/range transforms and exported OOXML utilities in browsers, Node.js, or another DOM-capable runtime |
 | Standalone document XML runner | `services/standalone-operation-runner.js` | Applying operations to a complete `word/document.xml` string |
+| Word host surface | `word/index.js` (`/word`) | Word add-ins: inspect and edit `body.getOoxml()` Flat OPC and get one package to write back |
 | Node/DOCX API and CLI | `node/index.js`, `bin/docx-redline.js` | Reading, changing, validating, and writing complete `.docx` ZIP packages |
 
 Implementation folders have distinct roles: `core/` holds shared OOXML and
 targeting primitives; `pipeline/` handles ingestion, diffing, markdown, lists,
 and serialization; `engine/` performs reconciliation; `services/` coordinates
-document operations and package artifacts; `node/` contains Node-only ZIP and
-whole-document code. Tests are directly runnable `tests/*.mjs` files, while
+document operations and package artifacts; `word/` adapts Word body Flat OPC
+for add-ins; `node/` contains Node-only ZIP and whole-document code. Tests are directly runnable `tests/*.mjs` files, while
 `tests/helpers/` and `tests/fixtures/` contain support code and data.
 
 Contributors and coding agents should start with the routing table in
@@ -375,10 +376,10 @@ See the [compact agent fast start](./docs/AGENT_FAST_START.md), the
 | `generateRedlines` | `boolean` | `true` | When `true`, emit Word-native tracked changes (`w:ins`/`w:del`). When `false`, apply clean direct edits without revision markup. **Note: Redlines are not always the preferred method** — pass `generateRedlines: false` (or `--no-redlines` via CLI) when producing clean execution drafts, restructuring documents, or when revision clutter is unwanted. |
 | `author` | `string` | `'AI Redliner'` | Reviewer/author name stamped on generated tracked changes and comments. Overridable via `DOCX_REDLINE_AUTHOR` env variable. |
 | `atomic` | `boolean` | `false` | Batch transaction mode. By default (`false`), valid edits are applied and failing operations report errors. When `true`, any operation failure rolls back the entire batch to the original document state (`rolledBack: true`, `hasChanges: false`). Feature prominently in high-assurance workflows. |
-| `structuredContent` | `boolean` | `true` | Auto-detects Markdown tables, headings (`#`), and lists in replacement text and renders them as native Word elements (`w:tbl`, `w:pStyle`, `w:numPr`). Pass `false` to treat replacement text strictly as plain text. |
+| `structuredContent` | `boolean` | `true` | Auto-detects Markdown tables, headings (`#`), and lists in replacement text and renders them as native Word elements (`w:tbl`, `w:pStyle`, `w:numPr`). Pass `false` to treat replacement text strictly as plain text: inline Markdown markers (`**`, `__`, `_`, `~~`, `++`) are kept literally. With `true`, underscores follow CommonMark flanking rules, so signature lines (`_____`) and `snake_case` stay literal. |
 | `pairReplacements` | `boolean` | `true` | Links adjacent `<w:del>` and `<w:ins>` revisions with matching timestamps so Word groups them as a single replacement in the Reviewing Pane. |
 | `strictTargets` | `boolean` | `true` (CLI/facade) | Requires exact target descriptors (`exactText`, `paragraphId`, `index`, `occurrence`, `fingerprint`) and forbids ambiguous matching. Defaults to `false` in low-level runner for backwards compatibility. |
-| `existingRevisions` | `string` | `'merge-same-author'` | How to handle paragraphs with existing tracked changes. `'merge-same-author'` merges revisions from the same author and protects other authors with `EXISTING_REVISIONS`. `'slice-cross-author'` keeps that same-author merge behavior while allowing Word-native edits inside another author's pending insertion. Pass `'accept-all-first'` to normalize prior revisions or `'reject-input'` to refuse editing revised paragraphs. |
+| `existingRevisions` | `string` | `'merge-same-author'` | How to handle paragraphs with existing tracked changes. `'merge-same-author'` merges revisions from the same author and protects other authors with `EXISTING_REVISIONS`. `'slice-cross-author'` keeps that same-author merge behavior while allowing Word-native edits inside another author's pending insertion. Pass `'accept-all-first'` to normalize prior revisions or `'reject-input'` to refuse editing revised paragraphs. `'auto'` chooses per target: `'merge-same-author'` when the target has no tracked changes or only the operation author's, otherwise `'slice-cross-author'` (preflight reports the resolved policy). |
 | `removeFormatting` | `boolean` | `false` | When `true` and the text is unchanged with no Markdown hints, strips existing bold/italic/underline/strikethrough formatting. |
 | `verifyRevisionFidelity` | `'enforce' \| 'warn' \| 'off'` | `'enforce'` | Post-apply Reject All check described under [Reject All verification](#reject-all-verification). CLI: `--revision-fidelity`; the agent profile rejects `off`. |
 | `listMarkers` | `'literal'` | unset | Per operation. Accepts list-marker text as literal text and suppresses `LIST_MARKER_NOT_BOUND`, `UNSUPPORTED_LIST_CONVERSION`, `LIST_FORMAT_NOT_APPLIED` and `UNSUPPORTED_LIST_FORMAT_CHANGE` for that operation. |
@@ -421,6 +422,37 @@ The engine applies Microsoft Word Desktop-native tracked change structures:
 - **Deletions inside pending insertions**: The new `<w:del>` is nested directly inside the carrier `<w:ins>` (valid under ECMA-376 Part 1 `CT_RunTrackChange`), ensuring that if Author A's insertion is rejected, Author B's dependent deletion is cleanly removed with it.
 - **Straddle deletions**: Deletions spanning between baseline text and pending insertions cleanly partition across their respective container contexts without invalid coalescing.
 - **Lifecycle parity**: Accepting or rejecting either reviewer independently produces identical results to Microsoft Word Desktop's native review pane.
+
+### Word host surface (`@ansonlai/docx-redline-js/word`)
+
+A Word add-in reads `context.document.body.getOoxml()`, hands the Flat OPC package to the library, and writes back the single prepared package. Comment, comment-thread and numbering parts are merged into that package. The module is browser-safe and uses no Office.js API.
+
+```js
+import {
+  inspectWordFlatOpc,
+  prepareWordFlatOpcBatch,
+  computeWordSourceRevisionToken
+} from '@ansonlai/docx-redline-js/word';
+import { compareDocumentInspections } from '@ansonlai/docx-redline-js';
+
+const source = body.getOoxml();
+await context.sync();
+const prepared = await prepareWordFlatOpcBatch(source.value, operations, { author, expectedRevision: true });
+if (prepared.status === 'ready') {
+  body.insertOoxml(prepared.insertionPayload, 'Replace');
+  await context.sync();
+  // Verify what Word committed against what was prepared.
+  const committed = body.getOoxml();
+  await context.sync();
+  const check = compareDocumentInspections(
+    inspectWordFlatOpc(prepared.insertionPayload).inspection,
+    inspectWordFlatOpc(committed.value).inspection);
+}
+```
+
+- `prepareWordFlatOpcBatch` runs one atomic batch (`structuredContent`, `pairReplacements`, `strictTargets` on) and returns `status: 'ready' | 'noop' | 'refused' | 'error'`; only `'ready'` carries `insertionPayload`.
+- `computeWordSourceRevisionToken(parts, { hostParagraphCount })` ignores Word session ids (rsids) and, when `hostParagraphCount` (from `body.paragraphs`) certifies it, the empty trailing paragraph Word adds to `getOoxml` exports. Use it for freshness checks. `computeWordRestorationToken` also ignores the paragraph ids Word regenerates on `insertOoxml('Replace')`, for checkpoint restores. `detectWordExportTailIndex` exposes the tail check.
+- `compareDocumentInspections(expected, actual)` compares text, table position, list label, review segments and comments, ignoring ids, dates and run splits; it returns `{ matches, differences }`.
 
 ### Replacing a heading with a tracked list
 

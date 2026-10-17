@@ -145,7 +145,7 @@
         "target": { "$ref": "#/$defs/target" }, "targetRef": { "type": ["integer", "string", "null"] },
         "part": { "$ref": "#/$defs/headerFooterPart" },
         "author": { "type": "string", "minLength": 1 }, "generateRedlines": { "type": "boolean" },
-        "existingRevisions": { "enum": ["merge-same-author", "slice-cross-author", "reject-input", "accept-all-first", "accept-all-first-keep-normalized"] },
+        "existingRevisions": { "enum": ["auto", "merge-same-author", "slice-cross-author", "reject-input", "accept-all-first", "accept-all-first-keep-normalized"] },
         "pairReplacements": { "type": "boolean" },
         "listMarkers": { "const": "literal", "description": "Accepts list-marker text as literal text. Suppresses LIST_MARKER_NOT_BOUND / UNSUPPORTED_LIST_CONVERSION and LIST_FORMAT_NOT_APPLIED / UNSUPPORTED_LIST_FORMAT_CHANGE for this operation." },
         "insertionAffinity": {

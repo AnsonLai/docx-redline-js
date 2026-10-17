@@ -1,6 +1,6 @@
 export type OoxmlSourceType = 'package' | 'document' | 'fragment';
 export type RedlineStatus = 'ok' | 'no-op' | 'partial' | 'error';
-export type ExistingRevisionsPolicy = 'merge-same-author' | 'slice-cross-author' | 'reject-input' | 'accept-all-first' | 'accept-all-first-keep-normalized';
+export type ExistingRevisionsPolicy = 'auto' | 'merge-same-author' | 'slice-cross-author' | 'reject-input' | 'accept-all-first' | 'accept-all-first-keep-normalized';
 export type RevisionView = 'accepted' | 'rejected';
 
 export interface RevisionTextSegment {
@@ -372,6 +372,11 @@ export function inspectDocumentParts(parts: { documentXml: string; commentsXml?:
 export function buildRevisionTokenFraming(options: { scope: string; entries?: unknown }): { framing: Uint8Array; scope: string; version: number; coveredParts: string[] };
 export function computeRevisionToken(options: { scope: string; entries?: unknown; digestFn?: (bytes: Uint8Array) => Promise<string> }): Promise<RevisionToken>;
 export function computeRevisionTokenSync(options: { scope: string; entries?: unknown; digestFn: (bytes: Uint8Array) => string }): RevisionToken;
+/** Compare two inspections by visible text, table position, list label, review segments and comments (ids, dates and run boundaries ignored). */
+export function compareDocumentInspections(expected: { paragraphs: unknown[]; comments?: unknown[] }, actual: { paragraphs: unknown[]; comments?: unknown[] }): { matches: boolean; differences: Array<{ path: string; expected: unknown; actual: unknown }> };
+export function inspectionReviewShape(inspection: { paragraphs: unknown[]; comments?: unknown[] }): { paragraphs: unknown[]; comments: string[] };
+/** Resolve `existingRevisions: 'auto'` for one target node; other policies are returned unchanged. */
+export function resolveExistingRevisionsPolicy(policy: ExistingRevisionsPolicy | null | undefined, node: unknown, author: string): ExistingRevisionsPolicy | null | undefined;
 export function computeDocumentPartsRevisionToken(parts: unknown, options?: { digestFn?: (bytes: Uint8Array) => Promise<string> }): Promise<RevisionToken>;
 export function validateRevisionToken(token: unknown): { valid: boolean; error?: { code: string; message: string } };
 export function areRevisionTokensEqual(a: string, b: string): boolean;

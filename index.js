@@ -284,6 +284,8 @@ export {
 } from './pipeline/ingestion-export.js';
 export { extractCanonicalParagraphText, readCanonicalRunText, isNodeVisibleInRevisionView, extractParagraphRevisionSegments } from './core/paragraph-text.js';
 export { inspectDocumentParts } from './services/document-inspection.js';
+export { compareDocumentInspections, inspectionReviewShape } from './services/inspection-comparison.js';
+export { resolveExistingRevisionsPolicy } from './core/word-xml.js';
 export {
     buildRevisionTokenFraming,
     computeRevisionToken,

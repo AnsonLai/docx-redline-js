@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.10.0
+
+### Added
+
+- **`@ansonlai/docx-redline-js/word`:** the Word host surface, moved from the AIWordPlugin consumer. `inspectWordFlatOpc` and
+  `prepareWordFlatOpcBatch` take the Flat OPC package from Word's `body.getOoxml()`, run one atomic batch and return the single
+  insertion package with comment, comment-thread and numbering parts merged. `computeWordSourceRevisionToken`,
+  `computeWordRestorationToken` and `detectWordExportTailIndex` give Word-aware revision identity that ignores rsids, a certified
+  export-only trailing paragraph and (for restores) regenerated paragraph ids. Browser-safe; no Office.js API.
+- **`existingRevisions: 'auto'`:** per target, `merge-same-author` when the target has no tracked changes or only the operation
+  author's, otherwise `slice-cross-author`. Accepted per operation, per batch and by `applyRedlineToOxml`; preflight reports the
+  resolved policy. `resolveExistingRevisionsPolicy` is exported.
+- **`compareDocumentInspections(expected, actual)`** (and `inspectionReviewShape`): compare two inspections by text, table position,
+  list label, review segments and comments, ignoring ids, dates and run boundaries. For verifying what a host committed.
+
+### Fixed
+
+- **Literal underscore runs are no longer Markdown emphasis:** `__x__` and `_x_` follow CommonMark flanking rules (not intraword,
+  not inside a longer underscore run, not around whitespace). Signature lines such as `_________________________` survive a
+  table reconciliation and a paragraph rewrite; `snake_case` stays literal.
+- **`structuredContent: false` is plain text:** a caller's plain-text `redline`/`replace` keeps inline Markdown markers literally
+  instead of turning them into formatting. Internal plain-structure calls are unchanged.
+
 ## 0.9.0
 
 ### Changed

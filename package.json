@@ -1,6 +1,6 @@
 {
   "name": "@ansonlai/docx-redline-js",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Host-independent OOXML reconciliation engine for .docx manipulation with track changes",
   "license": "MIT",
   "type": "module",
@@ -20,6 +20,11 @@
       "types": "./services/standalone-operation-runner.d.ts",
       "import": "./services/standalone-operation-runner.js",
       "default": "./services/standalone-operation-runner.js"
+    },
+    "./word": {
+      "types": "./word/index.d.ts",
+      "import": "./word/index.js",
+      "default": "./word/index.js"
     },
     "./node": {
       "types": "./node/index.d.ts",
@@ -51,6 +56,7 @@
     "node/",
     "bin/",
     "orchestration/",
+    "word/",
     "scripts/",
     "!scripts/benchmark-agent-workflow.mjs",
     "!scripts/benchmark-agent-cli-discovery.mjs",
@@ -94,7 +100,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "check:types": "tsc -p tsconfig.types.json && node scripts/check-types.mjs",
-    "lint": "eslint index.js adapters core document engine pipeline services orchestration scripts examples tests",
+    "lint": "eslint index.js adapters core document engine pipeline services orchestration word scripts examples tests",
     "test:coverage": "c8 --reporter=text --reporter=json --reporter=json-summary --reports-dir=coverage node scripts/run-tests.mjs",
     "coverage:gaps": "node scripts/report-coverage-gaps.mjs",
     "benchmark:session": "node scripts/benchmark-operation-session.mjs",

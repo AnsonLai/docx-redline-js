@@ -18,7 +18,7 @@ import {
 import { getAllReferencedNumIdElements, getCurrentChild } from '../core/current-properties.js';
 import { findReconstructionParagraphRange } from '../engine/reconstruction-mapper.js';
 import { createRevisionMetadata } from '../core/types.js';
-import { containsTrackedChanges, getTrackedChangeAuthors, createWordElement, withOoxmlSourceType } from '../core/word-xml.js';
+import { containsTrackedChanges, getTrackedChangeAuthors, createWordElement, resolveExistingRevisionsPolicy, withOoxmlSourceType } from '../core/word-xml.js';
 import {
     snapshotAndAttachRPrChange,
     snapshotAndAttachPPrChange
@@ -1967,6 +1967,9 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
             }
         };
     }
+    if (options.existingRevisions === 'auto') {
+        options = { ...options, existingRevisions: resolveExistingRevisionsPolicy('auto', targetParagraph, author) };
+    }
     const hasRevisions = containsTrackedChanges(targetParagraph);
     const existingPolicy = options.existingRevisions || 'merge-same-author';
     if (
@@ -2564,6 +2567,7 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
             pairReplacements: options.pairReplacements === true,
             insertionAffinity: options.insertionAffinity || null,
             literalTextEdit: options.literalTextEdit === true,
+            plainTextContent: options.plainTextContent === true,
             _revisionIdAllocator: revisionIdAllocator,
             _isolatedTableCell: useTableScope
         });

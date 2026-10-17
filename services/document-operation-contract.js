@@ -28,6 +28,7 @@ const SUPPORTED_OPERATION_TYPES = new Set([
 ]);
 
 export const EXISTING_REVISIONS_POLICIES = Object.freeze([
+    'auto',
     'merge-same-author',
     'slice-cross-author',
     'reject-input',
