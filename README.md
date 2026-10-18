@@ -589,6 +589,7 @@ an earlier block has already replaced.
 |----------|---------|
 | `injectCommentsIntoOoxml(oxml, comments, options)` | Add comments anchored to text ranges. |
 | `applyCommentReplyToParts(options)` | Build a threaded reply in `comments.xml` and `commentsExtended.xml` without adding a document-body anchor. Pass `documentXml` so the reply's `w14:paraId` also avoids body paragraph ids. |
+| `mergeCommentParts(parts, output)` | Merge a batch result's comment output into comment parts held as XML strings (no ZIP): appends or replaces `comments.xml`, reconciles existing `commentsIds.xml` / `commentsExtensible.xml`, replaces `commentsExtended.xml`. Returns `{ status, hasChanges, parts, changedParts, addedParts, error? }`; never throws for document content. The host adds relationships and content types for `addedParts`; that list reflects part presence only, so also repair a missing relationship for any part in `changedParts`. |
 | `compareDocumentInspections(expected, actual)` | Compare two `inspectDocumentParts` / `inspect()` results by text, table position, list label, review segments and comments, ignoring ids, dates and run boundaries. Returns `{ matches, differences }` (at most 10). See [Comparing inspections](#comparing-inspections). |
 | `inspectionReviewShape(inspection)` | The normalized, host-independent shape `compareDocumentInspections` compares. |
 | `acceptTrackedChangesInOoxml(oxml, { author?, allAuthors? })` | Accept `w:ins` / `w:del` / `w:moveFrom` / `w:moveTo` / `*PrChange` revisions for one author or all authors. |

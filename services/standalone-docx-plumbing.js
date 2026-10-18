@@ -311,11 +311,42 @@ export async function ensureNumberingArtifactsInZip(zip, numberingXmlList, optio
 }
 
 /**
+ * Merges incoming comment definitions into an existing comments.xml string. With no
+ * existing part, or `replaceExisting`, the incoming part is returned as is (unparsed).
+ * Otherwise throws a `PARSE_ERROR` for malformed XML and a `DUPLICATE_COMMENT_ID` for an
+ * incoming id the existing part already uses.
+ *
+ * @param {string|null|undefined} existingXml
+ * @param {string} commentsXml
+ * @param {{ replaceExisting?: boolean }} [options]
+ * @returns {string}
+ */
+export function mergeCommentsPartXml(existingXml, commentsXml, options = {}) {
+    if (!existingXml || options.replaceExisting === true) return commentsXml;
+    const existingDoc = parseXmlStrictStandalone(existingXml, 'word/comments.xml (existing)');
+    const incomingDoc = parseXmlStrictStandalone(commentsXml, 'word/comments.xml (incoming)');
+    const existingRoot = existingDoc.documentElement;
+    const existingIds = new Set(
+        Array.from(existingRoot.getElementsByTagNameNS(NS_W, 'comment'))
+            .map(comment => comment.getAttribute('w:id') || comment.getAttribute('id'))
+            .filter(Boolean)
+    );
+    for (const incomingComment of Array.from(incomingDoc.documentElement.getElementsByTagNameNS(NS_W, 'comment'))) {
+        const id = incomingComment.getAttribute('w:id') || incomingComment.getAttribute('id');
+        if (id && existingIds.has(id)) {
+            throw Object.assign(new Error(`Duplicate comment id: ${id}`), { code: 'DUPLICATE_COMMENT_ID', commentId: id });
+        }
+        existingRoot.appendChild(existingDoc.importNode(incomingComment, true));
+    }
+    return createSerializer().serializeToString(existingDoc);
+}
+
+/**
  * Ensures comments part + package metadata exist and merges incoming comments.
  *
  * @param {any} zip
  * @param {string|null|undefined} commentsXml
- * @param {{ onInfo?: (message: string) => void }} [options]
+ * @param {{ onInfo?: (message: string) => void, replaceExisting?: boolean }} [options]
  */
 export async function ensureCommentsArtifactsInZip(zip, commentsXml, options = {}) {
     const onInfo = typeof options?.onInfo === 'function' ? options.onInfo : () => {};
@@ -323,27 +354,8 @@ export async function ensureCommentsArtifactsInZip(zip, commentsXml, options = {
 
     const serializer = createSerializer();
     const existingText = await readZipText(zip, COMMENTS_PATH);
-    if (!existingText || options.replaceExisting === true) {
-        onInfo('[Demo] Adding comments.xml');
-        zip.file(COMMENTS_PATH, commentsXml);
-    } else {
-        const existingDoc = parseXmlStrictStandalone(existingText, 'word/comments.xml (existing)');
-        const incomingDoc = parseXmlStrictStandalone(commentsXml, 'word/comments.xml (incoming)');
-        const existingRoot = existingDoc.documentElement;
-        const existingIds = new Set(
-            Array.from(existingRoot.getElementsByTagNameNS(NS_W, 'comment'))
-                .map(comment => comment.getAttribute('w:id') || comment.getAttribute('id'))
-                .filter(Boolean)
-        );
-        for (const incomingComment of Array.from(incomingDoc.documentElement.getElementsByTagNameNS(NS_W, 'comment'))) {
-            const id = incomingComment.getAttribute('w:id') || incomingComment.getAttribute('id');
-            if (id && existingIds.has(id)) {
-                throw new Error(`Duplicate comment id: ${id}`);
-            }
-            existingRoot.appendChild(existingDoc.importNode(incomingComment, true));
-        }
-        zip.file(COMMENTS_PATH, serializer.serializeToString(existingDoc));
-    }
+    if (!existingText || options.replaceExisting === true) onInfo('[Demo] Adding comments.xml');
+    zip.file(COMMENTS_PATH, mergeCommentsPartXml(existingText, commentsXml, options));
 
     const ctText = await readZipText(zip, CONTENT_TYPES_PATH);
     if (ctText) {

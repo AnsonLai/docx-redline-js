@@ -390,7 +390,29 @@ export function wrapInDocumentFragment(rawOoxml: string, options?: Record<string
 
 export function injectCommentsIntoOoxml(oxml: string, comments: unknown[], options?: Record<string, unknown>): unknown;
 export function injectCommentsIntoPackage(packageXml: string, comments: unknown[], options?: Record<string, unknown>): unknown;
-export function applyCommentReplyToParts(options: { commentsXml: string; commentsExtendedXml?: string | null; parentCommentId: string | number; commentId: string | number; commentContent: string; author: string; date?: string }): { status: 'ok' | 'error'; hasChanges?: boolean; commentsXml?: string; commentsExtendedXml?: string; commentsXmlMode?: 'replace'; commentsExtendedXmlMode?: 'replace'; parentCommentId?: string; paraId?: string; parentParaId?: string; error?: RedlineError };
+export function applyCommentReplyToParts(options: { commentsXml: string; commentsExtendedXml?: string | null; documentXml?: string | null; parentCommentId: string | number; commentId: string | number; commentContent: string; author: string; date?: string }): { status: 'ok' | 'error'; hasChanges?: boolean; commentsXml?: string; commentsExtendedXml?: string; commentsXmlMode?: 'replace'; commentsExtendedXmlMode?: 'replace'; parentCommentId?: string; paraId?: string; parentParaId?: string; error?: RedlineError };
+export interface CommentParts {
+  commentsXml: string | null;
+  commentsExtendedXml: string | null;
+  commentsIdsXml: string | null;
+  commentsExtensibleXml: string | null;
+}
+export type CommentPartName = 'comments' | 'commentsExtended' | 'commentsIds' | 'commentsExtensible';
+export interface MergeCommentPartsResult {
+  status: 'ok' | 'error';
+  hasChanges: boolean;
+  /** Updated parts on success; the input parts unchanged on error. Absent parts are null. */
+  parts: CommentParts;
+  changedParts: CommentPartName[];
+  /** Parts the input did not have; the host adds their relationship and content type. Part presence only: also repair a missing relationship for any changed part. */
+  addedParts: CommentPartName[];
+  error?: { code: 'PARSE_ERROR' | 'DUPLICATE_COMMENT_ID' | 'UNSUPPORTED_EXISTING_COMMENT_THREAD_METADATA' | string; message: string; part?: CommentPartName; commentId?: string };
+}
+/** Merge a batch result's comment output into comment parts held as XML strings (no ZIP); reconciles commentsIds/commentsExtensible. */
+export function mergeCommentParts(
+  parts?: Partial<CommentParts>,
+  output?: { commentsXml?: string | null; commentsXmlMode?: 'merge' | 'replace'; commentsExtendedXml?: string | null; commentsExtendedXmlMode?: 'merge' | 'replace' }
+): MergeCommentPartsResult;
 export function acceptTrackedChangesInOoxml(oxml: string, options?: RevisionFilterOptions): AcceptTrackedChangesResult;
 export function rejectTrackedChangesInOoxml(oxml: string, options?: RevisionFilterOptions): RejectTrackedChangesResult;
 export function deleteCommentsByAuthorInOoxml(oxml: string, options?: RevisionFilterOptions): DeleteCommentsResult;

@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`mergeCommentParts(parts, output)`:** merges a batch result's comment output (`commentsXml` / `commentsXmlMode`,
+  `commentsExtendedXml` / `commentsExtendedXmlMode`) into comment parts held as XML strings, for hosts that keep package
+  parts outside a ZIP (a Flat OPC package, a browser parts map). Appends or replaces comments.xml, brings existing
+  commentsIds.xml / commentsExtensible.xml in line, and replaces commentsExtended.xml. Returns
+  `{ status, hasChanges, parts, changedParts, addedParts }`. It never throws for document content: `PARSE_ERROR`,
+  `DUPLICATE_COMMENT_ID` and `UNSUPPORTED_EXISTING_COMMENT_THREAD_METADATA` (a `'merge'` thread-metadata delta for parts
+  that already have it) come back as `error` with the input parts unchanged. Relationships and content types stay with the
+  host; `addedParts` lists parts new to the input (presence only, so hosts should also repair a missing relationship for
+  any part in `changedParts`). Same merge as `openDocx` (shared helper).
+
+### Fixed
+
+- The `applyCommentReplyToParts` declaration now includes `documentXml`.
+
 ## 0.10.0
 
 ### Added

@@ -2,6 +2,7 @@ import {
   applyRedlineToOxml,
   configureXmlProvider,
   ingestWordOoxmlToPlainTextResult,
+  mergeCommentParts,
   parseOoxmlSafe,
   reconcileMarkdownTableOoxml,
   validateRedlineOoxml,
@@ -84,3 +85,11 @@ void applyOperationsToDocumentXml('<w:document/>', operations, 'Fallback Author'
 void preflightOperations('<w:document/>', operations, 'Fallback Author');
 const docx = openDocx(new Uint8Array());
 void docx.inspect({ skipEmpty: true });
+
+const mergedComments = mergeCommentParts(
+  { commentsXml: '<w:comments/>', commentsIdsXml: null },
+  { commentsXml: '<w:comments/>', commentsXmlMode: 'merge', commentsExtendedXml: null }
+);
+const mergedCommentsXml: string | null = mergedComments.parts.commentsXml;
+void mergedCommentsXml;
+void (mergedComments.addedParts satisfies Array<'comments' | 'commentsExtended' | 'commentsIds' | 'commentsExtensible'>);

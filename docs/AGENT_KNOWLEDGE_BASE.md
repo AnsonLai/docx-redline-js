@@ -73,6 +73,7 @@ instructions that will exist in another clone or in CI.
 | Validation, receipts, and lifecycle oracles | `core/redline-validation.js`, `services/receipt-collector.js`, `services/revision-comment-management.js` | `tests/redline_validation_tests.mjs`, `tests/mutation_receipt_tests.mjs`, `tests/roundtrip_oracle_tests.mjs` |
 | Existing-revision policy resolution (`auto`) | `core/word-xml.js` (`resolveExistingRevisionsPolicy`), `services/document-operation-mutations.js`, `services/operation-preflight.js` | `tests/existing_revisions_auto_tests.mjs`, `tests/existing_revisions_auto_paths_tests.mjs` |
 | Comparing a committed document with a prepared one | `services/inspection-comparison.js` | `tests/inspection_comparison_tests.mjs` |
+| Comment parts outside a ZIP | `services/comment-parts-merge.js`, `services/standalone-docx-plumbing.js` (`mergeCommentsPartXml`), `services/comment-thread-parts.js` | `tests/comment_parts_merge_tests.mjs` |
 
 Run one focused suite with `node tests/<name>.mjs`. Run `npm test` only when the
 change crosses several subsystems or before release-level handoff. The Word COM,
@@ -384,6 +385,27 @@ const inspection = inspectDocumentParts({ documentXml, commentsXml, numberingXml
 
 Reuse `exactText` plus `paragraphId` or `fingerprint` in an operation. Computed
 list labels and excerpts are for display, not replacements for exact targets.
+
+### Merge comment output into parts held outside a ZIP
+
+```js
+import { mergeCommentParts } from '@ansonlai/docx-redline-js';
+const merged = mergeCommentParts(
+  { commentsXml, commentsExtendedXml, commentsIdsXml, commentsExtensibleXml }, // current parts, null when absent
+  batchResult // commentsXml / commentsXmlMode, commentsExtendedXml / commentsExtendedXmlMode
+);
+if (merged.status === 'ok') { /* write merged.parts; ensure rels/content types for merged.changedParts */ }
+```
+
+Use it when a host holds package parts as strings (a Flat OPC package from a Word
+add-in, a browser parts map) instead of handing a ZIP to `openDocx`, which does the
+same merge internally. commentsIds.xml and commentsExtensible.xml are reconciled
+only when present, never created. A `'merge'` commentsExtended delta for parts that
+already have thread metadata is refused with
+`UNSUPPORTED_EXISTING_COMMENT_THREAD_METADATA`; on any error the input parts come back
+unchanged. `addedParts` reflects part presence only; the function cannot see
+relationships, so a host that owns them should ensure one for every part in
+`changedParts` (a package can have comments.xml without its relationship).
 
 ### Verify a committed document against the prepared one
 

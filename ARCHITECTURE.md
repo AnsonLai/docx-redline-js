@@ -69,6 +69,7 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 │   ├── revision-comment-management.js
 │   ├── document-inspection.js
 │   ├── inspection-comparison.js
+│   ├── comment-parts-merge.js
 │   ├── document-operation-session.js
 │   ├── document-operation-applier.js
 │   ├── document-operation-mutations.js
@@ -320,6 +321,11 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 - `services/document-inspection.js`
   - Read-only paragraphs/comments inventory with target identity, headings,
     revision authors, table context, and advisory visible numbering.
+- `services/comment-parts-merge.js`
+  - `mergeCommentParts`: the comment half of writing a batch result back into a package whose parts
+    are XML strings (no ZIP). Shares `mergeCommentsPartXml` with `ensureCommentsArtifactsInZip` and uses
+    `reconcileCommentSiblingParts`, so it merges exactly as `openDocx` does. Relationships and content
+    types stay with the host.
 - `services/inspection-comparison.js`
   - Pure comparison of two inspections by text, table position, list label,
     merged review segments and comments, ignoring ids, dates and run boundaries.

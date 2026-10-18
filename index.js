@@ -307,6 +307,7 @@ export {
     buildCommentsPartXml
 } from './services/comment-engine.js';
 export { applyCommentReplyToParts } from './services/comment-replies.js';
+export { mergeCommentParts } from './services/comment-parts-merge.js';
 export {
     acceptTrackedChangesInOoxml,
     rejectTrackedChangesInOoxml,
