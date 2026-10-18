@@ -9,14 +9,19 @@
   parts outside a ZIP (a Flat OPC package, a browser parts map). Appends or replaces comments.xml, brings existing
   commentsIds.xml / commentsExtensible.xml in line, and replaces commentsExtended.xml. Returns
   `{ status, hasChanges, parts, changedParts, addedParts }`. It never throws for document content: `PARSE_ERROR`,
-  `DUPLICATE_COMMENT_ID` and `UNSUPPORTED_EXISTING_COMMENT_THREAD_METADATA` (a `'merge'` thread-metadata delta for parts
-  that already have it) come back as `error` with the input parts unchanged. Relationships and content types stay with the
+  `INVALID_COMMENT_PARTS` (a non-string input or a part with the wrong root element), `DUPLICATE_COMMENT_ID` (also
+  within one incoming part) and `UNSUPPORTED_EXISTING_COMMENT_THREAD_METADATA` (a `'merge'` thread-metadata delta for
+  parts that already have it) come back as `error`, with `error.part` naming the part, and the input parts unchanged.
+  Existing commentsIds/commentsExtensible parts are validated before they are reconciled, and an incoming comments part
+  with no comments changes nothing. Relationships and content types stay with the
   host; `addedParts` lists parts new to the input (presence only, so hosts should also repair a missing relationship for
   any part in `changedParts`). Same merge as `openDocx` (shared helper).
 
 ### Fixed
 
 - The `applyCommentReplyToParts` declaration now includes `documentXml`.
+- `ensureCommentsArtifactsInZip` (and so `openDocx`) refuses duplicate comment ids within one incoming comments part,
+  and leaves comments.xml untouched when the incoming part has no comments.
 
 ## 0.10.0
 

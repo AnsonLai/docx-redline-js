@@ -406,7 +406,7 @@ export interface MergeCommentPartsResult {
   changedParts: CommentPartName[];
   /** Parts the input did not have; the host adds their relationship and content type. Part presence only: also repair a missing relationship for any changed part. */
   addedParts: CommentPartName[];
-  error?: { code: 'PARSE_ERROR' | 'DUPLICATE_COMMENT_ID' | 'UNSUPPORTED_EXISTING_COMMENT_THREAD_METADATA' | string; message: string; part?: CommentPartName; commentId?: string };
+  error?: { code: 'PARSE_ERROR' | 'INVALID_COMMENT_PARTS' | 'DUPLICATE_COMMENT_ID' | 'UNSUPPORTED_EXISTING_COMMENT_THREAD_METADATA' | string; message: string; part?: CommentPartName; commentId?: string };
 }
 /** Merge a batch result's comment output into comment parts held as XML strings (no ZIP); reconciles commentsIds/commentsExtensible. */
 export function mergeCommentParts(

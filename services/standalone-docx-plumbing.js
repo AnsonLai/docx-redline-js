@@ -314,7 +314,8 @@ export async function ensureNumberingArtifactsInZip(zip, numberingXmlList, optio
  * Merges incoming comment definitions into an existing comments.xml string. With no
  * existing part, or `replaceExisting`, the incoming part is returned as is (unparsed).
  * Otherwise throws a `PARSE_ERROR` for malformed XML and a `DUPLICATE_COMMENT_ID` for an
- * incoming id the existing part already uses.
+ * incoming id the existing part (or an earlier incoming comment) already uses. An incoming
+ * part with no comments leaves the existing string as is.
  *
  * @param {string|null|undefined} existingXml
  * @param {string} commentsXml
@@ -325,17 +326,20 @@ export function mergeCommentsPartXml(existingXml, commentsXml, options = {}) {
     if (!existingXml || options.replaceExisting === true) return commentsXml;
     const existingDoc = parseXmlStrictStandalone(existingXml, 'word/comments.xml (existing)');
     const incomingDoc = parseXmlStrictStandalone(commentsXml, 'word/comments.xml (incoming)');
+    const incomingComments = Array.from(incomingDoc.documentElement.getElementsByTagNameNS(NS_W, 'comment'));
+    if (incomingComments.length === 0) return existingXml;
     const existingRoot = existingDoc.documentElement;
-    const existingIds = new Set(
+    const usedIds = new Set(
         Array.from(existingRoot.getElementsByTagNameNS(NS_W, 'comment'))
             .map(comment => comment.getAttribute('w:id') || comment.getAttribute('id'))
             .filter(Boolean)
     );
-    for (const incomingComment of Array.from(incomingDoc.documentElement.getElementsByTagNameNS(NS_W, 'comment'))) {
+    for (const incomingComment of incomingComments) {
         const id = incomingComment.getAttribute('w:id') || incomingComment.getAttribute('id');
-        if (id && existingIds.has(id)) {
+        if (id && usedIds.has(id)) {
             throw Object.assign(new Error(`Duplicate comment id: ${id}`), { code: 'DUPLICATE_COMMENT_ID', commentId: id });
         }
+        if (id) usedIds.add(id);
         existingRoot.appendChild(existingDoc.importNode(incomingComment, true));
     }
     return createSerializer().serializeToString(existingDoc);

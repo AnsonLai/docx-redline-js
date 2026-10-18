@@ -45,9 +45,35 @@ export function mergeCommentParts(parts = {}, output = {}) {
     const commentsMode = output?.commentsXmlMode === 'replace' ? 'replace' : 'merge';
     const extendedMode = output?.commentsExtendedXmlMode === 'replace' ? 'replace' : 'merge';
 
+    for (const [label, value] of [
+        ...Object.values(PART_KEYS).map(key => [`parts.${key}`, before[key]]),
+        ['output.commentsXml', output?.commentsXml], ['output.commentsExtendedXml', output?.commentsExtendedXml]
+    ]) {
+        if (value != null && typeof value !== 'string') {
+            return fail({ code: 'INVALID_COMMENT_PARTS', message: `${label} must be an XML string, null or omitted (got ${typeof value}).` });
+        }
+    }
+
+    // Parses a part and checks its root element, so a wrong part is refused rather than merged as empty.
+    const requirePart = (xml, part, rootName, label) => {
+        let doc;
+        try {
+            doc = parseXmlStrictStandalone(xml, label);
+        } catch (error) {
+            throw Object.assign(error, { part });
+        }
+        if (doc.documentElement?.localName !== rootName) {
+            throw Object.assign(new Error(`${label}: expected a <${rootName}> root element, found <${doc.documentElement?.localName || 'none'}>.`), { code: 'INVALID_COMMENT_PARTS', part });
+        }
+    };
+
     try {
         if (output?.commentsXml) {
-            parseXmlStrictStandalone(output.commentsXml, 'word/comments.xml (incoming)');
+            requirePart(output.commentsXml, 'comments', 'comments', 'word/comments.xml (incoming)');
+            if (before.commentsXml) requirePart(before.commentsXml, 'comments', 'comments', 'word/comments.xml (existing)');
+            // Sibling parts are reconciled below; a malformed one would otherwise be skipped silently.
+            if (before.commentsIdsXml) requirePart(before.commentsIdsXml, 'commentsIds', 'commentsIds', 'word/commentsIds.xml (existing)');
+            if (before.commentsExtensibleXml) requirePart(before.commentsExtensibleXml, 'commentsExtensible', 'commentsExtensible', 'word/commentsExtensible.xml (existing)');
             after.commentsXml = mergeCommentsPartXml(before.commentsXml, output.commentsXml, { replaceExisting: commentsMode === 'replace' });
             Object.assign(after, reconcileCommentSiblingParts({
                 commentsXml: after.commentsXml,
@@ -63,13 +89,14 @@ export function mergeCommentParts(parts = {}, output = {}) {
                     message: 'The output carries a commentsExtended delta (mode "merge") for parts that already have thread metadata; a delta cannot be merged into an existing commentsExtended.xml. Nothing was merged.'
                 });
             }
-            parseXmlStrictStandalone(output.commentsExtendedXml, 'word/commentsExtended.xml (incoming)');
+            requirePart(output.commentsExtendedXml, 'commentsExtended', 'commentsEx', 'word/commentsExtended.xml (incoming)');
             after.commentsExtendedXml = output.commentsExtendedXml;
         }
     } catch (error) {
         return fail({
             code: error?.code || 'COMMENT_PARTS_MERGE_FAILED',
             message: error?.message || String(error),
+            ...(error?.part || error?.code === 'DUPLICATE_COMMENT_ID' ? { part: error.part || 'comments' } : {}),
             ...(error?.commentId ? { commentId: error.commentId } : {})
         });
     }

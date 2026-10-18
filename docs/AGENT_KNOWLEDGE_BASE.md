@@ -402,8 +402,10 @@ add-in, a browser parts map) instead of handing a ZIP to `openDocx`, which does 
 same merge internally. commentsIds.xml and commentsExtensible.xml are reconciled
 only when present, never created. A `'merge'` commentsExtended delta for parts that
 already have thread metadata is refused with
-`UNSUPPORTED_EXISTING_COMMENT_THREAD_METADATA`; on any error the input parts come back
-unchanged. `addedParts` reflects part presence only; the function cannot see
+`UNSUPPORTED_EXISTING_COMMENT_THREAD_METADATA`. Other codes: `PARSE_ERROR`,
+`INVALID_COMMENT_PARTS` (non-string input, wrong root element) and
+`DUPLICATE_COMMENT_ID`; `error.part` names the part. On any error the input parts
+come back unchanged. `addedParts` reflects part presence only; the function cannot see
 relationships, so a host that owns them should ensure one for every part in
 `changedParts` (a package can have comments.xml without its relationship).
 
