@@ -45,6 +45,10 @@ const incoming = (...items) => ({ commentsXml: comments(...items) });
     refused(mergeCommentParts({ ...source, commentsIdsXml: '<w16cid:commentsIds' }, incoming(comment(1, para('x', 'BBBB0001')))), 'PARSE_ERROR', 'commentsIds');
     refused(mergeCommentParts({ ...source, commentsExtensibleXml: '<nope' }, incoming(comment(1, para('x', 'BBBB0001')))), 'PARSE_ERROR', 'commentsExtensible');
     refused(mergeCommentParts(source, incoming(comment(5, para('a', 'BBBB0001')), comment(5, para('b', 'BBBB0002')))), 'DUPLICATE_COMMENT_ID', 'comments');
+    // Duplicates inside the incoming part are refused in every mode, not only when merging into an existing part.
+    refused(mergeCommentParts(source, { ...incoming(comment(5, para('a', 'BBBB0001')), comment(5, para('b', 'BBBB0002'))), commentsXmlMode: 'replace' }), 'DUPLICATE_COMMENT_ID', 'comments');
+    const noComments = {};
+    refused(mergeCommentParts(noComments, incoming(comment(5, para('a', 'BBBB0001')), comment(5, para('b', 'BBBB0002')))), 'DUPLICATE_COMMENT_ID', 'comments', { commentsXml: null });
     // Sibling parts are only validated when they would be touched.
     assert.equal(mergeCommentParts({ ...source, commentsIdsXml: '<broken' }, {}).status, 'ok');
 }

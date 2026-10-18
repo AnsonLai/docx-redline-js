@@ -65,11 +65,23 @@ export function mergeCommentParts(parts = {}, output = {}) {
         if (doc.documentElement?.localName !== rootName) {
             throw Object.assign(new Error(`${label}: expected a <${rootName}> root element, found <${doc.documentElement?.localName || 'none'}>.`), { code: 'INVALID_COMMENT_PARTS', part });
         }
+        return doc;
     };
 
     try {
         if (output?.commentsXml) {
-            requirePart(output.commentsXml, 'comments', 'comments', 'word/comments.xml (incoming)');
+            const incomingDoc = requirePart(output.commentsXml, 'comments', 'comments', 'word/comments.xml (incoming)');
+            // Ids must be unique within the incoming part in every mode (the merge below also checks them
+            // against the existing part).
+            const seen = new Set();
+            for (const node of Array.from(incomingDoc.getElementsByTagNameNS('*', 'comment'))) {
+                const id = node.getAttribute('w:id') || node.getAttribute('id');
+                if (!id) continue;
+                if (seen.has(id)) {
+                    throw Object.assign(new Error(`Duplicate comment id: ${id}`), { code: 'DUPLICATE_COMMENT_ID', commentId: id, part: 'comments' });
+                }
+                seen.add(id);
+            }
             if (before.commentsXml) requirePart(before.commentsXml, 'comments', 'comments', 'word/comments.xml (existing)');
             // Sibling parts are reconciled below; a malformed one would otherwise be skipped silently.
             if (before.commentsIdsXml) requirePart(before.commentsIdsXml, 'commentsIds', 'commentsIds', 'word/commentsIds.xml (existing)');

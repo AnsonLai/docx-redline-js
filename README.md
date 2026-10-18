@@ -21,7 +21,14 @@ Converts AI-generated or programmatic text/markdown edits into valid Office Open
 - Package plumbing helpers for numbering.xml, comments.xml, content types, and relationships
 - Zero host dependencies: works in Node.js, browsers, Deno, and similar JS runtimes with DOM parsing support
 
-## What's New in 0.10.0, 0.9.0 and 0.8.x
+## What's New in 0.11.0, 0.10.0, 0.9.0 and 0.8.x
+
+0.11.0 adds `mergeCommentParts(parts, output)`, which merges a batch result's comment output into comment parts held as
+XML strings, for hosts that have no ZIP. It also fixes `structuredContent: false` so inline Markdown stays literal in
+paragraphs a redline adds and in table cells, recognizes one-column Markdown table separators (`| --- |`), and makes
+`ensureCommentsArtifactsInZip` refuse an incoming part that repeats a comment id while merging into an existing
+`comments.xml`. See the
+[0.11.0 release notes](./docs/releases/0.11.0.md).
 
 0.10.0 adds `existingRevisions: 'auto'` (capability `existing-revisions-auto-v1`, contract version stays 9), which
 merges a target's own-author history and slices around another reviewer's, per target. It also adds
@@ -382,7 +389,7 @@ See the [compact agent fast start](./docs/AGENT_FAST_START.md), the
 | `generateRedlines` | `boolean` | `true` | When `true`, emit Word-native tracked changes (`w:ins`/`w:del`). When `false`, apply clean direct edits without revision markup. **Note: Redlines are not always the preferred method** — pass `generateRedlines: false` (or `--no-redlines` via CLI) when producing clean execution drafts, restructuring documents, or when revision clutter is unwanted. |
 | `author` | `string` | `'AI Redliner'` | Reviewer/author name stamped on generated tracked changes and comments. Overridable via `DOCX_REDLINE_AUTHOR` env variable. |
 | `atomic` | `boolean` | `false` | Batch transaction mode. By default (`false`), valid edits are applied and failing operations report errors. When `true`, any operation failure rolls back the entire batch to the original document state (`rolledBack: true`, `hasChanges: false`). Feature prominently in high-assurance workflows. |
-| `structuredContent` | `boolean` | `true` | Auto-detects Markdown tables, headings (`#`), and lists in replacement text and renders them as native Word elements (`w:tbl`, `w:pStyle`, `w:numPr`). Pass `false` to treat replacement text strictly as plain text: inline Markdown markers (`**`, `__`, `_`, `~~`, `++`) are kept literally. With `true`, underscores follow CommonMark flanking rules, so signature lines (`_____`) and `snake_case` stay literal. |
+| `structuredContent` | `boolean` | `true` | Auto-detects Markdown tables, headings (`#`), and lists in replacement text and renders them as native Word elements (`w:tbl`, `w:pStyle`, `w:numPr`). Pass `false` to treat replacement text strictly as plain text: inline Markdown markers (`**`, `__`, `_`, `~~`, `++`) are kept literally, including in paragraphs a redline adds and in table cells. With `true`, underscores follow CommonMark flanking rules, so signature lines (`_____`) and `snake_case` stay literal. |
 | `pairReplacements` | `boolean` | `true` | Links adjacent `<w:del>` and `<w:ins>` revisions with matching timestamps so Word groups them as a single replacement in the Reviewing Pane. |
 | `strictTargets` | `boolean` | `true` (CLI/facade) | Requires exact target descriptors (`exactText`, `paragraphId`, `index`, `occurrence`, `fingerprint`) and forbids ambiguous matching. Defaults to `false` in low-level runner for backwards compatibility. |
 | `existingRevisions` | `string` | `'merge-same-author'` | How to handle paragraphs with existing tracked changes. `'merge-same-author'` merges revisions from the same author and protects other authors with `EXISTING_REVISIONS`. `'slice-cross-author'` keeps that same-author merge behavior while allowing Word-native edits inside another author's pending insertion. Pass `'accept-all-first'` to normalize prior revisions or `'reject-input'` to refuse editing revised paragraphs. `'auto'` chooses per target: `'merge-same-author'` when the target has no tracked changes or only the operation author's, otherwise `'slice-cross-author'` (preflight reports the resolved policy). |
@@ -558,7 +565,7 @@ const result = await document.applyOperations([plan.operation], {
 });
 ```
 
-Every Markdown table must include a separator row immediately below its header.
+Every Markdown table must include a separator row immediately below its header (a one-column table uses `| --- |`).
 Missing separators, missing data rows, and inconsistent column counts are
 reported as structured errors instead of being inserted as visible pipe text.
 Use `#` through `#########` to request Word heading paragraphs; blank lines
@@ -589,7 +596,7 @@ an earlier block has already replaced.
 |----------|---------|
 | `injectCommentsIntoOoxml(oxml, comments, options)` | Add comments anchored to text ranges. |
 | `applyCommentReplyToParts(options)` | Build a threaded reply in `comments.xml` and `commentsExtended.xml` without adding a document-body anchor. Pass `documentXml` so the reply's `w14:paraId` also avoids body paragraph ids. |
-| `mergeCommentParts(parts, output)` | Merge a batch result's comment output into comment parts held as XML strings (no ZIP): appends or replaces `comments.xml`, reconciles existing `commentsIds.xml` / `commentsExtensible.xml`, replaces `commentsExtended.xml`. Returns `{ status, hasChanges, parts, changedParts, addedParts, error? }`; never throws for document content. The host adds relationships and content types for `addedParts`; that list reflects part presence only, so also repair a missing relationship for any part in `changedParts`. |
+| `mergeCommentParts(parts, output)` | Merge a batch result's comment output into comment parts held as XML strings (no ZIP): appends or replaces `comments.xml`, reconciles existing `commentsIds.xml` / `commentsExtensible.xml`, replaces `commentsExtended.xml`. Returns `{ status, hasChanges, parts, changedParts, addedParts, error? }`; never throws for document content. Error codes: `PARSE_ERROR`, `INVALID_COMMENT_PARTS`, `DUPLICATE_COMMENT_ID`, `UNSUPPORTED_EXISTING_COMMENT_THREAD_METADATA`, each with `error.part`. The host adds relationships and content types for `addedParts`; that list reflects part presence only, so also repair a missing relationship for any part in `changedParts`. |
 | `compareDocumentInspections(expected, actual)` | Compare two `inspectDocumentParts` / `inspect()` results by text, table position, list label, review segments and comments, ignoring ids, dates and run boundaries. Returns `{ matches, differences }` (at most 10). See [Comparing inspections](#comparing-inspections). |
 | `inspectionReviewShape(inspection)` | The normalized, host-independent shape `compareDocumentInspections` compares. |
 | `acceptTrackedChangesInOoxml(oxml, { author?, allAuthors? })` | Accept `w:ins` / `w:del` / `w:moveFrom` / `w:moveTo` / `*PrChange` revisions for one author or all authors. |
@@ -598,7 +605,7 @@ an earlier block has already replaced.
 | `generateTableOoxml(headers, rows, options)` | Generate a `w:tbl` from tabular data. |
 | `createDynamicNumberingIdState(numberingXml)` | Allocate numbering IDs without collisions. |
 | `ensureNumberingArtifactsInZip(zip, numberingXml, options)` | Add numbering artifacts to a `.docx` package. Always merges into an existing `word/numbering.xml` through the package's single numbering merge (`mergeNumberingParts`); an incoming id that already exists with different content fails with `NUMBERING_ID_CONFLICT`. The former `mergeNumberingXml` option is ignored. |
-| `ensureCommentsArtifactsInZip(zip, commentsXml)` | Merge comments artifacts into a `.docx` package. |
+| `ensureCommentsArtifactsInZip(zip, commentsXml)` | Merge comments artifacts into a `.docx` package. When merging into an existing `comments.xml`, refuses an id already in use, including one repeated within the incoming part (`DUPLICATE_COMMENT_ID`), and leaves `comments.xml` untouched when the incoming part has no comments. `replaceExisting` (or no existing part) writes the incoming part as is. |
 | `ensureCommentsExtendedArtifactsInZip(zip, commentsExtendedXml)` | Add or replace modern Word comment-thread metadata in a `.docx` package. |
 | `validateDocxPackage(zip)` | Validate `.docx` structural consistency. |
 

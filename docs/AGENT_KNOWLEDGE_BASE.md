@@ -404,7 +404,9 @@ only when present, never created. A `'merge'` commentsExtended delta for parts t
 already have thread metadata is refused with
 `UNSUPPORTED_EXISTING_COMMENT_THREAD_METADATA`. Other codes: `PARSE_ERROR`,
 `INVALID_COMMENT_PARTS` (non-string input, wrong root element) and
-`DUPLICATE_COMMENT_ID`; `error.part` names the part. On any error the input parts
+`DUPLICATE_COMMENT_ID`; `error.part` names the part (and `error.commentId` the
+duplicate). An unexpected merge failure reports `COMMENT_PARTS_MERGE_FAILED`. It
+never throws for document content. On any error the input parts
 come back unchanged. `addedParts` reflects part presence only; the function cannot see
 relationships, so a host that owns them should ensure one for every part in
 `changedParts` (a package can have comments.xml without its relationship).
@@ -916,12 +918,11 @@ Accept/Reject checks.
 
 ```js
 import { reconcileMarkdownTableOoxml } from '@ansonlai/docx-redline-js';
-const result = await reconcileMarkdownTableOoxml(tableOoxml, originalText, markdownTable);
+const result = await reconcileMarkdownTableOoxml(tableOoxml, originalText, markdownTable, options); // options optional
 ```
 
 A multi-line `redline` of a table-cell paragraph whose first line is the cell's
-current text (`'Cell text.
-Second line'`) inserts the extra lines as new rows below
+current text (`'Cell text.\nSecond line'`) inserts the extra lines as new rows below
 the target row, in the target column (mirrored across columns for symmetric label
 rows such as signature blocks). It does not add paragraphs inside the cell. With
 `structuredContent: false` the new cell text stays literal. One-column tables use
@@ -943,7 +944,7 @@ reconstruct the architecture by repeatedly listing the repository.
 | `generateRedlines` | `boolean` | `true` | When `true`, emits Word-native tracked changes (`w:ins`/`w:del`). When `false`, applies direct text edits without revision markup. **Note: Redlines are not always the preferred method** — pass `generateRedlines: false` (or `--no-redlines` via CLI) when producing clean execution drafts, restructuring documents, or when revision clutter is unwanted. |
 | `author` | `string` | `'AI Redliner'` | Reviewer/author name stamped on generated tracked changes and comments. Overridable via `DOCX_REDLINE_AUTHOR` environment variable. |
 | `atomic` | `boolean` | `false` | Batch transaction mode. By default (`false`), valid edits are applied directly and failing operations report errors. When `true`, any operation failure rolls back the entire batch to the original document state (`rolledBack: true`, `hasChanges: false`). Use `atomic: true` (or `--atomic` in CLI) for high-assurance workflows. |
-| `structuredContent` | `boolean` | `true` | Auto-detects Markdown tables, headings (`#`), and lists in replacement text and renders them as native Word elements (`w:tbl`, `w:pStyle`, `w:numPr`). Pass `false` to treat replacement text strictly as plain text: inline Markdown markers (`**`, `__`, `_`, `~~`, `++`) are kept literally. With `true`, underscores follow CommonMark flanking rules, so signature lines (`_____`) and `snake_case` stay literal. |
+| `structuredContent` | `boolean` | `true` | Auto-detects Markdown tables, headings (`#`), and lists in replacement text and renders them as native Word elements (`w:tbl`, `w:pStyle`, `w:numPr`). Pass `false` to treat replacement text strictly as plain text, including paragraphs a redline adds and table-cell text: no headings, and inline Markdown markers (`**`, `__`, `_`, `~~`, `++`) are kept literally. With `true`, underscores follow CommonMark flanking rules, so signature lines (`_____`) and `snake_case` stay literal. |
 | `pairReplacements` | `boolean` | `true` | Links adjacent `<w:del>` and `<w:ins>` revisions with matching timestamps so Word groups them as a single replacement in the Reviewing Pane. |
 | `strictTargets` | `boolean` | `true` (CLI/facade) | Requires exact target descriptors (`exactText`, `paragraphId`, `index`, `occurrence`, `fingerprint`) and forbids ambiguous matching. Defaults to `false` in low-level runner for backwards compatibility. |
 | `existingRevisions` | `string` | `'merge-same-author'` | How to handle paragraphs with existing tracked changes. `'merge-same-author'` merges the same author's work and protects other authors with `EXISTING_REVISIONS`. `'slice-cross-author'` retains same-author merging while allowing Word-native edits inside another author's pending insertion. Pass `'accept-all-first'` to normalize prior revisions or `'reject-input'` to refuse editing revised paragraphs. `'auto'` chooses per target: `'merge-same-author'` when the target has no tracked changes or only the operation author's, otherwise `'slice-cross-author'` (preflight reports the resolved policy). |

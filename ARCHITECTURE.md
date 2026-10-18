@@ -188,9 +188,13 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 - `pipeline/structured-content.js`
   - Strict decomposition and planning for atomic mixed heading/paragraph/list/
     table replacements. It rejects ambiguous table-like pipe text rather than
-    allowing a fallback to literal paragraphs.
+    allowing a fallback to literal paragraphs. A one-column table needs a pipe on both sides of its separator
+    (`| --- |`); the same rule is in `pipeline/content-analysis.js` (`parseTable`).
 - `pipeline/*`
   - Ingestion, markdown preprocessing, diffing, patching, and serialization stages. Ingestion treats deleted and moved-from content as non-visible text and inserted/moved-to content as visible text.
+- `services/table-reconciliation.js`
+  - Table generation (`generateTableOoxml`) and cell-level reconciliation against a virtual grid. A caller's
+    `structuredContent: false` reaches it as `plainTextContent`, so cell text is not parsed as inline Markdown.
 - `services/comment-engine.js`
   - Comment creation and package-level comment XML handling.
 - `services/numbering-helpers.js`
@@ -325,7 +329,9 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
   - `mergeCommentParts`: the comment half of writing a batch result back into a package whose parts
     are XML strings (no ZIP). Shares `mergeCommentsPartXml` with `ensureCommentsArtifactsInZip` and uses
     `reconcileCommentSiblingParts`, so it merges exactly as `openDocx` does. Relationships and content
-    types stay with the host.
+    types stay with the host. Errors (`PARSE_ERROR`, `INVALID_COMMENT_PARTS`, `DUPLICATE_COMMENT_ID`,
+    `UNSUPPORTED_EXISTING_COMMENT_THREAD_METADATA`) are returned with `error.part`, never thrown, and the input
+    parts come back unchanged.
 - `services/inspection-comparison.js`
   - Pure comparison of two inspections by text, table position, list label,
     merged review segments and comments, ignoring ids, dates and run boundaries.
