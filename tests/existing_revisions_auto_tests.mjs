@@ -7,6 +7,7 @@ import { acceptTrackedChangesInOoxml, rejectTrackedChangesInOoxml, inspectDocume
 import { applyOperationsToDocumentXml, preflightOperations } from '../services/standalone-operation-runner.js';
 import { resolveExistingRevisionsPolicy } from '../core/word-xml.js';
 import { parseXml } from '../adapters/xml-adapter.js';
+import { executeCli } from '../node/cli.js';
 
 const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 const ins = (author, text) => `<w:ins w:id="${Math.floor(Math.random() * 1e6)}" w:author="${author}" w:date="2026-01-01T00:00:00Z"><w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:ins>`;
@@ -57,6 +58,13 @@ const texts = (xml, resolve) => inspectDocumentParts({ documentXml: resolve(xml,
     assert.equal(result.status, 'ok', JSON.stringify(result.error ?? result.results));
     assert.deepEqual(texts(result.documentXml, acceptTrackedChangesInOoxml), ['Foreign start added end!', 'Own start added end!', 'Plain paragraph!']);
     assert.deepEqual(texts(result.documentXml, rejectTrackedChangesInOoxml), ['Foreign start end.', 'Own start end.', 'Plain paragraph.']);
+}
+
+// The CLI advertises 'auto' as an additive capability without a contract bump.
+{
+    const version = await executeCli(['version']);
+    assert.equal(version.contractVersion, 9);
+    assert.ok(version.capabilities.includes('existing-revisions-auto-v1'));
 }
 
 console.log('existing_revisions_auto_tests: all passed');

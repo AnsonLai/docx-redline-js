@@ -45,7 +45,8 @@ const CLI_CAPABILITIES = [
     'list-conversion-diagnostics-v1',
     'paragraph-numbering-binding-v1',
     'list-format-v1',
-    'list-format-change-v1'
+    'list-format-change-v1',
+    'existing-revisions-auto-v1'
 ];
 const commandOptions = Object.fromEntries(CLI_COMMANDS.map(command => [command, new Set(commandOptionKeys(command))]));
 

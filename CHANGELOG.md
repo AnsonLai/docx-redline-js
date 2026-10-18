@@ -4,14 +4,11 @@
 
 ### Added
 
-- **`@ansonlai/docx-redline-js/word`:** the Word host surface, moved from the AIWordPlugin consumer. `inspectWordFlatOpc` and
-  `prepareWordFlatOpcBatch` take the Flat OPC package from Word's `body.getOoxml()`, run one atomic batch and return the single
-  insertion package with comment, comment-thread and numbering parts merged. `computeWordSourceRevisionToken`,
-  `computeWordRestorationToken` and `detectWordExportTailIndex` give Word-aware revision identity that ignores rsids, a certified
-  export-only trailing paragraph and (for restores) regenerated paragraph ids. Browser-safe; no Office.js API.
 - **`existingRevisions: 'auto'`:** per target, `merge-same-author` when the target has no tracked changes or only the operation
-  author's, otherwise `slice-cross-author`. Accepted per operation, per batch and by `applyRedlineToOxml`; preflight reports the
-  resolved policy. `resolveExistingRevisionsPolicy` is exported.
+  author's, otherwise `slice-cross-author`. Unattributed changes count as another author's, and a `targetEnd` range resolves
+  over every paragraph in it. Accepted per operation, per batch, by `applyRedlineToOxml` and as `--existing-revisions auto`;
+  preflight reports the resolved policy. `resolveExistingRevisionsPolicy` is exported and accepts a node or an array of
+  paragraphs. CLI capability `existing-revisions-auto-v1`; the contract version stays 9.
 - **`compareDocumentInspections(expected, actual)`** (and `inspectionReviewShape`): compare two inspections by text, table position,
   list label, review segments and comments, ignoring ids, dates and run boundaries. For verifying what a host committed.
 
@@ -22,6 +19,12 @@
   table reconciliation and a paragraph rewrite; `snake_case` stays literal.
 - **`structuredContent: false` is plain text:** a caller's plain-text `redline`/`replace` keeps inline Markdown markers literally
   instead of turning them into formatting. Internal plain-structure calls are unchanged.
+- **Comment reply paraIds no longer collide with body paragraphs:** `applyCommentReplyToParts` (and the `comment_reply`
+  operation) now collects body `w14:paraId` values before allocating a reply's id. The scan's regex contained a literal
+  backspace instead of `\b`, so body ids were never seen.
+- **Internal:** the Reject All verifier's numbering check uses its memoized definition parser (it was never wired in), and the
+  reject-roundtrip matrix's revision-identity cross-check and `RECEIPT_RECONCILIATION_FAILED` gate now actually run (the
+  same backspace-for-`\b` defect had made them no-ops).
 
 ## 0.9.0
 

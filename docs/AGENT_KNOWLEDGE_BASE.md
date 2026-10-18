@@ -163,6 +163,14 @@ insertions and deletions inside their pending insertion. Pass
 via CLI) to normalize all prior revisions first, or `'reject-input'` to refuse any
 paragraph with open revisions. Use `'accept-all-first-keep-normalized'` only when
 accepted revisions should be returned as a real change even on a no-op edit.
+`existingRevisions: 'auto'` (or `--existing-revisions auto`, capability
+`existing-revisions-auto-v1`) chooses per target: `'merge-same-author'` when the
+target has no tracked changes or only the operation author's, otherwise
+`'slice-cross-author'` (unattributed changes count as another author's).
+Preflight reports the resolved policy. `auto` opts into cross-author slicing
+wherever it is needed, so choose it only when editing inside other reviewers'
+pending insertions is intended for the whole batch; it never accepts or rejects
+anyone's revisions.
 Same-author merging also fails with `COMMENTED_CONTENT_MERGE` when the revised
 paragraph contains comment anchors, because reverting the prior revision could
 remove or orphan those comments. Resolve the comments before re-editing.
@@ -547,7 +555,7 @@ docx-redline apply contract.docx --target "Typo fix" --modified "Fixed typo" --n
 
 Key CLI defaults and behaviors:
 - **Author**: Automatically defaults to `'AI Redliner'` (overridable via `--author` or `DOCX_REDLINE_AUTHOR` environment variable).
-- **Existing revisions**: Defaults to `'merge-same-author'`. Pass `--existing-revisions slice-cross-author` to edit inside another reviewer's pending insertions with native carrier slicing.
+- **Existing revisions**: Defaults to `'merge-same-author'`. Pass `--existing-revisions slice-cross-author` to edit inside another reviewer's pending insertions with native carrier slicing, or `--existing-revisions auto` to slice only the targets that carry another reviewer's changes.
 - **Overwrite behavior**: Destination files provided via `--output` overwrite by default. To protect existing destination files, pass `--no-overwrite` or `--no-clobber`. The source document is never overwritten unless `--in-place` is specified.
 - **Tracked changes**: Defaults to `generateRedlines: true`. When clean direct text is needed, pass `--no-redlines`.
 - **Atomic rollback (optional)**: Operations apply progressively by default (`atomic: false`). For all-or-nothing transactional rollback where any error halts and reverts all changes, pass `--atomic`.
@@ -776,7 +784,7 @@ When the CLI or runner returns an error code, follow these specific recovery act
 | `REVISION_ORDER_CONFLICT` | A text rewrite and formatting/highlight operation overlap the same source. | Consolidate or split the work at an intentional created-content dependency; do not try a different arbitrary order. |
 | `LIST_FORMAT_COMPOSITION_CONFLICT` | A `redline` and a `list-format` on the same paragraph do not compose (`reason`: `marker-changed` with `sourceMarker`/`modifiedMarker`, `redline-unchanged`, `redline-shape` for a multi-paragraph, ranged, anchored, `list-change` or structured redline), or a `list-format` with `scope: 'list'` rebinds an item another operation also writes (`list-rebind`, `rebindingOperationIndexes`). Detected at batch compilation; nothing was written. | `recovery.action: split_text_and_list_changes` (`recovery.hint`). Keep the typed marker byte-identical in the redline (the list-format strips it) and express a new label through `list-format`; drop a no-op redline; send other writes to rebound items in a separate apply or use `scope: 'range'`. |
 | `CAPTURE_FANOUT_CONFLICT` | Multiple mutating consumers share one capture without distinct selectors. | Give consumers distinct selectors, chain them explicitly, or split the batch. |
-| `EXISTING_REVISIONS` | Target paragraph contains tracked changes from another author. | Fails closed to protect third-party review marks. If editing inside that reviewer's pending insertion is intended, pass `--existing-revisions slice-cross-author` (or `existingRevisions: 'slice-cross-author'`). Do not pass `accept-all-first` without explicit user authorization. |
+| `EXISTING_REVISIONS` | Target paragraph contains tracked changes from another author. | Fails closed to protect third-party review marks. If editing inside that reviewer's pending insertion is intended, pass `--existing-revisions slice-cross-author` (or `existingRevisions: 'slice-cross-author'`; `'auto'` does this per target). Do not pass `accept-all-first` without explicit user authorization. |
 | `PATCH_ROUNDTRIP_MISMATCH` | A cross-author surgical edit did not reconstruct the requested modified text exactly, or a localized `replacements` operation would not leave the compiled accepted text in the target (checked before commit on every path). | Treat the operation as unapplied. Re-extract the exact paragraph text and split the edit into a narrower operation that does not cross the reported structural boundary. |
 | `FOREIGN_PARAGRAPH_MARK_DELETION` | A normal edit attempted to write into a paragraph wholly deleted by another reviewer. | Use an explicit `restore` operation if the user intends to counterpropose that paragraph; otherwise leave the deletion unresolved. |
 | `RESTORATION_STATE_REQUIRED` / `RESTORATION_COUNT_MISMATCH` | A `restore` target is not a wholly foreign-deleted paragraph, or its replacement count does not match the paragraph range. | Re-inspect the document and target the deleted paragraph by stable descriptor; provide exactly one replacement string per source paragraph. |
@@ -885,10 +893,10 @@ reconstruct the architecture by repeatedly listing the repository.
 | `generateRedlines` | `boolean` | `true` | When `true`, emits Word-native tracked changes (`w:ins`/`w:del`). When `false`, applies direct text edits without revision markup. **Note: Redlines are not always the preferred method** — pass `generateRedlines: false` (or `--no-redlines` via CLI) when producing clean execution drafts, restructuring documents, or when revision clutter is unwanted. |
 | `author` | `string` | `'AI Redliner'` | Reviewer/author name stamped on generated tracked changes and comments. Overridable via `DOCX_REDLINE_AUTHOR` environment variable. |
 | `atomic` | `boolean` | `false` | Batch transaction mode. By default (`false`), valid edits are applied directly and failing operations report errors. When `true`, any operation failure rolls back the entire batch to the original document state (`rolledBack: true`, `hasChanges: false`). Use `atomic: true` (or `--atomic` in CLI) for high-assurance workflows. |
-| `structuredContent` | `boolean` | `true` | Auto-detects Markdown tables, headings (`#`), and lists in replacement text and renders them as native Word elements (`w:tbl`, `w:pStyle`, `w:numPr`). Pass `false` to treat replacement text strictly as plain text. |
+| `structuredContent` | `boolean` | `true` | Auto-detects Markdown tables, headings (`#`), and lists in replacement text and renders them as native Word elements (`w:tbl`, `w:pStyle`, `w:numPr`). Pass `false` to treat replacement text strictly as plain text: inline Markdown markers (`**`, `__`, `_`, `~~`, `++`) are kept literally. With `true`, underscores follow CommonMark flanking rules, so signature lines (`_____`) and `snake_case` stay literal. |
 | `pairReplacements` | `boolean` | `true` | Links adjacent `<w:del>` and `<w:ins>` revisions with matching timestamps so Word groups them as a single replacement in the Reviewing Pane. |
 | `strictTargets` | `boolean` | `true` (CLI/facade) | Requires exact target descriptors (`exactText`, `paragraphId`, `index`, `occurrence`, `fingerprint`) and forbids ambiguous matching. Defaults to `false` in low-level runner for backwards compatibility. |
-| `existingRevisions` | `string` | `'merge-same-author'` | How to handle paragraphs with existing tracked changes. `'merge-same-author'` merges the same author's work and protects other authors with `EXISTING_REVISIONS`. `'slice-cross-author'` retains same-author merging while allowing Word-native edits inside another author's pending insertion. Pass `'accept-all-first'` to normalize prior revisions or `'reject-input'` to refuse editing revised paragraphs. |
+| `existingRevisions` | `string` | `'merge-same-author'` | How to handle paragraphs with existing tracked changes. `'merge-same-author'` merges the same author's work and protects other authors with `EXISTING_REVISIONS`. `'slice-cross-author'` retains same-author merging while allowing Word-native edits inside another author's pending insertion. Pass `'accept-all-first'` to normalize prior revisions or `'reject-input'` to refuse editing revised paragraphs. `'auto'` chooses per target: `'merge-same-author'` when the target has no tracked changes or only the operation author's, otherwise `'slice-cross-author'` (preflight reports the resolved policy). |
 | `removeFormatting` | `boolean` | `false` | When `true` and the text is unchanged with no Markdown hints, strips existing bold/italic/underline/strikethrough formatting. |
 | `sanitizeInput` | `boolean` | `false` | Opt-in removal of standalone leading assistant-preface lines. Literal dollar signs and `\n` sequences are always preserved. |
 

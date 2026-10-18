@@ -117,22 +117,35 @@ export function withOoxmlSourceType(result) {
     return { ...result, sourceType: classifyOoxmlSourceType(result.oxml) };
 }
 
+function hasUnattributedTrackedChange(node) {
+    for (const localName of TRACKED_CHANGE_NAMES) {
+        for (const change of wordElementsByLocalName(node, localName)) {
+            const author = change.getAttribute?.('w:author')
+                || change.getAttribute?.('author')
+                || (typeof change.getAttributeNS === 'function' ? change.getAttributeNS(NS_W, 'author') : null);
+            if (!author || !String(author).trim()) return true;
+        }
+    }
+    return false;
+}
+
 /**
  * Resolves `existingRevisions: 'auto'` for one target. A target without tracked
  * changes, or whose changes are all by `author`, merges same-author history;
  * any other or unattributed reviewer's change selects 'slice-cross-author',
  * which preserves that history. Other policies are returned unchanged.
  * @param {string|null|undefined} policy
- * @param {Node} node - target paragraph, scope element or document
+ * @param {Node|Array<Node>} node - target paragraph, scope element or document, or every paragraph of a range
  * @param {string} author
  * @returns {string|null|undefined}
  */
 export function resolveExistingRevisionsPolicy(policy, node, author) {
     if (policy !== 'auto') return policy;
-    if (!node || !containsTrackedChanges(node)) return 'merge-same-author';
+    const nodes = (Array.isArray(node) ? node : [node]).filter(Boolean);
     const own = String(author || '').trim().toLowerCase();
-    const authors = getTrackedChangeAuthors(node);
-    return authors.length > 0 && authors.every(name => name.trim().toLowerCase() === own)
-        ? 'merge-same-author'
-        : 'slice-cross-author';
+    const foreign = nodes.some(item => containsTrackedChanges(item) && (
+        hasUnattributedTrackedChange(item)
+        || getTrackedChangeAuthors(item).some(name => name.trim().toLowerCase() !== own)
+    ));
+    return foreign ? 'slice-cross-author' : 'merge-same-author';
 }

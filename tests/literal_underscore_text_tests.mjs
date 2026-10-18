@@ -69,4 +69,81 @@ async function accepted(operation) {
     assert.equal(texts.at(-1), 'Use **literal** __markers__ and _here_', 'plain text keeps inline markers literal');
 }
 
+// More delimiter rules (CommonMark flanking for underscores; other markers unchanged).
+for (const [text, clean, hints] of [
+    ['__bold__.', 'bold.', 1],
+    ['(_aside_)', '(aside)', 1],
+    ['_ spaced _', '_ spaced _', 0],
+    ['__ spaced __', '__ spaced __', 0],
+    ['a_b_c', 'a_b_c', 0],
+    ['x__y__z', 'x__y__z', 0],
+    ['MAX_VALUE and min_value', 'MAX_VALUE and min_value', 0],
+    ['Date: ________ Time: ______', 'Date: ________ Time: ______', 0],
+    ['___', '___', 0],
+    ['**strong** ~~gone~~ ++under++ *it*', 'strong gone under it', 4],
+    ['_one_ and _two_', 'one and two', 2],
+]) {
+    const result = preprocessMarkdown(text);
+    assert.equal(result.cleanText, clean, `clean text for ${JSON.stringify(text)}`);
+    assert.equal(result.formatHints.length, hints, `format hints for ${JSON.stringify(text)}`);
+}
+
+// End to end through the operation applier.
+const plainXml = `<w:document ${W}><w:body><w:p><w:r><w:t>Plain</w:t></w:r></w:p><w:sectPr/></w:body></w:document>`;
+const plainTarget = (() => {
+    const p = inspectDocumentParts({ documentXml: plainXml }).paragraphs[0];
+    return { index: p.index, exactText: p.exactText, paragraphId: p.paragraphId, fingerprint: p.fingerprint };
+})();
+async function applyPlain(operation, options = {}) {
+    const result = await applyOperationsToDocumentXml(plainXml, [{ target: plainTarget, ...operation }], 'Tester', null,
+        { atomic: true, strictTargets: true, ...options });
+    assert.equal(result.status, 'ok', JSON.stringify(result.error ?? result.results));
+    const acceptedXml = acceptTrackedChangesInOoxml(result.documentXml, { allAuthors: true }).oxml;
+    return { xml: acceptedXml, text: inspectDocumentParts({ documentXml: acceptedXml }).paragraphs[0].exactText };
+}
+const markers = 'Use __bold__ and _italic_ here';
+{
+    // structuredContent: true (the default) still formats emphasis.
+    const formatted = await applyPlain({ type: 'redline', modified: markers });
+    assert.equal(formatted.text, 'Use bold and italic here');
+    assert.match(formatted.xml, /<w:b\/>|<w:b w:val="(?:1|true)"\/>/, 'bold run');
+    assert.match(formatted.xml, /<w:i\/>|<w:i w:val="(?:1|true)"\/>/, 'italic run');
+}
+{
+    // The batch option applies when the operation does not say.
+    const literal = await applyPlain({ type: 'redline', modified: markers }, { structuredContent: false });
+    assert.equal(literal.text, markers, 'batch structuredContent: false keeps markers');
+    assert.doesNotMatch(literal.xml, /<w:b\/>|<w:i\/>/);
+    // The operation overrides the batch in both directions.
+    assert.equal((await applyPlain({ type: 'redline', modified: markers, structuredContent: true }, { structuredContent: false })).text, 'Use bold and italic here');
+    assert.equal((await applyPlain({ type: 'redline', modified: markers, structuredContent: false }, { structuredContent: true })).text, markers);
+}
+{
+    // replace, untracked edits and block-level Markdown are plain text too.
+    assert.equal((await applyPlain({ type: 'replace', modified: markers, structuredContent: false })).text, markers);
+    assert.equal((await applyPlain({ type: 'redline', modified: markers, structuredContent: false }, { generateRedlines: false })).text, markers);
+    const heading = await applyPlain({ type: 'redline', modified: '# Not a heading', structuredContent: false });
+    assert.equal(heading.text, '# Not a heading');
+    assert.doesNotMatch(heading.xml, /w:pStyle w:val="Heading/);
+}
+{
+    // openDocx facade.
+    const { openDocx } = await import('../index.js');
+    const { unzipDocx, zipDocx } = await import('../document/zip-archive.js');
+    const { readFileSync } = await import('node:fs');
+    const entries = new Map(unzipDocx(new Uint8Array(readFileSync(new URL('./fixtures/sample_doc_test.docx', import.meta.url)))));
+    entries.set('word/document.xml', new TextEncoder().encode(`<w:document ${W}><w:body><w:p><w:r><w:t>Signed: ${line}</w:t></w:r></w:p><w:p><w:r><w:t>Plain</w:t></w:r></w:p><w:sectPr/></w:body></w:document>`));
+    const doc = openDocx(zipDocx(entries));
+    const [signed, plain] = doc.inspect().paragraphs;
+    const handle = p => ({ index: p.index, exactText: p.exactText, paragraphId: p.paragraphId, fingerprint: p.fingerprint });
+    const result = await doc.applyOperations([
+        { type: 'redline', target: handle(signed), modified: `Signed: ${line} (name)` },
+        { type: 'redline', target: handle(plain), modified: markers, structuredContent: false }
+    ], { author: 'Tester' });
+    assert.equal(result.status, 'ok', JSON.stringify(result.error ?? result.results));
+    const reopened = openDocx(result.toUint8Array());
+    const acceptedXml = acceptTrackedChangesInOoxml(new TextDecoder().decode(reopened.entries.get('word/document.xml')), { allAuthors: true }).oxml;
+    assert.deepEqual(inspectDocumentParts({ documentXml: acceptedXml }).paragraphs.map(p => p.exactText), [`Signed: ${line} (name)`, markers]);
+}
+
 console.log('literal_underscore_text_tests: all passed');

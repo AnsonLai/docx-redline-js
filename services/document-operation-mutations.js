@@ -1967,7 +1967,10 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
             }
         };
     }
-    if (options.existingRevisions === 'auto') {
+    // 'auto' resolves against the target paragraph here and again against the whole
+    // range once a targetEnd range is resolved below.
+    const autoExistingRevisions = options.existingRevisions === 'auto';
+    if (autoExistingRevisions) {
         options = { ...options, existingRevisions: resolveExistingRevisionsPolicy('auto', targetParagraph, author) };
     }
     const hasRevisions = containsTrackedChanges(targetParagraph);
@@ -2153,6 +2156,9 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
             ? findReconstructionParagraphRange(xmlDoc, targetText)
             : null);
     const hasExplicitRangeScope = Array.isArray(explicitRangeParagraphs) && explicitRangeParagraphs.length > 0;
+    if (autoExistingRevisions && hasExplicitRangeScope) {
+        options = { ...options, existingRevisions: resolveExistingRevisionsPolicy('auto', explicitRangeParagraphs, author) };
+    }
     if (!useTableScope && hasExplicitRangeScope) {
         const insertionEntries = buildExplicitRangeInsertionEntries(explicitRangeParagraphs, effectiveModifiedText);
         if (insertionEntries && insertionEntries.length > 0) {

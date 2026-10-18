@@ -200,15 +200,15 @@ function parseNumberingDefinitions(text) {
     const cached = numberingDefinitionCache.get(text);
     if (cached) return cached;
     const abstractLevels = new Map();
-    for (const match of text.matchAll(/<(?:\w+:)?abstractNum([^>]*)>([\s\S]*?)<\/(?:\w+:)?abstractNum>/g)) {
+    for (const match of text.matchAll(/<(?:\w+:)?abstractNum\b([^>]*)>([\s\S]*?)<\/(?:\w+:)?abstractNum>/g)) {
         const id = /abstractNumId="([^"]*)"/.exec(match[1])?.[1];
         if (id == null) continue;
         const levels = abstractLevels.get(id) || new Set();
-        for (const lvl of match[2].matchAll(/<(?:\w+:)?lvl[^>]*?ilvl="([^"]*)"/g)) levels.add(lvl[1]);
+        for (const lvl of match[2].matchAll(/<(?:\w+:)?lvl\b[^>]*?ilvl="([^"]*)"/g)) levels.add(lvl[1]);
         abstractLevels.set(id, levels);
     }
     const numToAbstract = new Map();
-    for (const match of text.matchAll(/<(?:\w+:)?num([^>]*)>([\s\S]*?)<\/(?:\w+:)?num>/g)) {
+    for (const match of text.matchAll(/<(?:\w+:)?num\b([^>]*)>([\s\S]*?)<\/(?:\w+:)?num>/g)) {
         const id = /numId="([^"]*)"/.exec(match[1])?.[1];
         const abstractId = /abstractNumId[^>]*?val="([^"]*)"/.exec(match[2])?.[1];
         if (id != null && abstractId != null) numToAbstract.set(id, abstractId);
@@ -231,7 +231,7 @@ function parseNumberingDefinitions(text) {
  * @param {Document} input.after - post-mutation DOM
  * @param {Array<string|null|undefined>} input.numberingXmls - numbering part texts available at the seam
  */
-export function verifyNumberingReferences({ before, after, numberingXmls, beforeViews = null, afterViews = null }) {
+export function verifyNumberingReferences({ before, after, numberingXmls }) {
     const references = documentNode => {
         const found = new Map();
         for (const numIdNode of getAllReferencedNumIdElements(documentNode)) {
@@ -247,21 +247,7 @@ export function verifyNumberingReferences({ before, after, numberingXmls, before
     const used = references(after);
     if (used.size === 0) return { ok: true };
     const known = references(before);
-    const text = (numberingXmls || []).filter(Boolean).join('\n');
-    const abstractLevels = new Map();
-    for (const match of text.matchAll(/<(?:\w+:)?abstractNum\b([^>]*)>([\s\S]*?)<\/(?:\w+:)?abstractNum>/g)) {
-        const id = /abstractNumId="([^"]*)"/.exec(match[1])?.[1];
-        if (id == null) continue;
-        const levels = abstractLevels.get(id) || new Set();
-        for (const lvl of match[2].matchAll(/<(?:\w+:)?lvl\b[^>]*?ilvl="([^"]*)"/g)) levels.add(lvl[1]);
-        abstractLevels.set(id, levels);
-    }
-    const numToAbstract = new Map();
-    for (const match of text.matchAll(/<(?:\w+:)?num\b([^>]*)>([\s\S]*?)<\/(?:\w+:)?num>/g)) {
-        const id = /numId="([^"]*)"/.exec(match[1])?.[1];
-        const abstractId = /abstractNumId[^>]*?val="([^"]*)"/.exec(match[2])?.[1];
-        if (id != null && abstractId != null) numToAbstract.set(id, abstractId);
-    }
+    const { abstractLevels, numToAbstract } = parseNumberingDefinitions((numberingXmls || []).filter(Boolean).join('\n'));
     const violations = [];
     for (const [numId, levels] of used) {
         if (known.has(numId)) continue;

@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import './setup-xml-provider.mjs';
 import { openDocx } from '../index.js';
 import { parseOoxmlSafe } from '../adapters/xml-adapter.js';
-import { unzipDocx, zipDocx } from '../document/zip-archive.js';
+import { unzipDocx } from '../document/zip-archive.js';
 import { applyOperationsToDocumentXml } from '../services/standalone-operation-runner.js';
 import { mergeNumberingParts } from '../services/numbering-allocation.js';
 import { projectWordRevisionView } from '../core/word-revision-semantics.js';
@@ -28,7 +28,6 @@ import { generateOperation, makeRng } from './helpers/operation-generators.mjs';
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const AUTHOR = 'Binding Author';
 const dec = new TextDecoder();
-const enc = new TextEncoder();
 const parse = xml => {
     const parsed = parseOoxmlSafe(xml);
     assert.ok(parsed.doc, parsed.error?.message || 'parseable OOXML');

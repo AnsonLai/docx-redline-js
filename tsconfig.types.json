@@ -8,5 +8,5 @@
     "lib": ["ES2022", "DOM"],
     "skipLibCheck": false
   },
-  "include": ["index.d.ts", "word/index.d.ts", "tests/types/usage.ts"]
+  "include": ["index.d.ts", "tests/types/usage.ts"]
 }

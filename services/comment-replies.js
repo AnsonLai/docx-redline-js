@@ -32,7 +32,7 @@ export function applyCommentReplyToParts({ commentsXml, commentsExtendedXml = nu
     }
     const occupied = usedParaIds(commentsDoc, extendedDoc);
     // paraIds are unique across the whole package; body paragraphs can carry them too.
-    if (documentXml) for (const match of String(documentXml).matchAll(/w14:paraId="([0-9A-Fa-f]{8})"/g)) occupied.add(match[1].toUpperCase());
+    if (documentXml) for (const match of String(documentXml).matchAll(/\bw14:paraId="([0-9A-Fa-f]{8})"/g)) occupied.add(match[1].toUpperCase());
     const parentParagraph = commentThreadParagraph(parent);
     if (!parentParagraph) return { status: 'error', error: { code: 'PARENT_COMMENT_INVALID', message: `Parent comment '${parentCommentId}' has no paragraph.` } };
     let parentParaId = commentParaId(parent);

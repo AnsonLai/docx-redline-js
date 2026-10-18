@@ -273,42 +273,49 @@ export function preflightOperations(documentXml, operations, author, options = {
                 : null;
             const anchorFound = anchor == null
                 || (anchorResolution ? anchorResolution.found : paragraphText.includes(anchor));
+            // The paragraphs from the target through targetEnd (just the target without one); null when the
+            // end does not resolve after the start.
+            const rangeParagraphs = opType => {
+                if (operation.targetEndRef) {
+                    return resolveParagraphRangeByRefs(xmlDoc, operation.targetRef, operation.targetEndRef, {
+                        opType,
+                        targetRefSnapshot: options.targetRefSnapshot || null,
+                        onInfo: options.onInfo,
+                        onWarn: options.onWarn
+                    });
+                }
+                if (!operation.targetEndDescriptor) return [paragraph];
+                const endResolved = resolveTargetParagraph(xmlDoc, {
+                    targetText: operation.targetEndDescriptor.text,
+                    targetRef: operation.targetEndDescriptor.index,
+                    targetDescriptor: operation.targetEndDescriptor,
+                    opType,
+                    strictAmbiguity: strictTargets,
+                    paragraphMetadataIndex: currentMetadataIndex,
+                    metadataIndices,
+                    onInfo: options.onInfo,
+                    onWarn: options.onWarn
+                });
+                const allParagraphs = getDocumentParagraphNodes(xmlDoc);
+                const startIndex = allParagraphs.indexOf(paragraph);
+                const endIndex = allParagraphs.indexOf(endResolved?.paragraph);
+                return startIndex >= 0 && endIndex >= startIndex
+                    ? allParagraphs.slice(startIndex, endIndex + 1)
+                    : null;
+            };
             const hasRevisions = containsTrackedChanges(paragraph);
-            const existingPolicy = resolveExistingRevisionsPolicy(operation.existingRevisions
-                || options.existingRevisions
-                || 'merge-same-author', paragraph, authorUsed);
+            const requestedPolicy = operation.existingRevisions || options.existingRevisions || 'merge-same-author';
+            const existingPolicy = resolveExistingRevisionsPolicy(requestedPolicy,
+                requestedPolicy === 'auto' && operation.operationKind === 'redline' && (operation.targetEndRef || operation.targetEndDescriptor)
+                    ? (rangeParagraphs('redline') || paragraph)
+                    : paragraph,
+                authorUsed);
             const deletingWholeParagraph = operation.operationKind === 'redline' && operation.modified === '';
             const commentIds = deletingWholeParagraph ? getCommentIdsInParagraph(paragraph) : [];
 
             let error = null;
             if (operation.operationKind === 'restore') {
-                let restorationParagraphs = operation.targetEndRef
-                    ? resolveParagraphRangeByRefs(xmlDoc, operation.targetRef, operation.targetEndRef, {
-                        opType: 'restore',
-                        targetRefSnapshot: options.targetRefSnapshot || null,
-                        onInfo: options.onInfo,
-                        onWarn: options.onWarn
-                    })
-                    : [paragraph];
-                if (!operation.targetEndRef && operation.targetEndDescriptor) {
-                    const endResolved = resolveTargetParagraph(xmlDoc, {
-                        targetText: operation.targetEndDescriptor.text,
-                        targetRef: operation.targetEndDescriptor.index,
-                        targetDescriptor: operation.targetEndDescriptor,
-                        opType: 'restore',
-                        strictAmbiguity: strictTargets,
-                        paragraphMetadataIndex: currentMetadataIndex,
-                        metadataIndices,
-                        onInfo: options.onInfo,
-                        onWarn: options.onWarn
-                    });
-                    const allParagraphs = getDocumentParagraphNodes(xmlDoc);
-                    const startIndex = allParagraphs.indexOf(paragraph);
-                    const endIndex = allParagraphs.indexOf(endResolved?.paragraph);
-                    restorationParagraphs = startIndex >= 0 && endIndex >= startIndex
-                        ? allParagraphs.slice(startIndex, endIndex + 1)
-                        : null;
-                }
+                const restorationParagraphs = rangeParagraphs('restore');
                 const replacements = Array.isArray(operation.modified) ? operation.modified : [operation.modified];
                 if (!restorationParagraphs || restorationParagraphs[0] !== paragraph || replacements.length !== restorationParagraphs.length) {
                     error = {

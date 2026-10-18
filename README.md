@@ -21,7 +21,13 @@ Converts AI-generated or programmatic text/markdown edits into valid Office Open
 - Package plumbing helpers for numbering.xml, comments.xml, content types, and relationships
 - Zero host dependencies: works in Node.js, browsers, Deno, and similar JS runtimes with DOM parsing support
 
-## What's New in 0.9.0 and 0.8.x
+## What's New in 0.10.0, 0.9.0 and 0.8.x
+
+0.10.0 adds `existingRevisions: 'auto'` (capability `existing-revisions-auto-v1`, contract version stays 9), which
+merges a target's own-author history and slices around another reviewer's, per target. It also adds
+`compareDocumentInspections` for checking a committed document against a prepared one, and fixes underscore runs such as
+signature lines (`_____`) collapsing to one `_`. A caller's `structuredContent: false` now keeps inline Markdown markers
+literal. See the [0.10.0 release notes](./docs/releases/0.10.0.md).
 
 0.9.0 moves the CLI contract to version 9 and adds the `list-format` operation (`convert-plain`, `change-format`, `join`),
 `paragraph-format` numbering binding, list-conversion diagnostics, a single numbering allocator and merge, and a Reject All
@@ -67,20 +73,19 @@ ambiguous. They remain available unchanged; see the [0.7.0 release notes](./docs
 
 ## Repository Layout
 
-The package exposes four levels of API:
+The package exposes three levels of API:
 
 | Level | Entry point | Use it for |
 |---|---|---|
 | Host-independent OOXML API | `index.js` | Paragraph/range transforms and exported OOXML utilities in browsers, Node.js, or another DOM-capable runtime |
 | Standalone document XML runner | `services/standalone-operation-runner.js` | Applying operations to a complete `word/document.xml` string |
-| Word host surface | `word/index.js` (`/word`) | Word add-ins: inspect and edit `body.getOoxml()` Flat OPC and get one package to write back |
 | Node/DOCX API and CLI | `node/index.js`, `bin/docx-redline.js` | Reading, changing, validating, and writing complete `.docx` ZIP packages |
 
 Implementation folders have distinct roles: `core/` holds shared OOXML and
 targeting primitives; `pipeline/` handles ingestion, diffing, markdown, lists,
 and serialization; `engine/` performs reconciliation; `services/` coordinates
-document operations and package artifacts; `word/` adapts Word body Flat OPC
-for add-ins; `node/` contains Node-only ZIP and whole-document code. Tests are directly runnable `tests/*.mjs` files, while
+document operations and package artifacts; `node/` contains Node-only ZIP and
+whole-document code. Tests are directly runnable `tests/*.mjs` files, while
 `tests/helpers/` and `tests/fixtures/` contain support code and data.
 
 Contributors and coding agents should start with the routing table in
@@ -293,7 +298,7 @@ docx-redline preflight contract.docx --operations operations.json --author "Edit
 All commands emit JSON on stdout. `apply` defaults:
 - **Author**: Defaults to `'AI Redliner'` (or `DOCX_REDLINE_AUTHOR` environment variable).
 - **Output overwrite**: Destination files provided via `--output` overwrite by default. Pass `--no-overwrite` or `--no-clobber` to safeguard existing destination files. The source input is never overwritten unless `--in-place` is specified.
-- **Existing revisions**: Defaults to `'merge-same-author'`. Pass `--existing-revisions slice-cross-author` to edit inside another reviewer's pending insertions with native carrier slicing.
+- **Existing revisions**: Defaults to `'merge-same-author'`. Pass `--existing-revisions slice-cross-author` to edit inside another reviewer's pending insertions with native carrier slicing, or `--existing-revisions auto` to choose per target (slicing only where another reviewer's changes are present).
 - **Transactionality**: Defaults to `atomic: false` (applies valid operations and reports any failures). Pass `--atomic` for all-or-nothing rollback on any operation error.
 - **Complete-success exit**: Pass `--require-complete` when a progressive `partial` result must exit with code `3`; errors exit with code `2`. Without the flag, partial results retain the legacy zero exit code, so always inspect `completion`.
 - **Agent profile**: `--profile agent` enables complete-success exit behavior while retaining the ordinary progressive transaction and existing-revision defaults. Compose it with `--atomic` or an explicit `--existing-revisions` policy when intended, and verify the resolved `effectiveOptions`.
@@ -330,7 +335,8 @@ capabilities `revision-fidelity-v1`, `list-conversion-diagnostics-v1`, `paragrap
 `part` targeting, the `comment_resolve` operation and `delete-comments --comment-id` are advertised as
 `header-footer-parts-v1`, `comment-resolve-operation-v1` and `delete-comments-by-id-v1`. The remaining advertised
 capabilities are `atomic-batch-results-on-package-failure`, `baseline-aware-validation`, `compact-mutation-results`,
-`cross-author-revision-slicing`, `document-scoped-list-revision-ids` and `format-text-occurrence-v1`.
+`cross-author-revision-slicing`, `document-scoped-list-revision-ids` and `format-text-occurrence-v1`. 0.10.0 adds
+`existing-revisions-auto-v1` (`existingRevisions: 'auto'`) without a contract bump.
 Wrappers should negotiate only the
 capabilities they use. Run `docx-redline <command> --help` for that command's
 machine-readable options, behavior, exit codes, canonical GitHub documentation links, and compact examples.
@@ -423,36 +429,18 @@ The engine applies Microsoft Word Desktop-native tracked change structures:
 - **Straddle deletions**: Deletions spanning between baseline text and pending insertions cleanly partition across their respective container contexts without invalid coalescing.
 - **Lifecycle parity**: Accepting or rejecting either reviewer independently produces identical results to Microsoft Word Desktop's native review pane.
 
-### Word host surface (`@ansonlai/docx-redline-js/word`)
+### Comparing inspections
 
-A Word add-in reads `context.document.body.getOoxml()`, hands the Flat OPC package to the library, and writes back the single prepared package. Comment, comment-thread and numbering parts are merged into that package. The module is browser-safe and uses no Office.js API.
+`compareDocumentInspections(expected, actual)` checks that two inspections describe the same reviewable document. It compares paragraph text, table position, list labels, review segments (adjacent segments of one kind and author are merged) and comments, and ignores ids, dates, rsids, paragraph ids and run boundaries. A host that writes a prepared package through another API can inspect what it prepared and what it committed, then compare them:
 
 ```js
-import {
-  inspectWordFlatOpc,
-  prepareWordFlatOpcBatch,
-  computeWordSourceRevisionToken
-} from '@ansonlai/docx-redline-js/word';
-import { compareDocumentInspections } from '@ansonlai/docx-redline-js';
+import { inspectDocumentParts, compareDocumentInspections } from '@ansonlai/docx-redline-js';
 
-const source = body.getOoxml();
-await context.sync();
-const prepared = await prepareWordFlatOpcBatch(source.value, operations, { author, expectedRevision: true });
-if (prepared.status === 'ready') {
-  body.insertOoxml(prepared.insertionPayload, 'Replace');
-  await context.sync();
-  // Verify what Word committed against what was prepared.
-  const committed = body.getOoxml();
-  await context.sync();
-  const check = compareDocumentInspections(
-    inspectWordFlatOpc(prepared.insertionPayload).inspection,
-    inspectWordFlatOpc(committed.value).inspection);
-}
+const check = compareDocumentInspections(inspectDocumentParts(preparedParts), inspectDocumentParts(committedParts));
+if (!check.matches) console.warn(check.differences); // at most the first 10 differences
 ```
 
-- `prepareWordFlatOpcBatch` runs one atomic batch (`structuredContent`, `pairReplacements`, `strictTargets` on) and returns `status: 'ready' | 'noop' | 'refused' | 'error'`; only `'ready'` carries `insertionPayload`.
-- `computeWordSourceRevisionToken(parts, { hostParagraphCount })` ignores Word session ids (rsids) and, when `hostParagraphCount` (from `body.paragraphs`) certifies it, the empty trailing paragraph Word adds to `getOoxml` exports. Use it for freshness checks. `computeWordRestorationToken` also ignores the paragraph ids Word regenerates on `insertOoxml('Replace')`, for checkpoint restores. `detectWordExportTailIndex` exposes the tail check.
-- `compareDocumentInspections(expected, actual)` compares text, table position, list label, review segments and comments, ignoring ids, dates and run splits; it returns `{ matches, differences }`.
+`inspectionReviewShape(inspection)` returns the normalized shape the comparison uses.
 
 ### Replacing a heading with a tracked list
 

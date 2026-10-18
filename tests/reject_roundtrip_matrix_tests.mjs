@@ -93,8 +93,8 @@ async function runPackaged(bytes, operation, options = {}) {
 
 const UNTRACKED_KINDS = new Set(['replace-word', 'replace-sentence', 'replace-paragraph', 'replacements', 'insert-after', 'delete']);
 // Revisions as `element|id|author|date`; a sliced fragment of a source revision keeps element/author/date.
-const REVISION_TAG = /<w:(ins|del|moveFrom|moveTo|rPrChange|pPrChange|sectPrChange|tblPrChange|trPrChange|tcPrChange)([^>]*)>/g;
-const attr = (attrs, name) => attrs.match(new RegExp(`\bw:${name}="([^"]*)"`))?.[1] ?? '';
+const REVISION_TAG = /<w:(ins|del|moveFrom|moveTo|rPrChange|pPrChange|sectPrChange|tblPrChange|trPrChange|tcPrChange)\b([^>]*)>/g;
+const attr = (attrs, name) => attrs.match(new RegExp(`\\bw:${name}="([^"]*)"`))?.[1] ?? '';
 const revisionIds = xml => new Set([...xml.matchAll(REVISION_TAG)].map(m => `${m[1]}|${attr(m[2], 'id')}|${attr(m[2], 'author')}|${attr(m[2], 'date')}`));
 const sliceSignatures = ids => new Set([...ids].map(key => key.split('|').filter((_, i) => i !== 1).join('|')));
 
@@ -109,7 +109,7 @@ function fail(context, message, detail = {}) {
 }
 
 function checkApplied(context, sourceEntries, sourceDocXml, kindInfo, path, run) {
-    const { result, documentXml } = run;
+    const { documentXml } = run;
     const sourceRejected = view(sourceDocXml, 'rejected');
     const resultRejected = view(documentXml, 'rejected');
     const resultAccepted = view(documentXml, 'accepted');
@@ -192,6 +192,8 @@ for (let fixtureIndex = 0; fixtureIndex < fixtures.length && counts.cases < ITER
                     fail({ ...context, path: pathName }, 'REVISION_FIDELITY_VIOLATION refusal (library generated a bad shape)', {
                         violations: violationsOf(result), message: result.error?.message
                     });
+                } else if (INTERNAL_DEFECT_CODES.has(code)) {
+                    fail({ ...context, path: pathName }, `${code} refusal (library defect)`, { message: innerError(result)?.message });
                 } else {
                     counts.refusedOther++;
                     const key = `${generated.kind} -> ${code || 'unknown'}`;

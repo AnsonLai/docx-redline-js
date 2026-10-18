@@ -68,6 +68,7 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 │   ├── localized-replacement-compiler.js
 │   ├── revision-comment-management.js
 │   ├── document-inspection.js
+│   ├── inspection-comparison.js
 │   ├── document-operation-session.js
 │   ├── document-operation-applier.js
 │   ├── document-operation-mutations.js
@@ -310,11 +311,18 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
     start as a read-only target. `previewSuccessor` lets the applier find a
     target's replacement paragraph before commit.
 - `services/operation-preflight.js`
-  - Read-only strict target and anchor resolution, revision-policy diagnostics,
+  - Read-only strict target and anchor resolution, revision-policy diagnostics
+    (reporting the policy `existingRevisions: 'auto'` resolves to per target via
+    `resolveExistingRevisionsPolicy` in `core/word-xml.js`),
     artifact prediction, and same-paragraph conflict reporting.
 - `services/document-inspection.js`
   - Read-only paragraphs/comments inventory with target identity, headings,
     revision authors, table context, and advisory visible numbering.
+- `services/inspection-comparison.js`
+  - Pure comparison of two inspections by text, table position, list label,
+    merged review segments and comments, ignoring ids, dates and run boundaries.
+    Hosts that write a prepared package through their own API use it to verify
+    the committed result. Imports nothing.
 - `document/docx-document.js`
   - Universal transactional whole-DOCX editing, artifact wiring, validation, and rollback.
     Standardized on `Uint8Array` binary payloads and pure-JS SHA-256 revision tokens.

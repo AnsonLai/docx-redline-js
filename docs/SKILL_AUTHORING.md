@@ -77,7 +77,7 @@ Keep these exceptions separate from the default workflow:
 | Choice | Default | Override only when |
 |---|---|---|
 | Transaction | progressive | Partial output is unacceptable (`--atomic`). |
-| Existing revisions | `merge-same-author` | Editing inside another reviewer's pending insertion is intended (`slice-cross-author`). |
+| Existing revisions | `merge-same-author` | Editing inside another reviewer's pending insertion is intended (`slice-cross-author`, or `auto` to slice only targets that carry another reviewer's changes; capability `existing-revisions-auto-v1`). |
 | Reviewer identity | `AI Redliner` is a valid visible fallback | The host supplies a preferred flag, operation author, or environment value. |
 | Output | derived sibling | The caller deliberately selects another destination. |
 
