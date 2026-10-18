@@ -19,6 +19,11 @@
 
 ### Fixed
 
+- **`structuredContent: false` now also covers paragraphs a redline adds.** A plain-text redline whose `modified` adds
+  paragraphs before or after the target (`'Intro.
+Use __literal__ text'`) kept the target literal but stripped inline
+  Markdown, and parsed `#` headings, in the new paragraphs. They now stay literal too, including list siblings, ranges,
+  `replace` and untracked edits. Inserting paragraphs this way still inherits the list of a list-item target.
 - The `applyCommentReplyToParts` declaration now includes `documentXml`.
 - `ensureCommentsArtifactsInZip` (and so `openDocx`) refuses duplicate comment ids within one incoming comments part,
   and leaves comments.xml untouched when the incoming part has no comments.

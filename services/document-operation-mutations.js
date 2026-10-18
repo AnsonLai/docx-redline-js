@@ -658,7 +658,10 @@ async function buildInsertedPlainParagraph(xmlDoc, anchorParagraph, text, revisi
         String(text || ''),
         {
             author,
-            generateRedlines: false
+            generateRedlines: false,
+            // A caller's structuredContent: false keeps inserted paragraphs plain too: no headings,
+            // and inline Markdown markers stay literal.
+            ...(options.plainTextContent === true ? { structuredContent: false, plainTextContent: true } : {})
         }
     );
 
@@ -2388,7 +2391,7 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
                 author,
                 // A wholly inserted paragraph must track its own paragraph mark; otherwise Word's
                 // Reject All removes the text but leaves an empty paragraph behind.
-                { generateRedlines, trackParagraphMark: true }
+                { generateRedlines, trackParagraphMark: true, plainTextContent: options.plainTextContent === true }
             );
             const imported = xmlDoc.importNode(plainParagraph, true);
             ensureParagraphIdsOnImportedNode(imported, operationSession);
