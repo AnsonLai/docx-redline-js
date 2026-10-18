@@ -504,4 +504,59 @@ function createDocumentXml(bodyInner) {
     assert.equal(sameAuthor.oxml, unsupportedCellRevision);
 }
 
+// A tracked change without w:author is another reviewer's, not the operation
+// author's. Merge must refuse with EXISTING_REVISIONS instead of treating the
+// paragraph as same-author, and slicing must preserve the unattributed change.
+for (const [label, foreignRevision, rejectedText, acceptedText] of [
+    ['insertion', '<w:ins w:id="2" w:date="2026-01-01T00:00:00Z"><w:r><w:t xml:space="preserve">theirs </w:t></w:r></w:ins>', 'Alpha Omega.', 'Alpha mine theirs Omega, revised.'],
+    ['blank-author deletion', '<w:del w:id="2" w:author=" " w:date="2026-01-01T00:00:00Z"><w:r><w:delText xml:space="preserve">gone </w:delText></w:r></w:del>', 'Alpha gone Omega.', 'Alpha mine Omega, revised.']
+]) {
+    const paragraphInner = '<w:r><w:t xml:space="preserve">Alpha </w:t></w:r>'
+        + '<w:ins w:id="1" w:author="Me" w:date="2026-01-01T00:00:00Z"><w:r><w:t xml:space="preserve">mine </w:t></w:r></w:ins>'
+        + foreignRevision
+        + '<w:r><w:t>Omega.</w:t></w:r>';
+    const documentXml = createDocumentXml(`<w:p>${paragraphInner}</w:p>`);
+    const target = ingestWordOoxmlToPlainText(acceptTrackedChangesInOoxml(documentXml, { allAuthors: true }).oxml);
+    const operation = { type: 'redline', target, modified: target.replace('Omega.', 'Omega, revised.') };
+
+    const preflight = preflightOperations(documentXml, [operation], 'Me');
+    assert.equal(preflight.results[0].error?.code, 'EXISTING_REVISIONS', label);
+
+    const merged = await applyOperationsToDocumentXml(documentXml, [operation], 'Me');
+    const mergeError = merged.results[0].error;
+    assert.equal(mergeError?.code, 'EXISTING_REVISIONS', label);
+    assert.deepEqual(mergeError.revisionAuthors, ['Me'], label);
+    assert.equal(mergeError.currentPolicy, 'merge-same-author', label);
+    assert.match(mergeError.message, /unattributed/, label);
+    assert.equal(merged.documentXml, documentXml, label);
+
+    const engine = await applyRedlineToOxml(
+        `<w:p xmlns:w="${NS_W}">${paragraphInner}</w:p>`,
+        target,
+        operation.modified,
+        { author: 'Me', existingRevisions: 'slice-cross-author' }
+    );
+    assert.equal(engine.status, 'ok', label);
+    assert.equal(
+        ingestWordOoxmlToPlainText(rejectTrackedChangesInOoxml(engine.oxml, { allAuthors: true }).oxml),
+        rejectedText,
+        label
+    );
+
+    const sliced = await applyOperationsToDocumentXml(documentXml, [operation], 'Me', null, {
+        existingRevisions: 'slice-cross-author'
+    });
+    assert.equal(sliced.results[0].status, 'applied', label);
+    assert.equal(
+        ingestWordOoxmlToPlainText(rejectTrackedChangesInOoxml(sliced.documentXml, { allAuthors: true }).oxml),
+        rejectedText,
+        `${label}: Reject All must still restore the unattributed revision's baseline`
+    );
+    assert.equal(
+        ingestWordOoxmlToPlainText(acceptTrackedChangesInOoxml(sliced.documentXml, { allAuthors: true }).oxml),
+        acceptedText,
+        label
+    );
+}
+
 console.log('PASS: merge_same_author_tests.mjs');

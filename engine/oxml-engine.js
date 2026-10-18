@@ -28,7 +28,7 @@ import { applySurgicalMode } from './surgical-mode.js';
 import { applyReconstructionMode } from './reconstruction-mode.js';
 import { applyTableReconciliation, applyTextToTableTransformation } from './table-mode.js';
 import { getDefaultAuthor } from '../adapters/config.js';
-import { containsTrackedChanges, getTrackedChangeAuthors, resolveExistingRevisionsPolicy, withOoxmlSourceType } from '../core/word-xml.js';
+import { containsTrackedChanges, getTrackedChangeAuthors, hasUnattributedTrackedChange, resolveExistingRevisionsPolicy, withOoxmlSourceType } from '../core/word-xml.js';
 import { clonePropertiesWithoutRevisionHistory } from '../core/revision-cloning.js';
 import {
     NS_W,
@@ -216,7 +216,9 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
         if (existingRevisionsPolicy === 'merge-same-author' || existingRevisionsPolicy === 'slice-cross-author') {
             const authors = getTrackedChangeAuthors(xmlDoc);
             const currentAuthor = String(author || '').trim().toLowerCase();
-            const isSameAuthor = authors.length > 0 && authors.every(a => a.trim().toLowerCase() === currentAuthor);
+            const isSameAuthor = authors.length > 0
+                && !hasUnattributedTrackedChange(xmlDoc)
+                && authors.every(a => a.trim().toLowerCase() === currentAuthor);
             if (isSameAuthor) {
                 const commentIds = getCommentIdsInOoxml(xmlDoc);
                 if (commentIds.length > 0) {

@@ -25,6 +25,11 @@
 - **Internal:** the Reject All verifier's numbering check uses its memoized definition parser (it was never wired in), and the
   reject-roundtrip matrix's revision-identity cross-check and `RECEIPT_RECONCILIATION_FAILED` gate now actually run (the
   same backspace-for-`\b` defect had made them no-ops).
+- **Same-author checks count unattributed tracked changes as another author's:** a target holding the operation author's
+  revisions plus a change with no or a blank `w:author` passed as all same-author. `merge-same-author` then refused with
+  `UNSAFE_REVISION_NESTING` (`manual_resolution`) instead of `EXISTING_REVISIONS`, and `slice-cross-author` refused instead of
+  slicing; no revision was lost. Merge now refuses with `EXISTING_REVISIONS` (`revisionAuthors` lists named authors only; the
+  message adds `unattributed`), and slicing applies while Reject All still restores the unattributed change.
 
 ## 0.9.0
 

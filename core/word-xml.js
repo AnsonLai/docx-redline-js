@@ -117,7 +117,16 @@ export function withOoxmlSourceType(result) {
     return { ...result, sourceType: classifyOoxmlSourceType(result.oxml) };
 }
 
-function hasUnattributedTrackedChange(node) {
+/**
+ * Returns true if any tracked change in the node lacks a non-blank author.
+ * Same-author checks treat such a revision as another reviewer's, because
+ * `getTrackedChangeAuthors` omits it.
+ *
+ * @param {Document|Element|null|undefined} node
+ * @returns {boolean}
+ */
+export function hasUnattributedTrackedChange(node) {
+    if (!node) return false;
     for (const localName of TRACKED_CHANGE_NAMES) {
         for (const change of wordElementsByLocalName(node, localName)) {
             const author = change.getAttribute?.('w:author')

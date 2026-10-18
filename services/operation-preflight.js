@@ -4,7 +4,7 @@
 
 import { parseOoxmlSafe } from '../adapters/xml-adapter.js';
 import { getDefaultAuthor } from '../adapters/config.js';
-import { containsTrackedChanges, getTrackedChangeAuthors, resolveExistingRevisionsPolicy } from '../core/word-xml.js';
+import { containsTrackedChanges, getTrackedChangeAuthors, hasUnattributedTrackedChange, resolveExistingRevisionsPolicy } from '../core/word-xml.js';
 import { NS_W } from '../core/types.js';
 import { extractCanonicalParagraphText } from '../core/paragraph-text.js';
 import {
@@ -371,11 +371,13 @@ export function preflightOperations(documentXml, operations, author, options = {
                 if (existingPolicy === 'merge-same-author' || existingPolicy === 'slice-cross-author') {
                     const authors = getTrackedChangeAuthors(paragraph);
                     const opAuthor = String(authorUsed || '').trim().toLowerCase();
-                    const allSame = authors.length > 0 && authors.every(a => a.trim().toLowerCase() === opAuthor);
+                    const allSame = authors.length > 0
+                        && !hasUnattributedTrackedChange(paragraph)
+                        && authors.every(a => a.trim().toLowerCase() === opAuthor);
                     if (!allSame && existingPolicy === 'merge-same-author') {
                         error = {
                             code: 'EXISTING_REVISIONS',
-                            message: `Target paragraph contains tracked changes from another author (${authors.length ? authors.join(', ') : 'unattributed'}). Use existingRevisions: "slice-cross-author" for a surgical edit that preserves reviewer history; accepting or rejecting revisions requires separate authorization.`,
+                            message: `Target paragraph contains tracked changes from another author (${[...authors, ...(hasUnattributedTrackedChange(paragraph) ? ['unattributed'] : [])].join(', ')}). Use existingRevisions: "slice-cross-author" for a surgical edit that preserves reviewer history; accepting or rejecting revisions requires separate authorization.`,
                             revisionAuthors: authors,
                             currentPolicy: existingPolicy
                         };

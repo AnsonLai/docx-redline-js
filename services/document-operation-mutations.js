@@ -18,7 +18,7 @@ import {
 import { getAllReferencedNumIdElements, getCurrentChild } from '../core/current-properties.js';
 import { findReconstructionParagraphRange } from '../engine/reconstruction-mapper.js';
 import { createRevisionMetadata } from '../core/types.js';
-import { containsTrackedChanges, getTrackedChangeAuthors, createWordElement, resolveExistingRevisionsPolicy, withOoxmlSourceType } from '../core/word-xml.js';
+import { containsTrackedChanges, getTrackedChangeAuthors, hasUnattributedTrackedChange, createWordElement, resolveExistingRevisionsPolicy, withOoxmlSourceType } from '../core/word-xml.js';
 import {
     snapshotAndAttachRPrChange,
     snapshotAndAttachPPrChange
@@ -1983,7 +1983,9 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         if (existingPolicy === 'merge-same-author' || existingPolicy === 'slice-cross-author') {
             const authors = getTrackedChangeAuthors(targetParagraph);
             const opAuthor = String(author || '').trim().toLowerCase();
-            const allSame = authors.length > 0 && authors.every(a => a.trim().toLowerCase() === opAuthor);
+            const allSame = authors.length > 0
+                && !hasUnattributedTrackedChange(targetParagraph)
+                && authors.every(a => a.trim().toLowerCase() === opAuthor);
             if (!allSame && existingPolicy === 'merge-same-author') {
                 return {
                     documentXml,
@@ -1992,7 +1994,7 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
                     status: 'error',
                     error: {
                         code: 'EXISTING_REVISIONS',
-                        message: `Target paragraph contains tracked changes from another author (${authors.length ? authors.join(', ') : 'unattributed'}). Use existingRevisions: "slice-cross-author" for a surgical edit that preserves reviewer history; accepting or rejecting revisions requires separate authorization.`,
+                        message: `Target paragraph contains tracked changes from another author (${[...authors, ...(hasUnattributedTrackedChange(targetParagraph) ? ['unattributed'] : [])].join(', ')}). Use existingRevisions: "slice-cross-author" for a surgical edit that preserves reviewer history; accepting or rejecting revisions requires separate authorization.`,
                         revisionAuthors: authors,
                         currentPolicy: existingPolicy
                     }
