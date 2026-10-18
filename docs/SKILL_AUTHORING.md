@@ -47,6 +47,10 @@ format, or joins lists:
 - sends a changed-text header (`1. Old` -> `1. New`) as a marker-preserving `redline` plus a `list-format` of that
   paragraph in one batch, and splits them on `LIST_FORMAT_COMPOSITION_CONFLICT`.
 
+### Existing-revision policy (optional)
+
+Only with `existing-revisions-auto-v1`: `existingRevisions: 'auto'` consents to slicing around other or unattributed authors' changes for the whole batch. Report the resolved policy.
+
 Do not expose negotiated but unused capabilities as choices in the editing
 prompt. `command-help-v1`, restore shortcuts, speculative apply, and localized
 change summaries are optional requirements only for integrations that use them.

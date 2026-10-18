@@ -113,7 +113,9 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
 - `core/*`
   - Shared types, OOXML identity helpers, target resolution, list/table targeting heuristics, and XML query helpers.
 - `core/word-xml.js`
-  - Namespace-safe Word element creation, tracked-change detection, and OOXML payload source-shape helpers.
+  - Namespace-safe Word element creation, tracked-change detection, OOXML payload source-shape helpers, and
+    `resolveExistingRevisionsPolicy`, the single place `existingRevisions: 'auto'` is resolved (per target
+    paragraph or per `targetEnd` range; unattributed changes count as another author's).
 - `core/types.js`
   - Shared model enums/types plus revision metadata generation and document-aware revision ID seeding.
 - `core/paragraph-text.js`

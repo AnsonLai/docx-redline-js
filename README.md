@@ -580,6 +580,7 @@ an earlier block has already replaced.
 | `analyzeStructuredContent(markdown)` | Decompose mixed Markdown into typed blocks and report malformed table syntax without creating an operation. |
 | `planStructuredReplacement(target, markdown, options)` | Validate mixed content and return one atomic `structuredContent` replacement operation, or `operation: null` with issues. |
 | `containsTrackedChanges(xmlDoc)` | Detect `w:ins`, `w:del`, move revisions, property changes, and paragraph-mark revision markup in a parsed OOXML document/fragment. |
+| `resolveExistingRevisionsPolicy(policy, node, author)` | Resolve `existingRevisions: 'auto'` for a parsed paragraph, scope element, or an array of range paragraphs: `'slice-cross-author'` when any tracked change is by another or an unattributed author, otherwise `'merge-same-author'`. Other policies are returned unchanged. |
 | `validateRedlineOoxml(oxml)` | Validate generated redline OOXML against the package's structural invariants (no nested revisions, `w:delText` inside `w:del`, complete metadata, unique revision ids, preserved boundary whitespace). Returns `{ valid, issues }`; run it before writing output into a package. |
 
 ### Services
@@ -587,7 +588,9 @@ an earlier block has already replaced.
 | Function | Purpose |
 |----------|---------|
 | `injectCommentsIntoOoxml(oxml, comments, options)` | Add comments anchored to text ranges. |
-| `applyCommentReplyToParts(options)` | Build a threaded reply in `comments.xml` and `commentsExtended.xml` without adding a document-body anchor. |
+| `applyCommentReplyToParts(options)` | Build a threaded reply in `comments.xml` and `commentsExtended.xml` without adding a document-body anchor. Pass `documentXml` so the reply's `w14:paraId` also avoids body paragraph ids. |
+| `compareDocumentInspections(expected, actual)` | Compare two `inspectDocumentParts` / `inspect()` results by text, table position, list label, review segments and comments, ignoring ids, dates and run boundaries. Returns `{ matches, differences }` (at most 10). See [Comparing inspections](#comparing-inspections). |
+| `inspectionReviewShape(inspection)` | The normalized, host-independent shape `compareDocumentInspections` compares. |
 | `acceptTrackedChangesInOoxml(oxml, { author?, allAuthors? })` | Accept `w:ins` / `w:del` / `w:moveFrom` / `w:moveTo` / `*PrChange` revisions for one author or all authors. |
 | `rejectTrackedChangesInOoxml(oxml, { author?, allAuthors? })` | Reject `w:ins` / `w:del` / `w:moveFrom` / `w:moveTo` / `*PrChange` revisions for one author or all authors. |
 | `deleteCommentsByAuthorInOoxml(oxml, { author?, allAuthors? })` | Delete matching comment definitions and anchors present in the supplied OOXML payload. Real `.docx` packages require updating both `word/comments.xml` and `word/document.xml`. |

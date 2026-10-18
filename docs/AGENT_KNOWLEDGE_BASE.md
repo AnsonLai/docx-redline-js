@@ -71,6 +71,8 @@ instructions that will exist in another clone or in CI.
 | Full-document operation scheduling or rollback | `services/document-operation-applier.js`, `services/batch-operation-orchestrator.js`, `services/document-operation-session.js` | `tests/standalone_operation_runner_tests.mjs`, `tests/performance_phase1_session_tests.mjs` |
 | DOCX ZIP wiring or CLI behavior | `node/docx-document.js`, `node/zip-archive.js`, `node/cli.js` | `tests/docx_package_facade_tests.mjs`, `tests/node_zip_archive_tests.mjs`, `tests/agent_cli_tests.mjs` |
 | Validation, receipts, and lifecycle oracles | `core/redline-validation.js`, `services/receipt-collector.js`, `services/revision-comment-management.js` | `tests/redline_validation_tests.mjs`, `tests/mutation_receipt_tests.mjs`, `tests/roundtrip_oracle_tests.mjs` |
+| Existing-revision policy resolution (`auto`) | `core/word-xml.js` (`resolveExistingRevisionsPolicy`), `services/document-operation-mutations.js`, `services/operation-preflight.js` | `tests/existing_revisions_auto_tests.mjs`, `tests/existing_revisions_auto_paths_tests.mjs` |
+| Comparing a committed document with a prepared one | `services/inspection-comparison.js` | `tests/inspection_comparison_tests.mjs` |
 
 Run one focused suite with `node tests/<name>.mjs`. Run `npm test` only when the
 change crosses several subsystems or before release-level handoff. The Word COM,
@@ -382,6 +384,22 @@ const inspection = inspectDocumentParts({ documentXml, commentsXml, numberingXml
 
 Reuse `exactText` plus `paragraphId` or `fingerprint` in an operation. Computed
 list labels and excerpts are for display, not replacements for exact targets.
+
+### Verify a committed document against the prepared one
+
+```js
+import { inspectDocumentParts, compareDocumentInspections } from '@ansonlai/docx-redline-js';
+const check = compareDocumentInspections(inspectDocumentParts(preparedParts), inspectDocumentParts(committedParts));
+// { matches, differences: [{ path, expected, actual }] }, at most the first 10
+```
+
+Use it when a host writes a prepared package through its own API (for example a
+Word add-in's `insertOoxml`) and then reads the result back. It compares paragraph
+text, table position, list labels, review segments (kind, author, position;
+adjacent same-author segments merged) and comments (text, author, anchor,
+resolved state, thread parent). It ignores revision ids, dates, rsids, paragraph
+ids, comment ids and order, and run boundaries. A mismatch is a signal to
+re-inspect, not something to retry blindly.
 
 ### Safely edit a complete DOCX in Node
 
