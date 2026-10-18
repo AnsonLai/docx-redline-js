@@ -2566,6 +2566,7 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
             existingRevisions: options.existingRevisions || 'merge-same-author',
             structuredContent: options.structuredContent !== false,
             explicitStructuredContent: options.explicitStructuredContent === true,
+            plainTextContent: options.plainTextContent === true,
             _revisionIdAllocator: revisionIdAllocator,
             _isolatedTableCell: useTableScope
         })

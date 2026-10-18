@@ -24,6 +24,13 @@
 Use __literal__ text'`) kept the target literal but stripped inline
   Markdown, and parsed `#` headings, in the new paragraphs. They now stay literal too, including list siblings, ranges,
   `replace` and untracked edits. Inserting paragraphs this way still inherits the list of a list-item target.
+- **One-column tables:** a one-column Markdown separator (`| --- |`) is now recognized. Before, a multi-line redline of a
+  cell in a one-column table (`'Cell text.
+Second line'`) inserted a stray `---` row (`structuredContent: false`) or was
+  refused `TABLE_SEPARATOR_REQUIRED` (`true`), and a caller-written one-column table was refused the same way. A bare
+  `---` line is still not a table separator.
+- **`structuredContent: false` on the table route:** text added to or rewritten in table cells by a plain-text redline
+  (including the multi-line cell edit that inserts rows) keeps inline Markdown literal.
 - The `applyCommentReplyToParts` declaration now includes `documentXml`.
 - `ensureCommentsArtifactsInZip` (and so `openDocx`) refuses duplicate comment ids within one incoming comments part,
   and leaves comments.xml untouched when the incoming part has no comments.

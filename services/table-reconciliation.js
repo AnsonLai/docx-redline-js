@@ -9,6 +9,11 @@ import { splitRunsAtDiffBoundaries, applyPatches } from '../pipeline/patching.js
 import { serializeToOoxml } from '../pipeline/serialization.js';
 import { createRevisionMetadata, escapeXml, RunKind } from '../core/types.js';
 import { preprocessMarkdown } from '../pipeline/markdown-processor.js';
+
+// A caller's structuredContent: false (options.plainTextContent) keeps cell text literal: no inline Markdown.
+const cellMarkdown = (text, options) => (options?.plainTextContent === true
+    ? { cleanText: String(text ?? ''), formatHints: [] }
+    : preprocessMarkdown(text));
 import { paragraphMarkPPrXml } from '../engine/paragraph-mark-revisions.js';
 
 /**
@@ -64,7 +69,7 @@ export function generateTableOoxml(tableData, options = {}) {
 
         for (let c = 0; c < numCols; c++) {
             const cellText = row[c] || '';
-            const { cleanText, formatHints } = preprocessMarkdown(cellText);
+            const { cleanText, formatHints } = cellMarkdown(cellText, options);
 
             // Build run model for the cell
             const runModel = [{
@@ -239,7 +244,7 @@ export function serializeVirtualGridToOoxml(grid, operations, options) {
         const rowInsertMeta = generateRedlines ? createRevisionMetadata(author, revisionIdAllocator) : null;
 
         for (const cellText of op.cells) {
-            const { cleanText, formatHints } = preprocessMarkdown(cellText);
+            const { cleanText, formatHints } = cellMarkdown(cellText, options);
             // Simple run model for new cell
             const runModel = [{
                 kind: generateRedlines ? RunKind.INSERTION : RunKind.TEXT,
@@ -340,7 +345,7 @@ function reconcileMultiBlockCellContent(cell, newText, options) {
             }
             return;
         }
-        const { cleanText, formatHints } = preprocessMarkdown(line);
+        const { cleanText, formatHints } = cellMarkdown(line, options);
         const diffOps = computeWordLevelDiffOps(block.acceptedText, cleanText);
         const model = applyPatches(splitRunsAtDiffBoundaries(block.runModel, diffOps), diffOps, {
             generateRedlines, author, formatHints
@@ -349,7 +354,7 @@ function reconcileMultiBlockCellContent(cell, newText, options) {
     });
 
     for (let i = cell.blocks.length; i < lines.length; i++) {
-        const { cleanText, formatHints } = preprocessMarkdown(lines[i]);
+        const { cleanText, formatHints } = cellMarkdown(lines[i], options);
         const runModel = [{
             kind: generateRedlines ? RunKind.INSERTION : RunKind.TEXT,
             text: cleanText, rPrXml: '', author, startOffset: 0, endOffset: cleanText.length
@@ -365,7 +370,7 @@ function reconcileCellContent(cell, newText, options) {
         return reconcileMultiBlockCellContent(cell, newText, options);
     }
     const { generateRedlines, author, revisionIdAllocator = null } = options;
-    const { cleanText, formatHints } = preprocessMarkdown(newText);
+    const { cleanText, formatHints } = cellMarkdown(newText, options);
 
     // For now, satisfy with single block or join blocks
     // In a full implementation, we'd diff paragraphs within the cell

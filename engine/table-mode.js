@@ -36,9 +36,10 @@ function noChanges(serializer, xmlDoc) {
  * @param {DOMParser} parser - Parser instance
  * @param {string} author - Author name
  * @param {boolean} [generateRedlines=true] - Track change toggle
+ * @param {{ plainTextContent?: boolean }} [extra] - plainTextContent keeps cell text literal
  * @returns {{ oxml: string, hasChanges: boolean }}
  */
-export function applyTableReconciliation(xmlDoc, modifiedText, serializer, parser, author, generateRedlines = true) {
+export function applyTableReconciliation(xmlDoc, modifiedText, serializer, parser, author, generateRedlines = true, extra = {}) {
     const tableNodes = getElementsByTagNSOrTag(xmlDoc, NS_W, 'tbl');
     const newTableData = parseTable(modifiedText);
     const hasNewContent = newTableData.rows.length > 0 || newTableData.headers.length > 0;
@@ -58,7 +59,8 @@ export function applyTableReconciliation(xmlDoc, modifiedText, serializer, parse
     const options = {
         generateRedlines,
         author,
-        revisionIdAllocator: getRevisionIdAllocatorForDocument(xmlDoc)
+        revisionIdAllocator: getRevisionIdAllocatorForDocument(xmlDoc),
+        plainTextContent: extra.plainTextContent === true
     };
     const reconciledOxml = serializeVirtualGridToOoxml(oldGrid, operations, options);
     const wrappedOxml = `<root xmlns:w="${NS_W}">${reconciledOxml}</root>`;
@@ -92,9 +94,10 @@ export function applyTableReconciliation(xmlDoc, modifiedText, serializer, parse
  * @param {DOMParser} parser - Parser instance
  * @param {string} author - Author name
  * @param {boolean} generateRedlines - Track change toggle
+ * @param {{ plainTextContent?: boolean }} [extra] - plainTextContent keeps cell text literal
  * @returns {{ oxml: string, hasChanges: boolean }}
  */
-export function applyTextToTableTransformation(xmlDoc, modifiedText, serializer, parser, author, generateRedlines) {
+export function applyTextToTableTransformation(xmlDoc, modifiedText, serializer, parser, author, generateRedlines, extra = {}) {
     const revisionIdAllocator = getRevisionIdAllocatorForDocument(xmlDoc);
     const tableData = parseTable(modifiedText);
     if (!tableData || (tableData.rows.length === 0 && tableData.headers.length === 0)) {
@@ -102,7 +105,7 @@ export function applyTextToTableTransformation(xmlDoc, modifiedText, serializer,
         return noChanges(serializer, xmlDoc);
     }
 
-    const tableOoxml = generateTableOoxml(tableData, { generateRedlines, author, revisionIdAllocator, trackAsBlock: true });
+    const tableOoxml = generateTableOoxml(tableData, { generateRedlines, author, revisionIdAllocator, trackAsBlock: true, plainTextContent: extra.plainTextContent === true });
     const tableDoc = parseOoxmlSafe(`<root xmlns:w="${NS_W}">${tableOoxml}</root>`, 'application/xml').doc;
     if (!tableDoc) return noChanges(serializer, xmlDoc);
 

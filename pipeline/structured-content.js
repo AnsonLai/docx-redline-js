@@ -9,7 +9,8 @@
 
 import { matchListMarker } from './list-markers.js';
 
-const TABLE_SEPARATOR = /^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/;
+// A one-column separator needs a pipe on both sides ("| --- |"); two or more columns as before.
+const TABLE_SEPARATOR = /^\s*(?:\|\s*:?-{3,}:?\s*\||\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?)\s*$/;
 
 function isBlank(line) {
     return !line || line.trim().length === 0;

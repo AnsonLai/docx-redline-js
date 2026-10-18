@@ -919,6 +919,14 @@ import { reconcileMarkdownTableOoxml } from '@ansonlai/docx-redline-js';
 const result = await reconcileMarkdownTableOoxml(tableOoxml, originalText, markdownTable);
 ```
 
+A multi-line `redline` of a table-cell paragraph whose first line is the cell's
+current text (`'Cell text.
+Second line'`) inserts the extra lines as new rows below
+the target row, in the target column (mirrored across columns for symmetric label
+rows such as signature blocks). It does not add paragraphs inside the cell. With
+`structuredContent: false` the new cell text stays literal. One-column tables use
+`| --- |` as the separator.
+
 ## Detailed Architecture
 
 Use the layout and task shortcuts at the top of this file for normal work.

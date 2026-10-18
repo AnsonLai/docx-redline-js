@@ -192,6 +192,6 @@ export function deriveParagraphThenTableAppend(modifiedText) {
     const tableLines = lines.slice(1);
     if (!tableLines.every(line => line.trim().startsWith('|'))) return null;
     const separator = tableLines[1].replace(/\s+/g, '');
-    if (!/^\|:?-{3,}:?(\|:?-{3,}:?)+\|?$/.test(separator)) return null;
+    if (!/^\|:?-{3,}:?(?:(\|:?-{3,}:?)+\|?|\|)$/.test(separator)) return null;
     return { paragraphMarkdown: lines[0].trim(), tableText: tableLines.join('\n') };
 }

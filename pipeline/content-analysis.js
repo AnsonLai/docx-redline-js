@@ -22,7 +22,8 @@ export function parseTable(text) {
 
     const isSeparatorLine = line => {
         const normalized = line.replace(/\s+/g, '');
-        return /^\|:?-{3,}:?(\|:?-{3,}:?)+\|?$/.test(normalized);
+        // One column needs a pipe on both sides ("|---|"), so a bare "---" or "|---" is not a separator.
+        return /^\|:?-{3,}:?(?:(\|:?-{3,}:?)+\|?|\|)$/.test(normalized);
     };
 
     const hasHeader = lines.some(isSeparatorLine);

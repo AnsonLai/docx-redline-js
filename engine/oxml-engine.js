@@ -577,12 +577,12 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
     if (isMarkdownTable && !hasTables) {
         recordRouteSelection(options, 'table', { transformation: 'text-to-table' });
         log('[OxmlEngine] Text-to-table transformation: generating new table from Markdown');
-        return finalize(applyTextToTableTransformation(xmlDoc, cleanModifiedText, serializer, null, author, generateRedlines));
+        return finalize(applyTextToTableTransformation(xmlDoc, cleanModifiedText, serializer, null, author, generateRedlines, { plainTextContent: options.plainTextContent === true }));
     }
 
     if (hasTables && isMarkdownTable) {
         recordRouteSelection(options, 'table', { transformation: 'table-reconciliation' });
-        return finalize(applyTableReconciliation(xmlDoc, cleanModifiedText, serializer, null, author, generateRedlines));
+        return finalize(applyTableReconciliation(xmlDoc, cleanModifiedText, serializer, null, author, generateRedlines, { plainTextContent: options.plainTextContent === true }));
     }
     if (usesSurgicalTextMode) {
         recordRouteSelection(options, 'surgical', { tableScoped: hasTables });
