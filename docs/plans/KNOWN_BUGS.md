@@ -236,3 +236,19 @@ source (`services/revision-fidelity-verifier.js`). A violation fails closed with
   parts through `mergeNumberingParts` / `ensureNumberingArtifactsInZip` (the single merge, used by `openDocx`) throws
   `NUMBERING_ID_CONFLICT` when an incoming id exists with different content. Bare callers must pass `numberingXml` (or a shared
   `numberingIdState`) to every call; no automatic remap of already-written paragraphs is attempted (deferred (aspirational, owner decision 2026-10-11)).
+
+## 8. Consumer-Reported Markdown Reconciliation Hazards
+
+### Literal underscore runs are interpreted as Markdown
+
+- **Where:** [`pipeline/markdown-processor.js`](../../pipeline/markdown-processor.js) recognizes `__(...)__` as bold and `_(...)_` as italic; [`engine/oxml-engine.js`](../../engine/oxml-engine.js) runs `preprocessMarkdown` on modified text even when `structuredContent: false`.
+- **Evidence (0.9.0 source):** Calling `applyRedlineToOxml` with `generateRedlines: false` on a paragraph containing 25 underscores and requesting `_________________________ (sign)` returns `status: 'ok'`, but the generated text is `_____ (sign)`. The five underscores also receive Markdown-derived formatting. `structuredContent: false` does not make the text literal.
+- **Impact:** A complete paragraph rewrite can shorten signature or date lines without reporting an error. The supplied add-in report identifies `rewrite_paragraph` as an exposed path to this behavior.
+- **Exit condition:** Literal text edits bypass Markdown preprocessing, or preprocessing preserves literal underscore runs; add regression coverage that checks the exact text after both Accept All and Reject All.
+
+### Passing a whole document as a redline scope can change untouched paragraphs
+
+- **Where:** [`applyRedlineToOxml`](../../index.js) reconciles a paragraph or selected range. The [output shape guidance](../../README.md#output-shape-matrix) directs complete-document edits to `applyOperationToDocumentXml` or `applyOperationsToDocumentXml`.
+- **Evidence (0.9.0 source):** Passing the entire `<w:document>` with two paragraphs (`**literal**` and `Old tail`) as the scope, while changing only `Old tail` to `New tail`, returns `status: 'ok'`. The first paragraph is split into an empty paragraph and a bold `literal` paragraph, so unchanged literal Markdown is reinterpreted and the paragraph structure changes.
+- **Status and mitigation:** This is an unsafe whole-body call shape, not the intended targeted operation path. According to the supplied report, the add-in's integration tests now use `applyOperationsToDocumentXml` with targeted operations and production does not use this shape as of 2026-10-12.
+- **Exit condition:** Keep complete-document consumers on the targeted document-operation API. Consider a guard or explicit scope declaration so a whole-body call cannot silently return `ok` after reinterpreting unrelated content.
