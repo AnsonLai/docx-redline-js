@@ -23,7 +23,7 @@ import {
     snapshotAndAttachRPrChange,
     snapshotAndAttachPPrChange
 } from '../engine/run-builders.js';
-import { markParagraphInserted, markParagraphDeleted } from '../engine/paragraph-mark-revisions.js';
+import { markParagraphInserted, markParagraphDeleted, readParagraphMarkRevision } from '../engine/paragraph-mark-revisions.js';
 import {
     applyCharacterFormatToRPr,
     checkRunPropertiesChanged,
@@ -2382,21 +2382,48 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
             ? targetParagraph
             : targetParagraph.nextSibling;
 
-        for (const paragraphText of plainAdjacencyInsertionCandidate.paragraphs) {
+        // Appending after the target is Word's "Enter at the end of the target": the target's mark becomes the
+        // inserted break and the last new paragraph inherits the target's original mark. Tracking the last new
+        // paragraph's own mark instead would track the body's final paragraph mark when the target is last,
+        // which Word cannot reject cleanly. A target whose mark is a tracked deletion keeps the per-paragraph marks.
+        const targetMark = generateRedlines && plainAdjacencyInsertionCandidate.position === 'after'
+            ? readParagraphMarkRevision(targetParagraph)
+            : null;
+        const moveTargetMark = generateRedlines
+            && plainAdjacencyInsertionCandidate.position === 'after'
+            && targetMark?.kind !== 'del';
+        const insertedParagraphs = plainAdjacencyInsertionCandidate.paragraphs;
+        let inheritor = null;
+        for (let index = 0; index < insertedParagraphs.length; index++) {
+            const inheritsTargetMark = moveTargetMark && index === insertedParagraphs.length - 1;
             const plainParagraph = await buildInsertedPlainParagraph(
                 xmlDoc,
                 targetParagraph,
-                paragraphText,
+                insertedParagraphs[index],
                 generateRedlines ? createRevisionMetadata(author, xmlDoc) : null,
                 author,
                 // A wholly inserted paragraph must track its own paragraph mark; otherwise Word's
                 // Reject All removes the text but leaves an empty paragraph behind.
-                { generateRedlines, trackParagraphMark: true, plainTextContent: options.plainTextContent === true }
+                { generateRedlines, trackParagraphMark: !inheritsTargetMark, plainTextContent: options.plainTextContent === true }
             );
             const imported = xmlDoc.importNode(plainParagraph, true);
             ensureParagraphIdsOnImportedNode(imported, operationSession);
             const inserted = parent.insertBefore(imported, insertionPoint);
+            if (inheritsTargetMark) inheritor = inserted;
             options?._mutationLiveNodes?.push(inserted);
+        }
+        if (moveTargetMark) {
+            // The target's original mark, with its properties and their revision history (a w:pPrChange, the
+            // mark's own ins and rPrChange), moves to the last new paragraph; the target keeps its current
+            // properties without history and becomes the inserted break.
+            const targetPPr = getDirectWordChild(targetParagraph, 'pPr');
+            if (targetPPr && inheritor) {
+                const inheritorPPr = getDirectWordChild(inheritor, 'pPr');
+                if (inheritorPPr) inheritor.replaceChild(targetPPr.cloneNode(true), inheritorPPr);
+                else inheritor.insertBefore(targetPPr.cloneNode(true), inheritor.firstChild);
+                targetParagraph.replaceChild(clonePropertiesWithoutRevisionHistory(targetPPr), targetPPr);
+            }
+            markParagraphInserted(targetParagraph, { author });
         }
 
         normalizeBodySectionOrder(xmlDoc);

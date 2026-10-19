@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Fixed
+
+- **Appending paragraphs after a target tracks Word's paragraph marks.** A plain-text redline (`structuredContent: false`)
+  that appends paragraphs after its target (`'Last paragraph.\nAppended.'`) tracked the new last paragraph's own mark
+  instead of the target's. At the end of the body that is the document's final paragraph mark, which Word's Reject All
+  cannot remove cleanly (Word kept an extra empty paragraph). It now matches the structured path and Word's "Enter at the
+  end of the target": the target's mark is the inserted break, new paragraphs before the last track their own marks, and
+  the last new paragraph inherits the target's original mark with its paragraph properties and their history (an
+  existing mark insertion, a `w:pPrChange`), moved rather than copied. The target keeps its current properties without
+  history. This applies in both `structuredContent` modes wherever this append route runs. Inserting before the target is
+  unchanged. Reported by the Word add-in's Word oracle lane.
+
+## 0.11.0
+
 ### Added
 
 - **`mergeCommentParts(parts, output)`:** merges a batch result's comment output (`commentsXml` / `commentsXmlMode`,

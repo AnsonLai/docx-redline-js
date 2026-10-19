@@ -75,7 +75,11 @@ assert.equal(sourceTexts[ANCHOR], 'Bullet Insertion Anchor');
     });
     const added = paragraphsOf(tracked).find(p => acceptedFragment(p) === 'Planner plain insertion after paragraph');
     assert.ok(added, 'inserted paragraph exists');
-    assert.equal(markType(added), 'ins', 'inserted paragraph mark must be tracked as inserted');
+    // Appending after the target is Word's "Enter at the end of the target": the target's mark is the inserted
+    // break and the appended (last) paragraph inherits the target's untracked mark.
+    const anchor = paragraphsOf(tracked).find(p => acceptedFragment(p) === sourceTexts[PLAIN]);
+    assert.equal(markType(anchor), 'ins', 'the target paragraph mark is tracked as the inserted break');
+    assert.equal(markType(added), null, 'the appended paragraph inherits the target\'s untracked mark');
     assert.deepEqual(wordParagraphs(tracked, 'reject'), sourceTexts, 'Word Reject All restores source paragraphs exactly');
     assert.equal(paragraphsOf(tracked).filter(p => markType(p) !== 'ins').length, sourceTexts.length,
         'untracked paragraph marks equal source paragraph count');

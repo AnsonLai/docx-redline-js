@@ -172,6 +172,28 @@ export function clearParagraphMarkRevision(paragraph) {
 }
 
 /**
+ * Reads the tracked revision on a paragraph mark, if any.
+ *
+ * @param {Element} paragraph - `w:p`
+ * @returns {{ kind: 'ins'|'del', id: string, author: string, date: string }|null}
+ */
+export function readParagraphMarkRevision(paragraph) {
+    const rPr = directWordChild(directWordChild(paragraph, 'pPr'), 'rPr');
+    for (const kind of ['ins', 'del']) {
+        const marker = directWordChild(rPr, kind);
+        if (marker) {
+            return {
+                kind,
+                id: marker.getAttribute('w:id') || '',
+                author: marker.getAttribute('w:author') || '',
+                date: marker.getAttribute('w:date') || ''
+            };
+        }
+    }
+    return null;
+}
+
+/**
  * Re-applies a previously captured inserted-mark identity (id/author/date kept verbatim) when the
  * paragraph does not carry an `ins` mark any more. Does not allocate a new id.
  *

@@ -114,4 +114,56 @@ for (const [name, body, targetIndex, modified, expectedTexts, level, numId] of [
     assert.match(view.acceptedXml, new RegExp(`<w:numId w:val="${numId}"/>`), `${name}: same list`);
 }
 
+// ---------------------------------------------------------------------------------------------------------
+// 4. Paragraph-mark revisions follow Word's model, in both structuredContent modes.
+//    'after' = Enter at the end of the target: the target's mark is the inserted break and the last new
+//    paragraph inherits the target's original mark. At the end of the body, the final paragraph mark
+//    must never be tracked (Word cannot reject it cleanly). 'before': each new paragraph's own mark.
+// ---------------------------------------------------------------------------------------------------------
+{
+    const { parseXml } = await import('../adapters/xml-adapter.js');
+    const NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+    // Per body paragraph: the tracked revision on its mark ('ins' | 'del' | null) and that marker's author.
+    const marks = xml => Array.from(parseXml(xml).getElementsByTagNameNS(NS, 'body')[0].childNodes)
+        .filter(node => node.nodeType === 1 && node.localName === 'p')
+        .map(paragraph => {
+            const pPr = Array.from(paragraph.childNodes).find(node => node.localName === 'pPr');
+            const rPr = Array.from(pPr?.childNodes || []).find(node => node.localName === 'rPr');
+            const marker = Array.from(rPr?.childNodes || []).find(node => node.localName === 'ins' || node.localName === 'del');
+            return marker ? `${marker.localName}:${marker.getAttribute('w:author')}` : null;
+        });
+    const run = async (body, build, sc, extra = {}) => {
+        const documentXml = docXml(body);
+        const result = await applyOperationsToDocumentXml(documentXml, [{ type: 'redline', structuredContent: sc, ...build(inspect(documentXml)) }],
+            'Tester', { numberingXml: numbering }, { atomic: true, strictTargets: true, ...extra });
+        assert.equal(result.status, 'ok', JSON.stringify(result.error ?? result.results));
+        return result.documentXml;
+    };
+    for (const sc of [false, true]) {
+        const label = `structuredContent ${sc}`;
+        // Body end: the reported Word-lane failure.
+        const end = await run(p('First.') + p('Last paragraph.'), ps => ({ target: strong(ps[1]), modified: 'Last paragraph.\nAppended.' }), sc);
+        assert.deepEqual(marks(end), [null, 'ins:Tester', null], `${label}: target mark is the inserted break; the final mark is untracked`);
+        // Several appended paragraphs: every new mark but the last is tracked.
+        const several = await run(p('First.') + p('Last.'), ps => ({ target: strong(ps[1]), modified: 'Last.\nOne.\nTwo.' }), sc);
+        assert.deepEqual(marks(several), [null, 'ins:Tester', 'ins:Tester', null], `${label}: several appended`);
+        assert.deepEqual(inspect(rejectTrackedChangesInOoxml(several, { allAuthors: true }).oxml).map(q => q.exactText), ['First.', 'Last.']);
+        // Mid-document append keeps the same shape.
+        const middle = await run(p('Target.') + p('After.'), ps => ({ target: strong(ps[0]), modified: 'Target.\nNew.' }), sc);
+        assert.deepEqual(marks(middle), ['ins:Tester', null, null], `${label}: mid-document append`);
+    }
+    // Plain-text specifics: insert before keeps each new paragraph's own mark; a target whose mark was
+    // already inserted by another reviewer hands that identity to the last new paragraph.
+    const before = await run(p('First.') + p('Last.'), ps => ({ target: strong(ps[1]), modified: 'New one.\nNew two.\nLast.' }), false);
+    assert.deepEqual(marks(before), [null, 'ins:Tester', 'ins:Tester', null], 'before: new paragraphs track their own marks');
+    const seeded = p('First.') + '<w:p><w:pPr><w:rPr><w:ins w:id="7" w:author="Other" w:date="2026-01-01T00:00:00Z"/></w:rPr></w:pPr>'
+        + '<w:ins w:id="8" w:author="Other" w:date="2026-01-01T00:00:00Z"><w:r><w:t>Seeded.</w:t></w:r></w:ins></w:p>' + p('Tail.');
+    const handedOver = await run(seeded, ps => ({ target: strong(ps[1]), modified: 'Seeded.\nAppended.' }), false,
+        { existingRevisions: 'slice-cross-author' });
+    assert.deepEqual(marks(handedOver), [null, 'ins:Tester', 'ins:Other', null], 'the inherited mark keeps the other reviewer\'s identity');
+    assert.match(handedOver, /w:id="7" w:author="Other"/, 'inherited marker keeps its id');
+    assert.deepEqual(inspect(rejectTrackedChangesInOoxml(handedOver, { allAuthors: true }).oxml).map(q => q.exactText), ['First.', 'Tail.']);
+    assert.deepEqual(inspect(acceptTrackedChangesInOoxml(handedOver, { allAuthors: true }).oxml).map(q => q.exactText), ['First.', 'Seeded.', 'Appended.', 'Tail.']);
+}
+
 console.log('plain_text_paragraph_insertion_tests: all passed');

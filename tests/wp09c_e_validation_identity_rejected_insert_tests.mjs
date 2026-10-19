@@ -384,8 +384,17 @@ console.log('--- WP09c-e validation, identity, and rejected-view insertion ---')
         extractCanonicalParagraphText(paragraph).includes('Expanded paragraph.')
     ));
     assert(expanded);
-    assert.equal(expanded.getElementsByTagNameNS(W, 'pPrChange').length, 0);
-    assert.equal(expanded.getElementsByTagNameNS(W, 'rPrChange').length, 0);
+    // Appending after the target follows Word's "Enter at the end": the target's original mark, with its
+    // w:pPrChange, moves to the expanded (last) paragraph. History is moved, never copied, so each revision
+    // node and id appears once; run-level history (rPrChange) stays with the target's runs.
+    const all = parseOoxmlSafe(result.documentXml, 'text/xml').doc;
+    assert.equal(all.getElementsByTagNameNS(W, 'pPrChange').length, 1, 'paragraph history is not duplicated');
+    assert.equal(all.getElementsByTagNameNS(W, 'rPrChange').length, 1, 'run history is not duplicated');
+    assert.equal(expanded.getElementsByTagNameNS(W, 'rPrChange').length, 0, 'the new text carries no run history');
+    const anchor = paragraphs(result.documentXml).find(paragraph => extractCanonicalParagraphText(paragraph).startsWith('Anchor paragraph.'));
+    assert.equal(anchor.getElementsByTagNameNS(W, 'pPrChange').length, 0, 'the target keeps its properties without history');
+    assert.deepEqual(textVector(rejectTrackedChangesInOoxml(result.documentXml, { allAuthors: true }).oxml),
+        ['Anchor paragraph.', 'Following retained text.']);
 }
 
 console.log('PASS: WP09c-e validation, identity, and rejected-view insertion tests');
