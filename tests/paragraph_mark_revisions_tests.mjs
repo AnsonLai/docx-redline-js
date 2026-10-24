@@ -145,8 +145,11 @@ const ctx = (allocator = new RevisionIdAllocator(100)) => ({ author: 'Unit Autho
         round.items.forEach((_, i) => alignment.push({ sourceIndex: i + 1, targetIndex: null }));
         targetTexts.forEach((_, i) => alignment.push({ sourceIndex: null, targetIndex: i + 1 }));
         const plan = planParagraphMarks({ sourceParagraphs, targetParagraphs, alignment });
-        const expectedDeleted = plan.filter(e => e.action === 'deleteMark').length;
-        const expectedInserted = plan.filter(e => e.action === 'insertMark').length;
+        // These ranges end the body. The body's final mark must stay untracked, so the last deleted source paragraph
+        // joins the last inserted one (one deleted mark and one inserted mark fewer than the plan; the joined
+        // paragraph keeps the untracked final mark).
+        const expectedDeleted = plan.filter(e => e.action === 'deleteMark').length - 1;
+        const expectedInserted = plan.filter(e => e.action === 'insertMark').length - 1;
 
         const result = await applyOperationsToDocumentXml(body(round.items), [{
             type: 'redline', target: round.target, targetEnd: round.targetEnd, modified: '- One\n- Two'
@@ -159,6 +162,8 @@ const ctx = (allocator = new RevisionIdAllocator(100)) => ({ author: 'Unit Autho
         assert.equal(paragraphs.filter(p => !markOf(p, 'ins').length).length, sourceParagraphs.length,
             `${round.name}: untracked source-side marks equal the source paragraph count`);
         assert.equal(wordRevisionParagraphTexts(doc, 'rejected').length, sourceParagraphs.length, `${round.name}: Reject All keeps the source paragraph count`);
+        assert.equal(markOf(paragraphs[paragraphs.length - 1], 'ins').length + markOf(paragraphs[paragraphs.length - 1], 'del').length, 0,
+            `${round.name}: the body's final mark is untracked`);
     }
 }
 

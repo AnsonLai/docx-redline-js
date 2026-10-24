@@ -38,6 +38,13 @@ export class ReceiptCollector {
         }
     }
 
+    /** Drops a revision id the active operation recorded and then removed from its output again. */
+    forgetRevision(id) {
+        if (!this.activeReceipt || id == null) return;
+        const strId = String(id);
+        this.activeReceipt.revisionItems = this.activeReceipt.revisionItems.filter(item => item.id !== strId);
+    }
+
     recordComment(id, _partName = 'word/comments.xml') {
         if (!this.activeReceipt || id == null) return;
         const strId = String(id);

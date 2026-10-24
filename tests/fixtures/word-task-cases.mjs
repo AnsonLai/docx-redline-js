@@ -846,7 +846,8 @@ const WORD_TASK_CASE_DEFINITIONS = [
         expectedRejectedText: 'A.\tPURPOSE',
         packageParts: { numberingXml: MIXED_STYLE_NUMBERING_XML },
         requiredNumberingFormats: ['bullet'],
-        requiredElements: { numPr: 3, ins: 4, del: 4 }
+        // The list replaces the body's last paragraph: the original joins the last item (Word's final-mark shape).
+        requiredElements: { numPr: 3, ins: 3, del: 3 }
     },
     {
         name: 'administrative-table-reconciliation-cell-update',

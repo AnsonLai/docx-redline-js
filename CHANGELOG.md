@@ -13,6 +13,14 @@
   existing mark insertion, a `w:pPrChange`), moved rather than copied. The target keeps its current properties without
   history. This applies in both `structuredContent` modes wherever this append route runs. Inserting before the target is
   unchanged. Reported by the Word add-in's Word oracle lane.
+- **A container's last paragraph mark is never tracked by list regeneration.** A structured redline of the body's last
+  paragraph (or a table cell's last paragraph) that regenerates it as a list (`'Last.\n1. Item'`, `'1. Last.\n2. Next'`,
+  a changed target plus typed items), or a `targetEnd` range ending there that is replaced by a list, ended with a
+  paragraph whose mark was a tracked insertion, after the deleted original. Word's Reject All cannot remove that final
+  mark and left an empty paragraph. The output now
+  uses Word's equivalent shape: the original's deleted text joins the last new paragraph, which keeps the original's
+  untracked mark and records the original paragraph properties (the oldest snapshot, when the source already had one)
+  in a tracked `w:pPrChange`. Accept All and Reject All are unchanged, and mid-document edits are unchanged.
 
 ## 0.11.0
 

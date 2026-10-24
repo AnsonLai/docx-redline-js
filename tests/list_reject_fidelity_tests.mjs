@@ -127,7 +127,10 @@ assert.equal(sourceTexts[ANCHOR], 'Bullet Insertion Anchor');
     assert.deepEqual(libraryParagraphs(tracked, rejectTrackedChangesInOoxml), ['Intro', 'Alpha', '', 'Gamma']);
     assert.deepEqual(wordParagraphs(tracked, 'accept'), ['Intro', 'One', 'Two']);
     assert.deepEqual(libraryParagraphs(tracked, acceptTrackedChangesInOoxml), ['Intro', 'One', 'Two']);
-    assert.equal(paragraphsOf(tracked).filter(p => markType(p) === 'del').length, 3, 'all three source marks tracked as deleted');
+    // The range ends the body: the last source paragraph ("Gamma") joins the last new item, which keeps the body's
+    // untracked final mark, so two source marks are tracked as deleted.
+    assert.equal(paragraphsOf(tracked).filter(p => markType(p) === 'del').length, 2, 'the other source marks are tracked as deleted');
+    assert.equal(markType(paragraphsOf(tracked).at(-1)), null, 'the body\'s final mark is untracked');
 }
 
 // 4. All-empty range and a single empty paragraph: source marks survive Reject without any source text.
@@ -152,7 +155,10 @@ assert.equal(sourceTexts[ANCHOR], 'Bullet Insertion Anchor');
         assert.deepEqual(libraryParagraphs(result.documentXml, rejectTrackedChangesInOoxml), expectedRejected, `${name}: library reject`);
         assert.deepEqual(wordParagraphs(result.documentXml, 'accept'), accepted, `${name}: Word accept`);
         assert.deepEqual(libraryParagraphs(result.documentXml, acceptTrackedChangesInOoxml), accepted, `${name}: library accept`);
-        assert.equal(paragraphsOf(result.documentXml).filter(p => markType(p) === 'del').length, count, `${name}: source marks tracked as deleted`);
+        // These ranges end the body: the last source paragraph joins the last new item, which keeps the untracked
+        // final mark, so one source mark fewer is tracked as deleted.
+        assert.equal(paragraphsOf(result.documentXml).filter(p => markType(p) === 'del').length, count - 1, `${name}: source marks tracked as deleted`);
+        assert.equal(markType(paragraphsOf(result.documentXml).at(-1)), null, `${name}: the body's final mark is untracked`);
     }
 }
 

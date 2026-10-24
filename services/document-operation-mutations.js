@@ -23,7 +23,7 @@ import {
     snapshotAndAttachRPrChange,
     snapshotAndAttachPPrChange
 } from '../engine/run-builders.js';
-import { markParagraphInserted, markParagraphDeleted, readParagraphMarkRevision } from '../engine/paragraph-mark-revisions.js';
+import { clearParagraphMarkRevision, markParagraphInserted, markParagraphDeleted, readParagraphMarkRevision } from '../engine/paragraph-mark-revisions.js';
 import {
     applyCharacterFormatToRPr,
     checkRunPropertiesChanged,
@@ -602,6 +602,76 @@ function buildFallbackInsertedPlainParagraph(xmlDoc, text, revisionMetadata, aut
     }
 
     return paragraph;
+}
+
+const BLOCK_LEVEL_NAMES = new Set(['p', 'tbl', 'sdt', 'customXml']);
+
+/** True when no block-level sibling follows the node in its container (body, table cell, header...). */
+function isLastBlockInContainer(node) {
+    for (let next = node?.nextSibling; next; next = next.nextSibling) {
+        if (next.nodeType === 1 && next.namespaceURI === NS_W && BLOCK_LEVEL_NAMES.has(next.localName)) return false;
+    }
+    return !!node;
+}
+
+/**
+ * Word cannot reject a tracked insertion on the last paragraph mark of a container (the body's final mark, a
+ * table cell's last mark): Reject All leaves an empty paragraph behind. A regenerated block that replaced the
+ * container's last paragraph ends with a paragraph whose mark is inserted, after the original paragraph whose
+ * text and mark are tracked deletions. Rewrite it into the equivalent shape Word uses: the original's deleted
+ * text moves into the last new paragraph, which keeps the original (untracked) mark and records the original
+ * paragraph properties in a tracked w:pPrChange. Accept All and Reject All are unchanged.
+ *
+ * @param {Document} xmlDoc
+ * @param {Node[]} insertedNodes - replacement nodes in document order
+ * @param {string} author - the operation author (only this author's revisions are rewritten)
+ * @param {{ forgetRevision?: (id: string) => void }|null} [receipts] - receipt collector for the removed marker ids
+ * @returns {Element|null} the removed original paragraph, when the rewrite applied
+ */
+function keepContainerFinalMarkUntracked(xmlDoc, insertedNodes, author, receipts = null) {
+    const paragraphs = insertedNodes.filter(node => node?.nodeType === 1 && node.namespaceURI === NS_W && node.localName === 'p');
+    const last = paragraphs[paragraphs.length - 1];
+    if (!last || insertedNodes[insertedNodes.length - 1] !== last) return null;
+    const lastMark = readParagraphMarkRevision(last);
+    if (lastMark?.kind !== 'ins' || lastMark.author !== author) return null;
+    const lastPPr = getDirectWordChild(last, 'pPr');
+    if (lastPPr && getDirectWordChild(lastPPr, 'pPrChange')) return null;
+    const original = [...paragraphs].reverse().find(paragraph => {
+        if (paragraph === last) return false;
+        const mark = readParagraphMarkRevision(paragraph);
+        return mark?.kind === 'del' && mark.author === author
+            && extractCanonicalParagraphText(paragraph, { revisionView: 'accepted' }) === '';
+    });
+    if (!original) return null;
+    const originalMark = readParagraphMarkRevision(original);
+
+    // Original properties as the Reject All view sees them: the oldest snapshot when the source already had one.
+    const originalPPr = getDirectWordChild(original, 'pPr');
+    const originalHistory = getDirectWordChild(originalPPr, 'pPrChange');
+    const rejectedPPr = getDirectWordChild(originalHistory, 'pPr') || originalPPr;
+    let targetPPr = lastPPr;
+    if (!targetPPr) {
+        targetPPr = createWordElement(xmlDoc, 'w:pPr');
+        last.insertBefore(targetPPr, last.firstChild);
+    }
+    const change = snapshotAndAttachPPrChange(xmlDoc, targetPPr, author, lastMark.date || null, rejectedPPr);
+    const snapshot = getDirectWordChild(change, 'pPr');
+    for (const name of ['rPr', 'sectPr']) {
+        const child = getDirectWordChild(snapshot, name);
+        if (child) snapshot.removeChild(child);
+    }
+    clearParagraphMarkRevision(last);
+
+    const firstContent = Array.from(last.childNodes).find(child => !(child.nodeType === 1 && child.localName === 'pPr')) || null;
+    for (const child of Array.from(original.childNodes)) {
+        if (child.nodeType === 1 && child.localName === 'pPr') continue;
+        last.insertBefore(child, firstContent);
+    }
+    original.parentNode?.removeChild(original);
+    // Both mark revisions are gone from the output; keep the operation's receipt in step.
+    receipts?.forgetRevision?.(lastMark.id);
+    receipts?.forgetRevision?.(originalMark.id);
+    return original;
 }
 
 function buildEmptyParagraphTemplateFromAnchor(xmlDoc, anchorParagraph) {
@@ -2654,16 +2724,26 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         );
     const anchorNode = scopeNodes[0];
     const parent = anchorNode.parentNode;
+    const scopeEndsContainer = isLastBlockInContainer(scopeNodes[scopeNodes.length - 1]);
+    const insertedNodes = [];
     for (const node of replacementNodes) {
         const imported = xmlDoc.importNode(node, true);
         ensureParagraphIdsOnImportedNode(imported, operationSession);
         const inserted = parent.insertBefore(imported, anchorNode);
+        insertedNodes.push(inserted);
         options?._mutationLiveNodes?.push(inserted);
     }
     for (const scopeNode of scopeNodes) {
         if (scopeNode && scopeNode.parentNode === parent) {
             options?._mutationRemovedNodes?.push(scopeNode);
             parent.removeChild(scopeNode);
+        }
+    }
+    if (generateRedlines && scopeEndsContainer) {
+        const removed = keepContainerFinalMarkUntracked(xmlDoc, insertedNodes, author, operationSession?.receiptCollector || null);
+        if (removed && options?._mutationLiveNodes) {
+            const index = options._mutationLiveNodes.indexOf(removed);
+            if (index >= 0) options._mutationLiveNodes.splice(index, 1);
         }
     }
     normalizeBodySectionOrder(xmlDoc);
