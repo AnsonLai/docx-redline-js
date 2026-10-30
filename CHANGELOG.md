@@ -4,6 +4,23 @@
 
 ### Fixed
 
+- **Footnote and endnote references are kept by text edits (GitHub #6, #7, #8).** A tracked redline re-placed a
+  reference only when all the text before it, or all the text after it, was unchanged. Otherwise the word before the
+  reference was deleted together with the reference run and reinserted without it, so Accept All lost the reference
+  while Reject All restored it (status `ok`). Each reference is now mapped through a diff of the old and new text and
+  kept at its boundary, after a replaced phrase when the words before it change. Text inserted right after a reference
+  no longer inherits its superscript formatting, and bookmarks no longer cause spurious deletions of the words around
+  them.
+- **New revision fidelity invariant `ACCEPT_NON_TEXT_CONTENT`.** Every tracked and untracked operation that does not
+  explicitly delete content (an empty `modified`, a `delete` operation) is refused with `REVISION_FIDELITY_VIOLATION`
+  when Accept All of its output would lose a footnote or endnote reference (compared by id), a drawing or an embedded
+  object of the source.
+- **`list-format` `convert-plain` refuses soft-break markers (KB-11).** A paragraph whose soft-break lines carry further
+  typed markers (`A. ...<w:br/>B. ...<w:br/>C. ...`) was converted into one list item that kept the B and C lines as
+  text. It is now refused before anything is written with `LIST_MARKER_UNSUPPORTED`, `reason: 'soft-break-markers'`
+  (`lineMarker` names the later marker) and a recovery hint to split the paragraph into one paragraph per marker
+  first. Soft-break lines without a marker still convert as continuation lines.
+
 - **Appending paragraphs after a target tracks Word's paragraph marks.** A plain-text redline (`structuredContent: false`)
   that appends paragraphs after its target (`'Last paragraph.\nAppended.'`) tracked the new last paragraph's own mark
   instead of the target's. At the end of the body that is the document's final paragraph mark, which Word's Reject All

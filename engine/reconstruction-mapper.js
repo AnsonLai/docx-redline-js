@@ -353,29 +353,63 @@ function preserveZeroWidthSentinels(displayOriginalText, modifiedText, sentinelM
     return result;
 }
 
+/**
+ * Footnote and endnote references are not expressible in plain modified text, so a redline must keep every one
+ * it does not explicitly carry (as a `{{__FN_id__}}` token). Maps each missing reference through a character diff
+ * of the original (without it) and the modified text and re-inserts it at its boundary. A reference stays with
+ * the text before it: after a pure insertion at its boundary it comes first; after a replaced word it follows the
+ * replacement ("days.[1]" -> "weeks.[1]").
+ */
 function preserveReferencePlaceholders(originalFullText, modifiedText, referenceMap) {
-    let result = modifiedText;
+    // The reference map also holds manual breaks; preserveStructuralBreaks places those.
+    const isNoteReference = char => ['footnoteReference', 'endnoteReference'].includes(referenceMap.get(char)?.localName);
+    const missing = new Set([...referenceMap.keys()].filter(char => isNoteReference(char) && !modifiedText.includes(char) && originalFullText.includes(char)));
+    if (missing.size === 0) return modifiedText;
 
-    for (const referenceChar of referenceMap.keys()) {
-        if (result.includes(referenceChar)) continue;
-
-        const originalIndex = originalFullText.indexOf(referenceChar);
-        if (originalIndex < 0) continue;
-
-        const prefix = originalFullText.slice(0, originalIndex);
-        const suffix = originalFullText.slice(originalIndex + referenceChar.length);
-
-        if (prefix && result.startsWith(prefix)) {
-            result = `${result.slice(0, prefix.length)}${referenceChar}${result.slice(prefix.length)}`;
+    // Offsets are UTF-16 code units throughout (the diff's unit), so surrogate pairs cannot shift a boundary.
+    let base = '';
+    const pendingByBoundary = new Map();
+    for (let index = 0; index < originalFullText.length; index++) {
+        const char = originalFullText[index];
+        if (missing.has(char)) {
+            if (!pendingByBoundary.has(base.length)) pendingByBoundary.set(base.length, []);
+            pendingByBoundary.get(base.length).push(char);
             continue;
         }
-
-        if (suffix && result.endsWith(suffix)) {
-            const insertAt = result.length - suffix.length;
-            result = `${result.slice(0, insertAt)}${referenceChar}${result.slice(insertAt)}`;
-        }
+        base += char;
     }
 
+    let result = '';
+    let offset = 0;
+    let previousOp = null;
+    const emit = boundary => {
+        const pending = pendingByBoundary.get(boundary);
+        if (!pending) return;
+        result += pending.join('');
+        pendingByBoundary.delete(boundary);
+    };
+    // Semantic cleanup groups a changed phrase into one replacement ("Friday" -> "Monday afternoon"), so the
+    // reference follows the whole replacement rather than landing between two inserted words.
+    const diffs = DMP.diff_main(base, modifiedText);
+    DMP.diff_cleanupSemantic(diffs);
+    for (const [op, text] of diffs) {
+        if (op === 1) {
+            const replacesDeletedText = previousOp === -1;
+            if (!replacesDeletedText) emit(offset);
+            result += text;
+            if (replacesDeletedText) emit(offset);
+        } else {
+            for (let index = 0; index < text.length; index++) {
+                emit(offset);
+                if (op === 0) result += text[index];
+                offset++;
+            }
+        }
+        previousOp = op;
+    }
+    emit(offset);
+    // Anything left over (a boundary the walk never reached) still must not be lost.
+    for (const pending of pendingByBoundary.values()) result += pending.join('');
     return result;
 }
 
@@ -386,12 +420,22 @@ function processChildNode(child, originalFullText, propertyMap, sentinelMap, ref
     if (isWordElement(child, 'hyperlink') || isWordElement(child, 'fldSimple')) {
         return processHyperlinkForReconstruction(child, originalFullText, propertyMap);
     }
+    if (isWordElement(child, 'bookmarkStart') || isWordElement(child, 'bookmarkEnd')) {
+        // Bookmarks have no visible text, so plain modified text never carries them: keep them zero-width so they
+        // are re-placed at their boundary instead of deleting the neighbouring words. A start sticks to the text
+        // after it, an end to the text before it.
+        sentinelMap.push({
+            start: originalFullText.length,
+            node: child,
+            zeroWidth: true,
+            affinity: isWordElement(child, 'bookmarkEnd') ? 'left' : 'right'
+        });
+        return originalFullText + '\uFFFC';
+    }
     if (
         isWordElement(child, 'sdt')
         || isWordElement(child, 'oMath')
         || localNameOf(child) === 'oMath'
-        || isWordElement(child, 'bookmarkStart')
-        || isWordElement(child, 'bookmarkEnd')
     ) {
         sentinelMap.push({ start: originalFullText.length, node: child });
         return originalFullText + '\uFFFC';

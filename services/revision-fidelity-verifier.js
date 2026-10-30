@@ -52,6 +52,10 @@ export const REVISION_FIDELITY_INVARIANTS = Object.freeze({
         explanation: 'Accept All of the target of the operation would not read as the complete replacement text the operation declared: content was lost, duplicated or left out of the accepted result.',
         retry: 'Re-extract the target paragraph(s) and retry with the exact current text as the basis; for a small literal change use replacements instead of complete modified text, and keep list, table and Markdown structure out of a plain-text edit.'
     },
+    ACCEPT_NON_TEXT_CONTENT: {
+        explanation: 'Accept All of the output loses content that has no text of its own (a footnote or endnote reference, a drawing or an embedded object) that the operation did not explicitly delete. Plain replacement text cannot express this content, so the edit would silently remove it once the changes are accepted.',
+        retry: 'Retry the same edit as a smaller change that does not cover the reference or object, for example replacements (find/replace) on the words to change; if it is refused again, report the operation with the violation instead of removing the reference.'
+    },
     REJECT_WRAPPERS: {
         explanation: 'Reject All of the output moves text into or out of a hyperlink, field or content control compared with the source.',
         retry: 'Keep the change entirely inside or entirely outside the hyperlink, field or content control, for example with replacements that do not cross its boundary.'
@@ -450,6 +454,8 @@ export function buildRevisionFidelityError(violations, context = {}) {
                 ? `this untracked operation changed a paragraph outside its target (${first.invariant} in the ${first.view} view at ${where}: `
                 : first.invariant === 'ACCEPT_INTENT'
                 ? `Accept All of this operation's target would not read as the requested text (${first.invariant} at ${where}: `
+                : first.invariant === 'ACCEPT_NON_TEXT_CONTENT'
+                ? `Accept All of this operation's output would lose ${first.contentName || 'non-text content'} (${first.invariant} at ${where}: `
                 : `Reject All of this operation's output would not restore the source (${first.invariant} at ${where}: `)
             + (first.invariant === 'UNTRACKED_CREATED_REVISION'
                 ? `found ${first.actual}). `
@@ -466,6 +472,73 @@ export function buildRevisionFidelityError(violations, context = {}) {
             reportIfNarrowRetryFails: 'If a narrower operation on the same paragraph is also refused, the shape is unsupported: report the violations with the operation; do not disable verification to force it through.'
         }
     };
+}
+
+// Run content with no text of its own. Note references are compared by id, inline objects by count.
+const NON_TEXT_CONTENT = Object.freeze({
+    footnoteReference: { byId: true, label: 'a footnote reference' },
+    endnoteReference: { byId: true, label: 'an endnote reference' },
+    drawing: { byId: false, label: 'a drawing' },
+    pict: { byId: false, label: 'a picture' },
+    object: { byId: false, label: 'an embedded object' }
+    // w:sym is not listed: it is a character that plain text does carry, and a text edit may delete it.
+});
+const REMOVED_IN_ACCEPTED_VIEW = new Set(['del', 'moveFrom']);
+
+function visibleInAcceptedView(node) {
+    for (let parent = node.parentNode; parent && parent.nodeType === 1; parent = parent.parentNode) {
+        if (REMOVED_IN_ACCEPTED_VIEW.has(parent.localName)) return false;
+    }
+    return true;
+}
+
+function collectAcceptedNonTextContent(documentNode) {
+    const paragraphs = Array.from(documentNode.getElementsByTagNameNS('*', 'p'));
+    const found = new Map();
+    for (const [name, spec] of Object.entries(NON_TEXT_CONTENT)) {
+        for (const node of Array.from(documentNode.getElementsByTagNameNS('*', name))) {
+            if (!visibleInAcceptedView(node)) continue;
+            const key = spec.byId ? `${name}:${node.getAttribute('w:id') || node.getAttribute('id') || ''}` : name;
+            if (!found.has(key)) {
+                let paragraph = node.parentNode;
+                while (paragraph && paragraph.localName !== 'p') paragraph = paragraph.parentNode;
+                found.set(key, { name, count: 0, paragraph, paragraphIndex: paragraph ? paragraphs.indexOf(paragraph) + 1 : null });
+            }
+            found.get(key).count++;
+        }
+    }
+    return found;
+}
+
+/**
+ * Accept All must keep every footnote and endnote reference, and every drawing and embedded object, that
+ * the operation did not explicitly delete: plain replacement text cannot express them, so their loss is silent.
+ * Compares the Accept All view of the source and the output by reference id (and by count for inline objects).
+ * Callers skip it for explicit deletions (an empty `modified`, a delete operation).
+ */
+export function verifyNonTextContent({ before, after }) {
+    const source = collectAcceptedNonTextContent(before);
+    const output = collectAcceptedNonTextContent(after);
+    const violations = [];
+    for (const [key, entry] of source) {
+        const remaining = output.get(key)?.count || 0;
+        if (remaining >= entry.count) continue;
+        const text = entry.paragraph
+            ? Array.from(entry.paragraph.getElementsByTagNameNS('*', 't')).map(node => node.textContent).join('')
+            : '';
+        violations.push({
+            invariant: 'ACCEPT_NON_TEXT_CONTENT',
+            view: 'accepted',
+            contentName: NON_TEXT_CONTENT[entry.name].label,
+            content: key,
+            expected: `${entry.count} × ${key}`,
+            actual: `${remaining} × ${key}`,
+            explanation: REVISION_FIDELITY_INVARIANTS.ACCEPT_NON_TEXT_CONTENT.explanation,
+            ...(entry.paragraphIndex ? { source: { sourceParagraphIndex: entry.paragraphIndex, text: excerpt(text) } } : {})
+        });
+        if (violations.length >= MAX_REPORTED_VIOLATIONS) break;
+    }
+    return violations.length ? { ok: false, violations } : { ok: true };
 }
 
 /** Baseline view for an existing-revisions policy: accept-first policies edit the accepted source. */

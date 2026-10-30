@@ -48,6 +48,7 @@ import {
     verifyNumberingReferences,
     verifyRevisionFidelity,
     verifyNoCreatedRevisions,
+    verifyNonTextContent,
     verifyUntrackedLocality
 } from './revision-fidelity-verifier.js';
 
@@ -296,6 +297,11 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
     const isRangeTarget = !!(operation.targetEndDescriptor || operation.targetEndRef);
     const earlyFidelityMode = resolveRevisionFidelityMode(options.verifyRevisionFidelity);
     const acceptFirstBaseline = revisionFidelityBaselineView(operationOptions.existingRevisions) === 'accepted';
+    // An explicit deletion (a delete operation, an empty replacement) may remove footnote references and inline
+    // objects; every other operation must keep them in Accept All (ACCEPT_NON_TEXT_CONTENT).
+    const explicitlyDeletesContent = operation.operationKind === 'delete'
+        || operation.modified === ''
+        || (Array.isArray(operation.modified) && operation.modified.every(item => item === ''));
     const declaresAcceptIntent = operation.operationKind === 'redline'
         && operationOptions.generateRedlines !== false
         && !operation._localizedReplacementCompilation
@@ -593,6 +599,13 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                         fidelity.violations = [...(fidelity.violations || []), ...intent.violations];
                     }
                 }
+                if (!explicitlyDeletesContent) {
+                    const nonText = verifyNonTextContent({ before: savepoint.document, after: session.document });
+                    if (!nonText.ok) {
+                        fidelity.ok = false;
+                        fidelity.violations = [...(fidelity.violations || []), ...nonText.violations];
+                    }
+                }
                 if (!fidelity.ok) {
                     const fidelityError = buildRevisionFidelityError(fidelity.violations, { mode: fidelityMode, baselineView });
                     const logLine = `${fidelityError.code} (operation ${operationIndex}${operation.operationId ? ` "${operation.operationId}"` : ''}): ${fidelityError.message}`;
@@ -623,6 +636,9 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                     : { ok: true };
                 if (locality.ok && fidelityMode !== 'off' && operationOptions.generateRedlines === false) {
                     locality = verifyNoCreatedRevisions({ before: savepoint.document, after: session.document, beforeViews, afterViews });
+                }
+                if (locality.ok && fidelityMode !== 'off' && !explicitlyDeletesContent) {
+                    locality = verifyNonTextContent({ before: savepoint.document, after: session.document });
                 }
                 if (!locality.ok) {
                     const fidelityError = buildRevisionFidelityError(locality.violations, { mode: fidelityMode });

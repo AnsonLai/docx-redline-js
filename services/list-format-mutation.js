@@ -263,6 +263,20 @@ export function convertPlainParagraphsToList(xmlDoc, paragraphs, request, contex
             skipped.push({ paragraph, paragraphIndex, reason: 'no-marker' });
             continue;
         }
+        // "A. ...<w:br/>B. ...<w:br/>C. ..." is one paragraph: converting it would strip only "A." and bind one
+        // list item that still holds the B and C lines as literal text. Refuse before writing anything. Soft-break
+        // lines without a typed marker are ordinary continuation lines and convert as before.
+        const markedLine = text.split('\n').slice(1).findIndex(line => {
+            const lineMarker = parseTypedListMarker(line);
+            return !!lineMarker && !lineMarker.unsupported;
+        });
+        if (markedLine >= 0) {
+            const line = text.split('\n')[markedLine + 1];
+            return refusal(LIST_MARKER_UNSUPPORTED,
+                `Paragraph ${paragraphIndex ?? ''} holds several typed list markers on soft line breaks ("${parsed.marker}" and "${parseTypedListMarker(line).marker}"); convert-plain converts one marker per paragraph, so it would make one list item that keeps the other lines as text.`.replace('  ', ' '),
+                { reason: 'soft-break-markers', marker: parsed.marker, lineMarker: parseTypedListMarker(line).marker, lineIndex: markedLine + 1, paragraphIndex, targetExcerpt: excerpt(text) },
+                { action: 'change_request', hint: 'Split the paragraph at its soft line breaks (w:br) into separate paragraphs first, one typed marker per paragraph, then convert the range.' });
+        }
         entries.push({ paragraph, paragraphIndex, text, parsed });
     }
 

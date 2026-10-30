@@ -787,6 +787,11 @@ validated against recorded desktop Word results) and checks these invariants:
 - `UNTRACKED_CREATED_REVISION`: an untracked edit may not create a tracked
   revision that was not in the source (fragments of a sliced source revision
   keep their element, author and date and are allowed).
+- `ACCEPT_NON_TEXT_CONTENT`: Accept All of the output must keep every footnote
+  and endnote reference (by id), drawing and embedded object of the source,
+  tracked or untracked. Plain replacement text cannot express them, so their loss
+  would be silent. Explicit deletions (an empty `modified`, a `delete` operation)
+  are exempt.
 
 A localized replacement is also checked before it is committed: the target's
 accepted text must equal the compiled replacement text, otherwise the operation
@@ -798,8 +803,8 @@ error payload contains:
 
 - `violations[]`, each with `invariant` (`REJECT_PARAGRAPH_COUNT`,
   `REJECT_PARAGRAPH_TEXT`, `REJECT_PARAGRAPH_PROPS`, `REJECT_NUMBERING_REFS`,
-  `REJECT_WRAPPERS`, `ACCEPT_INTENT`, `ACCEPT_NEIGHBORS` or
-  `UNTRACKED_CREATED_REVISION`), a plain-language `explanation`,
+  `REJECT_WRAPPERS`, `ACCEPT_INTENT`, `ACCEPT_NEIGHBORS`,
+  `UNTRACKED_CREATED_REVISION` or `ACCEPT_NON_TEXT_CONTENT`), a plain-language `explanation`,
   `expected`/`actual` excerpts, and `source.sourceParagraphIndex` (the 1-based
   paragraph index from extraction) with a text excerpt;
 - `recovery.retryGuidance`, one retry instruction per reported invariant, for

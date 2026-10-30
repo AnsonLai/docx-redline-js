@@ -55,6 +55,12 @@ function carrySourceIdentity(claims) {
  * @param {boolean} [generateRedlines=true] - Track change toggle
  * @returns {{ oxml: string, hasChanges: boolean }}
  */
+/** True when the original character at `index` is a footnote or endnote reference placeholder. */
+function isNoteReferenceChar(context, index) {
+    const node = context.referenceMap?.get(context.originalFullText?.[index]);
+    return node?.localName === 'footnoteReference' || node?.localName === 'endnoteReference';
+}
+
 export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, author, formatHints, generateRedlines = true, options = {}) {
     const {
         paragraphs,
@@ -161,11 +167,14 @@ export function applyReconstructionDiffs(xmlDoc, diffs, context, serializer, aut
         }
 
         if (op === 1) {
-            const propertyIndex = pendingReplacementStart !== null
+            let propertyIndex = pendingReplacementStart !== null
                 ? pendingReplacementStart
                 : (currentOriginalIndex > 0 && !isParagraphStart(currentOriginalIndex)
                     ? currentOriginalIndex - 1
                     : currentOriginalIndex);
+            // Text inserted right after a footnote or endnote reference must not take the reference's
+            // (superscript) run properties: use the text before the reference.
+            while (propertyIndex > 0 && !isParagraphStart(propertyIndex) && isNoteReferenceChar(context, propertyIndex)) propertyIndex--;
             const properties = getRunProperties(propertyIndex);
 
             const appendResult = appendTextToCurrent(

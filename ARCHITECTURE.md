@@ -377,7 +377,10 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
     allowed). `verifyAcceptIntent` adds `ACCEPT_INTENT`: a tracked plain-text
     `redline` with complete `modified` (single paragraph or `targetEnd` range)
     must read as `modified` in the Accept All view of its target; accept-first
-    range targets use the exact accepted scope.
+    range targets use the exact accepted scope. `verifyNonTextContent` adds
+    `ACCEPT_NON_TEXT_CONTENT` for tracked and untracked operations: the Accept All
+    view keeps every footnote and endnote reference (by id), drawing and embedded
+    object of the source unless the operation explicitly deletes content.
     `buildRevisionFidelityError` produces the `REVISION_FIDELITY_VIOLATION`
     payload (`violations[].explanation`, `source.sourceParagraphIndex`,
     `recovery.retryGuidance`). Modes are `enforce` (default, refuse and roll
@@ -459,7 +462,10 @@ still be re-exported from `index.js`.
   All of a tracked output must equal Word's Reject All of the source (`REJECT_*`),
   a plain-text `redline` must read as its `modified` text under Accept All
   (`ACCEPT_INTENT`), and an untracked edit must neither change other paragraphs
-  (`ACCEPT_NEIGHBORS`) nor create a revision (`UNTRACKED_CREATED_REVISION`). A
+  (`ACCEPT_NEIGHBORS`) nor create a revision (`UNTRACKED_CREATED_REVISION`), and
+  no operation may lose a footnote or endnote reference, drawing or embedded
+  object in Accept All unless it explicitly deletes content
+  (`ACCEPT_NON_TEXT_CONTENT`). A
   violation restores the operation savepoint and returns
   `REVISION_FIDELITY_VIOLATION`; `warn` applies and warns, `off` is for
   diagnosis only.
