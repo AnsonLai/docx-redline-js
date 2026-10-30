@@ -21,7 +21,14 @@ Converts AI-generated or programmatic text/markdown edits into valid Office Open
 - Package plumbing helpers for numbering.xml, comments.xml, content types, and relationships
 - Zero host dependencies: works in Node.js, browsers, Deno, and similar JS runtimes with DOM parsing support
 
-## What's New in 0.11.0, 0.10.0, 0.9.0 and 0.8.x
+## What's New in 0.11.x, 0.10.0, 0.9.0 and 0.8.x
+
+0.11.1 is a fix release. Tracked edits keep every footnote and endnote reference (GitHub #6, #7, #8), and a new
+revision fidelity invariant, `ACCEPT_NON_TEXT_CONTENT`, refuses any edit whose Accept All would lose one (or a
+drawing or embedded object). Appending paragraphs or a list at the end of the body or a table cell no longer tracks
+the container's final paragraph mark, which Word's Reject All cannot remove. `list-format` `convert-plain` refuses a
+paragraph whose soft-break lines carry further typed markers (`reason: 'soft-break-markers'`). See the
+[0.11.1 release notes](./docs/releases/0.11.1.md).
 
 0.11.0 adds `mergeCommentParts(parts, output)`, which merges a batch result's comment output into comment parts held as
 XML strings, for hosts that have no ZIP. It also fixes `structuredContent: false` so inline Markdown stays literal in
@@ -869,7 +876,7 @@ Different APIs return different OOXML shapes. Use this as a packaging safety che
 - Do use `applyOperationToDocumentXml(...).documentXml` when your intent is to replace `word/document.xml`.
 - Do use `applyOperationsToDocumentXml(...)` rather than an unsorted loop for batches containing comments and replacements that target the same original paragraph.
 - Redline application strips proofing markers (`w:proofErr`) from the matched target paragraph before diffing, while preserving complex-field scaffolding (`w:fldChar`, `w:instrText`) and its cached visible result as inert structure. Adjacent edits do not revise or move an unchanged field result.
-- Hyperlinks, bookmarks, comment range markers, tabs/breaks, and footnote/endnote references are treated as structural OOXML that should survive adjacent redline edits instead of being orphaned or wrapped in deletions.
+- Hyperlinks, bookmarks, comment range markers, tabs/breaks, and footnote/endnote references are treated as structural OOXML that survives adjacent redline edits instead of being orphaned or wrapped in deletions. A footnote or endnote reference stays at its place when the text around it changes (after the replacement when the words just before it are replaced), and the `ACCEPT_NON_TEXT_CONTENT` check refuses an edit that would lose one.
 - Treat `w:numId w:val="0"` as numbering suppression, never as a reusable list
   ID. Generated bullet and numbered paragraphs must reference a positive ID
   whose definition is merged into `word/numbering.xml`.

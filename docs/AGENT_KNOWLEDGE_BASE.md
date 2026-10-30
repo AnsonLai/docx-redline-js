@@ -1045,7 +1045,7 @@ directly into `word/document.xml`.
 7. If output begins with `<pkg:package`, treat it as package-level OOXML and normalize it before writing anything back to `word/document.xml`.
 8. Existing revisions from the same author are merged by default against the pre-revision baseline (`merge-same-author`), while third-party revisions fail closed with `EXISTING_REVISIONS`. Pass `existingRevisions: 'slice-cross-author'` to preserve third-party attribution while editing inside pending insertions, `'accept-all-first'` to normalize all prior revisions first, or `'reject-input'` to refuse any revised paragraph.
 9. Caller content is not sanitized by default. Pass `sanitizeInput: true` only for raw assistant output; literal dollar delimiters and `\\n` sequences are never rewritten.
-10. Hyperlinks, bookmarks, comment markers, tabs/breaks, and footnote/endnote references are structural OOXML and should survive adjacent redline edits.
+10. Hyperlinks, bookmarks, comment markers, tabs/breaks, and footnote/endnote references are structural OOXML and survive adjacent redline edits. Plain `modified` text never needs to mention a footnote or endnote reference: it stays at its place (after a replaced phrase), and an edit that would lose one in Accept All is refused with `ACCEPT_NON_TEXT_CONTENT`. An empty `modified` (deleting the paragraph) or a `delete` operation may remove references.
 11. Internally, create Word elements through `createWordElement` and tracked-change metadata through `createRevisionMetadata`.
 12. Revision IDs are document-scoped in public operation paths. Thread the
     internal allocator through new string-serialization paths; generated

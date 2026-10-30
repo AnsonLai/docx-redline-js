@@ -163,7 +163,8 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
   - The single construction site for a tracked paragraph mark (`w:ins` / `w:del`
     under `w:pPr/w:rPr`). DOM entry points (`markParagraphInserted`,
     `markParagraphDeleted`, `setParagraphPropertiesMarkRevision`,
-    `clearParagraphMarkRevision`, `restoreParagraphMarkInserted`) and string
+    `clearParagraphMarkRevision`, `restoreParagraphMarkInserted`, and the reader
+    `readParagraphMarkRevision`) and string
     builders (`paragraphMarkRevisionXml`, `paragraphMarkPPrXml`) share one
     metadata path, so ids are allocated through the document's allocator and
     recorded in receipts. `planParagraphMarks` is a pure check that an
@@ -172,6 +173,13 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
     the source paragraph count and a deleted paragraph is never collapsed into
     another. Reconstruction, list and table generation, and document-level
     shortcuts all call it. Depends only on `core/`.
+- `engine/reconstruction-mapper.js`, `engine/reconstruction-mode.js`, `engine/reconstruction-writer.js`
+  - Whole-paragraph reconstruction for text edits: the mapper flattens the paragraph into text plus placeholders for
+    structure plain text cannot carry, the mode diffs it against the modified text, and the writer rebuilds runs.
+    Footnote and endnote references are placeholders mapped through a semantic diff, so each one stays at its boundary
+    (after a replaced phrase) unless `modified` places it explicitly with a `{{__FN_id__}}` / `{{__EN_id__}}` token.
+    Bookmarks and field characters are zero-width placeholders re-placed by affinity. Inserted text never takes a note
+    reference's run properties.
 - `engine/surgical-*.js`
   - Surgical run splitting, diff application, and span helpers for localized edits that preserve surrounding markup. Plain-text edit groups execute from right to left with a fresh live span index, while space/NBSP-only replacement hunks are refined to character-local changes so unchanged hyperlink containers survive.
     The shared carrier splitter also handles explicit rejected-view deletion
@@ -257,7 +265,14 @@ No Word add-in entrypoints or host-specific integration layers are part of this 
     insertion, and deletion carriers. Paragraph restoration emits its inserted
     block after the untouched source range and verifies baseline-delta,
     mutation-envelope, and lifecycle postconditions. These use leaf-module
-    imports and never import the root entry.
+    imports and never import the root entry. Paragraph marks follow Word's model:
+    appending after a target makes the target's mark the inserted break and moves
+    the target's original mark (properties and their history) to the last new
+    paragraph, and when a replaced scope ends its container (the body, a table
+    cell), `keepContainerFinalMarkUntracked` keeps the container's final mark
+    untracked, because Word's Reject All cannot remove a tracked final mark.
+    Receipts drop the mark ids that rewrite removes
+    (`ReceiptCollector.forgetRevision`).
 - `services/batch-operation-orchestrator.js`
   - Comment-first stable scheduling, atomic policy, artifact aggregation,
     per-operation results, one final document serialization, and deferred
