@@ -110,7 +110,7 @@ The origin and destination share matching move names (`w:name`) and correlated t
 
 ## 3. Prospective Evolution: Strict Target Resolution by Default
 
-### Current Two-Tier Architecture (v0.5.x)
+### Current Two-Tier Architecture (since 0.5.x, unchanged in 0.11.1)
 Targeting paragraphs by plain text (e.g., `"target": "Notices"`) can be ambiguous when multiple paragraphs have identical content (repeated headers, boilerplate, empty lines, or identical table cells).
 
 Currently, resolution behavior differs by API tier:
@@ -208,7 +208,7 @@ Files saved by versions before 0.8.1 can carry the wrong `commentsExtended.xml` 
 Every tracked operation is checked after generation: Word's Reject All of the output must equal Word's Reject All of the
 source (`services/revision-fidelity-verifier.js`). A violation fails closed with `REVISION_FIDELITY_VIOLATION` (disposition
 `refused`, nothing written). Plans: `completed/2026-09-30-revision-fidelity-invariants.md`,
-`completed/2026-10-11-pre-0.9.0-open-issues.md`. Current behavior and limits (0.9.0):
+`completed/2026-10-11-pre-0.9.0-open-issues.md`. Current behavior and limits (0.11.1):
 
 - The default mode is `enforce` (refuse). `verifyRevisionFidelity: 'warn'` applies and reports instead; `'off'` is for
   diagnosis only and the CLI agent profile rejects it (`--revision-fidelity`, capability `revision-fidelity-v1`).
@@ -217,6 +217,10 @@ source (`services/revision-fidelity-verifier.js`). A violation fails closed with
 - Also enforced: `ACCEPT_INTENT` for plain-text `redline` with complete `modified` and the pre-commit localized-replacement
   intent check (`73d3d1b`, `7548a9e`); numbering-part existence for new `numId`s (`REJECT_NUMBERING_REFS`, `73d3d1b`); exact
   accept-first range scope (`73d3d1b`). Cost about +8-14% per operation (`427eb33`).
+- `ACCEPT_NON_TEXT_CONTENT` (0.11.1, `851b03c`) applies to tracked and untracked operations: Accept All of the output must
+  keep every footnote/endnote reference (by id), drawing (`w:drawing`, `w:pict`) and embedded object (`w:object`) of the
+  source. Explicit deletions (empty `modified`, all-empty `modified` array, `delete`) are exempt. `w:sym` is not checked,
+  because plain text carries it.
 
 ### Fixed gap bugs (do not re-report)
 
@@ -228,6 +232,12 @@ source (`services/revision-fidelity-verifier.js`). A violation fails closed with
 | Library Reject/Accept differed from Word for cell paragraph marks, deleted tables, and `pPrChange` paragraph marks | `cedc68a` | `tests/word_revision_semantics_tests.mjs` |
 | Numbering helpers and inspection read `numPr`/`pStyle` from `w:pPrChange` snapshots as current | `1a3eeb6`..`1f89ae0` | `core/current-properties.js` plus usage lint |
 | Lettered/roman whole-paragraph delete plus insert conversion lost `w14:paraId` and bookmarks | `1240842` | `list-format` `convert-plain` edits in place (tracked marker deletion plus `pPrChange`). |
+| Literal underscore runs (`_____ (sign)`) were parsed as Markdown emphasis and shortened | 0.10.0 | CommonMark flanking rules in `pipeline/markdown-processor.js`; `structuredContent: false` is plain text. |
+| Paragraphs added by a `structuredContent: false` redline still parsed inline Markdown and `#` headings | 0.11.0 | Also the table route and one-column `\| --- \|` separators. |
+| A text edit dropped footnote/endnote references from Accept All while Reject All looked right (GitHub #6, #7, #8) | `851b03c` (0.11.1) | Semantic-diff placement in `engine/reconstruction-mapper.js`; bookmarks are zero-width; backstop `ACCEPT_NON_TEXT_CONTENT`. `tests/note_reference_preservation_tests.mjs` |
+| Appending paragraphs after a target tracked the new last paragraph's mark, so Word's Reject All left an empty paragraph at the end of the body (add-in KB-9) | `e51bea6` (0.11.1) | The target's mark is the inserted break; the last new paragraph inherits the original mark. `tests/plain_text_paragraph_insertion_tests.mjs` |
+| List regeneration of a container's last paragraph tracked the container's final mark (add-in KB-14) | `caeba20` (0.11.1) | `keepContainerFinalMarkUntracked`. `tests/container_final_mark_tests.mjs` |
+| `convert-plain` turned `A. …<w:br/>B. …<w:br/>C. …` into one list item (add-in KB-11) | `851b03c` (0.11.1) | Now refused: `LIST_MARKER_UNSUPPORTED`, `reason: 'soft-break-markers'`. `tests/list_format_soft_break_tests.mjs` |
 
 ### Still open
 
@@ -239,12 +249,7 @@ source (`services/revision-fidelity-verifier.js`). A violation fails closed with
 
 ## 8. Consumer-Reported Markdown Reconciliation Hazards
 
-### Literal underscore runs are interpreted as Markdown
-
-- **Where:** [`pipeline/markdown-processor.js`](../../pipeline/markdown-processor.js) recognizes `__(...)__` as bold and `_(...)_` as italic; [`engine/oxml-engine.js`](../../engine/oxml-engine.js) runs `preprocessMarkdown` on modified text even when `structuredContent: false`.
-- **Evidence (0.9.0 source):** Calling `applyRedlineToOxml` with `generateRedlines: false` on a paragraph containing 25 underscores and requesting `_________________________ (sign)` returns `status: 'ok'`, but the generated text is `_____ (sign)`. The five underscores also receive Markdown-derived formatting. `structuredContent: false` does not make the text literal.
-- **Impact:** A complete paragraph rewrite can shorten signature or date lines without reporting an error. The supplied add-in report identifies `rewrite_paragraph` as an exposed path to this behavior.
-- **Exit condition:** Literal text edits bypass Markdown preprocessing, or preprocessing preserves literal underscore runs; add regression coverage that checks the exact text after both Accept All and Reject All.
+The literal-underscore hazard reported here was fixed in 0.10.0 (see the fixed table in section 7).
 
 ### Passing a whole document as a redline scope can change untouched paragraphs
 
