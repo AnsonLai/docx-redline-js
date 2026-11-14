@@ -23,6 +23,11 @@ Converts AI-generated or programmatic text/markdown edits into valid Office Open
 
 ## What's New in 0.11.x, 0.10.0, 0.9.0 and 0.8.x
 
+0.11.2 is a fix release for repeated edits by one author in one review session. A paragraph can be deleted or edited
+after paragraphs were appended to it, deleting your own pending inserted paragraph removes it, text edits keep pending
+bold and paragraph formatting, and repeated or overlapping `format` operations keep the original snapshot for Reject
+All. See the [0.11.2 release notes](./docs/releases/0.11.2.md).
+
 0.11.1 is a fix release. Tracked edits keep every footnote and endnote reference (GitHub #6, #7, #8), and a new
 revision fidelity invariant, `ACCEPT_NON_TEXT_CONTENT`, refuses any edit whose Accept All would lose one (or a
 drawing or embedded object). Appending paragraphs or a list at the end of the body or a table cell no longer tracks

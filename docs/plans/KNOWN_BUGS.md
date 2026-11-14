@@ -110,7 +110,7 @@ The origin and destination share matching move names (`w:name`) and correlated t
 
 ## 3. Prospective Evolution: Strict Target Resolution by Default
 
-### Current Two-Tier Architecture (since 0.5.x, unchanged in 0.11.1)
+### Current Two-Tier Architecture (since 0.5.x, unchanged in 0.11.2)
 Targeting paragraphs by plain text (e.g., `"target": "Notices"`) can be ambiguous when multiple paragraphs have identical content (repeated headers, boilerplate, empty lines, or identical table cells).
 
 Currently, resolution behavior differs by API tier:
@@ -208,7 +208,7 @@ Files saved by versions before 0.8.1 can carry the wrong `commentsExtended.xml` 
 Every tracked operation is checked after generation: Word's Reject All of the output must equal Word's Reject All of the
 source (`services/revision-fidelity-verifier.js`). A violation fails closed with `REVISION_FIDELITY_VIOLATION` (disposition
 `refused`, nothing written). Plans: `completed/2026-09-30-revision-fidelity-invariants.md`,
-`completed/2026-10-11-pre-0.9.0-open-issues.md`. Current behavior and limits (0.11.1):
+`completed/2026-10-11-pre-0.9.0-open-issues.md`. Current behavior and limits (0.11.2):
 
 - The default mode is `enforce` (refuse). `verifyRevisionFidelity: 'warn'` applies and reports instead; `'off'` is for
   diagnosis only and the CLI agent profile rejects it (`--revision-fidelity`, capability `revision-fidelity-v1`).
@@ -238,9 +238,33 @@ source (`services/revision-fidelity-verifier.js`). A violation fails closed with
 | Appending paragraphs after a target tracked the new last paragraph's mark, so Word's Reject All left an empty paragraph at the end of the body (add-in KB-9) | `e51bea6` (0.11.1) | The target's mark is the inserted break; the last new paragraph inherits the original mark. `tests/plain_text_paragraph_insertion_tests.mjs` |
 | List regeneration of a container's last paragraph tracked the container's final mark (add-in KB-14) | `caeba20` (0.11.1) | `keepContainerFinalMarkUntracked`. `tests/container_final_mark_tests.mjs` |
 | `convert-plain` turned `A. …<w:br/>B. …<w:br/>C. …` into one list item (add-in KB-11) | `851b03c` (0.11.1) | Now refused: `LIST_MARKER_UNSUPPORTED`, `reason: 'soft-break-markers'`. `tests/list_format_soft_break_tests.mjs` |
+| A same-author delete or edit of a paragraph whose mark is that author's pending insertion (the original paragraph after "insert paragraphs after it") was refused with `REVISION_FIDELITY_VIOLATION` / `REJECT_PARAGRAPH_TEXT` (add-in KB-21) | 0.11.2 | The merge baseline keeps the paragraph's own text (`contentBaselineWithoutInsertedMark`, `engine/oxml-engine.js`). A deleted mark keeps its insertion (`w:ins` then `w:del`); the Reject/Accept projection removes it in both views. `tests/same_author_edit_after_inserted_mark_tests.mjs` |
+| Deleting one of the author's own pending inserted paragraphs left an empty paragraph after Accept All | 0.11.2 | The emptied paragraph is removed; when it held the original paragraph's untracked mark, the previous inserted paragraph takes that mark (`removeEmptiedOwnInsertedParagraph`, `services/document-operation-mutations.js`). Same test file. |
+| A text edit silently dropped pending same-author formatting (a bold `w:rPrChange`, an alignment `w:pPrChange`) from Accept All, alone or beside other pending revisions (add-in KB-19) | 0.11.2 | The same-author merge rejects text history only; `w:rPrChange` and `w:pPrChange` stay pending. Split runs get fresh revision ids. `tests/pending_same_author_run_formatting_tests.mjs` |
+| Formatting a run whose formatting was already pending replaced the snapshot, so Reject All kept the first change; overlapping `format` operations in one batch failed with `RECEIPT_RECONCILIATION_FAILED` (add-in KB-18) | 0.11.2 | `snapshotAndAttachRPrChange` keeps a pending same-author snapshot and its id. `refreshRunPropertyChangeIds` no longer writes a second `w:id` attribute on a split run. Same test file. |
+| Two text edits of one paragraph in one batch failed with `RECEIPT_RECONCILIATION_FAILED` | 0.11.2 | The second edit merges the first one's revisions; the first receipt stops listing the replaced ids and carries a warning (`supersedeReplacedRevisions`, `services/document-operation-applier.js`). |
+
+The 0.11.2 rows were checked in Word 16 desktop on 2026-11-11 and 2026-11-14 (Accept All and Reject All text, paragraph
+count, bold and italic; no repair prompt) with one-off scripts. They are not cases in the `test:word` lane.
 
 ### Still open
 
+- **Targets that exist only after an earlier operation of the same batch resolve differently by operation type.** A
+  `redline` whose `exactText` is the text an earlier operation produced resolves against the live document and applies. A
+  `replace` or `format` with the same target is refused with `TARGET_NOT_FOUND`, because its target binds to the batch
+  start. Both are safe; callers should target the batch-start text, or send dependent edits as separate calls.
+- **A superseded receipt lists no revisions.** When a later operation of a batch re-edits a paragraph, the earlier
+  operation's receipt keeps `finalDisposition: 'applied'` with the replaced ids removed from `revisionItems` and a
+  warning. Consumers that map receipts to revisions one-to-one should read the later receipt.
+- **Deleting an own inserted paragraph keeps an empty paragraph when paragraph properties differ.** The emptied paragraph
+  is removed only when it carries the inserted mark, or when the previous inserted paragraph has identical paragraph
+  properties. Otherwise the empty paragraph stays (Accept All shows it; Reject All is correct).
+- **Another author's pending formatting blocks a text edit under `merge-same-author`.** A `w:rPrChange` by reviewer B in
+  the target paragraph refuses author A's text edit with `EXISTING_REVISIONS`, although the two do not overlap. Use
+  `existingRevisions: 'auto'` or `'slice-cross-author'`.
+- **Pending table property changes are still merged to baseline.** A same-author text edit keeps `w:rPrChange` and
+  `w:pPrChange`, but rejects that author's `w:tblPrChange`, `w:trPrChange` and `w:tcPrChange` in the edited scope, as
+  before 0.11.2. No operation of this package writes these; they can come from Word.
 - Generated numbering ids can still collide across separate calls whose runtime context is not given the document's numbering
   (`completed/2026-10-01-consumer-reported-library-issues.md`, WP-3 residual). Since `4718c36` this is detected, not silent: merging the
   parts through `mergeNumberingParts` / `ensureNumberingArtifactsInZip` (the single merge, used by `openDocx`) throws

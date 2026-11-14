@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.11.2
+
+### Fixed
+
+- **A paragraph whose mark is a same-author pending insertion can be deleted or edited (add-in KB-21).** Appending
+  paragraphs after a target marks the target's own paragraph mark as inserted, as Word does. A later same-author `delete`
+  or `redline` of that paragraph was refused with `REVISION_FIDELITY_VIOLATION` (`REJECT_PARAGRAPH_TEXT`), because the
+  merge baseline dropped the paragraph's text. The baseline now keeps it. A deleted paragraph keeps its inserted mark
+  beside the deletion (`w:ins` then `w:del`), so Reject All still merges it away and Accept All removes it.
+- **Deleting your own pending inserted paragraph removes it.** A same-author `delete` of a paragraph that was itself a
+  pending insertion took the text back but left an empty paragraph, which Accept All kept. The paragraph is now removed.
+  When it held the original paragraph's untracked mark (the last paragraph of an appended group), the previous inserted
+  paragraph takes that mark.
+- **A text edit keeps pending same-author formatting (add-in KB-19).** A `replace` or `redline` in a paragraph that held
+  a pending same-author bold (`w:rPrChange`) or paragraph formatting (`w:pPrChange`) rejected it to reach a baseline, so
+  Accept All lost the formatting with status `ok`. The same-author merge now rejects text history only and leaves
+  formatting changes pending, also when the paragraph holds other pending revisions.
+- **Format operations keep a pending formatting snapshot (add-in KB-18).** Formatting a run whose formatting was already
+  a pending change by the same author replaced the snapshot with the already-changed properties, so Reject All kept the
+  first change. In one batch this surfaced as `RECEIPT_RECONCILIATION_FAILED` for overlapping spans. The first snapshot
+  and its revision id are now kept. Splitting such a run no longer writes two `w:id` attributes on the copy.
+- **Two text edits of one paragraph in one batch no longer fail receipt reconciliation.** The second edit merges the
+  first one's same-author revisions, which removed the ids the first receipt listed and failed the batch with
+  `RECEIPT_RECONCILIATION_FAILED`. The earlier receipt now drops the replaced ids and carries a warning.
+
 ## 0.11.1
 
 ### Fixed
