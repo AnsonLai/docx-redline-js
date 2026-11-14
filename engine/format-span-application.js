@@ -7,6 +7,7 @@
 
 import { mergeFormats } from '../pipeline/markdown-processor.js';
 import { injectFormattingToRPr, createTextRun } from './run-builders.js';
+import { refreshRunPropertyChangeIds } from '../core/revision-cloning.js';
 import { createWordElement } from '../core/word-xml.js';
 
 /**
@@ -139,6 +140,9 @@ export function splitSpanAtOffset(xmlDoc, span, absoluteOffset) {
 
     const runBefore = createTextRun(xmlDoc, textBefore, span.rPr, false);
     const runAfter = createTextRun(xmlDoc, textAfter, span.rPr, false);
+
+    // Both pieces copy the source run's properties; a pending w:rPrChange keeps its id on the first.
+    refreshRunPropertyChangeIds(runAfter);
 
     parent.insertBefore(runBefore, run);
     parent.insertBefore(runAfter, run);

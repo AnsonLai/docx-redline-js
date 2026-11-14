@@ -47,7 +47,12 @@ export function refreshRunPropertyChangeIds(root, allocator = null) {
     for (const node of candidates) {
         if (!isWordElement(node, 'rPrChange')) continue;
         const nextId = String(resolvedAllocator.next());
-        if (typeof node.setAttributeNS === 'function') {
+        // An id written with setAttribute('w:id') has no namespace; setAttributeNS would add a
+        // second w:id beside it instead of replacing it.
+        const existingId = node.getAttributeNode?.('w:id');
+        if (existingId && !existingId.namespaceURI) {
+            node.setAttribute('w:id', nextId);
+        } else if (typeof node.setAttributeNS === 'function') {
             node.setAttributeNS(NS_W, 'w:id', nextId);
         } else {
             node.setAttribute('w:id', nextId);

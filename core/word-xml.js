@@ -65,6 +65,21 @@ export function containsTrackedChanges(xmlDoc) {
 }
 
 /**
+ * Returns true when every tracked change in the document or fragment is a formatting change of a
+ * run or a paragraph (`w:rPrChange`, `w:pPrChange`). Such revisions live in the properties and do
+ * not change the text, so new text revisions can be layered around them without first restoring a
+ * baseline.
+ *
+ * @param {Document|Element} xmlDoc - Parsed OOXML document or element
+ * @returns {boolean}
+ */
+export function containsOnlyFormattingRevisions(xmlDoc) {
+    const isFormatting = localName => localName === 'rPrChange' || localName === 'pPrChange';
+    return TRACKED_CHANGE_NAMES.some(localName => isFormatting(localName) && wordElementsByLocalName(xmlDoc, localName).length > 0)
+        && TRACKED_CHANGE_NAMES.every(localName => isFormatting(localName) || wordElementsByLocalName(xmlDoc, localName).length === 0);
+}
+
+/**
  * Collects all distinct author names from tracked changes in the given XML document or element.
  *
  * @param {Document|Element|null|undefined} xmlDocOrElement

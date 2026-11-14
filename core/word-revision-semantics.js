@@ -71,6 +71,17 @@ export function paragraphMarkRevision(paragraph) {
     return null;
 }
 
+/**
+ * A mark can carry both an insertion and a deletion (a pending inserted mark that was then deleted).
+ * Reject All removes it through the insertion and Accept All through the deletion, so either
+ * revision of the removed kind takes the mark out of the view.
+ */
+function paragraphMarkRemovedInView(paragraph, removedKind) {
+    const rPr = directChild(directChild(paragraph, 'pPr'), 'rPr');
+    const names = removedKind === 'ins' ? ['ins', 'moveTo'] : ['del', 'moveFrom'];
+    return names.some(name => !!directChild(rPr, name));
+}
+
 function containerOf(paragraph) {
     for (let cur = paragraph.parentNode; cur; cur = cur.parentNode) {
         if (CONTAINER_NAMES.has(localName(cur))) return cur;
@@ -207,7 +218,7 @@ export function projectWordRevisionView(root, view = 'rejected') {
             text: (carried?.text || '') + text,
             spans: [...(carried?.spans || []), ...spans.map(s => ({ ...s, start: s.start + offset, end: s.end + offset }))]
         };
-        if (paragraphMarkRevision(paragraph) === removedMark) {
+        if (paragraphMarkRemovedInView(paragraph, removedMark)) {
             pending.set(container, { ...merged, paragraph, sourceIndex });
             return;
         }

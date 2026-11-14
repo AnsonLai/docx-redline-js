@@ -45,6 +45,35 @@ export class ReceiptCollector {
         this.activeReceipt.revisionItems = this.activeReceipt.revisionItems.filter(item => item.id !== strId);
     }
 
+    /** Revision ids of word/document.xml that earlier committed operations of this run recorded. */
+    committedDocumentRevisionIds() {
+        const ids = new Set();
+        for (const receipt of this.receipts) {
+            if (!receipt.committed) continue;
+            for (const item of receipt.revisionItems || []) {
+                if (item.partName === 'word/document.xml') ids.add(item.id);
+            }
+        }
+        return ids;
+    }
+
+    /**
+     * Drops revision ids from earlier committed receipts after a later operation replaced them
+     * (a same-author edit of the same paragraph merges the earlier revisions into its own).
+     */
+    supersedeRevisions(ids) {
+        const superseded = new Set(Array.from(ids || [], id => String(id)));
+        if (superseded.size === 0) return;
+        for (const receipt of this.receipts) {
+            if (!receipt.committed || !Array.isArray(receipt.revisionItems)) continue;
+            const kept = receipt.revisionItems.filter(item => item.partName !== 'word/document.xml' || !superseded.has(item.id));
+            if (kept.length === receipt.revisionItems.length) continue;
+            receipt.revisionItems = kept;
+            const note = 'A later operation in this batch edited the same content and replaced revisions recorded here.';
+            if (!receipt.warnings.includes(note)) receipt.warnings.push(note);
+        }
+    }
+
     recordComment(id, _partName = 'word/comments.xml') {
         if (!this.activeReceipt || id == null) return;
         const strId = String(id);

@@ -60,6 +60,36 @@ export function normalizeOperationError(error, context = {}) {
  * Validates and dispatches one structured operation against full document XML.
  * Result metadata is assembled here so every mutation path exposes the same
  * */
+const RECEIPT_REVISION_NAMES = new Set(['ins', 'del', 'rPrChange', 'pPrChange', 'moveFrom', 'moveTo']);
+
+function collectRevisionIds(root, into) {
+    const nodes = [root, ...Array.from(root?.getElementsByTagName?.('*') || [])];
+    for (const node of nodes) {
+        if (node?.nodeType !== 1 || !RECEIPT_REVISION_NAMES.has(node.localName || String(node.nodeName).replace(/^.*:/, ''))) continue;
+        const id = node.getAttribute('w:id');
+        if (id) into.add(id);
+    }
+    return into;
+}
+
+/**
+ * An operation that replaces a paragraph an earlier operation of the same batch already revised
+ * (a same-author merge rebuilds the paragraph's revisions) removes that operation's revision ids.
+ * The earlier receipts stop listing them, so receipt reconciliation describes the final document.
+ */
+function supersedeReplacedRevisions(session, removedNodes) {
+    const collector = session.receiptCollector;
+    if (!collector || !Array.isArray(removedNodes) || removedNodes.length === 0 || !session.document) return;
+    const committed = collector.committedDocumentRevisionIds();
+    if (committed.size === 0) return;
+    const removed = new Set();
+    for (const node of removedNodes) collectRevisionIds(node, removed);
+    const candidates = [...removed].filter(id => committed.has(id));
+    if (candidates.length === 0) return;
+    const live = collectRevisionIds(session.document.documentElement, new Set());
+    collector.supersedeRevisions(candidates.filter(id => !live.has(id)));
+}
+
 export async function applyOperationToDocumentXml(documentXml, op, author, runtimeContext = null, options = {}) {
     const operationIndex = typeof options._operationIndex === 'number' ? options._operationIndex : 1;
     const errorContext = {
@@ -720,6 +750,7 @@ export async function applyOperationToDocumentXml(documentXml, op, author, runti
                     session.receiptCollector?.recordWarning(w);
                 }
             }
+            supersedeReplacedRevisions(session, operationOptions._mutationRemovedNodes);
             operationReceipt = session.receiptCollector?.commitOperation('applied');
             result.documentXml = session.deferSerialization
                 ? session.currentDocumentXml

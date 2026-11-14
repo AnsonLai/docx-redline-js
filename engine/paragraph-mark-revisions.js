@@ -214,7 +214,9 @@ export function restoreParagraphMarkInserted(paragraph, metadata) {
     if (metadata.id) marker.setAttribute('w:id', String(metadata.id));
     marker.setAttribute('w:author', metadata.author);
     if (metadata.date) marker.setAttribute('w:date', metadata.date);
-    rPr.appendChild(marker);
+    // CT_ParaRPr order: ins, del, moveFrom, moveTo, then the run properties. A mark that the edit
+    // also deleted keeps its insertion first.
+    rPr.insertBefore(marker, rPr.firstChild || null);
     return marker;
 }
 

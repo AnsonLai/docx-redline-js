@@ -607,6 +607,63 @@ function buildFallbackInsertedPlainParagraph(xmlDoc, text, revisionMetadata, aut
 const BLOCK_LEVEL_NAMES = new Set(['p', 'tbl', 'sdt', 'customXml']);
 
 /** True when no block-level sibling follows the node in its container (body, table cell, header...). */
+function sameAuthor(a, b) {
+    return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+}
+
+function paragraphPropertiesKey(paragraph) {
+    const pPr = getDirectWordChild(paragraph, 'pPr');
+    if (!pPr) return '';
+    const clone = pPr.cloneNode(true);
+    const rPr = getDirectWordChild(clone, 'rPr');
+    if (rPr) clone.removeChild(rPr);
+    return Array.from(clone.childNodes).some(child => child.nodeType === 1)
+        ? createSerializer().serializeToString(clone)
+        : '';
+}
+
+/**
+ * Deleting a paragraph whose whole content is the same author's pending insertion takes the
+ * insertion back, which leaves an empty paragraph. Word removes such a paragraph; keeping it would
+ * leave an empty paragraph after Accept All. Two shapes are handled, both leaving Reject All as is:
+ *   - the emptied paragraph's own mark is that author's insertion: the paragraph is removed;
+ *   - its mark is untracked and the previous paragraph's mark is that author's insertion (the last
+ *     paragraph of an appended group holds the original mark): the paragraph is removed and the
+ *     previous paragraph takes over the untracked mark.
+ *
+ * @returns {Element|null} The removed paragraph
+ */
+function removeEmptiedOwnInsertedParagraph(insertedNodes, sourceParagraph, author) {
+    if (insertedNodes.length !== 1) return null;
+    const paragraph = insertedNodes[0];
+    if (paragraph?.localName !== 'p') return null;
+    const hasContent = Array.from(paragraph.childNodes).some(child => child.nodeType === 1 && child.localName !== 'pPr');
+    if (hasContent) return null;
+    // Only when the source paragraph's content was this author's insertion (not an originally empty paragraph).
+    const sourceInsertions = Array.from(sourceParagraph.childNodes).filter(child => child.nodeType === 1 && child.localName === 'ins');
+    if (sourceInsertions.length === 0 || !sourceInsertions.every(ins => sameAuthor(ins.getAttribute('w:author'), author))) return null;
+    const elementSibling = (node, direction) => {
+        let sibling = node[direction];
+        while (sibling && sibling.nodeType !== 1) sibling = sibling[direction];
+        return sibling;
+    };
+    const mark = readParagraphMarkRevision(paragraph);
+    if (mark) {
+        if (mark.kind !== 'ins' || !sameAuthor(mark.author, author)) return null;
+        if (elementSibling(paragraph, 'nextSibling')?.localName !== 'p') return null;
+        paragraph.parentNode.removeChild(paragraph);
+        return paragraph;
+    }
+    const previous = elementSibling(paragraph, 'previousSibling');
+    if (previous?.localName !== 'p') return null;
+    const previousMark = readParagraphMarkRevision(previous);
+    if (!previousMark || previousMark.kind !== 'ins' || !sameAuthor(previousMark.author, author)) return null;
+    if (paragraphPropertiesKey(previous) !== paragraphPropertiesKey(paragraph)) return null;
+    clearParagraphMarkRevision(previous);
+    paragraph.parentNode.removeChild(paragraph);
+    return paragraph;
+}
+
 function isLastBlockInContainer(node) {
     for (let next = node?.nextSibling; next; next = next.nextSibling) {
         if (next.nodeType === 1 && next.namespaceURI === NS_W && BLOCK_LEVEL_NAMES.has(next.localName)) return false;
@@ -2737,6 +2794,14 @@ export async function applyToParagraphByExactText(documentXml, targetText, modif
         if (scopeNode && scopeNode.parentNode === parent) {
             options?._mutationRemovedNodes?.push(scopeNode);
             parent.removeChild(scopeNode);
+        }
+    }
+    if (generateRedlines && effectiveModifiedText === '' && scopeNodes.length === 1 && scopeNodes[0] === targetParagraph) {
+        const dropped = removeEmptiedOwnInsertedParagraph(insertedNodes, targetParagraph, author);
+        if (dropped) {
+            insertedNodes.splice(insertedNodes.indexOf(dropped), 1);
+            const index = options?._mutationLiveNodes ? options._mutationLiveNodes.indexOf(dropped) : -1;
+            if (index >= 0) options._mutationLiveNodes.splice(index, 1);
         }
     }
     if (generateRedlines && scopeEndsContainer) {

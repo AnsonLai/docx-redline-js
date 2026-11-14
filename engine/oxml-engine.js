@@ -28,8 +28,8 @@ import { applySurgicalMode } from './surgical-mode.js';
 import { applyReconstructionMode } from './reconstruction-mode.js';
 import { applyTableReconciliation, applyTextToTableTransformation } from './table-mode.js';
 import { getDefaultAuthor } from '../adapters/config.js';
-import { containsTrackedChanges, getTrackedChangeAuthors, hasUnattributedTrackedChange, resolveExistingRevisionsPolicy, withOoxmlSourceType } from '../core/word-xml.js';
-import { clonePropertiesWithoutRevisionHistory } from '../core/revision-cloning.js';
+import { containsOnlyFormattingRevisions, containsTrackedChanges, getTrackedChangeAuthors, hasUnattributedTrackedChange, resolveExistingRevisionsPolicy, withOoxmlSourceType } from '../core/word-xml.js';
+import { clonePropertiesWithoutRevisionHistory, refreshRunPropertyChangeIds } from '../core/revision-cloning.js';
 import {
     NS_W,
     RevisionIdAllocator,
@@ -83,6 +83,56 @@ function emptyParagraphBaseline(paragraph, serializer) {
     return serializer.serializeToString(clone);
 }
 
+/**
+ * Baseline of a lone paragraph whose mark is a same-author pending insertion. Rejecting that
+ * paragraph as a fragment removes it whole, because its content would merge into a following
+ * paragraph the fragment does not hold. Content that predates the inserted mark (Word marks the
+ * ORIGINAL paragraph's mark as inserted when paragraphs are added after it) must stay in the
+ * baseline, so the mark is set aside, the paragraph's remaining revisions are rejected, and
+ * `restoreInsertedParagraphMark` puts the mark back on the result.
+ *
+ * @returns {string|null} Baseline OOXML, or null when the paragraph has no content of its own
+ */
+function contentBaselineWithoutInsertedMark(paragraph, serializer, author) {
+    const clone = paragraph.cloneNode(true);
+    const rPr = directWordChild(directWordChild(clone, 'pPr'), 'rPr');
+    const marker = directWordChild(rPr, 'ins');
+    if (!marker) return null;
+    rPr.removeChild(marker);
+    const withoutMark = serializer.serializeToString(clone);
+    const rejected = rejectTrackedChangesInOoxml(withoutMark, { author, _keepFormattingChanges: true });
+    if (rejected.status === 'error') return null;
+    const baseline = typeof rejected.oxml === 'string' && rejected.oxml.trim() ? rejected.oxml : withoutMark;
+    const parsed = parseOoxmlSafe(baseline, 'text/xml');
+    const baselineParagraph = parsed.doc?.documentElement?.localName === 'p'
+        ? parsed.doc.documentElement
+        : (parsed.doc ? getDocumentParagraphs(parsed.doc)[0] : null);
+    if (!baselineParagraph || !extractCanonicalParagraphText(baselineParagraph)) return null;
+    return baseline;
+}
+
+/**
+ * A run that carries a kept formatting revision can be split by the new edit, which copies its
+ * `w:rPrChange` (and the revision id) onto each piece. Later copies get a fresh id.
+ */
+function refreshDuplicatedRunFormattingRevisionIds(oxml, allocator) {
+    if (typeof oxml !== 'string' || !oxml.includes('rPrChange')) return oxml;
+    const parsed = parseOoxmlSafe(oxml, 'text/xml');
+    if (!parsed.doc || parsed.error) return oxml;
+    const seen = new Set();
+    let refreshed = false;
+    for (const change of getElementsByTagNSOrTag(parsed.doc, NS_W, 'rPrChange')) {
+        const id = change.getAttribute('w:id') || change.getAttributeNS(NS_W, 'id') || '';
+        if (!seen.has(id)) {
+            seen.add(id);
+            continue;
+        }
+        refreshRunPropertyChangeIds(change, allocator);
+        refreshed = true;
+    }
+    return refreshed ? serializeXml(parsed.doc) : oxml;
+}
+
 function restoreInsertedParagraphMark(oxml, metadata) {
     if (!metadata || typeof oxml !== 'string' || !oxml.trim()) return oxml;
     const parsed = parseOoxmlSafe(oxml, 'text/xml');
@@ -122,6 +172,7 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
     const operationWarnings = [];
     let normalizedExistingRevisions = false;
     let preservedInsertedParagraphMark = null;
+    let keptRunFormattingRevisions = false;
     let existingRevisionsPolicy = options.existingRevisions || 'merge-same-author';
     const keepNormalizedNoOp = existingRevisionsPolicy === 'accept-all-first-keep-normalized';
     const finalize = result => {
@@ -151,6 +202,9 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
         }
         if (!withStatus.status) {
             withStatus.status = withStatus.hasChanges ? 'ok' : 'no-op';
+        }
+        if (keptRunFormattingRevisions && withStatus.hasChanges && withStatus.status !== 'error') {
+            withStatus.oxml = refreshDuplicatedRunFormattingRevisionIds(withStatus.oxml, revisionIdAllocator);
         }
         if (preservedInsertedParagraphMark && withStatus.hasChanges && typeof withStatus.oxml === 'string') {
             withStatus.oxml = restoreInsertedParagraphMark(withStatus.oxml, preservedInsertedParagraphMark);
@@ -219,7 +273,13 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
             const isSameAuthor = authors.length > 0
                 && !hasUnattributedTrackedChange(xmlDoc)
                 && authors.every(a => a.trim().toLowerCase() === currentAuthor);
-            if (isSameAuthor) {
+            if (isSameAuthor && containsOnlyFormattingRevisions(xmlDoc)) {
+                // Pending same-author formatting (a tracked bold, a tracked alignment) is not text
+                // history: rejecting it to reach a baseline would drop the formatting from Accept All
+                // without a trace. The properties stay and new text revisions are layered around them.
+                log('[OxmlEngine] Existing same-author revisions are formatting only; keeping them in place');
+                keptRunFormattingRevisions = true;
+            } else if (isSameAuthor) {
                 const commentIds = getCommentIdsInOoxml(xmlDoc);
                 if (commentIds.length > 0) {
                     return finalize({
@@ -236,10 +296,13 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
                 log('[OxmlEngine] Existing revisions from same author detected; rejecting previous changes to merge against baseline');
                 const soleParagraph = inputParagraphs.length === 1 ? inputParagraphs[0] : null;
                 preservedInsertedParagraphMark = insertedParagraphMarkMetadata(soleParagraph, author);
-                const rejected = rejectTrackedChangesInOoxml(inputOoxml, { author });
+                // Only the text history is merged against the baseline. Formatting changes stay
+                // pending with their snapshots, so Accept All keeps them and Reject All restores them.
+                const rejected = rejectTrackedChangesInOoxml(inputOoxml, { author, _keepFormattingChanges: true });
                 if (rejected.status === 'error') return finalize(rejected);
                 workingOoxml = preservedInsertedParagraphMark && !String(rejected.oxml || '').trim()
-                    ? emptyParagraphBaseline(soleParagraph, serializer)
+                    ? (contentBaselineWithoutInsertedMark(soleParagraph, serializer, author)
+                        || emptyParagraphBaseline(soleParagraph, serializer))
                     : rejected.oxml;
                 normalizedExistingRevisions = true;
                 const rejectedParsed = parseOoxmlSafe(workingOoxml, 'text/xml');
@@ -259,7 +322,8 @@ export async function applyRedlineToOxml(oxml, originalText, modifiedText, optio
                         }
                     });
                 }
-                if (containsTrackedChanges(xmlDoc)) {
+                keptRunFormattingRevisions = getElementsByTagNSOrTag(xmlDoc, NS_W, 'rPrChange').length > 0;
+                if (containsTrackedChanges(xmlDoc) && !containsOnlyFormattingRevisions(xmlDoc)) {
                     return finalize({
                         oxml: inputOoxml,
                         hasChanges: false,

@@ -493,7 +493,10 @@ export function rejectTrackedChangesInOoxml(oxml, options = {}) {
 
     rejectedCount += removeMoveRangeMarkers(xmlDoc, filter);
 
-    const changeTags = ['rPrChange', 'pPrChange', 'tblPrChange', 'trPrChange', 'tcPrChange'];
+    // Internal (same-author merge): run and paragraph formatting changes stay pending.
+    const changeTags = options._keepFormattingChanges === true
+        ? ['tblPrChange', 'trPrChange', 'tcPrChange']
+        : ['rPrChange', 'pPrChange', 'tblPrChange', 'trPrChange', 'tcPrChange'];
     for (const localName of changeTags) {
         for (const changeNode of getWordElementsByLocalName(xmlDoc, localName)) {
             if (!changeNode.parentNode || !authorMatchesNode(changeNode, filter)) continue;

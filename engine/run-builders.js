@@ -9,7 +9,7 @@ import { extractFormatFromRPr, RPR_SCHEMA_ORDER } from './rpr-helpers.js';
 import { createRevisionMetadata } from '../core/types.js';
 import { getFirstElementByTag } from '../core/xml-query.js';
 import { createWordElement } from '../core/word-xml.js';
-import { clonePropertiesWithoutRevisionHistory } from '../core/revision-cloning.js';
+import { clonePropertiesWithoutRevisionHistory, refreshRunPropertyChangeIds } from '../core/revision-cloning.js';
 
 /**
  * Creates an insertion/deletion wrapper.
@@ -109,6 +109,20 @@ export function createFormattedRuns(xmlDoc, text, baseRPr, formatHints, baseOffs
             ? injectFormattingToRPr(xmlDoc, baseRPr, combinedFormat, author, generateRedlines)
             : baseRPr?.cloneNode(true) || null;
         runs.push(createTextRunWithRPrElement(xmlDoc, segment, formattedRPr, false));
+    }
+
+    // Pieces of one source run each copy its pending w:rPrChange; only the first keeps the id.
+    const seenChangeIds = new Set();
+    for (const run of runs) {
+        const change = getFirstElementByTag(getFirstElementByTag(run, 'w:rPr'), 'w:rPrChange');
+        if (!change) continue;
+        const id = change.getAttribute('w:id');
+        if (seenChangeIds.has(id)) {
+            refreshRunPropertyChangeIds(change);
+            seenChangeIds.add(change.getAttribute('w:id'));
+        } else {
+            seenChangeIds.add(id);
+        }
     }
 
     return runs;
@@ -241,25 +255,49 @@ export function injectFormattingToRPr(xmlDoc, baseRPr, format, author, generateR
  * @returns {Element}
  */
 export function snapshotAndAttachRPrChange(xmlDoc, rPr, author, dateStr, sourceNode) {
-    const rPrChange = createWordElement(xmlDoc, 'w:rPrChange');
-    const metadata = createRevisionMetadata(author, xmlDoc, 'rPrChange');
-    rPrChange.setAttribute('w:id', String(metadata.id));
-    rPrChange.setAttribute('w:author', metadata.author);
-    rPrChange.setAttribute('w:date', dateStr || metadata.date);
-
     const source = sourceNode || rPr;
-    const previousRPr = clonePropertiesWithoutRevisionHistory(source)
-        || createWordElement(xmlDoc, 'w:rPr');
-
-    rPrChange.appendChild(previousRPr);
-
     const existing = getFirstElementByTag(rPr, 'w:rPrChange');
+    const pending = pendingSameAuthorRPrChange(source, author);
+    let rPrChange;
+    if (pending) {
+        // The run's formatting is already a pending change by this author. Its snapshot is the
+        // state Reject All must restore, so it is kept; a snapshot of the current (already
+        // changed) properties would make Reject All keep the earlier change.
+        rPrChange = pending.cloneNode(true);
+        if (reusedRPrChanges.has(pending)) {
+            // The source run was split: only the first piece keeps the revision id.
+            const metadata = createRevisionMetadata(author, xmlDoc, 'rPrChange');
+            rPrChange.setAttribute('w:id', String(metadata.id));
+        } else {
+            reusedRPrChanges.add(pending);
+        }
+    } else {
+        rPrChange = createWordElement(xmlDoc, 'w:rPrChange');
+        const metadata = createRevisionMetadata(author, xmlDoc, 'rPrChange');
+        rPrChange.setAttribute('w:id', String(metadata.id));
+        rPrChange.setAttribute('w:author', metadata.author);
+        rPrChange.setAttribute('w:date', dateStr || metadata.date);
+        rPrChange.appendChild(clonePropertiesWithoutRevisionHistory(source)
+            || createWordElement(xmlDoc, 'w:rPr'));
+    }
+
     if (existing) {
         rPr.removeChild(existing);
     }
 
     rPr.appendChild(rPrChange);
     return rPrChange;
+}
+
+const reusedRPrChanges = new WeakSet();
+
+function pendingSameAuthorRPrChange(source, author) {
+    const change = Array.from(source?.childNodes || []).find(
+        child => child.nodeType === 1 && (child.nodeName === 'w:rPrChange' || child.localName === 'rPrChange')
+    );
+    if (!change) return null;
+    const changeAuthor = change.getAttribute('w:author') || '';
+    return changeAuthor.trim().toLowerCase() === String(author || '').trim().toLowerCase() ? change : null;
 }
 
 /**
